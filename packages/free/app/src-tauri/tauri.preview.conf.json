@@ -1,0 +1,12 @@
+{
+  "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Free (preview)",
+  "identifier": "com.kilingzhang.free.preview",
+  "app": {
+    "windows": [
+      {
+        "title": "Free (preview)"
+      }
+    ]
+  }
+}
