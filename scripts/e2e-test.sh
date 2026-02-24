@@ -99,7 +99,7 @@ if lsof -i:$BACKEND_PORT >/dev/null 2>&1; then
 fi
 
 # Start backend server
-cd "$PROJECT_ROOT/packages/free/server"
+cd "$PROJECT_ROOT/apps/free/server"
 pnpm standalone serve > "$LOG_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID >> "$PID_FILE"

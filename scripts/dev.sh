@@ -89,8 +89,8 @@ cleanup_all() {
     free daemon stop 2>/dev/null || true
 
     # 清理 PGlite 锁文件（如果存在）
-    if [ -d "$PROJECT_ROOT/packages/free/server/data/pglite" ]; then
-        rm -f "$PROJECT_ROOT/packages/free/server/data/pglite/"*.lock 2>/dev/null || true
+    if [ -d "$PROJECT_ROOT/apps/free/server/data/pglite" ]; then
+        rm -f "$PROJECT_ROOT/apps/free/server/data/pglite/"*.lock 2>/dev/null || true
     fi
 
     # 清理所有中间构建文件
@@ -99,10 +99,10 @@ cleanup_all() {
     rm -rf "$PROJECT_ROOT/packages/core/interfaces/dist" 2>/dev/null || true
     rm -rf "$PROJECT_ROOT/packages/core/protocol/dist" 2>/dev/null || true
     rm -rf "$PROJECT_ROOT/packages/core/utils/dist" 2>/dev/null || true
-    rm -rf "$PROJECT_ROOT/packages/free/cli/dist" 2>/dev/null || true
-    rm -rf "$PROJECT_ROOT/packages/free/server/.next" 2>/dev/null || true
-    rm -rf "$PROJECT_ROOT/packages/free/app/.expo" 2>/dev/null || true
-    rm -rf "$PROJECT_ROOT/packages/free/app/web-build" 2>/dev/null || true
+    rm -rf "$PROJECT_ROOT/apps/free/cli/dist" 2>/dev/null || true
+    rm -rf "$PROJECT_ROOT/apps/free/server/.next" 2>/dev/null || true
+    rm -rf "$PROJECT_ROOT/apps/free/app/.expo" 2>/dev/null || true
+    rm -rf "$PROJECT_ROOT/apps/free/app/web-build" 2>/dev/null || true
     rm -rf "$PROJECT_ROOT/.turbo" 2>/dev/null || true
 
     # 清理 TypeScript 增量编译缓存
@@ -140,7 +140,7 @@ build_core() {
 build_cli() {
     log_section "构建 CLI"
 
-    cd "$PROJECT_ROOT/packages/free/cli"
+    cd "$PROJECT_ROOT/apps/free/cli"
     pnpm build 2>&1 | tee "$LOG_DIR/build-cli.log"
 
     log_success "CLI 构建完成"
@@ -149,7 +149,7 @@ build_cli() {
 link_cli() {
     log_section "安装 CLI 全局命令"
 
-    cd "$PROJECT_ROOT/packages/free/cli"
+    cd "$PROJECT_ROOT/apps/free/cli"
 
     # 先移除旧的全局链接（如果存在）
     npm unlink -g @free/cli 2>/dev/null || true
@@ -162,7 +162,7 @@ link_cli() {
         CLI_VERSION=$(free --version 2>/dev/null | head -1 || echo "unknown")
         log_success "CLI 全局命令已安装: free ($CLI_VERSION)"
     else
-        log_warn "CLI 全局命令安装失败，请手动执行: cd packages/free/cli && npm link"
+        log_warn "CLI 全局命令安装失败，请手动执行: cd apps/free/cli && npm link"
     fi
 }
 
@@ -173,7 +173,7 @@ link_cli() {
 start_server() {
     log_section "启动后端服务器"
 
-    cd "$PROJECT_ROOT/packages/free/server"
+    cd "$PROJECT_ROOT/apps/free/server"
 
     # 检查 .env 文件
     if [ ! -f ".env" ]; then
@@ -234,7 +234,7 @@ start_daemon() {
 start_web() {
     log_section "启动 Web 应用"
 
-    cd "$PROJECT_ROOT/packages/free/app"
+    cd "$PROJECT_ROOT/apps/free/app"
 
     # 设置环境变量
     export EXPO_PUBLIC_FREE_SERVER_URL="http://localhost:$SERVER_PORT"
