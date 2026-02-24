@@ -7,7 +7,8 @@ export default defineConfig({
     environment: 'node',
     include: [
       'packages/**/src/**/__tests__/**/*.test.ts',
-      'packages/app/sources/__tests__/**/*.test.{ts,tsx}',
+      'apps/**/src/**/__tests__/**/*.test.ts',
+      'apps/**/sources/**/__tests__/**/*.test.{ts,tsx}',
       'src/**/__tests__/**/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],
@@ -15,8 +16,7 @@ export default defineConfig({
     hookTimeout: 30000,
     // Use jsdom for React tests
     environmentMatchGlobs: [
-      ['packages/react/**', 'jsdom'],
-      ['packages/app/**', 'jsdom'],
+      ['apps/free/app/**', 'jsdom'],
     ],
     coverage: {
       provider: 'v8',
@@ -33,7 +33,7 @@ export default defineConfig({
     alias: [
       {
         find: /^@\/(.*)$/,
-        replacement: path.resolve(__dirname, 'packages/free/cli/src/$1'),
+        replacement: path.resolve(__dirname, 'apps/free/cli/src/$1'),
       },
       {
         find: 'libsodium-wrappers',

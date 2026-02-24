@@ -36,8 +36,8 @@
     { "path": "packages/core/interfaces" },
     { "path": "packages/core/protocol" },
     { "path": "packages/core/utils" },
-    { "path": "packages/free/app" },
-    { "path": "packages/free/cli" },
-    { "path": "packages/free/server" }
+    { "path": "apps/free/app" },
+    { "path": "apps/free/cli" },
+    { "path": "apps/free/server" }
   ]
 }
