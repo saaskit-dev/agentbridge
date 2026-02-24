@@ -1,0 +1,17 @@
+# Free CLI Development Environment
+#
+# This file is for direnv users who want automatic environment switching
+# when entering this directory.
+#
+# Setup:
+#   1. Install direnv: https://direnv.net/
+#   2. Copy this file: cp .envrc.example .envrc
+#   3. Run: direnv allow
+#
+# The .envrc file is gitignored, so each developer can customize it.
+
+export FREE_HOME_DIR="$HOME/.free-dev"
+export FREE_VARIANT="dev"
+export FREE_SERVER_URL="${FREE_SERVER_URL:-http://localhost:3000}"
+
+echo "🔧 DEV environment activated (data: $FREE_HOME_DIR)"

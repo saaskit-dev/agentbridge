@@ -1,0 +1,23 @@
+.git
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+data/
+.dev-logs/
+.docker-context/
+.docker-node_modules/
+node_modules/
+# Allow pglite wasm files (needed for runtime)
+!node_modules/@electric-sql/
+!node_modules/@electric-sql/pglite/
+!node_modules/@electric-sql/pglite/dist/
+!node_modules/@electric-sql/pglite/dist/*.wasm
+!node_modules/@electric-sql/pglite/dist/*.data
+# Only include bundled file, not raw dist
+dist/index.js
+dist/index.cjs
+dist/*.js
+!dist/bundle.cjs
+!dist/worker.js
