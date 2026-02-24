@@ -5,7 +5,8 @@
   "description": "Universal SDK for AI Coding Agent CLIs",
   "workspaces": [
     "packages/core/*",
-    "packages/free/*"
+    "packages/providers/*",
+    "apps/free/*"
   ],
   "scripts": {
     "build": "turbo run build",
