@@ -164,6 +164,28 @@ export interface ClientToServerEvents {
       [key: string]: number
     }
   }) => void
+  // Streaming events (typewriter effect)
+  'streaming:text-delta': (data: {
+    type: 'text_delta'
+    sessionId: string
+    messageId: string
+    delta: string
+    timestamp: number
+  }) => void
+  'streaming:text-complete': (data: {
+    type: 'text_complete'
+    sessionId: string
+    messageId: string
+    fullText: string
+    timestamp: number
+  }) => void
+  'streaming:thinking-delta': (data: {
+    type: 'thinking_delta'
+    sessionId: string
+    messageId: string
+    delta: string
+    timestamp: number
+  }) => void
 }
 
 /**

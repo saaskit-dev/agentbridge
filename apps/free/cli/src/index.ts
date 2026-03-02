@@ -101,10 +101,13 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
 
       // Parse startedBy argument
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let resumeSessionId: string | undefined = undefined;
       const codexArgs = extractNoSandboxFlag(args.slice(1));
       for (let i = 0; i < codexArgs.args.length; i++) {
         if (codexArgs.args[i] === '--started-by') {
           startedBy = codexArgs.args[++i] as 'daemon' | 'terminal';
+        } else if (codexArgs.args[i] === '--resume-session-id') {
+          resumeSessionId = codexArgs.args[++i];
         }
       }
 
@@ -130,7 +133,7 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
         }
       }
 
-      await runCodex({credentials, startedBy, noSandbox: codexArgs.noSandbox});
+      await runCodex({credentials, startedBy, noSandbox: codexArgs.noSandbox, resumeSessionId});
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -324,11 +327,14 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
     try {
       const { runGemini } = await import('@/gemini/runGemini');
       
-      // Parse startedBy argument
+      // Parse startedBy and resume-session-id arguments
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let resumeSessionId: string | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--resume-session-id') {
+          resumeSessionId = args[++i];
         }
       }
       
@@ -349,7 +355,53 @@ import { extractNoSandboxFlag } from './utils/sandboxFlags'
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      await runGemini({credentials, startedBy});
+      await runGemini({credentials, startedBy, resumeSessionId});
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'opencode') {
+    // Handle opencode command
+    try {
+      const { runOpenCode } = await import('@/opencode/runOpenCode');
+
+      // Parse startedBy and resume-session-id arguments
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let resumeSessionId: string | undefined = undefined;
+      const opencodeArgs = args.slice(1);
+      for (let i = 0; i < opencodeArgs.length; i++) {
+        if (opencodeArgs[i] === '--started-by') {
+          startedBy = opencodeArgs[++i] as 'daemon' | 'terminal';
+        } else if (opencodeArgs[i] === '--resume-session-id') {
+          resumeSessionId = opencodeArgs[++i];
+        }
+      }
+
+      const { credentials } = await authAndSetupMachineIfNeeded();
+
+      // Auto-start daemon for opencode (same as claude/gemini/codex)
+      logger.debug('Ensuring Free background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledFreeVersion())) {
+        logger.debug('Starting Free background service...');
+        const daemonProcess = spawnFreeCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        });
+        daemonProcess.unref();
+
+        // Wait for daemon to start (up to 3 seconds)
+        for (let i = 0; i < 30; i++) {
+          if (await isDaemonRunningCurrentlyInstalledFreeVersion()) break;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      await runOpenCode({ credentials, startedBy, resumeSessionId });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -540,6 +592,8 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('free doctor cl
         unknownArgs.push('--dangerously-skip-permissions')
       } else if (arg === '--started-by') {
         options.startedBy = args[++i] as 'daemon' | 'terminal'
+      } else if (arg === '--resume-session-id') {
+        options.resumeSessionId = args[++i]
       } else if (arg === '--js-runtime') {
         const runtime = args[++i]
         if (runtime !== 'node' && runtime !== 'bun') {

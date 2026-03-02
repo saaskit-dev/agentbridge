@@ -163,6 +163,7 @@ export interface AcpBackendOptions {
 }
 
 /**
+/**
  * Convert Node.js streams to Web Streams for ACP SDK
  * 
  * NOTE: This function registers event handlers on stdout. If you also register
@@ -312,6 +313,7 @@ export class AcpBackend implements AgentBackend {
 
   private emit(msg: AgentMessage): void {
     if (this.disposed) return;
+
     for (const listener of this.listeners) {
       try {
         listener(msg);

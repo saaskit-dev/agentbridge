@@ -120,10 +120,9 @@ export interface SpawnSessionOptions {
     directory: string;
     sessionId?: string;
     approvedNewDirectoryCreation?: boolean;
-    agent?: 'claude' | 'codex' | 'gemini';
-    token?: string;
+    agent?: 'claude' | 'codex' | 'gemini' | 'opencode';
+    token?: string;  // OAuth token for authentication
     environmentVariables?: {
-        // Anthropic Claude API configuration
         ANTHROPIC_BASE_URL?: string;        // Custom API endpoint (overrides default)
         ANTHROPIC_AUTH_TOKEN?: string;      // API authentication token
         ANTHROPIC_MODEL?: string;           // Model to use (e.g., claude-3-5-sonnet-20241022)

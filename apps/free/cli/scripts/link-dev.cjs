@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * link-dev.cjs - Create symlink for happy-dev only
+ * link-dev.cjs - Create symlink for free-dev only
  *
- * This script creates a symlink for the happy-dev command pointing to the local
- * development version, while leaving the stable npm version of `happy` untouched.
+ * This script creates a symlink for the free-dev command pointing to the local
+ * development version, while leaving the stable npm version of `free` untouched.
  *
  * Usage: yarn link:dev
  *
  * What it does:
  * 1. Finds the global npm bin directory
- * 2. Creates/updates a symlink: happy-dev -> ./bin/happy-dev.mjs
+ * 2. Creates/updates a symlink: free-dev -> ./bin/free-dev.mjs
  *
  * To undo: yarn unlink:dev
  */
@@ -19,7 +19,7 @@ const { join, dirname } = require('path');
 const fs = require('fs');
 
 const projectRoot = dirname(__dirname);
-const binSource = join(projectRoot, 'bin', 'happy-dev.mjs');
+const binSource = join(projectRoot, 'bin', 'free-dev.mjs');
 
 // Get the action from command line args
 const action = process.argv[2] || 'link';
@@ -55,9 +55,9 @@ function getGlobalBinDir() {
 
 function link() {
     const globalBin = getGlobalBinDir();
-    const binTarget = join(globalBin, 'happy-dev');
+    const binTarget = join(globalBin, 'free-dev');
 
-    console.log('Creating symlink for happy-dev...');
+    console.log('Creating symlink for free-dev...');
     console.log(`  Source: ${binSource}`);
     console.log(`  Target: ${binTarget}`);
 
@@ -82,10 +82,10 @@ function link() {
     // Create the symlink
     try {
         fs.symlinkSync(binSource, binTarget);
-        console.log('\n✅ Successfully linked happy-dev to local development version');
+        console.log('\n✅ Successfully linked free-dev to local development version');
         console.log('\nNow you can use:');
-        console.log('  happy      → stable npm version (unchanged)');
-        console.log('  happy-dev  → local development version');
+        console.log('  free      → stable npm version (unchanged)');
+        console.log('  free-dev  → local development version');
         console.log('\nTo undo: yarn unlink:dev');
     } catch (e) {
         if (e.code === 'EACCES') {
@@ -100,20 +100,20 @@ function link() {
 
 function unlink() {
     const globalBin = getGlobalBinDir();
-    const binTarget = join(globalBin, 'happy-dev');
+    const binTarget = join(globalBin, 'free-dev');
 
-    console.log('Removing happy-dev symlink...');
+    console.log('Removing free-dev symlink...');
 
     try {
         const stat = fs.lstatSync(binTarget);
         if (stat.isSymbolicLink()) {
             const linkTarget = fs.readlinkSync(binTarget);
-            if (linkTarget === binSource || linkTarget.includes('happy-cli')) {
+            if (linkTarget === binSource || linkTarget.includes('free-cli')) {
                 fs.unlinkSync(binTarget);
-                console.log('\n✅ Removed happy-dev development symlink');
-                console.log('\nTo restore npm version: npm install -g happy-coder');
+                console.log('\n✅ Removed free-dev development symlink');
+                console.log('\nTo restore npm version: npm install -g free-coder');
             } else {
-                console.log(`\n⚠️  happy-dev symlink points elsewhere: ${linkTarget}`);
+                console.log(`\n⚠️  free-dev symlink points elsewhere: ${linkTarget}`);
                 console.log('   Not removing. Remove manually if needed.');
             }
         } else {
@@ -122,7 +122,7 @@ function unlink() {
         }
     } catch (e) {
         if (e.code === 'ENOENT') {
-            console.log("\n✅ happy-dev symlink doesn't exist (already removed or never created)");
+            console.log("\n✅ free-dev symlink doesn't exist (already removed or never created)");
         } else if (e.code === 'EACCES') {
             console.error('\n❌ Permission denied. Try running with sudo:');
             console.error('   sudo yarn unlink:dev');

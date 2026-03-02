@@ -2,46 +2,48 @@
  * Core Agent Types and Interfaces
  *
  * Re-exports all core agent abstractions.
+ * Types are now sourced from @agentbridge/core via ./fromCore
  *
  * @module core
  */
 
 // ============================================================================
-// AgentBackend - Core interface and types
+// Core Types - Re-exported from @agentbridge/core via fromCore
 // ============================================================================
 
+// Basic identifiers
+export type { SessionId, ToolCallId } from './fromCore';
+
+// Agent configuration types
 export type {
-  SessionId,
-  ToolCallId,
-  AgentMessage,
-  AgentMessageHandler,
-  AgentBackend,
+  AgentId,
+  AgentTransport,
+  McpServerConfig,
   AgentBackendConfig,
   AcpAgentConfig,
-  McpServerConfig,
-  AgentTransport,
-  AgentId,
-  StartSessionResult,
-} from './AgentBackend';
+} from './fromCore';
 
-// ============================================================================
-// AgentRegistry - Factory registry
-// ============================================================================
-
-export {
-  AgentRegistry,
-  agentRegistry,
-} from './AgentRegistry';
-
+// Agent backend interface (backward compatible alias)
 export type {
-  AgentFactory,
-  AgentFactoryOptions,
-} from './AgentRegistry';
+  AgentBackend,
+  IAgentBackend,
+  AgentMessage,
+  StartSessionResult,
+  AgentMessageHandler,
+  AgentBackendFactory,
+} from './fromCore';
 
-// ============================================================================
-// AgentMessage - Detailed message types with type guards
-// ============================================================================
+// Transport handler interface
+export type {
+  ITransportHandler,
+  StderrContext,
+  StderrResult,
+  ToolPattern,
+  ToolNameContext,
+  TransportHandlerFactory,
+} from './fromCore';
 
+// Detailed message types (free-specific convenience interfaces)
 export type {
   AgentStatus,
   ModelOutputMessage,
@@ -57,13 +59,47 @@ export type {
   ExecApprovalRequestMessage,
   PatchApplyBeginMessage,
   PatchApplyEndMessage,
-} from './AgentMessage';
+} from './fromCore';
 
+// Type guards
 export {
   isModelOutputMessage,
   isStatusMessage,
   isToolCallMessage,
   isToolResultMessage,
   isPermissionRequestMessage,
+  isPermissionResponseMessage,
+  isEventMessage,
   getMessageText,
-} from './AgentMessage';
+} from './fromCore';
+
+// Factory functions from core
+export {
+  registerAgentFactory,
+  createAgent,
+  hasAgentFactory,
+  listAgentFactories,
+  registerTransportHandler,
+  createTransportHandler,
+  hasTransportHandler,
+  // Transport classes (base)
+  DefaultTransport,
+  defaultTransport,
+} from './fromCore';
+
+// Free-specific transport (uses free__ prefix)
+export { GeminiTransport, geminiTransport } from '../transport';
+
+// ============================================================================
+// AgentRegistry - Free-specific factory registry
+// ============================================================================
+
+export {
+  AgentRegistry,
+  agentRegistry,
+} from './AgentRegistry';
+
+export type {
+  AgentFactory,
+  AgentFactoryOptions,
+} from './AgentRegistry';

@@ -26,9 +26,10 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install only runtime dependencies (wget for healthcheck)
+# Install only runtime dependencies (wget for healthcheck, openssl for Prisma)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
+    openssl \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/cache/apt/*
 

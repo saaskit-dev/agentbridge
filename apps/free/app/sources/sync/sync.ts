@@ -101,6 +101,11 @@ class Sync {
     private backgroundSendStartedAt: number | null = null;
     revenueCatInitialized = false;
 
+    // Ephemeral update subscribers for streaming text support
+    private ephemeralUpdateCallbacks: Set<(update: unknown) => void> = new Set();
+
+    // Generic locking mechanism
+
     // Generic locking mechanism
     private recalculationLockCount = 0;
     private lastRecalculationTime = 0;
@@ -446,8 +451,10 @@ class Sync {
                 : (sandboxEnabled ? 'bypassPermissions' : 'default');
 
         // Read model mode - for Gemini, default to gemini-2.5-pro if not set
+        // Read model mode - for Gemini, default to gemini-2.5-pro if not set. OpenCode uses profile config.
         const isGemini = flavor === 'gemini';
-        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
+        const isOpenCode = flavor === 'opencode';
+        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : isOpenCode ? 'default' : 'default');
 
         // Generate local ID
         const localId = randomUUID();
@@ -678,6 +685,17 @@ class Sync {
         
         storage.getState().applyUsers(usersMap);
         log.log(`👤 Applied ${results.length} users to cache (${results.filter(r => r.profile).length} found, ${results.filter(r => !r.profile).length} not found)`);
+    }
+
+    /**
+     * Subscribe to ephemeral updates (text_delta, text_complete, etc.)
+     * Returns unsubscribe function.
+     */
+    onEphemeralUpdate(callback: (update: unknown) => void): () => void {
+        this.ephemeralUpdateCallbacks.add(callback);
+        return () => {
+            this.ephemeralUpdateCallbacks.delete(callback);
+        };
     }
 
     //
@@ -2208,6 +2226,15 @@ class Sync {
         }
 
         // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity
+
+        // Notify all subscribers (for streaming text, etc.)
+        this.ephemeralUpdateCallbacks.forEach(callback => {
+            try {
+                callback(updateData);
+            } catch (error) {
+                console.error('Error in ephemeral update callback:', error);
+            }
+        });
     }
 
     //

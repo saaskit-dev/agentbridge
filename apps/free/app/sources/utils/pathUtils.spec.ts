@@ -5,29 +5,29 @@ describe('pathUtils', () => {
     describe('resolveAbsolutePath', () => {
         describe('basic tilde expansion', () => {
             it('should expand ~ to home directory', () => {
-                expect(resolveAbsolutePath('~', '/Users/steve')).toBe('/Users/steve');
+                expect(resolveAbsolutePath('~', '/Users/user')).toBe('/Users/user');
             });
 
             it('should expand ~/ to home directory with trailing slash', () => {
-                expect(resolveAbsolutePath('~/', '/Users/steve')).toBe('/Users/steve/');
+                expect(resolveAbsolutePath('~/', '/Users/user')).toBe('/Users/user/');
             });
 
             it('should expand ~/Documents to home directory plus path', () => {
-                expect(resolveAbsolutePath('~/Documents', '/Users/steve')).toBe('/Users/steve/Documents');
+                expect(resolveAbsolutePath('~/Documents', '/Users/user')).toBe('/Users/user/Documents');
             });
 
             it('should expand ~/Documents/project to nested path', () => {
-                expect(resolveAbsolutePath('~/Documents/project', '/Users/steve')).toBe('/Users/steve/Documents/project');
+                expect(resolveAbsolutePath('~/Documents/project', '/Users/user')).toBe('/Users/user/Documents/project');
             });
 
             it('should expand ~/Documents/deep/nested/path', () => {
-                expect(resolveAbsolutePath('~/Documents/deep/nested/path', '/Users/steve')).toBe('/Users/steve/Documents/deep/nested/path');
+                expect(resolveAbsolutePath('~/Documents/deep/nested/path', '/Users/user')).toBe('/Users/user/Documents/deep/nested/path');
             });
         });
 
         describe('non-tilde paths remain unchanged', () => {
             it('should not modify absolute Unix paths', () => {
-                expect(resolveAbsolutePath('/usr/local/bin', '/Users/steve')).toBe('/usr/local/bin');
+                expect(resolveAbsolutePath('/usr/local/bin', '/Users/user')).toBe('/usr/local/bin');
             });
 
             it('should not modify absolute Windows paths', () => {
@@ -35,14 +35,14 @@ describe('pathUtils', () => {
             });
 
             it('should not modify relative paths', () => {
-                expect(resolveAbsolutePath('./folder', '/Users/steve')).toBe('./folder');
-                expect(resolveAbsolutePath('../parent', '/Users/steve')).toBe('../parent');
-                expect(resolveAbsolutePath('relative/path', '/Users/steve')).toBe('relative/path');
+                expect(resolveAbsolutePath('./folder', '/Users/user')).toBe('./folder');
+                expect(resolveAbsolutePath('../parent', '/Users/user')).toBe('../parent');
+                expect(resolveAbsolutePath('relative/path', '/Users/user')).toBe('relative/path');
             });
 
             it('should not modify paths starting with ~username (other user homes)', () => {
-                expect(resolveAbsolutePath('~root', '/Users/steve')).toBe('~root');
-                expect(resolveAbsolutePath('~john/Documents', '/Users/steve')).toBe('~john/Documents');
+                expect(resolveAbsolutePath('~root', '/Users/user')).toBe('~root');
+                expect(resolveAbsolutePath('~john/Documents', '/Users/user')).toBe('~john/Documents');
             });
         });
 
@@ -57,7 +57,7 @@ describe('pathUtils', () => {
             });
 
             it('should handle Windows home with forward slashes', () => {
-                expect(resolveAbsolutePath('~/Documents', 'C:/Users/steve')).toBe('C:/Users/steve/Documents');
+                expect(resolveAbsolutePath('~/Documents', 'C:/Users/user')).toBe('C:/Users/user/Documents');
             });
         });
 
@@ -73,31 +73,31 @@ describe('pathUtils', () => {
             });
 
             it('should handle homeDir with trailing separator', () => {
-                expect(resolveAbsolutePath('~', '/Users/steve/')).toBe('/Users/steve');
-                expect(resolveAbsolutePath('~/Documents', '/Users/steve/')).toBe('/Users/steve/Documents');
+                expect(resolveAbsolutePath('~', '/Users/user/')).toBe('/Users/user');
+                expect(resolveAbsolutePath('~/Documents', '/Users/user/')).toBe('/Users/user/Documents');
                 expect(resolveAbsolutePath('~', 'C:\\Users\\steve\\')).toBe('C:\\Users\\steve');
                 expect(resolveAbsolutePath('~/Documents', 'C:\\Users\\steve\\')).toBe('C:\\Users\\steve\\Documents');
             });
 
             it('should handle empty string path', () => {
-                expect(resolveAbsolutePath('', '/Users/steve')).toBe('');
+                expect(resolveAbsolutePath('', '/Users/user')).toBe('');
             });
 
             it('should handle paths with spaces', () => {
-                expect(resolveAbsolutePath('~/My Documents', '/Users/steve')).toBe('/Users/steve/My Documents');
+                expect(resolveAbsolutePath('~/My Documents', '/Users/user')).toBe('/Users/user/My Documents');
                 expect(resolveAbsolutePath('~/Program Files/My App', 'C:\\Users\\steve')).toBe('C:\\Users\\steve\\Program Files/My App');
             });
 
             it('should handle paths with special characters', () => {
-                expect(resolveAbsolutePath('~/Documents & Files', '/Users/steve')).toBe('/Users/steve/Documents & Files');
-                expect(resolveAbsolutePath('~/folder@example.com', '/Users/steve')).toBe('/Users/steve/folder@example.com');
+                expect(resolveAbsolutePath('~/Documents & Files', '/Users/user')).toBe('/Users/user/Documents & Files');
+                expect(resolveAbsolutePath('~/folder@example.com', '/Users/user')).toBe('/Users/user/folder@example.com');
             });
         });
 
         describe('path separator normalization', () => {
             it('should use Unix separator for Unix home paths', () => {
                 expect(resolveAbsolutePath('~/Documents/subfolder', '/home/user')).toBe('/home/user/Documents/subfolder');
-                expect(resolveAbsolutePath('~/Documents/subfolder', '/Users/steve')).toBe('/Users/steve/Documents/subfolder');
+                expect(resolveAbsolutePath('~/Documents/subfolder', '/Users/user')).toBe('/Users/user/Documents/subfolder');
             });
 
             it('should use Windows separator for Windows home paths', () => {
@@ -113,8 +113,8 @@ describe('pathUtils', () => {
         describe('long paths', () => {
             it('should handle very long paths', () => {
                 const longPath = '~/Documents/' + 'a'.repeat(200) + '/file.txt';
-                const result = resolveAbsolutePath(longPath, '/Users/steve');
-                expect(result).toBe('/Users/steve/Documents/' + 'a'.repeat(200) + '/file.txt');
+                const result = resolveAbsolutePath(longPath, '/Users/user');
+                expect(result).toBe('/Users/user/Documents/' + 'a'.repeat(200) + '/file.txt');
             });
 
             it('should handle very long home directory paths', () => {
@@ -131,20 +131,20 @@ describe('pathUtils', () => {
 
         it('should resolve path relative to metadata root', () => {
             const metadata = {
-                path: '/Users/steve/project',
+                path: '/Users/user/project',
                 host: 'localhost',
-                homeDir: '/Users/steve'
+                homeDir: '/Users/user'
             };
-            expect(resolvePath('/Users/steve/project/src/file.ts', metadata)).toBe('src/file.ts');
+            expect(resolvePath('/Users/user/project/src/file.ts', metadata)).toBe('src/file.ts');
         });
 
         it('should return <root> for exact metadata path', () => {
             const metadata = {
-                path: '/Users/steve/project',
+                path: '/Users/user/project',
                 host: 'localhost',
-                homeDir: '/Users/steve'
+                homeDir: '/Users/user'
             };
-            expect(resolvePath('/Users/steve/project', metadata)).toBe('<root>');
+            expect(resolvePath('/Users/user/project', metadata)).toBe('<root>');
         });
 
         it('should handle case insensitive matching', () => {
@@ -158,22 +158,22 @@ describe('pathUtils', () => {
 
         it('should return original path if not under metadata path', () => {
             const metadata = {
-                path: '/Users/steve/project',
+                path: '/Users/user/project',
                 host: 'localhost',
-                homeDir: '/Users/steve'
+                homeDir: '/Users/user'
             };
             expect(resolvePath('/usr/local/bin/node', metadata)).toBe('/usr/local/bin/node');
         });
 
         it('should not resolve sibling directory paths that start with metadata path', () => {
             const metadata = {
-                path: '/Users/steve/Develop/kilingzhang/free',
+                path: '/Users/dev/project',
                 host: 'localhost',
-                homeDir: '/Users/steve'
+                homeDir: '/Users/dev'
             };
             // This should NOT be resolved as it's a sibling directory, not within the metadata path
-            expect(resolvePath('/Users/steve/Develop/kilingzhang/free-server/sources/types/index.ts', metadata))
-                .toBe('/Users/steve/Develop/kilingzhang/free-server/sources/types/index.ts');
+            expect(resolvePath('/Users/dev/other-project/sources/types/index.ts', metadata))
+                .toBe('/Users/dev/other-project/sources/types/index.ts');
         });
 
         it('should handle edge case where metadata path is a substring of another path', () => {
@@ -214,11 +214,11 @@ describe('pathUtils', () => {
 
         it('should handle common session creation scenarios', () => {
             // Scenarios that would commonly occur in new-session.tsx
-            const macHomeDir = '/Users/steve';
+            const macHomeDir = '/Users/user';
             
-            expect(resolveAbsolutePath('~', macHomeDir)).toBe('/Users/steve');
-            expect(resolveAbsolutePath('~/Code', macHomeDir)).toBe('/Users/steve/Code');
-            expect(resolveAbsolutePath('~/Documents/Projects', macHomeDir)).toBe('/Users/steve/Documents/Projects');
+            expect(resolveAbsolutePath('~', macHomeDir)).toBe('/Users/user');
+            expect(resolveAbsolutePath('~/Code', macHomeDir)).toBe('/Users/user/Code');
+            expect(resolveAbsolutePath('~/Documents/Projects', macHomeDir)).toBe('/Users/user/Documents/Projects');
             expect(resolveAbsolutePath('/absolute/path', macHomeDir)).toBe('/absolute/path');
             expect(resolveAbsolutePath('./relative', macHomeDir)).toBe('./relative');
         });

@@ -8,7 +8,7 @@ import type { PermissionMode } from '@/components/PermissionModeSelector';
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 
-export type NewSessionAgentType = 'claude' | 'codex' | 'gemini';
+export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'opencode';
 export type NewSessionSessionType = 'simple' | 'worktree';
 
 export interface NewSessionDraft {

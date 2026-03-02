@@ -5,9 +5,9 @@ const name = {
     production: "Free"
 }[variant];
 const bundleId = {
-    development: "com.kilingzhang.free.dev",
-    preview: "com.kilingzhang.free.preview",
-    production: "com.ex3ndr.free"
+    development: "app.saaskit.free.dev",
+    preview: "app.saaskit.free.preview",
+    production: "app.saaskit.free"
 }[variant];
 
 export default {
@@ -36,7 +36,7 @@ export default {
                 NSLocalNetworkUsageDescription: "Allow $(PRODUCT_NAME) to find and connect to local devices on your network.",
                 NSBonjourServices: ["_http._tcp", "_https._tcp"]
             },
-            associatedDomains: variant === 'production' ? ["applinks:app.free.engineering"] : []
+            associatedDomains: variant === 'production' ? ["applinks:free-server.saaskit.app"] : []
         },
         android: {
             adaptiveIcon: {
@@ -56,14 +56,14 @@ export default {
             edgeToEdgeEnabled: true,
             package: bundleId,
             googleServicesFile: "./google-services.json",
-            intentFilters: variant === 'production' ? [
+        intentFilters: variant === 'production' ? [
                 {
                     "action": "VIEW",
                     "autoVerify": true,
                     "data": [
                         {
                             "scheme": "https",
-                            "host": "app.free.engineering",
+                            "host": "free-server.saaskit.app",
                             "pathPrefix": "/"
                         }
                     ],
@@ -78,6 +78,7 @@ export default {
         },
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
+            require("./plugins/withSourceBuildRN.js"),
             [
                 "expo-router",
                 {
@@ -150,7 +151,9 @@ export default {
             ]
         ],
         updates: {
-            url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
+            // TODO: Configure your own Expo updates URL
+            // Get from: https://expo.dev/accounts/[your-account]/projects/free
+            // url: "https://u.expo.dev/YOUR_PROJECT_ID",
             requestHeaders: {
                 "expo-channel-name": "production"
             }
@@ -163,7 +166,9 @@ export default {
                 root: "./sources/app"
             },
             eas: {
-                projectId: "4558dd3d-cd5a-47cd-bad9-e591a241cc06"
+                // TODO: Configure your own EAS project ID
+                // Get from: https://expo.dev/accounts/[your-account]/projects/free/settings
+                // projectId: "YOUR_PROJECT_ID"
             },
             app: {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
@@ -171,7 +176,9 @@ export default {
                 revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
                 revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE
             }
-        },
-        owner: "bulkacorp"
+        }
+        // TODO: Configure your own Expo account
+        // Get from: https://expo.dev
+        // owner: "your-expo-username"
     }
 };
