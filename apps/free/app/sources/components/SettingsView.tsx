@@ -46,7 +46,7 @@ export const SettingsView = React.memo(function SettingsView() {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
     const handleGitHub = async () => {
-        const url = 'https://github.com/kilingzhang/free';
+        const url = 'https://github.com/kilingzhang/agentbridge';
         const supported = await Linking.canOpenURL(url);
         if (supported) {
             await Linking.openURL(url);
@@ -54,7 +54,7 @@ export const SettingsView = React.memo(function SettingsView() {
     };
 
     const handleReportIssue = async () => {
-        const url = 'https://github.com/kilingzhang/free/issues';
+        const url = 'https://github.com/kilingzhang/agentbridge/issues';
         const supported = await Linking.canOpenURL(url);
         if (supported) {
             await Linking.openURL(url);
@@ -337,7 +337,7 @@ export const SettingsView = React.memo(function SettingsView() {
                 <Item
                     title={t('settings.github')}
                     icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
-                    detail="kilingzhang/free"
+                    detail="kilingzhang/agentbridge"
                     onPress={handleGitHub}
                 />
                 <Item
@@ -349,7 +349,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.privacyPolicy')}
                     icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
-                        const url = 'https://free.518888.best/privacy/';
+                        const url = 'https://free-server.saaskit.app/privacy/';
                         const supported = await Linking.canOpenURL(url);
                         if (supported) {
                             await Linking.openURL(url);
@@ -360,8 +360,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.termsOfService')}
                     icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
-                        const url = 'https://github.com/kilingzhang/free/blob/main/TERMS.md';
-                        const supported = await Linking.canOpenURL(url);
+                        const url = 'https://github.com/kilingzhang/agentbridge/blob/main/TERMS.md';
                         if (supported) {
                             await Linking.openURL(url);
                         }

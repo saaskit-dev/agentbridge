@@ -1,0 +1,85 @@
+{
+  "name": "@agentbridge/core",
+  "version": "0.0.1",
+  "description": "AgentBridge SDK core package - types, interfaces, and implementations",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    },
+    "./types": {
+      "require": {
+        "types": "./dist/types/index.d.cts",
+        "default": "./dist/types/index.cjs"
+      },
+      "import": {
+        "types": "./dist/types/index.d.mts",
+        "default": "./dist/types/index.mjs"
+      }
+    },
+    "./interfaces": {
+      "require": {
+        "types": "./dist/interfaces/index.d.cts",
+        "default": "./dist/interfaces/index.cjs"
+      },
+      "import": {
+        "types": "./dist/interfaces/index.d.mts",
+        "default": "./dist/interfaces/index.mjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "rm -rf dist && tsc --noEmit && pkgroll",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@agentclientprotocol/sdk": "^0.14.1",
+    "@types/node": "^25.3.2",
+    "axios": "^1.13.5",
+    "pkgroll": "^2.14.2",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "typescript": "5.9.3"
+  },
+  "peerDependencies": {
+    "@agentclientprotocol/sdk": ">=0.1.0",
+    "axios": ">=1.0.0",
+    "socket.io": ">=4.0.0",
+    "socket.io-client": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@agentclientprotocol/sdk": {
+      "optional": true
+    },
+    "axios": {
+      "optional": true
+    },
+    "socket.io": {
+      "optional": true
+    },
+    "socket.io-client": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  }
+}

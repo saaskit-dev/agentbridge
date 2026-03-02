@@ -88,8 +88,8 @@ const ProfileCompatibilitySchema = z.object({
     claude: z.boolean().default(true),
     codex: z.boolean().default(true),
     gemini: z.boolean().default(true),
+    opencode: z.boolean().default(true),
 });
-
 export const AIBackendProfileSchema = z.object({
     // Accept both UUIDs (user profiles) and simple strings (built-in profiles like 'anthropic')
     // The isBuiltIn field distinguishes profile types
@@ -136,10 +136,9 @@ export const AIBackendProfileSchema = z.object({
 export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
 
 // Helper functions for profile validation and compatibility
-export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini'): boolean {
-    return profile.compatibility[agent];
+export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini' | 'opencode'): boolean {
+    return profile.compatibility[agent] ?? true;
 }
-
 /**
  * Converts a profile into environment variables for session spawning.
  *
@@ -281,7 +280,9 @@ export const SettingsSchema = z.object({
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
-    // Profile management settings
+    // Default permission mode for new sessions (开启后权限模式)
+    defaultPermissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).describe('Default permission mode for new sessions'),
+
     profiles: z.array(AIBackendProfileSchema).describe('User-defined profiles for AI backend and environment variables'),
     lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
     // Favorite directories for quick path selection
@@ -294,11 +295,13 @@ export const SettingsSchema = z.object({
             claude: z.boolean().optional(),
             codex: z.boolean().optional(),
             gemini: z.boolean().optional(),
+            opencode: z.boolean().optional(),
         })).default({}),
         global: z.object({
             claude: z.boolean().optional(),
             codex: z.boolean().optional(),
             gemini: z.boolean().optional(),
+            opencode: z.boolean().optional(),
         }).default({}),
     }).default({ perMachine: {}, global: {} }).describe('Tracks which CLI installation warnings user has dismissed (per-machine or globally)'),
 });
@@ -324,30 +327,32 @@ export type Settings = z.infer<typeof SettingsSchema>;
 
 export const settingsDefaults: Settings = {
     schemaVersion: SUPPORTED_SCHEMA_VERSION,
-    viewInline: false,
+    viewInline: true,
     inferenceOpenAIKey: null,
     expandTodos: true,
     showLineNumbers: true,
-    showLineNumbersInToolViews: false,
-    wrapLinesInDiffs: false,
-    analyticsOptOut: false,
-    experiments: false,
+    showLineNumbersInToolViews: true,
+    wrapLinesInDiffs: true,
+    analyticsOptOut: true,
+    experiments: true,
     useEnhancedSessionWizard: false,
-    alwaysShowContextSize: false,
+    alwaysShowContextSize: true,
     agentInputEnterToSend: true,
     avatarStyle: 'brutalist',
-    showFlavorIcons: false,
-    compactSessionView: false,
-    hideInactiveSessions: false,
+    showFlavorIcons: true,
+    compactSessionView: true,
+    hideInactiveSessions: true,
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
     voiceAssistantLanguage: null,
-    preferredLanguage: null,
+    preferredLanguage: 'zh-Hans',
     recentMachinePaths: [],
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
-    // Profile management defaults
+    // Default permission mode (开启后权限模式)
+    defaultPermissionMode: 'yolo',
+
     profiles: [],
     lastUsedProfile: null,
     // Default favorite directories (real common directories on Unix-like systems)

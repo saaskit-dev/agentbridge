@@ -8,7 +8,7 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { PermissionModeSelector, PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
+import { useAllMachines, useSessions, useSetting, useSettingMutable, storage } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import { AIBackendProfile, validateProfileForAgent, getProfileEnvironmentVariables } from '@/sync/settings';
 import { Modal } from '@/modal';
@@ -535,9 +535,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
-    const lastUsedModelMode = useSetting('lastUsedModelMode');
+    const defaultPermissionMode = useSetting('defaultPermissionMode');
     const profiles = useSetting('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
+    const [, setLastUsedPermissionMode] = useSettingMutable('lastUsedPermissionMode');
 
     // Wizard state
     const [currentStep, setCurrentStep] = useState<WizardStep>('profile');
@@ -548,7 +549,11 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
         return 'claude';
     });
-    const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
+        if (lastUsedPermissionMode) return lastUsedPermissionMode as PermissionMode;
+        if (defaultPermissionMode) return defaultPermissionMode as PermissionMode;
+        return 'default' as PermissionMode;
+    });
     const [modelMode, setModelMode] = useState<ModelMode>('default');
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
         return lastUsedProfile;
@@ -562,7 +567,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             description: 'Default Claude configuration',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: false, gemini: false },
+            compatibility: { claude: true, codex: false, gemini: false, opencode: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -581,7 +586,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: 'deepseek-chat' },
                 { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
             ],
-            compatibility: { claude: true, codex: false, gemini: false },
+            compatibility: { claude: true, codex: false, gemini: false, opencode: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -596,7 +601,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 model: 'gpt-4-turbo',
             },
             environmentVariables: [],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, opencode: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -612,7 +617,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 deploymentName: 'gpt-4-turbo',
             },
             environmentVariables: [],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, opencode: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -628,7 +633,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             environmentVariables: [
                 { name: 'AZURE_OPENAI_API_VERSION', value: '2024-02-15-preview' },
             ],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, opencode: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -643,7 +648,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 model: 'glm-4.6',
             },
             environmentVariables: [],
-            compatibility: { claude: true, codex: false, gemini: false },
+            compatibility: { claude: true, codex: false, gemini: false, opencode: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -658,7 +663,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 model: 'gpt-4-turbo',
             },
             environmentVariables: [],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, opencode: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -937,7 +942,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                     description: 'Custom AI profile',
                     anthropicConfig: {},
                     environmentVariables: [],
-                    compatibility: { claude: true, codex: true, gemini: true },
+                    compatibility: { claude: true, codex: true, gemini: true, opencode: true },
                     isBuiltIn: false,
                     createdAt: Date.now(),
                     updatedAt: Date.now(),
@@ -1616,7 +1621,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                             color={theme.colors.button.primary.background}
                                         />
                                     ) : null}
-                                    onPress={() => setPermissionMode(option.value as PermissionMode)}
+                                    onPress={() => {
+                                        setPermissionMode(option.value as PermissionMode);
+                                        setLastUsedPermissionMode(option.value as PermissionMode);
+                                    }}
                                     showChevron={false}
                                     selected={permissionMode === option.value}
                                     showDivider={index < array.length - 1}

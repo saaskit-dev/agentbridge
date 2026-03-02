@@ -87,16 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.kilingzhang.free.dev'
+    namespace 'app.saaskit.free.dev'
     defaultConfig {
-        applicationId 'com.kilingzhang.free.dev'
-        minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.6.2"
-
-        buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
-    }
+        applicationId 'app.saaskit.free.dev'
     signingConfigs {
         debug {
             storeFile file('debug.keystore')

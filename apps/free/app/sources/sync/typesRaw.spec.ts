@@ -949,7 +949,9 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(result.success).toBe(true);
             if (result.success && result.data.role === 'user') {
                 expect(result.data.content.type).toBe('text');
-                expect(result.data.content.text).toBe('User input message');
+                if (result.data.content.type === 'text') {
+                    expect(result.data.content.text).toBe('User input message');
+                }
             }
         });
     });

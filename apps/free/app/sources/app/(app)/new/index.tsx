@@ -58,7 +58,7 @@ const useProfileMap = (profiles: AIBackendProfile[]) => {
 
 // Environment variable transformation helper
 // Returns ALL profile environment variables - daemon will use them as-is
-const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' = 'claude') => {
+const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' | 'opencode' = 'claude') => {
     // getProfileEnvironmentVariables already returns ALL env vars from profile
     // including custom environmentVariables array and provider-specific configs
     return getProfileEnvironmentVariables(profile);
@@ -309,11 +309,14 @@ function NewSessionWizard() {
         }
         return 'anthropic'; // Default to Anthropic
     });
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
+    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini' | 'opencode'>(() => {
         // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
-            // Only allow gemini if experiments are enabled
+            // Only allow gemini/opencode if experiments are enabled
             if (tempSessionData.agentType === 'gemini' && !experimentsEnabled) {
+                return 'claude';
+            }
+            if (tempSessionData.agentType === 'opencode' && !experimentsEnabled) {
                 return 'claude';
             }
             return tempSessionData.agentType;
@@ -321,21 +324,25 @@ function NewSessionWizard() {
         if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
             return lastUsedAgent;
         }
-        // Only allow gemini if experiments are enabled
+        // Only allow gemini/opencode if experiments are enabled
         if (lastUsedAgent === 'gemini' && experimentsEnabled) {
+            return lastUsedAgent;
+        }
+        if (lastUsedAgent === 'opencode' && experimentsEnabled) {
             return lastUsedAgent;
         }
         return 'claude';
     });
 
-    // Agent cycling handler (for cycling through claude -> codex -> gemini)
+    // Agent cycling handler (for cycling through claude -> codex -> gemini -> opencode)
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
     const handleAgentClick = React.useCallback(() => {
         setAgentType(prev => {
-            // Cycle: claude -> codex -> gemini (if experiments) -> claude
+            // Cycle: claude -> codex -> gemini (if experiments) -> opencode (if experiments) -> claude
             if (prev === 'claude') return 'codex';
             if (prev === 'codex') return experimentsEnabled ? 'gemini' : 'claude';
-            return 'claude';
+            if (prev === 'gemini') return experimentsEnabled ? 'opencode' : 'claude';
+            return 'claude'; // opencode -> claude
         });
     }, [experimentsEnabled]);
 
@@ -349,10 +356,10 @@ function NewSessionWizard() {
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
         // Initialize with last used permission mode if valid, otherwise default to 'default'
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+        const validAcpModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo']; // codex, gemini, opencode
 
         if (lastUsedPermissionMode) {
-            if ((agentType === 'codex' || agentType === 'gemini') && validCodexGeminiModes.includes(lastUsedPermissionMode as PermissionMode)) {
+            if ((agentType === 'codex' || agentType === 'gemini' || agentType === 'opencode') && validAcpModes.includes(lastUsedPermissionMode as PermissionMode)) {
                 return lastUsedPermissionMode as PermissionMode;
             } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
                 return lastUsedPermissionMode as PermissionMode;
@@ -466,16 +473,17 @@ function NewSessionWizard() {
 
         if (agentAvailable === false) {
             // Current agent not available - find first available
-            const availableAgent: 'claude' | 'codex' | 'gemini' =
+            const availableAgent: 'claude' | 'codex' | 'gemini' | 'opencode' =
                 cliAvailability.claude === true ? 'claude' :
                 cliAvailability.codex === true ? 'codex' :
                 (cliAvailability.gemini === true && experimentsEnabled) ? 'gemini' :
+                (cliAvailability.opencode === true && experimentsEnabled) ? 'opencode' :
                 'claude'; // Fallback to claude (will fail at spawn with clear error)
 
             console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
             setAgentType(availableAgent);
         }
-    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, agentType, experimentsEnabled]);
+    }, [cliAvailability.timestamp, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, cliAvailability.opencode, agentType, experimentsEnabled]);
 
     // Extract all ${VAR} references from profiles to query daemon environment
     const envVarRefs = React.useMemo(() => {
@@ -701,15 +709,15 @@ function NewSessionWizard() {
                 setPermissionMode(profile.defaultPermissionMode as PermissionMode);
             }
         }
-    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
+    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, cliAvailability.opencode, experimentsEnabled]);
 
     // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
     React.useEffect(() => {
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+        const validAcpModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo']; // codex, gemini, opencode
 
-        const isValidForCurrentAgent = (agentType === 'codex' || agentType === 'gemini')
-            ? validCodexGeminiModes.includes(permissionMode)
+        const isValidForCurrentAgent = (agentType === 'codex' || agentType === 'gemini' || agentType === 'opencode')
+            ? validAcpModes.includes(permissionMode)
             : validClaudeModes.includes(permissionMode);
 
         if (!isValidForCurrentAgent) {
@@ -723,12 +731,16 @@ function NewSessionWizard() {
         const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
         // Note: 'default' is NOT valid for Gemini - we want explicit model selection
         const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        // OpenCode uses 'default' - model is configured through OpenCode's own settings
+        const validOpenCodeModes: ModelMode[] = ['default'];
 
         let isValidForCurrentAgent = false;
         if (agentType === 'codex') {
             isValidForCurrentAgent = validCodexModes.includes(modelMode);
         } else if (agentType === 'gemini') {
             isValidForCurrentAgent = validGeminiModes.includes(modelMode);
+        } else if (agentType === 'opencode') {
+            isValidForCurrentAgent = validOpenCodeModes.includes(modelMode);
         } else {
             isValidForCurrentAgent = validClaudeModes.includes(modelMode);
         }
@@ -744,7 +756,6 @@ function NewSessionWizard() {
             }
         }
     }, [agentType, modelMode]);
-
     // Scroll to section helpers - for AgentInput button clicks
     const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
         if (!ref.current || !scrollViewRef.current) return;
@@ -792,7 +803,7 @@ function NewSessionWizard() {
             name: '',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: true, gemini: true },
+            compatibility: { claude: true, codex: true, gemini: true, opencode: true },
             isBuiltIn: false,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -1112,7 +1123,7 @@ function NewSessionWizard() {
             cliStatus: includeCLI ? {
                 claude: cliAvailability.claude,
                 codex: cliAvailability.codex,
-                ...(experimentsEnabled && { gemini: cliAvailability.gemini }),
+                ...(experimentsEnabled && { gemini: cliAvailability.gemini, opencode: cliAvailability.opencode }),
             } : undefined,
         };
     }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);

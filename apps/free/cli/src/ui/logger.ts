@@ -41,7 +41,8 @@ function createTimestampForLogEntry(date: Date = new Date()): string {
 
 function getSessionLogPath(): string {
   const timestamp = createTimestampForFilename()
-  const filename = configuration.isDaemonProcess ? `${timestamp}-daemon.log` : `${timestamp}.log`
+  const prefix = configuration.isDaemonProcess ? 'daemon' : 'cli'
+  const filename = `${prefix}-${timestamp}.log`
   return join(configuration.logsDir, filename)
 }
 
@@ -68,10 +69,6 @@ class Logger {
   debug(message: string, ...args: unknown[]): void {
     this.logToFile(`[${this.localTimezoneTimestamp()}]`, message, ...args)
 
-    // NOTE: @kirill does not think its a good ideas,
-    // as it will break us using claude in interactive mode.
-    // Instead simply open the debug file in a new editor window.
-    //
     // Also log to console in development mode
     // if (process.env.DEBUG) {
     //   this.logToConsole('debug', '', message, ...args)

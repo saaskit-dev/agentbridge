@@ -207,6 +207,10 @@ export const zhHans: TranslationStructure = {
         enhancedSessionWizard: '增强会话向导',
         enhancedSessionWizardEnabled: '配置文件优先启动器已激活',
         enhancedSessionWizardDisabled: '使用标准会话启动器',
+
+        // Default permission mode
+        defaultPermissionMode: '默认权限模式',
+        defaultPermissionModeSubtitle: '新会话启动后的默认权限模式',
     },
 
     errors: {
@@ -402,7 +406,7 @@ export const zhHans: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
-            gemini: 'Gemini',
+            gemini: 'Gemini',            opencode: 'OpenCode',
         },
         model: {
             title: '模型',
@@ -430,6 +434,16 @@ export const zhHans: TranslationStructure = {
         },
         geminiPermissionMode: {
             title: 'GEMINI 权限模式',
+            default: '默认',
+            readOnly: '只读',
+            safeYolo: '安全 YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: '只读',
+            badgeSafeYolo: '安全 YOLO',
+            badgeYolo: 'YOLO',
+        },
+        opencodePermissionMode: {
+            title: 'OPENCODE 权限模式',
             default: '默认',
             readOnly: '只读',
             safeYolo: '安全 YOLO',

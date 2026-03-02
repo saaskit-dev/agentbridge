@@ -1,6 +1,6 @@
 /**
  * Doctor command implementation
- * 
+ *
  * Provides comprehensive diagnostics and troubleshooting information
  * for free CLI including configuration, daemon status, logs, and links
  */
@@ -76,7 +76,7 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
     if (!filter) {
         filter = 'all';
     }
-    
+
     console.log(chalk.bold.cyan('\n🩺 Free CLI Doctor\n'));
 
     // For 'all' filter, show everything. For 'daemon', only show daemon-related info
@@ -93,7 +93,7 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
         const projectRoot = projectPath();
         const wrapperPath = join(projectRoot, 'bin', 'free.mjs');
         const cliEntrypoint = join(projectRoot, 'dist', 'index.mjs');
-        
+
         console.log(`Project Root: ${chalk.blue(projectRoot)}`);
         console.log(`Wrapper Script: ${chalk.blue(wrapperPath)}`);
         console.log(`CLI Entrypoint: ${chalk.blue(cliEntrypoint)}`);
@@ -222,7 +222,7 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
 
         // Get ALL log files
         const allLogs = getLogFiles(configuration.logsDir);
-        
+
         if (allLogs.length > 0) {
             // Separate daemon and regular logs
             const daemonLogs = allLogs.filter(({ file }) => file.includes('daemon'));
@@ -261,7 +261,7 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
 
         // Support and bug reports
         console.log(chalk.bold('\n🐛 Support & Bug Reports'));
-        console.log(`Report issues: ${chalk.blue('https://github.com/kilingzhang/free-cli/issues')}`);
+        console.log(`Report issues: ${chalk.blue('https://github.com/kilingzhang/agentbridge/issues')}`);
         console.log(`Documentation: ${chalk.blue(configuration.webappUrl.replace(/^https?:\/\//, 'https://').replace(/\/$/, '') + '/')}`);
     }
 

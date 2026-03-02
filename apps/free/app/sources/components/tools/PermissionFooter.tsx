@@ -27,8 +27,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
     const [loadingForSession, setLoadingForSession] = useState(false);
     
-    // Check if this is a Codex session - check both metadata.flavor and tool name prefix
+    // Check if this is a Codex or OpenCode session - check both metadata.flavor and tool name prefix
+    // Codex and OpenCode (ACP agents) share the same permission button style
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
+    const isOpenCode = metadata?.flavor === 'opencode';
+    const useAcpPermissions = isCodex || isOpenCode;
 
     const handleApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
@@ -156,10 +159,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const isApprovedViaAllEdits = isApproved && permission.mode === 'acceptEdits';
     const isApprovedForSession = isApproved && isToolAllowed(toolName, toolInput, permission.allowedTools);
     
-    // Codex-specific status detection with fallback
-    const isCodexApproved = isCodex && isApproved && (permission.decision === 'approved' || !permission.decision);
-    const isCodexApprovedForSession = isCodex && isApproved && permission.decision === 'approved_for_session';
-    const isCodexAborted = isCodex && isDenied && permission.decision === 'abort';
+    // ACP-style (Codex/OpenCode) status detection with fallback
+    const isAcpApproved = useAcpPermissions && isApproved && (permission.decision === 'approved' || !permission.decision);
+    const isAcpApprovedForSession = useAcpPermissions && isApproved && permission.decision === 'approved_for_session';
+    const isAcpAborted = useAcpPermissions && isDenied && permission.decision === 'abort';
 
     const styles = StyleSheet.create({
         container: {
@@ -257,18 +260,18 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         },
     });
 
-    // Render Codex buttons if this is a Codex session
-    if (isCodex) {
+    // Render ACP-style buttons for Codex/OpenCode sessions
+    if (useAcpPermissions) {
         return (
             <View style={styles.container}>
                 <View style={styles.buttonContainer}>
-                    {/* Codex: Yes button */}
+                    {/* ACP: Yes button */}
                     <TouchableOpacity
                         style={[
                             styles.button,
                             isPending && styles.buttonAllow,
-                            isCodexApproved && styles.buttonSelected,
-                            (isCodexAborted || isCodexApprovedForSession) && styles.buttonInactive
+                            isAcpApproved && styles.buttonSelected,
+                            (isAcpAborted || isAcpApprovedForSession) && styles.buttonInactive
                         ]}
                         onPress={handleCodexApprove}
                         disabled={!isPending || loadingButton !== null || loadingForSession}
@@ -283,7 +286,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                                 <Text style={[
                                     styles.buttonText,
                                     isPending && styles.buttonTextAllow,
-                                    isCodexApproved && styles.buttonTextSelected
+                                    isAcpApproved && styles.buttonTextSelected
                                 ]} numberOfLines={1} ellipsizeMode="tail">
                                     {t('common.yes')}
                                 </Text>
@@ -291,13 +294,13 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         )}
                     </TouchableOpacity>
 
-                    {/* Codex: Yes, and don't ask for a session button */}
+                    {/* ACP: Yes, and don't ask for a session button */}
                     <TouchableOpacity
                         style={[
                             styles.button,
                             isPending && styles.buttonForSession,
-                            isCodexApprovedForSession && styles.buttonSelected,
-                            (isCodexAborted || isCodexApproved) && styles.buttonInactive
+                            isAcpApprovedForSession && styles.buttonSelected,
+                            (isAcpAborted || isAcpApproved) && styles.buttonInactive
                         ]}
                         onPress={handleCodexApproveForSession}
                         disabled={!isPending || loadingButton !== null || loadingForSession}
@@ -312,7 +315,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                                 <Text style={[
                                     styles.buttonText,
                                     isPending && styles.buttonTextForSession,
-                                    isCodexApprovedForSession && styles.buttonTextSelected
+                                    isAcpApprovedForSession && styles.buttonTextSelected
                                 ]} numberOfLines={1} ellipsizeMode="tail">
                                     {t('codex.permissions.yesForSession')}
                                 </Text>
@@ -320,13 +323,13 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         )}
                     </TouchableOpacity>
 
-                    {/* Codex: Stop, and explain what to do button */}
+                    {/* ACP: Stop, and explain what to do button */}
                     <TouchableOpacity
                         style={[
                             styles.button,
                             isPending && styles.buttonDeny,
-                            isCodexAborted && styles.buttonSelected,
-                            (isCodexApproved || isCodexApprovedForSession) && styles.buttonInactive
+                            isAcpAborted && styles.buttonSelected,
+                            (isAcpApproved || isAcpApprovedForSession) && styles.buttonInactive
                         ]}
                         onPress={handleCodexAbort}
                         disabled={!isPending || loadingButton !== null || loadingForSession}
@@ -341,7 +344,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                                 <Text style={[
                                     styles.buttonText,
                                     isPending && styles.buttonTextDeny,
-                                    isCodexAborted && styles.buttonTextSelected
+                                    isAcpAborted && styles.buttonTextSelected
                                 ]} numberOfLines={1} ellipsizeMode="tail">
                                     {t('codex.permissions.stopAndExplain')}
                                 </Text>

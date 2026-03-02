@@ -62,14 +62,13 @@ Your code. Your privacy. Your Claude Code companion.
 ## URLs
 
 ### Privacy Policy
-https://github.com/kilingzhang/@free/cli/blob/main/PRIVACY.md
+https://github.com/kilingzhang/agentbridge/blob/main/PRIVACY.md
 
 ### Support / Contact
-https://github.com/kilingzhang/@free/cli/issues
+https://github.com/kilingzhang/agentbridge/issues
 
 ### Website / Marketing
-https://github.com/kilingzhang/@free/cli
-
+https://github.com/kilingzhang/agentbridge
 ## Additional Google Play Requirements
 
 ### Content Rating

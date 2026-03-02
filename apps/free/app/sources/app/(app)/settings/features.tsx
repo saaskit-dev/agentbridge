@@ -6,15 +6,17 @@ import { ItemList } from '@/components/ItemList';
 import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { Switch } from '@/components/Switch';
 import { t } from '@/text';
+import { useRouter } from 'expo-router';
 
 export default function FeaturesSettingsScreen() {
+    const router = useRouter();
     const [experiments, setExperiments] = useSettingMutable('experiments');
     const [agentInputEnterToSend, setAgentInputEnterToSend] = useSettingMutable('agentInputEnterToSend');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
     const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     const [useEnhancedSessionWizard, setUseEnhancedSessionWizard] = useSettingMutable('useEnhancedSessionWizard');
-
+    const [defaultPermissionMode] = useSettingMutable('defaultPermissionMode');
     return (
         <ItemList style={{ paddingTop: 0 }}>
             {/* Experimental Features */}
@@ -71,6 +73,19 @@ export default function FeaturesSettingsScreen() {
                         />
                     }
                     showChevron={false}
+                />
+            </ItemGroup>
+
+            {/* Default Permission Mode */}
+            <ItemGroup
+                title={t('settingsFeatures.defaultPermissionMode')}
+                footer={t('settingsFeatures.defaultPermissionModeSubtitle')}
+            >
+                <Item
+                    title={t('settingsFeatures.defaultPermissionMode')}
+                    subtitle={defaultPermissionMode}
+                    icon={<Ionicons name="shield-checkmark-outline" size={29} color="#34C759" />}
+                    onPress={() => router.push('/settings/features/permissionMode')}
                 />
             </ItemGroup>
 

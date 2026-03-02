@@ -42,8 +42,9 @@ interface LoopOptions {
     hookSettingsPath: string
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+    /** Function to check if pending exit is requested (e.g., from SIGTERM) */
+    isPendingExit?: () => boolean
 }
-
 export async function loop(opts: LoopOptions): Promise<number> {
 
     // Get log path for debug display
@@ -70,6 +71,12 @@ export async function loop(opts: LoopOptions): Promise<number> {
     let mode: 'local' | 'remote' = opts.startingMode ?? 'local';
     while (true) {
         logger.debug(`[loop] Iteration with mode: ${mode}`);
+
+        // Check if pending exit is requested (e.g., from SIGTERM during CLI update)
+        if (opts.isPendingExit?.()) {
+            logger.debug('[loop] Pending exit requested, breaking loop');
+            return 0;
+        }
 
         switch (mode) {
             case 'local': {

@@ -1,0 +1,28 @@
+{
+  "_comment": "TODO: Configure your own iOS Universal Links",
+  "_comment_get_from": "1. Get your Apple Team ID from https://developer.apple.com/account -> Membership",
+  "_comment_get_from_2": "2. Get your Bundle ID from Xcode or app.config.js",
+  "_comment_get_from_3": "3. Upload this file to: https://your-domain.com/.well-known/apple-app-site-association",
+  "_comment_bundle_id": "Should match: app.saaskit.free",
+  "_comment_team_id": "Your 10-character Apple Team ID (e.g., ABC123DEF4)",
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "YOUR_TEAM_ID.app.saaskit.free"
+        ],
+        "components": [
+          {
+            "/": "*",
+            "comment": "Matches all routes"
+          }
+        ]
+      }
+    ]
+  },
+  "activitycontinuation": {
+    "apps": [
+      "YOUR_TEAM_ID.app.saaskit.free"
+    ]
+  }
+}
