@@ -218,13 +218,46 @@ export const ApiEphemeralMachineActivityUpdateSchema = z.object({
     activeAt: z.number(),
 });
 
+// Streaming text delta for typewriter effect
+export const ApiEphemeralTextDeltaSchema = z.object({
+    type: z.literal('text_delta'),
+    sessionId: z.string(),
+    messageId: z.string(),
+    delta: z.string(),
+    timestamp: z.number(),
+});
+
+// Streaming text complete
+export const ApiEphemeralTextCompleteSchema = z.object({
+    type: z.literal('text_complete'),
+    sessionId: z.string(),
+    messageId: z.string(),
+    fullText: z.string(),
+    timestamp: z.number(),
+});
+
+// Streaming thinking delta
+export const ApiEphemeralThinkingDeltaSchema = z.object({
+    type: z.literal('thinking_delta'),
+    sessionId: z.string(),
+    messageId: z.string(),
+    delta: z.string(),
+    timestamp: z.number(),
+});
+
 export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralActivityUpdateSchema,
     ApiEphemeralUsageUpdateSchema,
     ApiEphemeralMachineActivityUpdateSchema,
+    ApiEphemeralTextDeltaSchema,
+    ApiEphemeralTextCompleteSchema,
+    ApiEphemeralThinkingDeltaSchema,
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;
+export type ApiEphemeralTextDelta = z.infer<typeof ApiEphemeralTextDeltaSchema>;
+export type ApiEphemeralTextComplete = z.infer<typeof ApiEphemeralTextCompleteSchema>;
+export type ApiEphemeralThinkingDelta = z.infer<typeof ApiEphemeralThinkingDeltaSchema>;
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;
 
 // Machine metadata updates use Partial<MachineMetadata> from storageTypes

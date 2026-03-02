@@ -416,10 +416,18 @@ const rawRecordSchema = z.preprocess(
         }),
         z.object({
             role: z.literal('user'),
-            content: z.object({
-                type: z.literal('text'),
-                text: z.string()
-            }),
+            content: z.union([
+                // Standard text content
+                z.object({
+                    type: z.literal('text'),
+                    text: z.string()
+                }),
+                // Session envelope content (from CLI)
+                z.object({
+                    type: z.literal('session'),
+                    data: sessionEnvelopeSchema
+                })
+            ]),
             meta: MessageMetaSchema.optional()
         })
     ])
@@ -510,12 +518,34 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     }
     raw = parsed.data;
     if (raw.role === 'user') {
+        // Handle session envelope content (from CLI)
+        if (raw.content.type === 'session') {
+            const envelope = raw.content.data;
+            // Extract text from session envelope
+            if (envelope.ev.t === 'text') {
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'user',
+                    content: {
+                        type: 'text',
+                        text: envelope.ev.text
+                    },
+                    isSidechain: false,
+                    meta: raw.meta,
+                };
+            }
+            // Skip other session event types (turn-start, turn-end, etc.)
+            return null;
+        }
+        // Handle standard text content
         return {
             id,
             localId,
             createdAt,
             role: 'user',
-            content: raw.content,
+            content: raw.content as { type: 'text', text: string },
             isSidechain: false,
             meta: raw.meta,
         };

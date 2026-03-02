@@ -22,6 +22,7 @@ import { userRoutes } from "./routes/userRoutes";
 import { feedRoutes } from "./routes/feedRoutes";
 import { kvRoutes } from "./routes/kvRoutes";
 import { v3SessionRoutes } from "./routes/v3SessionRoutes";
+import { capabilitiesRoutes } from "./routes/capabilitiesRoutes";
 import { isLocalStorage, getLocalFilesDir } from "@/storage/files";
 import { db } from "@/storage/db";
 import { register } from "@/app/monitoring/metrics2";
@@ -46,7 +47,6 @@ export async function startApi() {
     app.get('/', function (request, reply) {
         const referer = request.headers.referer || request.headers.referrer || '';
         const userAgent = request.headers['user-agent'] || '';
-        const _buildVersion = '2026-02-23-v4'; // Force rebuild - port fix
         // Return Happy format for Happy app requests (by referer or user-agent)
         if (referer.includes('app.happy.engineering') || userAgent.includes('Happy')) {
             reply.send('Welcome to Happy Server!');
@@ -100,6 +100,7 @@ export async function startApi() {
     feedRoutes(typed);
     kvRoutes(typed);
     v3SessionRoutes(typed);
+    capabilitiesRoutes(typed);
 
     // Metrics endpoint (integrated into main server)
     app.get('/metrics', async (_request, reply) => {
@@ -115,7 +116,7 @@ export async function startApi() {
         }
     });
 
-    // Start HTTP 
+    // Start HTTP
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
     await app.listen({ port, host: '0.0.0.0' });
     onShutdown('api', async () => {

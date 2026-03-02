@@ -10,7 +10,7 @@
 ## Getting Started
 
 ```bash
-git clone https://github.com/kilingzhang/free-cli.git
+git clone https://github.com/kilingzhang/agentbridge.git
 cd free-cli
 yarn install
 yarn build

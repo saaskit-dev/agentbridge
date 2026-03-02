@@ -14,7 +14,7 @@ export default function Tools2Screen() {
             name: 'Read',
             state: 'completed' as const,
             input: {
-                file_path: '/Users/steve/project/src/components/Header.tsx',
+                file_path: '/Users/user/project/src/components/Header.tsx',
                 offset: 100,
                 limit: 50
             },
@@ -51,20 +51,20 @@ const styles = StyleSheet.create({
             name: 'Read',
             state: 'error' as const,
             input: {
-                file_path: '/Users/steve/project/src/components/NotFound.tsx'
+                file_path: '/Users/user/project/src/components/NotFound.tsx'
             },
             createdAt: Date.now() - 3000,
             startedAt: Date.now() - 2900,
             completedAt: Date.now() - 2000,
             description: null,
-            result: 'File not found: /Users/steve/project/src/components/NotFound.tsx',
+            result: 'File not found: /Users/user/project/src/components/NotFound.tsx',
             children: []
         },
         edit: {
             name: 'Edit',
             state: 'completed' as const,
             input: {
-                file_path: '/Users/steve/project/package.json',
+                file_path: '/Users/user/project/package.json',
                 old_string: '"version": "1.0.0"',
                 new_string: '"version": "1.0.1"',
                 replace_all: false
@@ -269,7 +269,7 @@ To address issues that do not require attention, run:
             name: 'Write',
             state: 'completed' as const,
             input: {
-                file_path: '/Users/steve/project/src/utils/helpers.ts',
+                file_path: '/Users/user/project/src/utils/helpers.ts',
                 content: `export function formatDate(date: Date): string {
     return date.toLocaleDateString();
 }

@@ -95,10 +95,7 @@ cleanup_all() {
 
     # 清理所有中间构建文件
     log_info "清理中间构建文件..."
-    rm -rf "$PROJECT_ROOT/packages/core/types/dist" 2>/dev/null || true
-    rm -rf "$PROJECT_ROOT/packages/core/interfaces/dist" 2>/dev/null || true
-    rm -rf "$PROJECT_ROOT/packages/core/protocol/dist" 2>/dev/null || true
-    rm -rf "$PROJECT_ROOT/packages/core/utils/dist" 2>/dev/null || true
+    rm -rf "$PROJECT_ROOT/packages/core/dist" 2>/dev/null || true
     rm -rf "$PROJECT_ROOT/apps/free/cli/dist" 2>/dev/null || true
     rm -rf "$PROJECT_ROOT/apps/free/server/.next" 2>/dev/null || true
     rm -rf "$PROJECT_ROOT/apps/free/app/.expo" 2>/dev/null || true
@@ -118,21 +115,9 @@ cleanup_all() {
 build_core() {
     log_section "构建 Core 包"
 
-    log_info "构建 @agentbridge/types..."
-    cd "$PROJECT_ROOT/packages/core/types"
-    pnpm build 2>&1 | tee "$LOG_DIR/build-types.log"
-
-    log_info "构建 @agentbridge/interfaces..."
-    cd "$PROJECT_ROOT/packages/core/interfaces"
-    pnpm build 2>&1 | tee "$LOG_DIR/build-interfaces.log"
-
-    log_info "构建 @agentbridge/protocol..."
-    cd "$PROJECT_ROOT/packages/core/protocol"
-    pnpm build 2>&1 | tee "$LOG_DIR/build-protocol.log"
-
-    log_info "构建 @agentbridge/utils..."
-    cd "$PROJECT_ROOT/packages/core/utils"
-    pnpm build 2>&1 | tee "$LOG_DIR/build-utils.log"
+    log_info "构建 @agentbridge/core..."
+    cd "$PROJECT_ROOT/packages/core"
+    pnpm build 2>&1 | tee "$LOG_DIR/build-core.log"
 
     log_success "Core 包构建完成"
 }
@@ -180,6 +165,10 @@ start_server() {
         log_warn ".env 文件不存在，从 .env.example 复制..."
         cp .env.example .env 2>/dev/null || echo "NODE_ENV=development" > .env
     fi
+
+    # 生成 Prisma Client
+    log_info "生成 Prisma Client..."
+    pnpm db:generate > /dev/null 2>&1
 
     log_info "启动 Server (端口 $SERVER_PORT)..."
 
@@ -239,9 +228,9 @@ start_web() {
     # 设置环境变量
     export EXPO_PUBLIC_FREE_SERVER_URL="http://localhost:$SERVER_PORT"
 
-    log_info "启动 Web App (端口 $WEB_PORT)..."
+    log_info "启动 Expo (iOS/Android/Web)..."
 
-    pnpm web 2>&1 | tee "$LOG_DIR/web.log" &
+    npx expo start 2>&1 | tee "$LOG_DIR/web.log" &
     WEB_PID=$!
 
     echo $WEB_PID > "$LOG_DIR/web.pid"

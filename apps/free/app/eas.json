@@ -50,9 +50,13 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "steve@bulkovo.com",
-        "ascAppId": "126165711",
-        "appleTeamId": "466DQWDR8C"
+        "_comment": "TODO: Configure your own Apple Developer credentials",
+        "_comment_appleId": "Get from: https://appleid.apple.com - your Apple ID email",
+        "_comment_ascAppId": "Get from: https://appstoreconnect.apple.com -> My Apps -> [Your App] -> App Information -> Apple ID",
+        "_comment_appleTeamId": "Get from: https://developer.apple.com/account -> Membership -> Team ID",
+        "appleId": "",
+        "ascAppId": "",
+        "appleTeamId": ""
       }
     }
   }

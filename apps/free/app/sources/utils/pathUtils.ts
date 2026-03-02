@@ -36,7 +36,7 @@ export function resolvePath(path: string, metadata: Metadata | null): string {
  * Non-tilde paths are returned unchanged.
  * 
  * @param path - The path to resolve (may start with ~)
- * @param homeDir - The user's home directory (e.g., '/Users/steve' or 'C:\Users\steve')
+ * @param homeDir - The user's home directory (e.g., '/Users/user' or 'C:\Users\steve')
  * @returns The resolved absolute path
  */
 export function resolveAbsolutePath(path: string, homeDir?: string): string {

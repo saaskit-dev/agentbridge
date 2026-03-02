@@ -144,7 +144,6 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
     mcpServers: options.mcpServers,
     permissionHandler: options.permissionHandler,
     transportHandler: geminiTransport,
-    // Check if prompt instructs the agent to change title (for auto-approval of change_title tool)
     hasChangeTitleInstruction: (prompt: string) => {
       const lower = prompt.toLowerCase();
       return lower.includes('change_title') ||
@@ -154,7 +153,6 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
     },
   };
 
-  // Determine model source for logging
   const modelSource = getGeminiModelSource(options.model, localConfig);
 
   logger.debug('[Gemini] Creating ACP SDK backend with options:', {

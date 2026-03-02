@@ -205,6 +205,10 @@ export const pt: TranslationStructure = {
         enhancedSessionWizard: 'Assistente de sessão aprimorado',
         enhancedSessionWizardEnabled: 'Lançador de sessão com perfil ativo',
         enhancedSessionWizardDisabled: 'Usando o lançador de sessão padrão',
+
+        // Default permission mode
+        defaultPermissionMode: 'Default Permission Mode',
+        defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
     },
 
     errors: {
@@ -400,7 +404,7 @@ export const pt: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
-            gemini: 'Gemini',
+            gemini: 'Gemini',            opencode: 'OpenCode',
         },
         model: {
             title: 'MODELO',
@@ -434,6 +438,16 @@ export const pt: TranslationStructure = {
             yolo: 'YOLO',
             badgeReadOnly: 'Somente leitura',
             badgeSafeYolo: 'YOLO seguro',
+            badgeYolo: 'YOLO',
+        },
+        opencodePermissionMode: {
+            title: 'OPENCODE PERMISSION MODE',
+            default: 'Default',
+            readOnly: 'Read Only',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Read Only',
+            badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
         context: {
