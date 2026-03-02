@@ -206,6 +206,10 @@ export const zhHant: TranslationStructure = {
         enhancedSessionWizard: '增強工作階段精靈',
         enhancedSessionWizardEnabled: '設定檔優先的工作階段啟動器已啟用',
         enhancedSessionWizardDisabled: '使用標準工作階段啟動器',
+
+        // Default permission mode
+        defaultPermissionMode: 'Default Permission Mode',
+        defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
     },
 
     errors: {
@@ -401,7 +405,7 @@ export const zhHant: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
-            gemini: 'Gemini',
+            gemini: 'Gemini',            opencode: 'OpenCode',
         },
         model: {
             title: '模型',
@@ -435,6 +439,16 @@ export const zhHant: TranslationStructure = {
             yolo: 'YOLO',
             badgeReadOnly: '唯讀',
             badgeSafeYolo: '安全 YOLO',
+            badgeYolo: 'YOLO',
+        },
+        opencodePermissionMode: {
+            title: 'OPENCODE PERMISSION MODE',
+            default: 'Default',
+            readOnly: 'Read Only',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Read Only',
+            badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
         context: {

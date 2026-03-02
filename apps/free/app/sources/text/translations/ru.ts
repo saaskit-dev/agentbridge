@@ -187,6 +187,10 @@ export const ru: TranslationStructure = {
         enhancedSessionWizard: 'Улучшенный мастер сессий',
         enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
         enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
+
+        // Default permission mode
+        defaultPermissionMode: 'Default Permission Mode',
+        defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
     },
 
     errors: {
@@ -410,7 +414,7 @@ export const ru: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
-            gemini: 'Gemini',
+            gemini: 'Gemini',            opencode: 'OpenCode',
         },
         model: {
             title: 'МОДЕЛЬ',
@@ -444,6 +448,16 @@ export const ru: TranslationStructure = {
             yolo: 'YOLO',
             badgeReadOnly: 'Только чтение',
             badgeSafeYolo: 'Безопасный YOLO',
+            badgeYolo: 'YOLO',
+        },
+        opencodePermissionMode: {
+            title: 'OPENCODE PERMISSION MODE',
+            default: 'Default',
+            readOnly: 'Read Only',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Read Only',
+            badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
         context: {

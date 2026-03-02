@@ -5,13 +5,20 @@ interface CLIAvailability {
     claude: boolean | null; // null = unknown/loading, true = installed, false = not installed
     codex: boolean | null;
     gemini: boolean | null;
+    opencode: boolean | null;
     isDetecting: boolean; // Explicit loading state
     timestamp: number; // When detection completed
     error?: string; // Detection error message (for debugging)
 }
 
 /**
- * Detects which CLI tools (claude, codex, gemini) are installed on a remote machine.
+ * Detects if the free CLI is installed on a remote machine.
+ *
+ * The free CLI provides all agent modes:
+ * - free claude
+ * - free codex
+ * - free gemini
+ * - free opencode
  *
  * NON-BLOCKING: Detection runs asynchronously in useEffect. UI shows all profiles
  * while detection is in progress, then updates when results arrive.
@@ -24,12 +31,12 @@ interface CLIAvailability {
  * User discovers CLI availability when attempting to spawn.
  *
  * @param machineId - The machine to detect CLIs on (null = no detection)
- * @returns CLI availability status for claude, codex, and gemini
+ * @returns CLI availability status for claude, codex, gemini, and opencode
  *
  * @example
  * const cliAvailability = useCLIDetection(selectedMachineId);
- * if (cliAvailability.claude === false) {
- *     // Show "Claude CLI not detected" warning
+ * if (cliAvailability.codex === false) {
+ *     // Show "Codex CLI not detected" warning
  * }
  */
 export function useCLIDetection(machineId: string | null): CLIAvailability {
@@ -37,13 +44,14 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
         claude: null,
         codex: null,
         gemini: null,
+        opencode: null,
         isDetecting: false,
         timestamp: 0,
     });
 
     useEffect(() => {
         if (!machineId) {
-            setAvailability({ claude: null, codex: null, gemini: null, isDetecting: false, timestamp: 0 });
+            setAvailability({ claude: null, codex: null, gemini: null, opencode: null, isDetecting: false, timestamp: 0 });
             return;
         }
 
@@ -55,13 +63,11 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
             console.log('[useCLIDetection] Starting detection for machineId:', machineId);
 
             try {
-                // Use single bash command to check both CLIs efficiently
-                // command -v is POSIX compliant and more reliable than which
+                // Check if free CLI is installed - it provides all agent modes
+                // free CLI supports: free claude, free codex, free gemini, free opencode
                 const result = await machineBash(
                     machineId,
-                    '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
-                    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false") && ' +
-                    '(command -v gemini >/dev/null 2>&1 && echo "gemini:true" || echo "gemini:false")',
+                    'command -v free >/dev/null 2>&1 && echo "free:true" || echo "free:false"',
                     '/'
                 );
 
@@ -69,22 +75,17 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                 console.log('[useCLIDetection] Result:', { success: result.success, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr });
 
                 if (result.success && result.exitCode === 0) {
-                    // Parse output: "claude:true\ncodex:false\ngemini:false"
-                    const lines = result.stdout.trim().split('\n');
-                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = {};
+                    // Parse output
+                    const freeAvailable = result.stdout.trim().includes('free:true');
+                    console.log('[useCLIDetection] Free CLI available:', freeAvailable);
 
-                    lines.forEach(line => {
-                        const [cli, status] = line.split(':');
-                        if (cli && status) {
-                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini'] = status.trim() === 'true';
-                        }
-                    });
-
-                    console.log('[useCLIDetection] Parsed CLI status:', cliStatus);
+                    // If free CLI is installed, all agents are available
+                    // free CLI supports: claude, codex, gemini, opencode
                     setAvailability({
-                        claude: cliStatus.claude ?? null,
-                        codex: cliStatus.codex ?? null,
-                        gemini: cliStatus.gemini ?? null,
+                        claude: freeAvailable,
+                        codex: freeAvailable,
+                        gemini: freeAvailable,
+                        opencode: freeAvailable,
                         isDetecting: false,
                         timestamp: Date.now(),
                     });
@@ -95,6 +96,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                         claude: null,
                         codex: null,
                         gemini: null,
+                        opencode: null,
                         isDetecting: false,
                         timestamp: 0,
                         error: `Detection failed: ${result.stderr || 'Unknown error'}`,
@@ -109,6 +111,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                     claude: null,
                     codex: null,
                     gemini: null,
+                    opencode: null,
                     isDetecting: false,
                     timestamp: 0,
                     error: error instanceof Error ? error.message : 'Detection error',

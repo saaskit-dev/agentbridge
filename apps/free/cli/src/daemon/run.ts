@@ -22,6 +22,7 @@ import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
+import { notifySessionToExit } from '@/utils/versionCheck';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -36,8 +37,8 @@ export const initialMachineMetadata: MachineMetadata = {
 // Get environment variables for a profile, filtered for agent compatibility
 async function getProfileEnvironmentVariablesForAgent(
   profileId: string,
-  agentType: 'claude' | 'codex' | 'gemini'
-): Promise<Record<string, string>> {
+  agentType: 'claude' | 'codex' | 'gemini' | 'opencode'
+  ): Promise<Record<string, string>> {
   try {
     const settings = await readSettings();
     const profile = settings.profiles.find(p => p.id === profileId);
@@ -386,11 +387,10 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
+          // Determine agent command - support claude, codex, gemini, and opencode
+          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : (options.agent === 'opencode' ? 'opencode' : 'claude'));
           const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --free-starting-mode remote --started-by daemon`;
 
-          // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
           // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
           // 2. Regular spawn uses env: { ...process.env, ...extraEnv }
@@ -470,7 +470,7 @@ export async function startDaemon(): Promise<void> {
         if (!useTmux) {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
+          // Construct arguments for the CLI - support claude, codex, gemini, and opencode
           let agentCommand: string;
           switch (options.agent) {
             case 'claude':
@@ -482,6 +482,9 @@ export async function startDaemon(): Promise<void> {
               break;
             case 'gemini':
               agentCommand = 'gemini';
+              break;
+            case 'opencode':
+              agentCommand = 'opencode';
               break;
             default:
               return {
@@ -722,17 +725,36 @@ export async function startDaemon(): Promise<void> {
       // BIG if - does this get updated from underneath us on npm upgrade?
       const projectVersion = JSON.parse(readFileSync(join(projectPath(), 'package.json'), 'utf-8')).version;
       if (projectVersion !== configuration.currentCliVersion) {
-        logger.debug('[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version, clearing heartbeat interval');
+        logger.debug('[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version');
+        logger.debug(`[DAEMON RUN] Version change: ${configuration.currentCliVersion} -> ${projectVersion}`);
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
 
+        // Notify all tracked sessions to exit gracefully
+        const sessionPids = Array.from(pidToTrackedSession.keys());
+        if (sessionPids.length > 0) {
+          logger.debug(`[DAEMON RUN] Notifying ${sessionPids.length} session(s) to exit due to CLI update`);
+          
+          // Notify all sessions in parallel
+          const exitPromises = sessionPids.map(pid => {
+            const session = pidToTrackedSession.get(pid);
+            logger.debug(`[DAEMON RUN] Notifying session PID ${pid} to exit`);
+            return notifySessionToExit(pid, 5000).then(success => {
+              if (success) {
+                logger.debug(`[DAEMON RUN] Session PID ${pid} exited gracefully`);
+              } else {
+                logger.debug(`[DAEMON RUN] Session PID ${pid} was force killed`);
+              }
+              pidToTrackedSession.delete(pid);
+            });
+          });
+          
+          // Wait for all sessions to exit (with timeout)
+          await Promise.all(exitPromises);
+          logger.debug('[DAEMON RUN] All sessions notified, proceeding with daemon restart');
+        }
+
         // Spawn new daemon through the CLI
-        // We do not need to clean ourselves up - we will be killed by
-        // the CLI start command.
-        // 1. It will first check if daemon is running (yes in this case)
-        // 2. If the version is stale (it will read daemon.state.json file and check startedWithCliVersion) & compare it to its own version
-        // 3. Next it will start a new daemon with the latest version with daemon-sync :D
-        // Done!
         try {
           spawnFreeCLI(['daemon', 'start'], {
             detached: true,
@@ -742,9 +764,7 @@ export async function startDaemon(): Promise<void> {
           logger.debug('[DAEMON RUN] Failed to spawn new daemon, this is quite likely to happen during integration tests as we are cleaning out dist/ directory', error);
         }
 
-        // So we can just hang forever
-        logger.debug('[DAEMON RUN] Hanging for a bit - waiting for CLI to kill us because we are running outdated version of the code');
-        await new Promise(resolve => setTimeout(resolve, 10_000));
+        logger.debug('[DAEMON RUN] Daemon restart initiated, exiting');
         process.exit(0);
       }
 

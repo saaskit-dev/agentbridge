@@ -138,8 +138,7 @@ export interface SpawnSessionOptions {
     directory: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini';
-    // Environment variables from AI backend profile
+    agent?: 'codex' | 'claude' | 'gemini' | 'opencode';
     // Accepts any environment variables - daemon will pass them to the agent process
     // Common variables include:
     // - ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL
@@ -167,7 +166,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini',
+            agent?: 'codex' | 'claude' | 'gemini' | 'opencode',
             environmentVariables?: Record<string, string>;
         }>(
             machineId,

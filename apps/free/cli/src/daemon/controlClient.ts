@@ -163,20 +163,8 @@ export async function isDaemonRunningCurrentlyInstalledFreeVersion(): Promise<bo
     return currentCliVersion === state.startedWithCliVersion;
     
     // PREVIOUS IMPLEMENTATION - Keeping this commented in case we need it
-    // Kirill does not understand how the upgrade of npm packages happen and whether 
-    // we will get a new path or not when @free/cli is upgraded globally.
     // If reading package.json doesn't work correctly after npm upgrades, 
     // we can revert to spawning a process (but should add timeout and cleanup!)
-    /*
-    const { spawnFreeCLI } = await import('@/utils/spawnFreeCLI');
-    const freeProcess = spawnFreeCLI(['--version'], { stdio: 'pipe' });
-    let version: string | null = null;
-    freeProcess.stdout?.on('data', (data) => {
-      version = data.toString().trim();
-    });
-    await new Promise(resolve => freeProcess.stdout?.on('close', resolve));
-    logger.debug(`[DAEMON CONTROL] Current CLI version: ${version}, Daemon started with version: ${state.startedWithCliVersion}`);
-    return version === state.startedWithCliVersion;
     */
   } catch (error) {
     logger.debug('[DAEMON CONTROL] Error checking daemon version', error);

@@ -23,7 +23,7 @@ import type {
   FsEditMessage,
   TerminalOutputMessage,
   EventMessage,
-} from '../core/AgentMessage';
+} from '../core';
 
 import type {
   MobileAgentType,

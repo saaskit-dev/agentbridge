@@ -6,9 +6,9 @@ The Free app supports three build variants across **iOS, Android, and macOS desk
 
 | Variant | Bundle ID | App Name | Use Case |
 |---------|-----------|----------|----------|
-| **Development** | `com.kilingzhang.free.dev` | Free (dev) | Local development with hot reload |
-| **Preview** | `com.kilingzhang.free.preview` | Free (preview) | Beta testing & OTA updates before production |
-| **Production** | `com.ex3ndr.free` | Free | Public App Store release |
+| **Development** | `app.saaskit.free.dev` | Free (dev) | Local development with hot reload |
+| **Preview** | `app.saaskit.free.preview` | Free (preview) | Beta testing & OTA updates before production |
+| **Production** | `app.saaskit.free` | Free | Public App Store release |
 
 **Why Preview?**
 - **Development**: Fast iteration, dev server, instant reload
@@ -183,7 +183,7 @@ This controls:
 
 Only **production** variant has deep linking configured:
 
-- **Production**: `https://app.free.518888.best/*`
+- **Production**: `https://free-server.saaskit.app/*`
 - **Development**: No deep linking
 - **Preview**: No deep linking
 
@@ -289,11 +289,10 @@ The `app.config.js` file reads the `APP_ENV` environment variable:
 ```javascript
 const variant = process.env.APP_ENV || 'development';
 const bundleId = {
-  development: "com.kilingzhang.free.dev",
-  preview: "com.kilingzhang.free.preview",
-  production: "com.ex3ndr.free"
+  development: "app.saaskit.free.dev",
+  preview: "app.saaskit.free.preview",
+  production: "app.saaskit.free"
 }[variant];
-```
 
 The `cross-env` package ensures this works cross-platform:
 

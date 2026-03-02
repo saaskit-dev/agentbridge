@@ -43,12 +43,14 @@ export interface StartOptions {
     noSandbox?: boolean
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+    /** Claude session ID to resume (for CLI update recovery) */
+    resumeSessionId?: string
 }
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     logger.debug(`[CLAUDE] ===== CLAUDE MODE STARTING =====`);
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
-    
+
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
 
@@ -85,7 +87,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         sandboxEnabled ||
         Boolean(options.claudeArgs?.includes('--dangerously-skip-permissions'));
     if (!machineId) {
-        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/kilingzhang/free-cli/issues`);
+        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/kilingzhang/agentbridge/issues`);
         process.exit(1);
     }
     logger.debug(`Using machineId: ${machineId}`);
@@ -209,7 +211,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
             logger.debug(`[START] Session hook received: ${sessionId}`, data);
-            
+
             // Update session ID in the Session instance
             if (currentSession) {
                 const previousSessionId = currentSession.sessionId;
@@ -398,7 +400,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     archivedBy: 'cli',
                     archiveReason: 'User terminated'
                 }));
-                
+
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();
 
@@ -426,8 +428,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
     };
 
-    // Handle termination signals
-    process.on('SIGTERM', cleanup);
+    // pendingExit flag for graceful shutdown during CLI update
+    let pendingExit = false;
+    const isPendingExit = () => pendingExit;
+
+    // Handle termination signals - set pendingExit instead of immediate cleanup
+    process.on('SIGTERM', () => {
+        logger.debug('[START] Received SIGTERM, setting pendingExit');
+        pendingExit = true;
+    });
+    process.on('SIGINT', cleanup);
+
     process.on('SIGINT', cleanup);
 
     // Handle uncaught exceptions and rejections
@@ -474,9 +485,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         claudeArgs: options.claudeArgs,
         sandboxConfig,
         hookSettingsPath,
-        jsRuntime: options.jsRuntime
+        jsRuntime: options.jsRuntime,
+        isPendingExit
     });
-
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
     // Note: currentSession is set by onSessionReady callback during loop()
     (currentSession as Session | null)?.cleanup();

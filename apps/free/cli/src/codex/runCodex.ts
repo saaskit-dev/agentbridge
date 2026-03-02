@@ -40,13 +40,15 @@ type ReadyEventOptions = {
     shouldExit: boolean;
     sendReady: () => void;
     notify?: () => void;
+    pendingExit?: boolean;
+    onPendingExit?: () => void;
 };
 
 /**
  * Notify connected clients when Codex finishes processing and the queue is idle.
  * Returns true when a ready event was emitted.
  */
-export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, notify }: ReadyEventOptions): boolean {
+export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, notify, pendingExit, onPendingExit }: ReadyEventOptions): boolean {
     if (shouldExit) {
         return false;
     }
@@ -54,6 +56,12 @@ export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, not
         return false;
     }
     if (queueSize() > 0) {
+        return false;
+    }
+
+    // If pending exit (CLI updated), exit gracefully now that conversation is complete
+    if (pendingExit && onPendingExit) {
+        onPendingExit();
         return false;
     }
 
@@ -69,6 +77,7 @@ export async function runCodex(opts: {
     credentials: Credentials;
     startedBy?: 'daemon' | 'terminal';
     noSandbox?: boolean;
+    resumeSessionId?: string;  // Codex session ID to resume
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
@@ -99,7 +108,7 @@ export async function runCodex(opts: {
     let machineId = settings?.machineId;
     const sandboxConfig = opts.noSandbox ? undefined : settings?.sandboxConfig;
     if (!machineId) {
-        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/kilingzhang/free-cli/issues`);
+        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/kilingzhang/agentbridge/issues`);
         process.exit(1);
     }
     logger.debug(`Using machineId: ${machineId}`);
@@ -259,7 +268,7 @@ export async function runCodex(opts: {
                 storedSessionIdForResume = client.storeSessionForResume();
                 logger.debug('[Codex] Stored session for resume:', storedSessionIdForResume);
             }
-            
+
             abortController.abort();
             reasoningProcessor.abort();
             logger.debug('[Codex] Abort completed - session remains active');
@@ -284,14 +293,17 @@ export async function runCodex(opts: {
         try {
             // Update lifecycle state to archived before closing
             if (session) {
+                // Save agent session ID for potential resume
+                const agentSessionId = client.getSessionId();
                 session.updateMetadata((currentMetadata) => ({
                     ...currentMetadata,
                     lifecycleState: 'archived',
                     lifecycleStateSince: Date.now(),
                     archivedBy: 'cli',
-                    archiveReason: 'User terminated'
+                    archiveReason: 'User terminated',
+                    // Save agent session ID for resume support
+                    ...(agentSessionId ? { agentSessionId } : {}),
                 }));
-                
                 // Send session death message
                 session.sendSessionDeath();
                 await session.flush();
@@ -324,8 +336,15 @@ export async function runCodex(opts: {
 
     registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
 
-    //
-    // Initialize Ink UI
+    // Handle termination signals for graceful exit (e.g., when CLI is updated)
+    // Wait for current conversation to complete before exiting
+    let pendingExit = false;
+    process.on('SIGTERM', () => {
+        logger.debug('[Codex] Received SIGTERM, waiting for conversation to complete...');
+        pendingExit = true;
+        // Don't exit immediately - wait for emitReadyIfIdle to detect idle state
+    });
+
     //
 
     const messageBuffer = new MessageBuffer();
@@ -358,7 +377,7 @@ export async function runCodex(opts: {
     }
 
     //
-    // Start Context 
+    // Start Context
     //
 
     const client = new CodexMcpClient(sandboxConfig);
@@ -546,6 +565,16 @@ export async function runCodex(opts: {
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
+
+            // If pending exit (CLI updated), don't consume new messages
+            // Wait for current turn to complete, then exit
+            if (pendingExit) {
+                logger.debug('[Codex] Pending exit (CLI updated), not consuming new messages, waiting for idle...');
+                // Wait for idle state, then exit will be triggered by emitReadyIfIdle
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                continue;
+            }
+
             // Get next batch; respect mode boundaries like Claude
             let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
             pending = null;
@@ -623,10 +652,10 @@ export async function runCodex(opts: {
                     if (message.mode.model) {
                         startConfig.model = message.mode.model;
                     }
-                    
+
                     // Check for resume file from multiple sources
                     let resumeFile: string | null = null;
-                    
+
                     // Priority 1: Explicit resume file from mode change
                     if (nextExperimentalResume) {
                         resumeFile = nextExperimentalResume;
@@ -643,12 +672,21 @@ export async function runCodex(opts: {
                         }
                         storedSessionIdForResume = null; // consume once
                     }
-                    
+                    // Priority 3: Resume from opts.resumeSessionId (CLI update recovery)
+                    else if (opts.resumeSessionId) {
+                        const cliUpdateResumeFile = findCodexResumeFile(opts.resumeSessionId);
+                        if (cliUpdateResumeFile) {
+                            resumeFile = cliUpdateResumeFile;
+                            logger.debug('[Codex] Using resume file from CLI update recovery:', resumeFile);
+                            messageBuffer.addMessage('Resuming from previous session...', 'status');
+                        }
+                    }
+
                     // Apply resume file if found
                     if (resumeFile) {
                         (startConfig.config as any).experimental_resume = resumeFile;
                     }
-                    
+
                     await client.startSession(
                         startConfig,
                         { signal: abortController.signal }
@@ -665,7 +703,7 @@ export async function runCodex(opts: {
             } catch (error) {
                 logger.warn('Error in codex session:', error);
                 const isAbortError = error instanceof Error && error.name === 'AbortError';
-                
+
                 if (isAbortError) {
                     messageBuffer.addMessage('Aborted by user', 'status');
                     session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
@@ -693,6 +731,11 @@ export async function runCodex(opts: {
                     queueSize: () => messageQueue.size(),
                     shouldExit,
                     sendReady,
+                    pendingExit,
+                    onPendingExit: () => {
+                        logger.debug('[Codex] Conversation complete, exiting due to CLI update');
+                        handleKillSession();
+                    },
                 });
                 logActiveHandles('after-turn');
             }

@@ -114,12 +114,11 @@ free sandbox disable    # Disable sandboxing
 
 ### Free Configuration
 
-- `FREE_SERVER_URL` - Custom server URL (default: https://api.cluster-fluster.com)
-- `FREE_WEBAPP_URL` - Custom web app URL (default: https://app.free.518888.best)
+- `FREE_SERVER_URL` - Custom server URL (default: https://free-server.saaskit.app)
+- `FREE_WEBAPP_URL` - Custom web app URL (default: https://free-server.saaskit.app)
 - `FREE_HOME_DIR` - Custom home directory for Free data (default: ~/.free)
 - `FREE_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
 - `FREE_EXPERIMENTAL` - Enable experimental features (set to `true`, `1`, or `yes`)
-
 ### Gemini Configuration
 
 - `GEMINI_MODEL` - Override default Gemini model

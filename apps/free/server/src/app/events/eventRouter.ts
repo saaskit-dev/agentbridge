@@ -181,6 +181,27 @@ export type EphemeralEvent = {
     timestamp: number;
 };
 
+// Extended ephemeral events for Free server (typewriter effect)
+export type FreeEphemeralEvent = EphemeralEvent | {
+    type: 'text_delta';
+    sessionId: string;
+    messageId: string;
+    delta: string;
+    timestamp: number;
+} | {
+    type: 'text_complete';
+    sessionId: string;
+    messageId: string;
+    fullText: string;
+    timestamp: number;
+} | {
+    type: 'thinking_delta';
+    sessionId: string;
+    messageId: string;
+    delta: string;
+    timestamp: number;
+};
+
 // === EVENT PAYLOAD TYPES ===
 
 export interface UpdatePayload {
@@ -194,7 +215,7 @@ export interface UpdatePayload {
 }
 
 export interface EphemeralPayload {
-    type: EphemeralEvent['type'];
+    type: FreeEphemeralEvent['type'];
     [key: string]: any;
 }
 
@@ -258,6 +279,75 @@ class EventRouter {
         });
     }
 
+    // === STREAMING TEXT METHODS (Free Server Only) ===
+
+    /**
+     * Emit text delta for typewriter effect
+     * Sends incremental text updates to connected clients.
+     */
+    emitTextDelta(params: {
+        userId: string;
+        sessionId: string;
+        messageId: string;
+        delta: string;
+    }): void {
+        this.emitEphemeral({
+            userId: params.userId,
+            payload: {
+                type: 'text_delta',
+                sessionId: params.sessionId,
+                messageId: params.messageId,
+                delta: params.delta,
+                timestamp: Date.now(),
+            },
+            recipientFilter: { type: 'all-interested-in-session', sessionId: params.sessionId },
+        });
+    }
+
+    /**
+     * Emit text complete event
+     * Signals that text streaming has finished.
+     */
+    emitTextComplete(params: {
+        userId: string;
+        sessionId: string;
+        messageId: string;
+        fullText: string;
+    }): void {
+        this.emitEphemeral({
+            userId: params.userId,
+            payload: {
+                type: 'text_complete',
+                sessionId: params.sessionId,
+                messageId: params.messageId,
+                fullText: params.fullText,
+                timestamp: Date.now(),
+            },
+            recipientFilter: { type: 'all-interested-in-session', sessionId: params.sessionId },
+        });
+    }
+
+    /**
+     * Emit thinking delta for streaming thinking/reasoning
+     */
+    emitThinkingDelta(params: {
+        userId: string;
+        sessionId: string;
+        messageId: string;
+        delta: string;
+    }): void {
+        this.emitEphemeral({
+            userId: params.userId,
+            payload: {
+                type: 'thinking_delta',
+                sessionId: params.sessionId,
+                messageId: params.messageId,
+                delta: params.delta,
+                timestamp: Date.now(),
+            },
+            recipientFilter: { type: 'all-interested-in-session', sessionId: params.sessionId },
+        });
+    }
     // === PRIVATE ROUTING LOGIC ===
 
     private shouldSendToConnection(
@@ -356,7 +446,7 @@ export function buildNewSessionUpdate(session: {
             metadataVersion: session.metadataVersion,
             agentState: session.agentState,
             agentStateVersion: session.agentStateVersion,
-            dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
+            dataEncryptionKey: session.dataEncryptionKey, // Already base64 string in Free
             active: session.active,
             activeAt: session.lastActiveAt.getTime(),
             createdAt: session.createdAt.getTime(),
@@ -457,7 +547,7 @@ export function buildNewMachineUpdate(machine: {
             metadataVersion: machine.metadataVersion,
             daemonState: machine.daemonState,
             daemonStateVersion: machine.daemonStateVersion,
-            dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
+            dataEncryptionKey: machine.dataEncryptionKey, // Already base64 string in Free
             active: machine.active,
             activeAt: machine.lastActiveAt.getTime(),
             createdAt: machine.createdAt.getTime(),
@@ -542,7 +632,7 @@ export function buildNewArtifactUpdate(artifact: {
             headerVersion: artifact.headerVersion,
             body: Buffer.from(artifact.body).toString('base64'),
             bodyVersion: artifact.bodyVersion,
-            dataEncryptionKey: Buffer.from(artifact.dataEncryptionKey).toString('base64'),
+            dataEncryptionKey: artifact.dataEncryptionKey, // Already base64 string in Free
             createdAt: artifact.createdAt.getTime(),
             updatedAt: artifact.updatedAt.getTime()
         },

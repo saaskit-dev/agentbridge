@@ -168,9 +168,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     // Get permission mode from session object, default to 'default'
     const permissionMode = session.permissionMode || 'default';
-    // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-2.5-pro
+    // Get model mode from session object - for Gemini/OpenCode sessions use explicit model
     const isGeminiSession = session.metadata?.flavor === 'gemini';
-    const modelMode = session.modelMode || (isGeminiSession ? 'gemini-2.5-pro' : 'default');
+    const isOpenCodeSession = session.metadata?.flavor === 'opencode';
+    const modelMode = session.modelMode || (isGeminiSession ? 'gemini-2.5-pro' : isOpenCodeSession ? 'default' : 'default');
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');

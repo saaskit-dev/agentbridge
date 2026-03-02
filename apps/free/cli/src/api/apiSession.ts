@@ -562,6 +562,61 @@ export class ApiSessionClient extends EventEmitter {
         });
     }
 
+    // ============================================================
+    // STREAMING METHODS (Typewriter Effect)
+    // ============================================================
+
+    /**
+     * Send streaming text delta for typewriter effect
+     * Only works if server supports textDelta capability.
+     */
+    sendStreamingTextDelta(messageId: string, delta: string): void {
+        if (!this.socket.connected) {
+            return;
+        }
+        this.socket.emit('streaming:text-delta', {
+            type: 'text_delta',
+            sessionId: this.sessionId,
+            messageId,
+            delta,
+            timestamp: Date.now(),
+        });
+    }
+
+    /**
+     * Send streaming text complete event
+     * Signals that text streaming has finished.
+     */
+    sendStreamingTextComplete(messageId: string, fullText: string): void {
+        if (!this.socket.connected) {
+            return;
+        }
+        this.socket.emit('streaming:text-complete', {
+            type: 'text_complete',
+            sessionId: this.sessionId,
+            messageId,
+            fullText,
+            timestamp: Date.now(),
+        });
+    }
+
+    /**
+     * Send streaming thinking delta
+     * Only works if server supports thinkingDelta capability.
+     */
+    sendStreamingThinkingDelta(messageId: string, delta: string): void {
+        if (!this.socket.connected) {
+            return;
+        }
+        this.socket.emit('streaming:thinking-delta', {
+            type: 'thinking_delta',
+            sessionId: this.sessionId,
+            messageId,
+            delta,
+            timestamp: Date.now(),
+        });
+    }
+
     /**
      * Wait for socket buffer to flush
      */

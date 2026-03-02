@@ -6,7 +6,7 @@
  * and creating instances of those backends.
  */
 
-import type { AgentBackend, AgentId } from './AgentBackend';
+import type { AgentBackend, AgentId } from './fromCore';
 
 /** Options passed to agent factory functions */
 export interface AgentFactoryOptions {
