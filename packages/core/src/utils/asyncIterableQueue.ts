@@ -158,7 +158,7 @@ export class AsyncIterableQueue<T> implements AsyncIterable<T> {
         reject(new Error('Aborted'));
         return;
       }
-      signal.addEventListener('abort', () => reject(new Error('Aborted')));
+      signal.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
     });
 
     while (true) {

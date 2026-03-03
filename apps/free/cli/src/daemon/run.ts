@@ -64,6 +64,7 @@ async function getProfileEnvironmentVariablesForAgent(
     return {};
   }
 }
+let isShuttingDown = false;
 
 export async function startDaemon(): Promise<void> {
   // We don't have cleanup function at the time of server construction
@@ -109,17 +110,25 @@ export async function startDaemon(): Promise<void> {
   process.on('uncaughtException', (error) => {
     logger.debug('[DAEMON RUN] FATAL: Uncaught exception', error);
     logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
+    // Set timeout to force exit after cleanup attempt
+    setTimeout(() => {
+      logger.debug('[DAEMON RUN] Force exit after uncaught exception');
+      process.exit(1);
+    }, 5000);
     requestShutdown('exception', error.message);
   });
-
   process.on('unhandledRejection', (reason, promise) => {
     logger.debug('[DAEMON RUN] FATAL: Unhandled promise rejection', reason);
     logger.debug(`[DAEMON RUN] Rejected promise:`, promise);
     const error = reason instanceof Error ? reason : new Error(`Unhandled promise rejection: ${reason}`);
     logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
+    // Set timeout to force exit after cleanup attempt
+    setTimeout(() => {
+      logger.debug('[DAEMON RUN] Force exit after unhandled rejection');
+      process.exit(1);
+    }, 5000);
     requestShutdown('exception', error.message);
   });
-
   process.on('exit', (code) => {
     logger.debug(`[DAEMON RUN] Process exiting with code: ${code}`);
   });
@@ -168,8 +177,20 @@ export async function startDaemon(): Promise<void> {
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
 
-    // Session spawning awaiter system
-    const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
+    // Session spawning awaiter system with timeout tracking
+    const pidToAwaiter = new Map<number, { resolver: (session: TrackedSession) => void; startTime: number }>();
+    const AWAITER_TIMEOUT_MS = 30_000; // 30 seconds
+
+    // Cleanup stale awaiters periodically
+    const awaiterCleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const [pid, entry] of pidToAwaiter.entries()) {
+        if (now - entry.startTime > AWAITER_TIMEOUT_MS) {
+          logger.debug(`[DAEMON RUN] Cleaning up stale awaiter for PID ${pid}`);
+          pidToAwaiter.delete(pid);
+        }
+      }
+    }, 10_000); // Check every 10 seconds
 
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
@@ -197,10 +218,10 @@ export async function startDaemon(): Promise<void> {
         logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`);
 
         // Resolve any awaiter for this PID
-        const awaiter = pidToAwaiter.get(pid);
-        if (awaiter) {
+        const awaiterEntry = pidToAwaiter.get(pid);
+        if (awaiterEntry) {
           pidToAwaiter.delete(pid);
-          awaiter(existingSession);
+          awaiterEntry.resolver(existingSession);
           logger.debug(`[DAEMON RUN] Resolved session awaiter for PID ${pid}`);
         }
       } else if (!existingSession) {
@@ -451,13 +472,16 @@ export async function startDaemon(): Promise<void> {
               }, 15_000); // Same timeout as regular sessions
 
               // Register awaiter for tmux session (exact same as regular flow)
-              pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
-                clearTimeout(timeout);
-                logger.debug(`[DAEMON RUN] Session ${completedSession.freeSessionId} fully spawned with webhook (tmux)`);
-                resolve({
-                  type: 'success',
-                  sessionId: completedSession.freeSessionId!
-                });
+              pidToAwaiter.set(tmuxResult.pid!, {
+                resolver: (completedSession) => {
+                  clearTimeout(timeout);
+                  logger.debug(`[DAEMON RUN] Session ${completedSession.freeSessionId} fully spawned with webhook (tmux)`);
+                  resolve({
+                    type: 'success',
+                    sessionId: completedSession.freeSessionId!
+                  });
+                },
+                startTime: Date.now()
               });
             });
           } else {
@@ -571,13 +595,16 @@ export async function startDaemon(): Promise<void> {
             }, 15_000);
 
             // Register awaiter
-            pidToAwaiter.set(freeProcess.pid!, (completedSession) => {
-              clearTimeout(timeout);
-              logger.debug(`[DAEMON RUN] Session ${completedSession.freeSessionId} fully spawned with webhook`);
-              resolve({
-                type: 'success',
-                sessionId: completedSession.freeSessionId!
-              });
+            pidToAwaiter.set(freeProcess.pid!, {
+              resolver: (completedSession) => {
+                clearTimeout(timeout);
+                logger.debug(`[DAEMON RUN] Session ${completedSession.freeSessionId} fully spawned with webhook`);
+                resolve({
+                  type: 'success',
+                  sessionId: completedSession.freeSessionId!
+                });
+              },
+              startTime: Date.now()
             });
           });
         }
@@ -697,12 +724,21 @@ export async function startDaemon(): Promise<void> {
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
     const heartbeatIntervalMs = parseInt(process.env.FREE_DAEMON_HEARTBEAT_INTERVAL || '60000');
-    let heartbeatRunning = false
+    let heartbeatRunning = false;
+    let heartbeatStartTime = 0;
+    const HEARTBEAT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes timeout
     const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
       if (heartbeatRunning) {
+        // Check if heartbeat has been running too long (stuck)
+        if (heartbeatStartTime > 0 && Date.now() - heartbeatStartTime > HEARTBEAT_TIMEOUT_MS) {
+          logger.debug('[DAEMON RUN] Heartbeat stuck for too long, forcing reset');
+          heartbeatRunning = false;
+          heartbeatStartTime = 0;
+        }
         return;
       }
       heartbeatRunning = true;
+      heartbeatStartTime = Date.now();
 
       if (process.env.DEBUG) {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
@@ -795,6 +831,7 @@ export async function startDaemon(): Promise<void> {
       }
 
       heartbeatRunning = false;
+      heartbeatStartTime = 0;
     }, heartbeatIntervalMs); // Every 60 seconds in production
 
     // Setup signal handlers
@@ -805,6 +842,12 @@ export async function startDaemon(): Promise<void> {
       if (restartOnStaleVersionAndHeartbeat) {
         clearInterval(restartOnStaleVersionAndHeartbeat);
         logger.debug('[DAEMON RUN] Health check interval cleared');
+      }
+
+      // Clear awaiter cleanup interval
+      if (awaiterCleanupInterval) {
+        clearInterval(awaiterCleanupInterval);
+        logger.debug('[DAEMON RUN] Awaiter cleanup interval cleared');
       }
 
       // Update daemon state before shutting down

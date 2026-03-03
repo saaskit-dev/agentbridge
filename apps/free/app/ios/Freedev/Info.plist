@@ -66,8 +66,6 @@
 		<string>yandexmail</string>
 		<string>mymail-mailto</string>
 	</array>
-	<key>LSMinimumSystemVersion</key>
-	<string>12.0</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -93,8 +91,6 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to find and connect to local devices on your network.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to improve AI quality by using your location.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to improve AI quality by using your location.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to improve AI quality by using your location.</string>
@@ -146,6 +142,6 @@
 	<key>UIUserInterfaceStyle</key>
 	<string>Automatic</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
-	<false/>
+	<true/>
 </dict>
 </plist>
