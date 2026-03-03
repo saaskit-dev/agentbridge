@@ -287,7 +287,7 @@ export class ModeAwareMessageQueue<T> {
           }
           resolve(false);
         };
-        abortSignal.addEventListener('abort', abortHandler);
+        abortSignal.addEventListener('abort', abortHandler, { once: true });
       }
 
       const waiterFunc = (hasMessages: boolean) => {

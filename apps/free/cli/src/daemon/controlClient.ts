@@ -162,10 +162,7 @@ export async function isDaemonRunningCurrentlyInstalledFreeVersion(): Promise<bo
     logger.debug(`[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`);
     return currentCliVersion === state.startedWithCliVersion;
     
-    // PREVIOUS IMPLEMENTATION - Keeping this commented in case we need it
-    // If reading package.json doesn't work correctly after npm upgrades, 
-    // we can revert to spawning a process (but should add timeout and cleanup!)
-    */
+
   } catch (error) {
     logger.debug('[DAEMON CONTROL] Error checking daemon version', error);
     return false;

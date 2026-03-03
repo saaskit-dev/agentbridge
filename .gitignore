@@ -44,3 +44,6 @@ test-results/
 
 expo-env.d.ts
 # @end expo-cli
+
+# Server data files
+apps/free/server/data/

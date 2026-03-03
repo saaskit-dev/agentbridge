@@ -119,22 +119,38 @@ function setupCleanupHandlers(): void {
     
     cleanupHandlersSet = true
     
-    // Clean up on various exit conditions
-    const cleanup = () => {
-        stopCaffeinate()
+    // Synchronous cleanup for exit event (can't wait for async operations)
+    const cleanupSync = () => {
+        if (caffeinateProcess && !caffeinateProcess.killed) {
+            logger.debug(`[caffeinate] Sync cleanup: killing caffeinate process PID ${caffeinateProcess.pid}`)
+            try {
+                caffeinateProcess.kill('SIGKILL')
+            } catch (error) {
+                logger.debug('[caffeinate] Error during sync cleanup:', error)
+            }
+            caffeinateProcess = null
+        }
     }
     
-    process.on('exit', cleanup)
+    // Async cleanup for normal signal handlers (allows graceful shutdown)
+    const cleanup = async () => {
+        await stopCaffeinate()
+    }
+    
+    // Use sync cleanup for exit event (no async support)
+    process.on('exit', cleanupSync)
+    
+    // Use async cleanup for signal handlers (they support async)
     process.on('SIGINT', cleanup)
     process.on('SIGTERM', cleanup)
     process.on('SIGUSR1', cleanup)
     process.on('SIGUSR2', cleanup)
     process.on('uncaughtException', (error) => {
         logger.debug('[caffeinate] Uncaught exception, cleaning up:', error)
-        cleanup()
+        cleanupSync()
     })
     process.on('unhandledRejection', (reason, promise) => {
         logger.debug('[caffeinate] Unhandled rejection, cleaning up:', reason)
-        cleanup()
+        cleanupSync()
     })
 }
