@@ -24,9 +24,20 @@ export function startDaemonControlServer({
   requestShutdown: () => void;
   onFreeSessionWebhook: (sessionId: string, metadata: Metadata) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const app = fastify({
-      logger: false // We use our own logger
+      logger: false, // We use our own logger
+      connectionTimeout: 10000, // 10 seconds connection timeout
+      keepAliveTimeout: 5000, // 5 seconds keep-alive timeout
+      bodyLimit: 1048576, // 1MB body limit
+      forceCloseConnections: true // Force close connections on shutdown
+    });
+
+    // Global error handler
+    app.setErrorHandler((error, request, reply) => {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.debug(`[CONTROL SERVER] Error handling request: ${errorMessage}`);
+      reply.code(500).send({ error: 'Internal server error' });
     });
 
     // Set up Zod type provider
@@ -192,7 +203,8 @@ export function startDaemonControlServer({
     app.listen({ port: 0, host: '127.0.0.1' }, (err, address) => {
       if (err) {
         logger.debug('[CONTROL SERVER] Failed to start:', err);
-        throw err;
+        reject(err);
+        return;
       }
 
       const port = parseInt(address.split(':').pop()!);
