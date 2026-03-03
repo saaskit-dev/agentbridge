@@ -1,195 +1,159 @@
-# AgentBridge
+# Free
 
-Universal SDK for AI Coding Agent CLIs - Connect any AI coding agent to your application with end-to-end encryption.
+随时随地指挥 AI Agent — 多智能体远程控制平台
 
-## Features
+Command AI agents anytime, anywhere — Multi-agent remote control platform.
 
-- **Multi-Agent Support**: Works with Claude Code, Codex, Cursor, Aider, and more
-- **End-to-End Encryption**: X25519 + AES-256-GCM encryption for all communications
-- **Real-time Sync**: WebSocket-based synchronization with InvalidateSync pattern
-- **React Integration**: Ready-to-use hooks and components
-- **Extensible**: Plugin architecture for adding new AI agents
+## 项目概述
 
-## Packages
+Free 是一个开源的多智能体远程控制平台，让你通过移动端实时监控和干预 Claude Code、Codex、Gemini 等 AI Agent。
 
-| Package | Description |
-|---------|-------------|
-| `@agentbridge/core` | Core SDK with encryption, transport, and sync |
-| `@agentbridge/react` | React hooks and provider components |
-| `@agentbridge/adapter-claude` | Claude Code adapter |
-| `@agentbridge/adapter-codex` | Codex (OpenAI) adapter |
+### 核心特性
 
-## Installation
+- **多 Agent 支持** — 统一管理 Claude Code、Codex、Gemini、OpenCode
+- **移动端控制** - 随时随地监控 Agent 进度，处理权限请求
+- **端到端加密** — X25519 + AES-256-GCM，数据安全，代码不离开设备
+- **实时同步** — WebSocket + InvalidateSync 模式，毫秒级响应
+- **会话持久化** — 支持跨设备恢复会话，无缝切换
+- **流程增强** — 在 Agent 工作的各个阶段提供智能辅助
+
+### 适用场景
+
+- 通勤路上查看 Agent 进度
+- 会议间隙处理权限请求
+- 外出时监控长时间任务
+- 多项目并行管理
+
+## 项目结构
+
+```
+agentbridge/
+├── packages/
+│   └── core/              # @agentbridge/core - 核心类型和接口
+│
+└── apps/free/
+    ├── cli/               # @free/cli - 命令行工具
+    ├── server/            # @free/server - 后端服务
+    └── app/               # @free/app - React Native 移动端
+```
+
+| 包名 | 描述 |
+|------|------|
+| `@agentbridge/core` | 核心类型、接口契约、跨平台实现 |
+| `@free/cli` | 命令行工具，连接本地 AI Agent |
+| `@free/server` | 后端服务，加密同步，支持 PGlite/PostgreSQL |
+| `@free/app` | React Native 移动/Web 客户端 |
+
+## 快速开始
+
+### 1. 安装 CLI
 
 ```bash
-# Core SDK
-pnpm add @agentbridge/core
-
-# React integration
-pnpm add @agentbridge/react
-
-# Adapters (choose what you need)
-pnpm add @agentbridge/adapter-claude
-pnpm add @agentbridge/adapter-codex
+npm install -g @free/cli
 ```
 
-## Quick Start
-
-### 1. Initialize SDK
-
-```typescript
-import { createSDK } from '@agentbridge/core';
-import { claudeAdapter } from '@agentbridge/adapter-claude';
-
-const sdk = createSDK({
-  connection: {
-    serverUrl: 'wss://your-server.com',
-  },
-  encryption: {
-    masterSecret: 'your-secret-key',
-  },
-  defaultAgent: 'claude',
-});
-
-// Register adapters
-sdk.registerAdapter(claudeAdapter);
-
-// Initialize
-await sdk.initialize();
-```
-
-### 2. React Integration
-
-```tsx
-import { SDKProvider, useSessions, useSession } from '@agentbridge/react';
-
-function App() {
-  return (
-    <SDKProvider
-      config={{
-        connection: { serverUrl: 'wss://your-server.com' },
-        encryption: { masterSecret: 'your-secret-key' },
-      }}
-    >
-      <SessionList />
-    </SDKProvider>
-  );
-}
-
-function SessionList() {
-  const { sessions, create, isLoading } = useSessions();
-
-  const handleCreate = async () => {
-    await create('machine-id', {
-      workingDir: '/path/to/project',
-      permissionMode: 'default',
-    });
-  };
-
-  return (
-    <div>
-      <button onClick={handleCreate}>New Session</button>
-      {sessions.map(session => (
-        <SessionCard key={session.id} session={session} />
-      ))}
-    </div>
-  );
-}
-
-function SessionCard({ sessionId }: { sessionId: string }) {
-  const { session, messages, sendMessage } = useSession({ sessionId });
-
-  return (
-    <div>
-      <h3>{session?.workingDir}</h3>
-      {messages.map(msg => (
-        <Message key={msg.id} message={msg} />
-      ))}
-      <input
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            sendMessage(e.currentTarget.value);
-            e.currentTarget.value = '';
-          }
-        }}
-      />
-    </div>
-  );
-}
-```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Your Application                        │
-├─────────────────────────────────────────────────────────────┤
-│                     @agentbridge/react                       │
-│  (SDKProvider, useSessions, useSession, useDevices, etc.)   │
-├─────────────────────────────────────────────────────────────┤
-│                     @agentbridge/core                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ Encryption  │  │  Transport  │  │   SyncEngine        │  │
-│  │ (libsodium) │  │ (WebSocket) │  │ (InvalidateSync)    │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-├─────────────────────────────────────────────────────────────┤
-│                     Adapters                                 │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │  Claude    │  │   Codex    │  │   Cursor   │  ...       │
-│  └────────────┘  └────────────┘  └────────────┘            │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                    AI Coding Agent CLIs
-              (Claude Code, Codex, Cursor, Aider...)
-```
-
-## Creating a Custom Adapter
-
-```typescript
-import type { AgentAdapter, NormalizedMessage } from '@agentbridge/core';
-
-export class MyAgentAdapter implements AgentAdapter {
-  readonly id = 'my-agent';
-  readonly name = 'My Agent';
-  readonly version = '1.0.0';
-
-  normalizeMessage(raw: unknown, sessionId: string): NormalizedMessage {
-    // Convert your agent's format to NormalizedMessage
-    return {
-      id: (raw as any).id,
-      sessionId,
-      role: (raw as any).role,
-      content: (raw as any).content,
-      timestamp: Date.now(),
-      flavor: this.id,
-    };
-  }
-
-  getToolRegistry() { /* ... */ }
-  getPermissionModes() { /* ... */ }
-  getCLIArgs(options) { /* ... */ }
-  parseOutputStream(data) { /* ... */ }
-  isValidMessage(data) { /* ... */ }
-}
-```
-
-## Development
+### 2. 启动 Agent 会话
 
 ```bash
-# Install dependencies
+# Claude (默认)
+free
+
+# Gemini
+free gemini
+
+# Codex
+free codex
+```
+
+### 3. 连接移动端
+
+CLI 启动后会显示二维码，使用 Free App 扫码连接即可开始远程控制。
+
+## CLI 命令
+
+### 主要命令
+
+```bash
+free                    # 启动 Claude Code 会话
+free gemini             # 启动 Gemini CLI 会话
+free codex              # 启动 Codex 会话
+free auth               # 管理认证
+free daemon             # 管理后台服务
+free doctor             # 系统诊断
+```
+
+### 连接管理
+
+```bash
+free connect gemini     # Google 账号认证
+free connect claude     # Anthropic 认证
+free connect codex      # OpenAI 认证
+free connect status     # 查看连接状态
+```
+
+### 配置选项
+
+```bash
+free -m sonnet                    # 指定模型
+free -p auto                      # 权限模式: auto, default, plan
+free --claude-env KEY=VALUE       # 设置环境变量
+```
+
+## 环境变量
+
+| 变量 | 描述 |
+|------|------|
+| `FREE_SERVER_URL` | 服务器地址 (默认: https://free-server.saaskit.app) |
+| `FREE_HOME_DIR` | 数据目录 (默认: ~/.free) |
+| `FREE_DISABLE_CAFFEINATE` | 禁用 macOS 防休眠 |
+| `GEMINI_MODEL` | Gemini 模型 |
+| `GOOGLE_CLOUD_PROJECT` | Google Cloud 项目 ID (Workspace 账号必需) |
+
+## 开发
+
+```bash
+# 安装依赖
 pnpm install
 
-# Build all packages
+# 构建
 pnpm build
 
-# Run tests
+# 测试
 pnpm test
 
-# Development mode
-pnpm dev
+# 启动服务端开发
+pnpm server
+
+# 启动移动端
+pnpm app
+pnpm app:ios
+pnpm app:android
 ```
 
-## License
+## 部署
+
+### Docker
+
+```bash
+cd apps/free/server
+./build.sh
+./deploy.sh
+```
+
+### 环境变量
+
+| 变量 | 描述 | 必需 |
+|------|------|------|
+| `FREE_MASTER_SECRET` | 主密钥 | 是 |
+| `PORT` | 端口 | 否 (默认 3000) |
+| `DATABASE_URL` | PostgreSQL 连接 | 否 (默认 PGlite) |
+
+## 系统要求
+
+- Node.js >= 20.0.0
+- Claude CLI (用于 Claude 模式)
+- Gemini CLI (用于 Gemini 模式)
+
+## 许可证
 
 MIT
