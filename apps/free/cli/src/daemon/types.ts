@@ -2,8 +2,8 @@
  * Daemon-specific types (not related to API/server communication)
  */
 
-import { Metadata } from '@/api/types';
 import { ChildProcess } from 'child_process';
+import { Metadata } from '@/api/types';
 
 /**
  * Session tracking for daemon

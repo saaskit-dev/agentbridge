@@ -23,10 +23,7 @@ export {
 export { AsyncLock } from './asyncLock';
 
 // File utilities
-export {
-  atomicFileWrite,
-  atomicWriteJson,
-} from './fileAtomic';
+export { atomicFileWrite, atomicWriteJson } from './fileAtomic';
 
 // JSON utilities
 export {
@@ -43,11 +40,7 @@ export { AsyncIterableQueue } from './asyncIterableQueue';
 export { PushableAsyncIterable, createPushableAsyncIterable } from './pushableAsyncIterable';
 
 // Environment variable utilities
-export {
-  expandEnvVars,
-  expandEnvironmentVariables,
-  getUndefinedVars,
-} from './expandEnvVars';
+export { expandEnvVars, expandEnvironmentVariables, getUndefinedVars } from './expandEnvVars';
 
 // System utilities
 export {

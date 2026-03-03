@@ -126,7 +126,7 @@ export function getServerDescription(capabilities: ServerCapabilities): string {
   }
 
   if (capabilities.serverType === 'happy') {
-  return `Legacy Server v${capabilities.version} (basic mode)`;
+    return `Legacy Server v${capabilities.version} (basic mode)`;
   }
 
   return `Unknown Server (basic mode)`;

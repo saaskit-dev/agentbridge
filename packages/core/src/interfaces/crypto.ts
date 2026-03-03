@@ -45,15 +45,29 @@ export interface ICrypto {
   boxKeyPair(): KeyPair;
 
   /** X25519 + XSalsa20-Poly1305 authenticated encryption (box) */
-  box(plaintext: Uint8Array, nonce: Uint8Array, peerPublicKey: Uint8Array, secretKey: Uint8Array): Uint8Array;
-  boxOpen(ciphertext: Uint8Array, nonce: Uint8Array, peerPublicKey: Uint8Array, secretKey: Uint8Array): Uint8Array | null;
+  box(
+    plaintext: Uint8Array,
+    nonce: Uint8Array,
+    peerPublicKey: Uint8Array,
+    secretKey: Uint8Array
+  ): Uint8Array;
+  boxOpen(
+    ciphertext: Uint8Array,
+    nonce: Uint8Array,
+    peerPublicKey: Uint8Array,
+    secretKey: Uint8Array
+  ): Uint8Array | null;
 
   /**
    * Anonymous sealed box (ephemeral key + box)
    * Binary format: [ ephemeralPublicKey(32) | nonce(24) | ciphertext ]
    */
   boxSeal(plaintext: Uint8Array, peerPublicKey: Uint8Array): Uint8Array;
-  boxSealOpen(ciphertext: Uint8Array, publicKey: Uint8Array, secretKey: Uint8Array): Uint8Array | null;
+  boxSealOpen(
+    ciphertext: Uint8Array,
+    publicKey: Uint8Array,
+    secretKey: Uint8Array
+  ): Uint8Array | null;
 
   // === DataKey mode (AES-256-GCM) ===
   // Binary format: [ version(1)=0 | nonce(12) | ciphertext | authTag(16) ]
@@ -94,7 +108,9 @@ export function registerCryptoFactory(type: string, factory: CryptoFactory): voi
 export function createCrypto(type: string): ICrypto {
   const factory = cryptoFactories.get(type);
   if (!factory) {
-    throw new Error(`Crypto factory not found: ${type}. Available: ${[...cryptoFactories.keys()].join(', ')}`);
+    throw new Error(
+      `Crypto factory not found: ${type}. Available: ${[...cryptoFactories.keys()].join(', ')}`
+    );
   }
   return factory();
 }

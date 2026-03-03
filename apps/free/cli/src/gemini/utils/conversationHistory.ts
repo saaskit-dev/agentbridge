@@ -1,6 +1,6 @@
 /**
  * Conversation History
- * 
+ *
  * Tracks user messages and agent responses to preserve context
  * when switching Gemini models. This allows seamless model changes
  * without losing conversation context.
@@ -24,7 +24,7 @@ export interface ConversationHistoryOptions {
 
 /**
  * Manages conversation history for context preservation across model changes.
- * 
+ *
  * When the user switches models, this class provides the previous conversation
  * as context for the new model, ensuring continuity.
  */
@@ -78,7 +78,9 @@ export class ConversationHistory {
 
     // Skip duplicate messages
     if (this.isDuplicate('user', trimmedContent)) {
-      logger.debug(`[ConversationHistory] Skipping duplicate user message (${trimmedContent.length} chars)`);
+      logger.debug(
+        `[ConversationHistory] Skipping duplicate user message (${trimmedContent.length} chars)`
+      );
       return;
     }
 
@@ -89,7 +91,9 @@ export class ConversationHistory {
     });
 
     this.trimHistory();
-    logger.debug(`[ConversationHistory] Added user message (${trimmedContent.length} chars), total: ${this.messages.length}`);
+    logger.debug(
+      `[ConversationHistory] Added user message (${trimmedContent.length} chars), total: ${this.messages.length}`
+    );
   }
 
   /**
@@ -103,7 +107,9 @@ export class ConversationHistory {
 
     // Skip duplicate messages
     if (this.isDuplicate('assistant', trimmedContent)) {
-      logger.debug(`[ConversationHistory] Skipping duplicate assistant message (${trimmedContent.length} chars)`);
+      logger.debug(
+        `[ConversationHistory] Skipping duplicate assistant message (${trimmedContent.length} chars)`
+      );
       return;
     }
 
@@ -115,7 +121,9 @@ export class ConversationHistory {
     });
 
     this.trimHistory();
-    logger.debug(`[ConversationHistory] Added assistant message (${trimmedContent.length} chars), total: ${this.messages.length}`);
+    logger.debug(
+      `[ConversationHistory] Added assistant message (${trimmedContent.length} chars), total: ${this.messages.length}`
+    );
   }
 
   /**
@@ -143,7 +151,7 @@ export class ConversationHistory {
   /**
    * Get formatted context for injecting into a new session.
    * This is used when the model changes to preserve conversation context.
-   * 
+   *
    * @returns Formatted string with previous conversation context, or empty string if no history
    */
   getContextForNewSession(): string {
@@ -151,14 +159,17 @@ export class ConversationHistory {
       return '';
     }
 
-    const formattedMessages = this.messages.map(msg => {
-      const role = msg.role === 'user' ? 'User' : 'Assistant';
-      // Truncate very long messages to avoid token limits
-      const content = msg.content.length > 2000 
-        ? msg.content.substring(0, 2000) + '... [truncated]'
-        : msg.content;
-      return `${role}: ${content}`;
-    }).join('\n\n');
+    const formattedMessages = this.messages
+      .map(msg => {
+        const role = msg.role === 'user' ? 'User' : 'Assistant';
+        // Truncate very long messages to avoid token limits
+        const content =
+          msg.content.length > 2000
+            ? msg.content.substring(0, 2000) + '... [truncated]'
+            : msg.content;
+        return `${role}: ${content}`;
+      })
+      .join('\n\n');
 
     return `[PREVIOUS CONVERSATION CONTEXT]
 The following is our previous conversation. Continue from where we left off:
@@ -199,4 +210,3 @@ ${formattedMessages}
     return `${this.messages.length} messages (${userCount} user, ${assistantCount} assistant), ${totalChars} chars`;
   }
 }
-

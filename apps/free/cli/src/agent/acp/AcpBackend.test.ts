@@ -149,13 +149,11 @@ describe('AcpBackend session resume', () => {
         },
       ];
 
-      const acpMcpServers = mcpServers.map((server) => ({
+      const acpMcpServers = mcpServers.map(server => ({
         name: server.name,
         command: server.command,
         args: server.args || [],
-        env: server.env
-          ? Object.entries(server.env).map(([name, value]) => ({ name, value }))
-          : [],
+        env: server.env ? Object.entries(server.env).map(([name, value]) => ({ name, value })) : [],
       }));
 
       expect(acpMcpServers).toHaveLength(2);

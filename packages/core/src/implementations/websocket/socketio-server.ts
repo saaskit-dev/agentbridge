@@ -1,16 +1,12 @@
 /**
  * Socket.IO server implementation
- * 
+ *
  * Note: socket.io is a peer dependency. Make sure to install it:
  * npm install socket.io
  */
 
 import type { Server, Socket } from 'socket.io';
-import type {
-  IWebSocketServer,
-  WebSocketServerOptions,
-  ISocket,
-} from '../../interfaces/websocket';
+import type { IWebSocketServer, WebSocketServerOptions, ISocket } from '../../interfaces/websocket';
 import { registerWebSocketServerFactory } from '../../interfaces/websocket';
 
 // Dynamic import to handle optional peer dependency
@@ -79,7 +75,6 @@ class SocketIoSocket implements ISocket {
  */
 class SocketIoServer implements IWebSocketServer {
   private io: Server | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private httpServer: any = null;
 
   constructor(private options?: WebSocketServerOptions) {}
@@ -116,7 +111,7 @@ class SocketIoServer implements IWebSocketServer {
   }
 
   onConnection(handler: (socket: ISocket) => void): void {
-    this.ensureServer().then((io) => {
+    this.ensureServer().then(io => {
       io.on('connection', (rawSocket: Socket) => {
         handler(new SocketIoSocket(rawSocket));
       });
@@ -151,14 +146,14 @@ class SocketIoServer implements IWebSocketServer {
       return [];
     }
     return Array.from(sockets)
-      .map((id) => this.io!.sockets.sockets.get(id))
-      .filter((s) => s !== undefined)
-      .map((s) => new SocketIoSocket(s));
+      .map(id => this.io!.sockets.sockets.get(id))
+      .filter(s => s !== undefined)
+      .map(s => new SocketIoSocket(s));
   }
 }
 
 // Register factory
-registerWebSocketServerFactory('socketio', (options) => new SocketIoServer(options));
+registerWebSocketServerFactory('socketio', options => new SocketIoServer(options));
 
 // Export for direct use
 export { SocketIoClient } from './socketio-client';

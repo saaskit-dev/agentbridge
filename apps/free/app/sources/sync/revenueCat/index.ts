@@ -2,15 +2,15 @@
 // React Native's bundler will automatically choose .native.ts or .web.ts
 
 export type {
-    RevenueCatInterface,
-    CustomerInfo,
-    Product,
-    Offerings,
-    PurchaseResult,
-    RevenueCatConfig,
-    PaywallOptions,
-    Offering,
-    Package
+  RevenueCatInterface,
+  CustomerInfo,
+  Product,
+  Offerings,
+  PurchaseResult,
+  RevenueCatConfig,
+  PaywallOptions,
+  Offering,
+  Package,
 } from './types';
 
 // Export enums as values since they are used as runtime values

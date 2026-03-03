@@ -1,4 +1,4 @@
-const { getDefaultConfig } = require("expo/metro-config");
+const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname, {
   // Enable CSS support for web
@@ -9,19 +9,26 @@ const config = getDefaultConfig(__dirname, {
 // Source: https://shopify.github.io/react-native-skia/docs/getting-started/installation/
 config.resolver.assetExts.push('wasm');
 
-// Enable inlineRequires for proper Skia and Reanimated loading
-// Source: https://shopify.github.io/react-native-skia/docs/getting-started/web/
-// Without this, Skia throws "react-native-reanimated is not installed" error
-// This is cross-platform compatible (iOS, Android, web)
+// inlineRequires disabled to fix HMR
+// See: https://github.com/facebook/metro/issues/768
 config.transformer.getTransformOptions = async () => ({
   transform: {
     experimentalImportSupport: false,
-    inlineRequires: true, // Critical for @shopify/react-native-skia
+    inlineRequires: false,
   },
 });
 
-// Enable package exports resolution for @noble/hashes and similar packages
-// Fixes: "not listed in the exports" warnings
-config.resolver.unstable_enablePackageExports = true;
-config.resolver.unstable_conditionNames = ['import', 'require', 'react-native', 'default'];
+// NOTE: Package Exports is enabled by default in Metro 0.82+
+// Do NOT manually set unstable_enablePackageExports as it causes bugs
+// See: https://github.com/facebook/metro/issues/1464
+
+// Fix @noble/hashes and similar packages that import with .js extension
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName.startsWith('@noble/') && moduleName.endsWith('.js')) {
+    const strippedModule = moduleName.replace(/\.js$/, '');
+    return context.resolveRequest(context, strippedModule, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 module.exports = config;

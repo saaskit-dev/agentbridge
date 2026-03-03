@@ -38,4 +38,3 @@ export { createAcpBackend, type CreateAcpBackendOptions } from './createAcpBacke
 // Legacy aliases for backwards compatibility
 export { AcpBackend as AcpSdkBackend } from './AcpBackend';
 export type { AcpBackendOptions as AcpSdkBackendOptions } from './AcpBackend';
-

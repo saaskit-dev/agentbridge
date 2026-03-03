@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   findGlobalClaudeCliPath,
   findClaudeInPath,
@@ -9,41 +9,51 @@ import {
   findHomebrewCliPath,
   findNativeInstallerCliPath,
   getVersion,
-  compareVersions
+  compareVersions,
 } from '../scripts/claude_version_utils.cjs';
 
 describe('Claude Version Utils - Cross-Platform Detection', () => {
-
   describe('detectSourceFromPath', () => {
-
     describe('npm installations', () => {
       it('should detect npm global installation on macOS/Linux', () => {
-        const result = detectSourceFromPath('/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js');
+        const result = detectSourceFromPath(
+          '/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js'
+        );
         expect(result).toBe('npm');
       });
 
       it('should detect npm global installation on Windows with forward slashes', () => {
-        const result = detectSourceFromPath('C:/Users/test/AppData/Roaming/npm/node_modules/@anthropic-ai/claude-code/cli.js');
+        const result = detectSourceFromPath(
+          'C:/Users/test/AppData/Roaming/npm/node_modules/@anthropic-ai/claude-code/cli.js'
+        );
         expect(result).toBe('npm');
       });
 
       it('should detect npm global installation on Windows with backslashes', () => {
-        const result = detectSourceFromPath('C:\\Users\\test\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js');
+        const result = detectSourceFromPath(
+          'C:\\Users\\test\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js'
+        );
         expect(result).toBe('npm');
       });
 
       it('should detect npm with different scoped packages', () => {
-        const result = detectSourceFromPath('C:/Users/test/AppData/Roaming/npm/node_modules/@babel/core/cli.js');
+        const result = detectSourceFromPath(
+          'C:/Users/test/AppData/Roaming/npm/node_modules/@babel/core/cli.js'
+        );
         expect(result).toBe('npm');
       });
 
       it('should detect npm through Homebrew', () => {
-        const result = detectSourceFromPath('/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js');
+        const result = detectSourceFromPath(
+          '/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js'
+        );
         expect(result).toBe('npm');
       });
 
       it('should NOT detect Homebrew cask as npm', () => {
-        const result = detectSourceFromPath('/opt/homebrew/lib/node_modules/@anthropic-ai/.claude-code-2DTsDk1V/cli.js');
+        const result = detectSourceFromPath(
+          '/opt/homebrew/lib/node_modules/@anthropic-ai/.claude-code-2DTsDk1V/cli.js'
+        );
         expect(result).toBe('Homebrew');
       });
     });
@@ -65,7 +75,9 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
       });
 
       it('should detect Bun in node_modules context', () => {
-        const result = detectSourceFromPath('/Users/test/.bun/install/global/node_modules/@anthropic-ai/claude-code/cli.js');
+        const result = detectSourceFromPath(
+          '/Users/test/.bun/install/global/node_modules/@anthropic-ai/claude-code/cli.js'
+        );
         expect(result).toBe('Bun');
       });
     });
@@ -111,7 +123,9 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
       });
 
       it('should detect Homebrew cask with hashed directory', () => {
-        const result = detectSourceFromPath('/opt/homebrew/lib/node_modules/@anthropic-ai/.claude-code-2DTsDk1V/cli.js');
+        const result = detectSourceFromPath(
+          '/opt/homebrew/lib/node_modules/@anthropic-ai/.claude-code-2DTsDk1V/cli.js'
+        );
         expect(result).toBe('Homebrew');
       });
 
@@ -128,7 +142,9 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
       });
 
       it('should detect native installer with versioned structure', () => {
-        const result = detectSourceFromPath('/Users/test/.local/share/claude/versions/2.0.69/claude');
+        const result = detectSourceFromPath(
+          '/Users/test/.local/share/claude/versions/2.0.69/claude'
+        );
         expect(result).toBe('native installer');
       });
 
@@ -160,12 +176,16 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
 
     describe('Edge cases and special characters', () => {
       it('should handle @ symbols in paths correctly', () => {
-        const result = detectSourceFromPath('/Users/@developer/test/node_modules/@anthropic-ai/claude-code/cli.js');
+        const result = detectSourceFromPath(
+          '/Users/@developer/test/node_modules/@anthropic-ai/claude-code/cli.js'
+        );
         expect(result).toBe('npm');
       });
 
       it('should handle case sensitivity variations on Windows', () => {
-        const result = detectSourceFromPath('C:/USERS/TEST/APPDATA/ROAMING/NPM/NODE_MODULES/@ANTHROPIC-AI/CLAUDE-CODE/CLI.JS');
+        const result = detectSourceFromPath(
+          'C:/USERS/TEST/APPDATA/ROAMING/NPM/NODE_MODULES/@ANTHROPIC-AI/CLAUDE-CODE/CLI.JS'
+        );
         expect(result).toBe('npm');
       });
 
@@ -207,7 +227,7 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
       const unixPaths = [
         '/usr/local/bin/claude',
         '/opt/homebrew/bin/claude',
-        '/home/user/.local/bin/claude'
+        '/home/user/.local/bin/claude',
       ];
 
       unixPaths.forEach(path => {
@@ -239,7 +259,7 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
         { path: '/Users/test/.bun/bin/claude', expected: 'Bun' },
         { path: '/opt/homebrew/bin/claude', expected: 'Homebrew' },
         { path: '/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js', expected: 'npm' },
-        { path: 'C:/Program Files/Claude/claude.exe', expected: 'native installer' }
+        { path: 'C:/Program Files/Claude/claude.exe', expected: 'native installer' },
       ];
 
       scenarios.forEach(({ path, expected }) => {
@@ -252,7 +272,10 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
       const standardPatterns = [
         // npm (most common)
         { path: '/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js', expected: 'npm' },
-        { path: 'C:/Users/test/AppData/Roaming/npm/node_modules/@anthropic-ai/claude-code/cli.js', expected: 'npm' },
+        {
+          path: 'C:/Users/test/AppData/Roaming/npm/node_modules/@anthropic-ai/claude-code/cli.js',
+          expected: 'npm',
+        },
 
         // bun (second most common)
         { path: '/Users/test/.bun/bin/claude', expected: 'Bun' },
@@ -266,7 +289,7 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
         // native installers
         { path: 'C:/Program Files/Claude/claude.exe', expected: 'native installer' },
         { path: 'C:/Users/test/AppData/Local/Claude/claude.exe', expected: 'native installer' },
-        { path: '/Users/test/.local/bin/claude', expected: 'native installer' }
+        { path: '/Users/test/.local/bin/claude', expected: 'native installer' },
       ];
 
       let passed = 0;
@@ -314,7 +337,7 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
 
         // Custom installations
         { path: '/opt/custom/claude/bin/claude', expected: 'PATH' },
-        { path: '/usr/local/custom/bin/claude', expected: 'PATH' }
+        { path: '/usr/local/custom/bin/claude', expected: 'PATH' },
       ];
 
       edgeCases.forEach(({ path, expected }) => {
@@ -327,7 +350,10 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
       const pathNormalizationTests = [
         { input: '/opt/homebrew/bin/../lib/claude', expected: 'Homebrew' },
         { input: '/Users/test/.bun/bin/./claude', expected: 'Bun' },
-        { input: 'C:/Users/test/../test/AppData/Local/Claude/claude.exe', expected: 'native installer' }
+        {
+          input: 'C:/Users/test/../test/AppData/Local/Claude/claude.exe',
+          expected: 'native installer',
+        },
       ];
 
       pathNormalizationTests.forEach(({ input, expected }) => {

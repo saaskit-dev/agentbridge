@@ -14,11 +14,14 @@ export interface SessionUpdate {
   toolCallId?: string;
   status?: string;
   kind?: string | unknown;
-  content?: {
-    text?: string;
-    error?: string | { message?: string };
-    [key: string]: unknown;
-  } | string | unknown;
+  content?:
+    | {
+        text?: string;
+        error?: string | { message?: string };
+        [key: string]: unknown;
+      }
+    | string
+    | unknown;
   locations?: unknown[];
   messageChunk?: { textDelta?: string };
   plan?: unknown;
@@ -152,14 +155,14 @@ export function startToolCall(
 
   // Note: isInvestigationTool is called by getToolCallTimeout below to determine timeout
 
-
   const extractedName = ctx.transport.extractToolNameFromId?.(toolCallId);
   const realToolName = extractedName ?? (toolKindStr || 'unknown');
   ctx.toolCallIdToNameMap.set(toolCallId, realToolName);
   ctx.activeToolCalls.add(toolCallId);
   ctx.toolCallStartTimes.set(toolCallId, startTime);
 
-  const timeoutMs = ctx.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? DEFAULT_TOOL_CALL_TIMEOUT_MS;
+  const timeoutMs =
+    ctx.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? DEFAULT_TOOL_CALL_TIMEOUT_MS;
   if (!ctx.toolCallTimeouts.has(toolCallId)) {
     const timeout = setTimeout(() => {
       ctx.activeToolCalls.delete(toolCallId);
@@ -189,7 +192,6 @@ export function completeToolCall(
   ctx: HandlerContext
 ): void {
   const toolKindStr = typeof toolKind === 'string' ? toolKind : 'unknown';
-
 
   ctx.activeToolCalls.delete(toolCallId);
   ctx.toolCallStartTimes.delete(toolCallId);
@@ -293,7 +295,10 @@ export function handleToolCall(update: SessionUpdate, ctx: HandlerContext): Hand
   return { handled: true };
 }
 
-export function handleLegacyMessageChunk(update: SessionUpdate, ctx: HandlerContext): HandlerResult {
+export function handleLegacyMessageChunk(
+  update: SessionUpdate,
+  ctx: HandlerContext
+): HandlerResult {
   if (!update.messageChunk) return { handled: false };
   const chunk = update.messageChunk;
   if (chunk.textDelta) {

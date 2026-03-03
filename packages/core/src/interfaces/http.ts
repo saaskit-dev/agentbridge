@@ -34,16 +34,30 @@ export interface IHttpClient {
   request<T = unknown>(url: string, config?: RequestConfig): Promise<HttpResponse<T>>;
 
   /** GET request */
-  get<T = unknown>(url: string, config?: Omit<RequestConfig, 'method' | 'body'>): Promise<HttpResponse<T>>;
+  get<T = unknown>(
+    url: string,
+    config?: Omit<RequestConfig, 'method' | 'body'>
+  ): Promise<HttpResponse<T>>;
 
   /** POST request */
-  post<T = unknown>(url: string, body?: unknown, config?: Omit<RequestConfig, 'method'>): Promise<HttpResponse<T>>;
+  post<T = unknown>(
+    url: string,
+    body?: unknown,
+    config?: Omit<RequestConfig, 'method'>
+  ): Promise<HttpResponse<T>>;
 
   /** PUT request */
-  put<T = unknown>(url: string, body?: unknown, config?: Omit<RequestConfig, 'method'>): Promise<HttpResponse<T>>;
+  put<T = unknown>(
+    url: string,
+    body?: unknown,
+    config?: Omit<RequestConfig, 'method'>
+  ): Promise<HttpResponse<T>>;
 
   /** DELETE request */
-  delete<T = unknown>(url: string, config?: Omit<RequestConfig, 'method'>): Promise<HttpResponse<T>>;
+  delete<T = unknown>(
+    url: string,
+    config?: Omit<RequestConfig, 'method'>
+  ): Promise<HttpResponse<T>>;
 }
 
 // Factory registry
@@ -58,7 +72,9 @@ export function registerHttpClientFactory(type: string, factory: HttpClientFacto
 export function createHttpClient(type: string, options?: HttpClientOptions): IHttpClient {
   const factory = httpClientFactories.get(type);
   if (!factory) {
-    throw new Error(`HTTP client factory not found: ${type}. Available: ${[...httpClientFactories.keys()].join(', ')}`);
+    throw new Error(
+      `HTTP client factory not found: ${type}. Available: ${[...httpClientFactories.keys()].join(', ')}`
+    );
   }
   return factory(options);
 }

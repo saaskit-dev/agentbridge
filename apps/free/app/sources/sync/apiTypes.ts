@@ -1,21 +1,21 @@
 import { z } from 'zod';
-import { GitHubProfileSchema, ImageRefSchema } from './profile';
-import { RelationshipStatusSchema, UserProfileSchema } from './friendTypes';
 import { FeedBodySchema } from './feedTypes';
+import { RelationshipStatusSchema, UserProfileSchema } from './friendTypes';
+import { GitHubProfileSchema, ImageRefSchema } from './profile';
 
 //
 // Encrypted message
 //
 
 export const ApiMessageSchema = z.object({
-    id: z.string(),
-    seq: z.number(),
-    localId: z.string().nullish(),
-    content: z.object({
-        t: z.literal('encrypted'),
-        c: z.string(), // Base64 encoded encrypted content
-    }),
-    createdAt: z.number(),
+  id: z.string(),
+  seq: z.number(),
+  localId: z.string().nullish(),
+  content: z.object({
+    t: z.literal('encrypted'),
+    c: z.string(), // Base64 encoded encrypted content
+  }),
+  createdAt: z.number(),
 });
 
 export type ApiMessage = z.infer<typeof ApiMessageSchema>;
@@ -25,141 +25,157 @@ export type ApiMessage = z.infer<typeof ApiMessageSchema>;
 //
 
 export const ApiUpdateNewMessageSchema = z.object({
-    t: z.literal('new-message'),
-    sid: z.string(), // Session ID
-    message: ApiMessageSchema
+  t: z.literal('new-message'),
+  sid: z.string(), // Session ID
+  message: ApiMessageSchema,
 });
 
 export const ApiUpdateNewSessionSchema = z.object({
-    t: z.literal('new-session'),
-    id: z.string(), // Session ID
-    createdAt: z.number(),
-    updatedAt: z.number(),
+  t: z.literal('new-session'),
+  id: z.string(), // Session ID
+  createdAt: z.number(),
+  updatedAt: z.number(),
 });
 
 export const ApiDeleteSessionSchema = z.object({
-    t: z.literal('delete-session'),
-    sid: z.string(), // Session ID
+  t: z.literal('delete-session'),
+  sid: z.string(), // Session ID
 });
 
 export const ApiUpdateSessionStateSchema = z.object({
-    t: z.literal('update-session'),
-    id: z.string(),
-    agentState: z.object({
-        version: z.number(),
-        value: z.string()
-    }).nullish(),
-    metadata: z.object({
-        version: z.number(),
-        value: z.string()
-    }).nullish(),
+  t: z.literal('update-session'),
+  id: z.string(),
+  agentState: z
+    .object({
+      version: z.number(),
+      value: z.string(),
+    })
+    .nullish(),
+  metadata: z
+    .object({
+      version: z.number(),
+      value: z.string(),
+    })
+    .nullish(),
 });
 
 export const ApiUpdateAccountSchema = z.object({
-    t: z.literal('update-account'),
-    id: z.string(),
-    settings: z.object({
-        value: z.string().nullish(),
-        version: z.number()
-    }).nullish(),
-    firstName: z.string().nullish(),
-    lastName: z.string().nullish(),
-    avatar: ImageRefSchema.nullish(),
-    github: GitHubProfileSchema.nullish(),
+  t: z.literal('update-account'),
+  id: z.string(),
+  settings: z
+    .object({
+      value: z.string().nullish(),
+      version: z.number(),
+    })
+    .nullish(),
+  firstName: z.string().nullish(),
+  lastName: z.string().nullish(),
+  avatar: ImageRefSchema.nullish(),
+  github: GitHubProfileSchema.nullish(),
 });
 
 export const ApiUpdateMachineStateSchema = z.object({
-    t: z.literal('update-machine'),
-    machineId: z.string(),  // Changed from 'id' to 'machineId' for clarity
-    metadata: z.object({
-        version: z.number(),
-        value: z.string() // Encrypted, client decrypts
-    }).nullish(),
-    daemonState: z.object({
-        version: z.number(),
-        value: z.string() // Encrypted, client decrypts
-    }).nullish(),
-    active: z.boolean().optional(),
-    activeAt: z.number().optional()
+  t: z.literal('update-machine'),
+  machineId: z.string(), // Changed from 'id' to 'machineId' for clarity
+  metadata: z
+    .object({
+      version: z.number(),
+      value: z.string(), // Encrypted, client decrypts
+    })
+    .nullish(),
+  daemonState: z
+    .object({
+      version: z.number(),
+      value: z.string(), // Encrypted, client decrypts
+    })
+    .nullish(),
+  active: z.boolean().optional(),
+  activeAt: z.number().optional(),
 });
 
 // Artifact update schemas
 export const ApiNewArtifactSchema = z.object({
-    t: z.literal('new-artifact'),
-    artifactId: z.string(),
-    header: z.string(),
-    headerVersion: z.number(),
-    body: z.string().optional(),
-    bodyVersion: z.number().optional(),
-    dataEncryptionKey: z.string(),
-    seq: z.number(),
-    createdAt: z.number(),
-    updatedAt: z.number()
+  t: z.literal('new-artifact'),
+  artifactId: z.string(),
+  header: z.string(),
+  headerVersion: z.number(),
+  body: z.string().optional(),
+  bodyVersion: z.number().optional(),
+  dataEncryptionKey: z.string(),
+  seq: z.number(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
 });
 
 export const ApiUpdateArtifactSchema = z.object({
-    t: z.literal('update-artifact'),
-    artifactId: z.string(),
-    header: z.object({
-        value: z.string(),
-        version: z.number()
-    }).optional(),
-    body: z.object({
-        value: z.string(),
-        version: z.number()
-    }).optional()
+  t: z.literal('update-artifact'),
+  artifactId: z.string(),
+  header: z
+    .object({
+      value: z.string(),
+      version: z.number(),
+    })
+    .optional(),
+  body: z
+    .object({
+      value: z.string(),
+      version: z.number(),
+    })
+    .optional(),
 });
 
 export const ApiDeleteArtifactSchema = z.object({
-    t: z.literal('delete-artifact'),
-    artifactId: z.string()
+  t: z.literal('delete-artifact'),
+  artifactId: z.string(),
 });
 
 // Relationship update schema
 export const ApiRelationshipUpdatedSchema = z.object({
-    t: z.literal('relationship-updated'),
-    fromUserId: z.string(),
-    toUserId: z.string(),
-    status: RelationshipStatusSchema,
-    action: z.enum(['created', 'updated', 'deleted']),
-    fromUser: UserProfileSchema.optional(),
-    toUser: UserProfileSchema.optional(),
-    timestamp: z.number()
+  t: z.literal('relationship-updated'),
+  fromUserId: z.string(),
+  toUserId: z.string(),
+  status: RelationshipStatusSchema,
+  action: z.enum(['created', 'updated', 'deleted']),
+  fromUser: UserProfileSchema.optional(),
+  toUser: UserProfileSchema.optional(),
+  timestamp: z.number(),
 });
 
 // Feed update schema
 export const ApiNewFeedPostSchema = z.object({
-    t: z.literal('new-feed-post'),
-    id: z.string(),
-    body: FeedBodySchema,
-    cursor: z.string(),
-    createdAt: z.number(),
-    repeatKey: z.string().nullable()
+  t: z.literal('new-feed-post'),
+  id: z.string(),
+  body: FeedBodySchema,
+  cursor: z.string(),
+  createdAt: z.number(),
+  repeatKey: z.string().nullable(),
 });
 
 // KV batch update schema for real-time KV updates
 export const ApiKvBatchUpdateSchema = z.object({
-    t: z.literal('kv-batch-update'),
-    changes: z.array(z.object({
-        key: z.string(),
-        value: z.string().nullable(),
-        version: z.number()
-    }))
+  t: z.literal('kv-batch-update'),
+  changes: z.array(
+    z.object({
+      key: z.string(),
+      value: z.string().nullable(),
+      version: z.number(),
+    })
+  ),
 });
 
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
-    ApiUpdateNewMessageSchema,
-    ApiUpdateNewSessionSchema,
-    ApiDeleteSessionSchema,
-    ApiUpdateSessionStateSchema,
-    ApiUpdateAccountSchema,
-    ApiUpdateMachineStateSchema,
-    ApiNewArtifactSchema,
-    ApiUpdateArtifactSchema,
-    ApiDeleteArtifactSchema,
-    ApiRelationshipUpdatedSchema,
-    ApiNewFeedPostSchema,
-    ApiKvBatchUpdateSchema
+  ApiUpdateNewMessageSchema,
+  ApiUpdateNewSessionSchema,
+  ApiDeleteSessionSchema,
+  ApiUpdateSessionStateSchema,
+  ApiUpdateAccountSchema,
+  ApiUpdateMachineStateSchema,
+  ApiNewArtifactSchema,
+  ApiUpdateArtifactSchema,
+  ApiDeleteArtifactSchema,
+  ApiRelationshipUpdatedSchema,
+  ApiNewFeedPostSchema,
+  ApiKvBatchUpdateSchema,
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;
@@ -172,10 +188,10 @@ export type ApiUpdate = z.infer<typeof ApiUpdateSchema>;
 //
 
 export const ApiUpdateContainerSchema = z.object({
-    id: z.string(),
-    seq: z.number(),
-    body: ApiUpdateSchema,
-    createdAt: z.number(),
+  id: z.string(),
+  seq: z.number(),
+  body: ApiUpdateSchema,
+  createdAt: z.number(),
 });
 
 export type ApiUpdateContainer = z.infer<typeof ApiUpdateContainerSchema>;
@@ -185,73 +201,73 @@ export type ApiUpdateContainer = z.infer<typeof ApiUpdateContainerSchema>;
 //
 
 export const ApiEphemeralActivityUpdateSchema = z.object({
-    type: z.literal('activity'),
-    id: z.string(),
-    active: z.boolean(),
-    activeAt: z.number(),
-    thinking: z.boolean(),
+  type: z.literal('activity'),
+  id: z.string(),
+  active: z.boolean(),
+  activeAt: z.number(),
+  thinking: z.boolean(),
 });
 
 export const ApiEphemeralUsageUpdateSchema = z.object({
-    type: z.literal('usage'),
-    id: z.string(),
-    key: z.string(),
-    timestamp: z.number(),
-    tokens: z.object({
-        total: z.number(),
-        input: z.number(),
-        output: z.number(),
-        cache_creation: z.number(),
-        cache_read: z.number(),
-    }),
-    cost: z.object({
-        total: z.number(),
-        input: z.number(),
-        output: z.number(),
-    }),
+  type: z.literal('usage'),
+  id: z.string(),
+  key: z.string(),
+  timestamp: z.number(),
+  tokens: z.object({
+    total: z.number(),
+    input: z.number(),
+    output: z.number(),
+    cache_creation: z.number(),
+    cache_read: z.number(),
+  }),
+  cost: z.object({
+    total: z.number(),
+    input: z.number(),
+    output: z.number(),
+  }),
 });
 
 export const ApiEphemeralMachineActivityUpdateSchema = z.object({
-    type: z.literal('machine-activity'),
-    id: z.string(), // machine id
-    active: z.boolean(),
-    activeAt: z.number(),
+  type: z.literal('machine-activity'),
+  id: z.string(), // machine id
+  active: z.boolean(),
+  activeAt: z.number(),
 });
 
 // Streaming text delta for typewriter effect
 export const ApiEphemeralTextDeltaSchema = z.object({
-    type: z.literal('text_delta'),
-    sessionId: z.string(),
-    messageId: z.string(),
-    delta: z.string(),
-    timestamp: z.number(),
+  type: z.literal('text_delta'),
+  sessionId: z.string(),
+  messageId: z.string(),
+  delta: z.string(),
+  timestamp: z.number(),
 });
 
 // Streaming text complete
 export const ApiEphemeralTextCompleteSchema = z.object({
-    type: z.literal('text_complete'),
-    sessionId: z.string(),
-    messageId: z.string(),
-    fullText: z.string(),
-    timestamp: z.number(),
+  type: z.literal('text_complete'),
+  sessionId: z.string(),
+  messageId: z.string(),
+  fullText: z.string(),
+  timestamp: z.number(),
 });
 
 // Streaming thinking delta
 export const ApiEphemeralThinkingDeltaSchema = z.object({
-    type: z.literal('thinking_delta'),
-    sessionId: z.string(),
-    messageId: z.string(),
-    delta: z.string(),
-    timestamp: z.number(),
+  type: z.literal('thinking_delta'),
+  sessionId: z.string(),
+  messageId: z.string(),
+  delta: z.string(),
+  timestamp: z.number(),
 });
 
 export const ApiEphemeralUpdateSchema = z.union([
-    ApiEphemeralActivityUpdateSchema,
-    ApiEphemeralUsageUpdateSchema,
-    ApiEphemeralMachineActivityUpdateSchema,
-    ApiEphemeralTextDeltaSchema,
-    ApiEphemeralTextCompleteSchema,
-    ApiEphemeralThinkingDeltaSchema,
+  ApiEphemeralActivityUpdateSchema,
+  ApiEphemeralUsageUpdateSchema,
+  ApiEphemeralMachineActivityUpdateSchema,
+  ApiEphemeralTextDeltaSchema,
+  ApiEphemeralTextCompleteSchema,
+  ApiEphemeralThinkingDeltaSchema,
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;

@@ -2,9 +2,9 @@
  * WebSocket events
  */
 
-import type { SessionMetadata } from '../types/session';
-import type { SessionMessage } from '../types/message';
 import type { MachineMetadata } from '../types/machine';
+import type { SessionMessage } from '../types/message';
+import type { SessionMetadata } from '../types/session';
 
 // === Persistent Events (Updates) ===
 
@@ -202,11 +202,7 @@ export interface UsageEvent {
 }
 
 /** Union of all ephemeral events */
-export type EphemeralEvent =
-  | ActivityEvent
-  | MachineActivityEvent
-  | MachineStatusEvent
-  | UsageEvent;
+export type EphemeralEvent = ActivityEvent | MachineActivityEvent | MachineStatusEvent | UsageEvent;
 
 // === RPC Events ===
 

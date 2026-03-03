@@ -1,13 +1,13 @@
 /**
  * Tests for Claude settings reading functionality
- * 
+ *
  * Tests reading Claude's settings.json file and respecting the includeCoAuthoredBy setting
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readClaudeSettings, shouldIncludeCoAuthoredBy } from './claudeSettings';
 
 describe('Claude Settings', () => {
@@ -18,7 +18,7 @@ describe('Claude Settings', () => {
     // Create a temporary directory for testing
     testClaudeDir = join(tmpdir(), `test-claude-${Date.now()}`);
     mkdirSync(testClaudeDir, { recursive: true });
-    
+
     // Set environment variable to point to test directory
     originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
     process.env.CLAUDE_CONFIG_DIR = testClaudeDir;
@@ -31,7 +31,7 @@ describe('Claude Settings', () => {
     } else {
       delete process.env.CLAUDE_CONFIG_DIR;
     }
-    
+
     // Clean up test directory
     if (existsSync(testClaudeDir)) {
       rmSync(testClaudeDir, { recursive: true, force: true });

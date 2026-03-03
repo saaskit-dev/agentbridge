@@ -53,7 +53,7 @@ export class ModeAwareMessageQueue<T> {
       message,
       mode,
       modeHash,
-      isolate: false
+      isolate: false,
     });
 
     // Trigger message handler if set
@@ -84,7 +84,7 @@ export class ModeAwareMessageQueue<T> {
       message,
       mode,
       modeHash,
-      isolate: false
+      isolate: false,
     });
 
     // Trigger message handler if set
@@ -119,7 +119,7 @@ export class ModeAwareMessageQueue<T> {
       message,
       mode,
       modeHash,
-      isolate: true
+      isolate: true,
     });
 
     // Trigger message handler if set
@@ -149,7 +149,7 @@ export class ModeAwareMessageQueue<T> {
       message,
       mode,
       modeHash,
-      isolate: false
+      isolate: false,
     });
 
     // Trigger message handler if set
@@ -267,7 +267,7 @@ export class ModeAwareMessageQueue<T> {
       message: combinedMessage,
       mode,
       hash: targetModeHash,
-      isolate
+      isolate,
     };
   }
 
@@ -275,7 +275,7 @@ export class ModeAwareMessageQueue<T> {
    * Wait for messages to arrive
    */
   private waitForMessages(abortSignal?: AbortSignal): Promise<boolean> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       let abortHandler: (() => void) | null = null;
 
       // Set up abort handler

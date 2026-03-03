@@ -4,10 +4,8 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./sources/*"
-      ],
-      "hello-world": [ "../../hello-world" ]
+      "@/*": ["./sources/*"],
+      "hello-world": ["../../hello-world"]
     },
     "jsx": "react-jsx",
     "esModuleInterop": true,
@@ -29,15 +27,6 @@
       }
     ]
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts",
-    "nativewind-env.d.ts"
-  ],
-  "exclude": [
-    "sources/trash/**/*",
-    "node_modules"
-  ]
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts", "nativewind-env.d.ts"],
+  "exclude": ["sources/trash/**/*", "node_modules"]
 }

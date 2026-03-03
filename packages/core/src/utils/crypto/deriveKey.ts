@@ -29,10 +29,7 @@ export async function deriveSecretKeyTreeRoot(
   seed: Uint8Array,
   usage: string
 ): Promise<KeyTreeState> {
-  const I = await hmacSha512(
-    new TextEncoder().encode(usage + ' Master Seed'),
-    seed
-  );
+  const I = await hmacSha512(new TextEncoder().encode(usage + ' Master Seed'), seed);
   return {
     key: I.slice(0, 32),
     chainCode: I.slice(32),

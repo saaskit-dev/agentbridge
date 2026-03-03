@@ -8,8 +8,8 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { Readable, Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
+import { Readable, Writable } from 'node:stream';
 import type {
   IAgentBackend,
   AgentMessage,
@@ -17,12 +17,8 @@ import type {
   SessionId,
   StartSessionResult,
 } from '../../interfaces/agent';
+import type { ITransportHandler, StderrContext, ToolNameContext } from '../../interfaces/transport';
 import type { AcpAgentConfig, AcpPermissionHandler } from '../../types/agent';
-import type {
-  ITransportHandler,
-  StderrContext,
-  ToolNameContext,
-} from '../../interfaces/transport';
 import {
   type SessionUpdate,
   type HandlerContext,
@@ -102,7 +98,6 @@ let ClientSideConnectionClass: ClientSideConnectionConstructor | undefined;
 let ndJsonStreamFunc: NdJsonStreamType | undefined;
 
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const sdk = require('@agentclientprotocol/sdk');
   ClientSideConnectionClass = sdk.ClientSideConnection;
   ndJsonStreamFunc = sdk.ndJsonStream;
@@ -181,11 +176,14 @@ type ExtendedSessionNotification = SessionNotification & {
     toolCallId?: string;
     status?: string;
     kind?: string | unknown;
-    content?: {
-      text?: string;
-      error?: string | { message?: string };
-      [key: string]: unknown;
-    } | string | unknown;
+    content?:
+      | {
+          text?: string;
+          error?: string | { message?: string };
+          [key: string]: unknown;
+        }
+      | string
+      | unknown;
     locations?: unknown[];
     messageChunk?: {
       textDelta?: string;
@@ -248,7 +246,9 @@ async function withRetry<T>(
           options.maxDelayMs
         );
 
-        logger.debug(`${options.operationName} failed (attempt ${attempt}/${options.maxAttempts}): ${lastError.message}. Retrying in ${delayMs}ms...`);
+        logger.debug(
+          `${options.operationName} failed (attempt ${attempt}/${options.maxAttempts}): ${lastError.message}. Retrying in ${delayMs}ms...`
+        );
         options.onRetry?.(attempt, lastError);
 
         await delay(delayMs);
@@ -270,7 +270,7 @@ function nodeToWebStreams(
   const writable = new WritableStream<Uint8Array>({
     write(chunk) {
       return new Promise((resolve, reject) => {
-        const ok = stdin.write(chunk, (err) => {
+        const ok = stdin.write(chunk, err => {
           if (err) {
             logger.debug(`[AcpBackend] Error writing to stdin:`, err);
             reject(err);
@@ -284,13 +284,13 @@ function nodeToWebStreams(
       });
     },
     close() {
-      return new Promise((resolve) => {
+      return new Promise(resolve => {
         stdin.end(resolve);
       });
     },
     abort(reason) {
       stdin.destroy(reason instanceof Error ? reason : new Error(String(reason)));
-    }
+    },
   });
 
   // Convert Node readable to Web ReadableStream
@@ -302,14 +302,14 @@ function nodeToWebStreams(
       stdout.on('end', () => {
         controller.close();
       });
-      stdout.on('error', (err) => {
+      stdout.on('error', err => {
         logger.debug(`[AcpBackend] Stdout error:`, err);
         controller.error(err);
       });
     },
     cancel() {
       stdout.destroy();
-    }
+    },
   });
 
   return { writable, readable };
@@ -337,7 +337,7 @@ export class AcpBackend implements IAgentBackend {
   private pendingPermissions = new Map<string, (response: RequestPermissionResponse) => void>();
 
   /** Map from permission request ID to real tool call ID for tracking (reserved for future use) */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   private permissionToToolCallMap = new Map<string, string>();
 
   /** Map from real tool call ID to tool name for auto-approval */
@@ -395,7 +395,9 @@ export class AcpBackend implements IAgentBackend {
     }
 
     if (!ClientSideConnectionClass || !ndJsonStreamFunc) {
-      throw new Error('@agentclientprotocol/sdk is not installed. Please install it to use AcpBackend.');
+      throw new Error(
+        '@agentclientprotocol/sdk is not installed. Please install it to use AcpBackend.'
+      );
     }
 
     const sessionId = randomUUID();
@@ -454,7 +456,7 @@ export class AcpBackend implements IAgentBackend {
         }
       });
 
-      this.process.on('error', (err) => {
+      this.process.on('error', err => {
         logger.debug(`[AcpBackend] Process error:`, err);
         this.emit({ type: 'status', status: 'error', detail: err.message });
       });
@@ -467,10 +469,7 @@ export class AcpBackend implements IAgentBackend {
       });
 
       // Create Web Streams from Node streams
-      const streams = nodeToWebStreams(
-        this.process.stdin,
-        this.process.stdout
-      );
+      const streams = nodeToWebStreams(this.process.stdin, this.process.stdout);
       const writable = streams.writable;
       const readable = streams.readable;
 
@@ -500,7 +499,9 @@ export class AcpBackend implements IAgentBackend {
                   }
                 }
                 if (filteredCount > 0) {
-                  logger.debug(`[AcpBackend] Filtered out ${filteredCount} non-JSON lines from ${transport.agentName} stdout`);
+                  logger.debug(
+                    `[AcpBackend] Filtered out ${filteredCount} non-JSON lines from ${transport.agentName} stdout`
+                  );
                 }
                 controller.close();
                 break;
@@ -536,7 +537,7 @@ export class AcpBackend implements IAgentBackend {
           } finally {
             reader.releaseLock();
           }
-        }
+        },
       });
 
       // Create ndJSON stream for ACP
@@ -547,10 +548,13 @@ export class AcpBackend implements IAgentBackend {
         sessionUpdate: async (params: SessionNotification) => {
           this.handleSessionUpdate(params);
         },
-        requestPermission: async (params: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
+        requestPermission: async (
+          params: RequestPermissionRequest
+        ): Promise<RequestPermissionResponse> => {
           const extendedParams = params as ExtendedRequestPermissionRequest;
           const toolCall = extendedParams.toolCall;
-          let toolName = toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool';
+          let toolName =
+            toolCall?.kind || toolCall?.toolName || extendedParams.kind || 'Unknown tool';
           // Use toolCallId as the single source of truth for permission ID
           const toolCallId = toolCall?.id || randomUUID();
           const permissionId = toolCallId; // Use same ID for consistency!
@@ -560,7 +564,8 @@ export class AcpBackend implements IAgentBackend {
           if (toolCall) {
             input = toolCall.input || toolCall.arguments || toolCall.content || {};
           } else {
-            input = extendedParams.input || extendedParams.arguments || extendedParams.content || {};
+            input =
+              extendedParams.input || extendedParams.arguments || extendedParams.content || {};
           }
 
           // If toolName is "other" or "Unknown tool", try to determine real tool name
@@ -568,14 +573,17 @@ export class AcpBackend implements IAgentBackend {
             recentPromptHadChangeTitle: this.recentPromptHadChangeTitle,
             toolCallCountSincePrompt: this.toolCallCountSincePrompt,
           };
-          toolName = this.transport.determineToolName?.(toolName, toolCallId, input, context) ?? toolName;
+          toolName =
+            this.transport.determineToolName?.(toolName, toolCallId, input, context) ?? toolName;
 
           // Increment tool call counter
           this.toolCallCountSincePrompt++;
 
           const options = extendedParams.options || [];
 
-          logger.debug(`[AcpBackend] Permission request: tool=${toolName}, toolCallId=${toolCallId}`);
+          logger.debug(
+            `[AcpBackend] Permission request: tool=${toolName}, toolCallId=${toolCallId}`
+          );
 
           // Emit permission request event for UI/mobile handling
           this.emit({
@@ -609,11 +617,15 @@ export class AcpBackend implements IAgentBackend {
               let optionId = 'cancel'; // Default to cancel/deny
 
               if (result.decision === 'approved' || result.decision === 'approved_for_session') {
-                const proceedOnceOption = options.find((opt: { optionId?: string; name?: string }) =>
-                  opt.optionId === 'proceed_once' || (typeof opt.name === 'string' && opt.name.toLowerCase().includes('once'))
+                const proceedOnceOption = options.find(
+                  (opt: { optionId?: string; name?: string }) =>
+                    opt.optionId === 'proceed_once' ||
+                    (typeof opt.name === 'string' && opt.name.toLowerCase().includes('once'))
                 );
-                const proceedAlwaysOption = options.find((opt: { optionId?: string; name?: string }) =>
-                  opt.optionId === 'proceed_always' || (typeof opt.name === 'string' && opt.name.toLowerCase().includes('always'))
+                const proceedAlwaysOption = options.find(
+                  (opt: { optionId?: string; name?: string }) =>
+                    opt.optionId === 'proceed_always' ||
+                    (typeof opt.name === 'string' && opt.name.toLowerCase().includes('always'))
                 );
 
                 if (result.decision === 'approved_for_session' && proceedAlwaysOption) {
@@ -633,8 +645,10 @@ export class AcpBackend implements IAgentBackend {
                   callId: permissionId,
                 });
               } else {
-                const cancelOption = options.find((opt: { optionId?: string; name?: string }) =>
-                  opt.optionId === 'cancel' || (typeof opt.name === 'string' && opt.name.toLowerCase().includes('cancel'))
+                const cancelOption = options.find(
+                  (opt: { optionId?: string; name?: string }) =>
+                    opt.optionId === 'cancel' ||
+                    (typeof opt.name === 'string' && opt.name.toLowerCase().includes('cancel'))
                 );
                 if (cancelOption) {
                   optionId = cancelOption.optionId || 'cancel';
@@ -656,21 +670,22 @@ export class AcpBackend implements IAgentBackend {
           }
 
           // Auto-approve with 'proceed_once' if no permission handler
-          const proceedOnceOption = options.find((opt: { optionId?: string; name?: string }) =>
-            opt.optionId === 'proceed_once' || (typeof opt.name === 'string' && opt.name.toLowerCase().includes('once'))
+          const proceedOnceOption = options.find(
+            (opt: { optionId?: string; name?: string }) =>
+              opt.optionId === 'proceed_once' ||
+              (typeof opt.name === 'string' && opt.name.toLowerCase().includes('once'))
           );
           const firstOpt = options[0] as { optionId?: string } | undefined;
-          const defaultOptionId = proceedOnceOption?.optionId || (options.length > 0 && firstOpt?.optionId ? firstOpt.optionId : 'proceed_once');
+          const defaultOptionId =
+            proceedOnceOption?.optionId ||
+            (options.length > 0 && firstOpt?.optionId ? firstOpt.optionId : 'proceed_once');
           return { outcome: { outcome: 'selected', optionId: defaultOptionId } };
         },
       };
 
       // Create ClientSideConnection (we already checked ClientSideConnectionClass is defined above)
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      this.connection = new ClientSideConnectionClass!(
-        () => client,
-        stream
-      );
+
+      this.connection = new ClientSideConnectionClass!(() => client, stream);
 
       // Initialize the connection with timeout and retry
       const initRequest: InitializeRequest = {
@@ -705,7 +720,11 @@ export class AcpBackend implements IAgentBackend {
               }),
               new Promise<never>((_, reject) => {
                 timeoutHandle = setTimeout(() => {
-                  reject(new Error(`Initialize timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`));
+                  reject(
+                    new Error(
+                      `Initialize timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`
+                    )
+                  );
                 }, initTimeout);
               }),
             ]);
@@ -740,7 +759,10 @@ export class AcpBackend implements IAgentBackend {
             command: config.command,
             args: config.args || [],
             env: config.env
-              ? Object.entries(config.env).map(([envName, envValue]) => ({ name: envName, value: envValue }))
+              ? Object.entries(config.env).map(([envName, envValue]) => ({
+                  name: envName,
+                  value: envValue,
+                }))
               : [],
           }))
         : [];
@@ -766,7 +788,11 @@ export class AcpBackend implements IAgentBackend {
               }),
               new Promise<never>((_, reject) => {
                 timeoutHandle = setTimeout(() => {
-                  reject(new Error(`New session timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`));
+                  reject(
+                    new Error(
+                      `New session timeout after ${initTimeout}ms - ${this.transport.agentName} did not respond`
+                    )
+                  );
                 }, initTimeout);
               }),
             ]);
@@ -791,20 +817,19 @@ export class AcpBackend implements IAgentBackend {
 
       // Send initial prompt if provided
       if (initialPrompt) {
-        this.sendPrompt(sessionId, initialPrompt).catch((error) => {
+        this.sendPrompt(sessionId, initialPrompt).catch(error => {
           logger.debug('[AcpBackend] Error sending initial prompt:', error);
           this.emit({ type: 'status', status: 'error', detail: String(error) });
         });
       }
 
       return { sessionId };
-
     } catch (error) {
       logger.debug('[AcpBackend] Error starting session:', error);
       this.emit({
         type: 'status',
         status: 'error',
-        detail: error instanceof Error ? error.message : String(error)
+        detail: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -851,14 +876,15 @@ export class AcpBackend implements IAgentBackend {
 
     try {
       // Convert mcpServers to ACP format
-      const acpMcpServers = mcpServers?.map(server => ({
-        name: server.name,
-        command: server.command,
-        args: server.args || [],
-        env: server.env
-          ? Object.entries(server.env).map(([name, value]) => ({ name, value }))
-          : [],
-      })) || [];
+      const acpMcpServers =
+        mcpServers?.map(server => ({
+          name: server.name,
+          command: server.command,
+          args: server.args || [],
+          env: server.env
+            ? Object.entries(server.env).map(([name, value]) => ({ name, value }))
+            : [],
+        })) || [];
 
       // Call session/load method
       const loadSessionRequest = {
@@ -876,13 +902,12 @@ export class AcpBackend implements IAgentBackend {
       logger.debug(`[AcpBackend] Session loaded: ${sessionId}`);
 
       return { sessionId };
-
     } catch (error) {
       logger.debug('[AcpBackend] Error loading session:', error);
       this.emit({
         type: 'status',
         status: 'error',
-        detail: error instanceof Error ? error.message : String(error)
+        detail: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -900,7 +925,7 @@ export class AcpBackend implements IAgentBackend {
       toolCallIdToNameMap: this.toolCallIdToNameMap,
       idleTimeout: this.idleTimeout,
       toolCallCountSincePrompt: this.toolCallCountSincePrompt,
-      emit: (msg) => this.emit(msg),
+      emit: msg => this.emit(msg),
       emitIdleStatus: () => this.emitIdleStatus(),
       clearIdleTimeout: () => {
         if (this.idleTimeout) {
@@ -930,14 +955,21 @@ export class AcpBackend implements IAgentBackend {
 
     // Log session updates for debugging (but not every chunk to avoid log spam)
     if (sessionUpdateType !== 'agent_message_chunk') {
-      logger.debug(`[AcpBackend] Received session update: ${sessionUpdateType}`, JSON.stringify({
-        sessionUpdate: sessionUpdateType,
-        toolCallId: (update as { toolCallId?: string }).toolCallId,
-        status: (update as { status?: string }).status,
-        kind: (update as { kind?: unknown }).kind,
-        hasContent: !!(update as { content?: unknown }).content,
-        hasLocations: !!(update as { locations?: unknown[] }).locations,
-      }, null, 2));
+      logger.debug(
+        `[AcpBackend] Received session update: ${sessionUpdateType}`,
+        JSON.stringify(
+          {
+            sessionUpdate: sessionUpdateType,
+            toolCallId: (update as { toolCallId?: string }).toolCallId,
+            status: (update as { status?: string }).status,
+            kind: (update as { kind?: unknown }).kind,
+            hasContent: !!(update as { content?: unknown }).content,
+            hasLocations: !!(update as { locations?: unknown[] }).locations,
+          },
+          null,
+          2
+        )
+      );
     }
 
     const ctx = this.createHandlerContext();
@@ -973,14 +1005,24 @@ export class AcpBackend implements IAgentBackend {
 
     // Log unhandled session update types for debugging
     const updateTypeStr = sessionUpdateType as string;
-    const handledTypes = ['agent_message_chunk', 'tool_call_update', 'agent_thought_chunk', 'tool_call'];
+    const handledTypes = [
+      'agent_message_chunk',
+      'tool_call_update',
+      'agent_thought_chunk',
+      'tool_call',
+    ];
     const extendedUpdate = update as { messageChunk?: unknown; plan?: unknown; thinking?: unknown };
-    if (updateTypeStr &&
-        !handledTypes.includes(updateTypeStr) &&
-        !extendedUpdate.messageChunk &&
-        !extendedUpdate.plan &&
-        !extendedUpdate.thinking) {
-      logger.debug(`[AcpBackend] Unhandled session update type: ${updateTypeStr}`, JSON.stringify(update, null, 2));
+    if (
+      updateTypeStr &&
+      !handledTypes.includes(updateTypeStr) &&
+      !extendedUpdate.messageChunk &&
+      !extendedUpdate.plan &&
+      !extendedUpdate.thinking
+    ) {
+      logger.debug(
+        `[AcpBackend] Unhandled session update type: ${updateTypeStr}`,
+        JSON.stringify(update, null, 2)
+      );
     }
   }
 
@@ -997,7 +1039,9 @@ export class AcpBackend implements IAgentBackend {
     this.recentPromptHadChangeTitle = promptHasChangeTitle;
 
     if (promptHasChangeTitle) {
-      logger.debug('[AcpBackend] Prompt contains change_title instruction - will auto-approve first "other" tool call if it matches pattern');
+      logger.debug(
+        '[AcpBackend] Prompt contains change_title instruction - will auto-approve first "other" tool call if it matches pattern'
+      );
     }
 
     if (this.disposed) {
@@ -1012,7 +1056,9 @@ export class AcpBackend implements IAgentBackend {
     this.waitingForResponse = true;
 
     try {
-      logger.debug(`[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`);
+      logger.debug(
+        `[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`
+      );
 
       const contentBlock: ContentBlock = {
         type: 'text',
@@ -1029,7 +1075,6 @@ export class AcpBackend implements IAgentBackend {
 
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
       // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
-
     } catch (error) {
       logger.debug('[AcpBackend] Error sending prompt:', error);
       this.waitingForResponse = false;
@@ -1040,7 +1085,8 @@ export class AcpBackend implements IAgentBackend {
         errorDetail = error.message;
       } else if (typeof error === 'object' && error !== null) {
         const errObj = error as Record<string, unknown>;
-        const fallbackMessage = (typeof errObj.message === 'string' ? errObj.message : undefined) || String(error);
+        const fallbackMessage =
+          (typeof errObj.message === 'string' ? errObj.message : undefined) || String(error);
         if (errObj.code !== undefined) {
           errorDetail = JSON.stringify({ code: errObj.code, message: fallbackMessage });
         } else if (typeof errObj.message === 'string') {
@@ -1055,7 +1101,7 @@ export class AcpBackend implements IAgentBackend {
       this.emit({
         type: 'status',
         status: 'error',
-        detail: errorDetail
+        detail: errorDetail,
       });
       throw error;
     }
@@ -1140,7 +1186,7 @@ export class AcpBackend implements IAgentBackend {
         // Send cancel to stop any ongoing work
         await Promise.race([
           this.connection.cancel({ sessionId: this.acpSessionId }),
-          new Promise((resolve) => setTimeout(resolve, 2000)), // 2s timeout for graceful shutdown
+          new Promise(resolve => setTimeout(resolve, 2000)), // 2s timeout for graceful shutdown
         ]);
       } catch (error) {
         logger.debug('[AcpBackend] Error during graceful shutdown:', error);
@@ -1153,7 +1199,7 @@ export class AcpBackend implements IAgentBackend {
       this.process.kill('SIGTERM');
 
       // Give process 1 second to terminate gracefully
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         const timeout = setTimeout(() => {
           if (this.process) {
             logger.debug('[AcpBackend] Force killing process');

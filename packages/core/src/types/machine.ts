@@ -22,7 +22,14 @@ export interface DaemonState {
   httpPort?: number;
   startedAt?: number;
   shutdownRequestedAt?: number;
-  shutdownSource?: 'mobile-app' | 'cli' | 'free-cli' | 'free-app' | 'os-signal' | 'unknown' | string;
+  shutdownSource?:
+    | 'mobile-app'
+    | 'cli'
+    | 'free-cli'
+    | 'free-app'
+    | 'os-signal'
+    | 'unknown'
+    | string;
 }
 
 export interface Machine {

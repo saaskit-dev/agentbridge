@@ -49,7 +49,9 @@ export function registerStorageFactory(type: string, factory: StorageFactory): v
 export function createStorage(type: string, options?: StorageOptions): IStorage {
   const factory = storageFactories.get(type);
   if (!factory) {
-    throw new Error(`Storage factory not found: ${type}. Available: ${[...storageFactories.keys()].join(', ')}`);
+    throw new Error(
+      `Storage factory not found: ${type}. Available: ${[...storageFactories.keys()].join(', ')}`
+    );
   }
   return factory(options);
 }
@@ -92,7 +94,9 @@ export function registerSecureStorageFactory(type: string, factory: SecureStorag
 export function createSecureStorage(type: string, options?: SecureStorageOptions): ISecureStorage {
   const factory = secureStorageFactories.get(type);
   if (!factory) {
-    throw new Error(`Secure storage factory not found: ${type}. Available: ${[...secureStorageFactories.keys()].join(', ')}`);
+    throw new Error(
+      `Secure storage factory not found: ${type}. Available: ${[...secureStorageFactories.keys()].join(', ')}`
+    );
   }
   return factory(options);
 }

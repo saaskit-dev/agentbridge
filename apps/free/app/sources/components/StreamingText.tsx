@@ -9,9 +9,9 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
-import { useStreamingText } from '@/hooks/useStreamingText';
 import { MarkdownView } from './markdown/MarkdownView';
 import type { Option } from './markdown/MarkdownView';
+import { useStreamingText } from '@/hooks/useStreamingText';
 
 /**
  * StreamingText props
@@ -42,20 +42,10 @@ export interface StreamingTextProps {
 /**
  * Cursor component
  */
-function Cursor({
-  visible,
-  char = '▋',
-  style,
-}: {
-  visible: boolean;
-  char?: string;
-  style?: any;
-}) {
+function Cursor({ visible, char = '▋', style }: { visible: boolean; char?: string; style?: any }) {
   if (!visible) return null;
 
-  return (
-    <Text style={[styles.cursor, style]}>{char}</Text>
-  );
+  return <Text style={[styles.cursor, style]}>{char}</Text>;
 }
 
 /**
@@ -74,7 +64,7 @@ function BlinkingCursor({
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setVisible((v) => !v);
+      setVisible(v => !v);
     }, interval);
 
     return () => clearInterval(timer);
@@ -122,9 +112,7 @@ export function StreamingText({
 
   // Determine what text to display
   const isStreaming = state.isStreaming && state.messageId === messageId;
-  const displayText = isStreaming
-    ? state.pendingText
-    : finalText;
+  const displayText = isStreaming ? state.pendingText : finalText;
 
   // Reset when message ID changes
   useEffect(() => {
@@ -141,19 +129,12 @@ export function StreamingText({
   return (
     <View style={[styles.container, containerStyle]}>
       {useMarkdown ? (
-        <MarkdownView
-          markdown={displayText}
-          onOptionPress={onOptionPress}
-        />
+        <MarkdownView markdown={displayText} onOptionPress={onOptionPress} />
       ) : (
         <Text style={[styles.text, textStyle]}>{displayText}</Text>
       )}
       {isStreaming && showCursor && (
-        <BlinkingCursor
-          char={cursorChar}
-          interval={cursorBlinkInterval}
-          style={styles.cursor}
-        />
+        <BlinkingCursor char={cursorChar} interval={cursorBlinkInterval} style={styles.cursor} />
       )}
     </View>
   );

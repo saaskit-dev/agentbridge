@@ -1,4 +1,3 @@
-
 import type { PermissionMode } from './session';
 
 /** Message metadata */

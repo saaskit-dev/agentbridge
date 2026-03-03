@@ -1,13 +1,17 @@
+import { existsSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import { createInterface } from 'node:readline';
 import chalk from 'chalk';
+import { configuration } from '@/configuration';
+import {
+  stopDaemon,
+  checkIfDaemonRunningAndCleanupStaleState,
+  isDaemonRunningCurrentlyInstalledFreeVersion,
+} from '@/daemon/controlClient';
 import { readCredentials, clearCredentials, clearMachineId, readSettings } from '@/persistence';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
-import { configuration } from '@/configuration';
-import { existsSync, rmSync } from 'node:fs';
-import { createInterface } from 'node:readline';
-import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledFreeVersion } from '@/daemon/controlClient';
-import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 import { logger } from '@/ui/logger';
-import os from 'node:os';
+import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 
 export async function handleAuthCommand(args: string[]): Promise<void> {
   const subcommand = args[0];
@@ -116,7 +120,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       const daemonProcess = spawnFreeCLI(['daemon', 'start-sync'], {
         detached: true,
         stdio: 'ignore',
-        env: process.env
+        env: process.env,
       });
       daemonProcess.unref();
 
@@ -157,7 +161,10 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       console.log(chalk.gray(`   ${error instanceof Error ? error.message : 'Unknown error'}`));
     }
   } catch (error) {
-    console.error(chalk.red('Authentication failed:'), error instanceof Error ? error.message : 'Unknown error');
+    console.error(
+      chalk.red('Authentication failed:'),
+      error instanceof Error ? error.message : 'Unknown error'
+    );
     process.exit(1);
   }
 }
@@ -179,10 +186,10 @@ async function handleAuthLogout(): Promise<void> {
   // Ask for confirmation
   const rl = createInterface({
     input: process.stdin,
-    output: process.stdout
+    output: process.stdout,
   });
 
-  const answer = await new Promise<string>((resolve) => {
+  const answer = await new Promise<string>(resolve => {
     rl.question(chalk.yellow('Are you sure you want to log out? (y/N): '), resolve);
   });
 
@@ -194,7 +201,7 @@ async function handleAuthLogout(): Promise<void> {
       try {
         await stopDaemon();
         console.log(chalk.gray('Stopped daemon'));
-      } catch { }
+      } catch {}
 
       // Remove entire free directory (as current logout does)
       if (existsSync(freeDir)) {
@@ -204,7 +211,9 @@ async function handleAuthLogout(): Promise<void> {
       console.log(chalk.green('✓ Successfully logged out'));
       console.log(chalk.gray('  Run "free auth login" to authenticate again'));
     } catch (error) {
-      throw new Error(`Failed to logout: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to logout: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   } else {
     console.log(chalk.blue('Logout cancelled'));

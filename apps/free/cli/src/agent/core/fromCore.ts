@@ -57,8 +57,17 @@ export {
 } from '@agentbridge/core';
 
 // Factory functions
-export { registerAgentFactory, createAgent, hasAgentFactory, listAgentFactories } from '@agentbridge/core';
-export { registerTransportHandler, createTransportHandler, hasTransportHandler } from '@agentbridge/core';
+export {
+  registerAgentFactory,
+  createAgent,
+  hasAgentFactory,
+  listAgentFactories,
+} from '@agentbridge/core';
+export {
+  registerTransportHandler,
+  createTransportHandler,
+  hasTransportHandler,
+} from '@agentbridge/core';
 
 // Transport implementations (base class only - GeminiTransport is free-specific)
 export { DefaultTransport, defaultTransport } from '@agentbridge/core';
