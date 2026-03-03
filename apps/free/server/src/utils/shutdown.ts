@@ -5,6 +5,9 @@ const shutdownController = new AbortController();
 
 export const shutdownSignal = shutdownController.signal;
 
+let shutdownTriggered = false;
+let shutdownResolve: (() => void) | null = null;
+
 export function onShutdown(name: string, callback: () => Promise<void>): () => void {
     if (shutdownSignal.aborted) {
         // If already shutting down, execute immediately
@@ -34,17 +37,44 @@ export function isShutdown() {
     return shutdownSignal.aborted;
 }
 
+/**
+ * Check if shutdown has been triggered
+ */
+export function isShuttingDown(): boolean {
+    return shutdownTriggered;
+}
+
+/**
+ * Trigger a graceful shutdown programmatically
+ * Can be called from exception handlers or other error scenarios
+ */
+export function triggerShutdown(): void {
+    if (shutdownTriggered) {
+        return;
+    }
+    shutdownTriggered = true;
+    shutdownController.abort();
+    
+    if (shutdownResolve) {
+        shutdownResolve();
+    }
+}
+
 export async function awaitShutdown() {
-    await new Promise<void>((resolve) => {
+    const shutdownPromise = new Promise<void>((resolve) => {
+        shutdownResolve = resolve;
+        
         process.on('SIGINT', async () => {
             log('Received SIGINT signal. Exiting...');
-            resolve();
+            triggerShutdown();
         });
         process.on('SIGTERM', async () => {
             log('Received SIGTERM signal. Exiting...');
-            resolve();
+            triggerShutdown();
         });
     });
+    
+    await shutdownPromise;
     shutdownController.abort();
     
     // Copy handlers to avoid race conditions

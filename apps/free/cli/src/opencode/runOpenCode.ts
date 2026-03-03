@@ -576,9 +576,8 @@ export async function runOpenCode(opts: {
 
             // Wait for OpenCode to finish responding (all chunks received + final idle)
             // This ensures we don't clear streaming state until response is truly done
-              await opencodeBackend!.waitForResponseComplete(120000);
-              logger.debug('[OpenCode] Response complete');
-            }
+            await opencodeBackend!.waitForResponseComplete?.(120000);
+            logger.debug('[OpenCode] Response complete');
 
             break; // Success, exit retry loop
           } catch (promptError) {

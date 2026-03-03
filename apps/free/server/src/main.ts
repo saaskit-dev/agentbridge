@@ -1,6 +1,6 @@
 import { startApi } from "@/app/api/api";
 import { log } from "@/utils/log";
-import { awaitShutdown, onShutdown } from "@/utils/shutdown";
+import { awaitShutdown, onShutdown, triggerShutdown, isShuttingDown } from "@/utils/shutdown";
 import { db, closePGlite } from './storage/db';
 import { startTimeout } from "./app/presence/timeout";
 import { activityCache } from "@/app/presence/sessionCache";
@@ -45,6 +45,34 @@ async function main() {
 }
 
 // Process-level error handling
+let processExitScheduled = false;
+
+async function gracefulExit(reason: string, error?: Error): Promise<void> {
+    if (processExitScheduled || isShuttingDown()) {
+        return;
+    }
+    processExitScheduled = true;
+    
+    log({
+        module: 'process-error',
+        level: 'error',
+        stack: error?.stack,
+        name: error?.name
+    }, `Graceful exit triggered: ${reason}`);
+
+    // Trigger shutdown handlers
+    triggerShutdown();
+    
+    // Force exit after 5 seconds if cleanup hangs
+    setTimeout(() => {
+        log({
+            module: 'process-error',
+            level: 'error'
+        }, 'Forcing exit after timeout');
+        process.exit(1);
+    }, 5000);
+}
+
 process.on('uncaughtException', (error) => {
     log({
         module: 'process-error',
@@ -54,7 +82,7 @@ process.on('uncaughtException', (error) => {
     }, `Uncaught Exception: ${error.message}`);
 
     console.error('Uncaught Exception:', error);
-    process.exit(1);
+    gracefulExit('uncaughtException', error);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -69,7 +97,8 @@ process.on('unhandledRejection', (reason, promise) => {
     }, `Unhandled Rejection: ${errorMsg}`);
 
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    process.exit(1);
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    gracefulExit('unhandledRejection', error);
 });
 
 process.on('warning', (warning) => {

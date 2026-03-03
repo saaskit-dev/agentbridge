@@ -375,7 +375,7 @@ export function query(config: {
         }
     }
 
-    config.options?.abort?.addEventListener('abort', cleanup)
+    config.options?.abort?.addEventListener('abort', cleanup, { once: true })
     process.on('exit', cleanup)
 
     // Handle process exit

@@ -20,4 +20,8 @@ config.transformer.getTransformOptions = async () => ({
   },
 });
 
+// Enable package exports resolution for @noble/hashes and similar packages
+// Fixes: "not listed in the exports" warnings
+config.resolver.unstable_enablePackageExports = true;
+config.resolver.unstable_conditionNames = ['import', 'require', 'react-native', 'default'];
 module.exports = config;
