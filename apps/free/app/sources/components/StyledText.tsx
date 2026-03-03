@@ -14,22 +14,16 @@ interface StyledTextProps extends RNTextProps {
   selectable?: boolean;
 }
 
-export const Text: React.FC<StyledTextProps> = ({ 
-  style, 
+export const Text: React.FC<StyledTextProps> = ({
+  style,
   useDefaultTypography = true,
   selectable = false,
-  ...props 
+  ...props
 }) => {
   const defaultStyle = useDefaultTypography ? Typography.default() : {};
-  
-  return (
-    <RNText 
-      style={[defaultStyle, style]}
-      selectable={selectable}
-      {...props} 
-    />
-  );
+
+  return <RNText style={[defaultStyle, style]} selectable={selectable} {...props} />;
 };
 
 // Export the original RNText as well, in case it's needed
-export { Text as RNText } from 'react-native'; 
+export { Text as RNText } from 'react-native';

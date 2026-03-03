@@ -41,4 +41,3 @@ export function initializeAgents(): void {
   const { registerGeminiAgent } = require('./factories/gemini');
   registerGeminiAgent();
 }
-

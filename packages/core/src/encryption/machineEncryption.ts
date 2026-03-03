@@ -1,12 +1,12 @@
 /**
  * Machine-specific encryption manager
- * 
+ *
  * Handles batch decryption/encryption of machine metadata and daemon state.
  */
 
-import type { Cipher } from './types';
 import { encodeBase64, decodeBase64 } from '../utils/encoding';
 import { EncryptionCache } from './sessionEncryption';
+import type { Cipher } from './types';
 
 /**
  * Machine encryption manager
@@ -44,7 +44,10 @@ export class MachineEncryption {
     return encodeBase64(encrypted[0]);
   }
 
-  async decryptDaemonState(version: number, encrypted: string | null | undefined): Promise<unknown | null> {
+  async decryptDaemonState(
+    version: number,
+    encrypted: string | null | undefined
+  ): Promise<unknown | null> {
     if (!encrypted) return null;
 
     const cached = this.cache.getCachedAgentState(this.machineId, version);

@@ -1,16 +1,16 @@
-import * as React from "react";
-import { View, Text } from "react-native";
+import * as React from 'react';
+import { View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { MarkdownView } from "./markdown/MarkdownView";
-import { t } from '@/text';
-import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
-import { Metadata } from "@/sync/storageTypes";
-import { layout } from "./layout";
-import { ToolView } from "./tools/ToolView";
-import { AgentEvent } from "@/sync/typesRaw";
-import { sync } from '@/sync/sync';
+import { layout } from './layout';
+import { MarkdownView } from './markdown/MarkdownView';
 import { Option } from './markdown/MarkdownView';
-import { useSetting } from "@/sync/storage";
+import { ToolView } from './tools/ToolView';
+import { useSetting } from '@/sync/storage';
+import { Metadata } from '@/sync/storageTypes';
+import { sync } from '@/sync/sync';
+import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/sync/typesMessage';
+import { AgentEvent } from '@/sync/typesRaw';
+import { t } from '@/text';
 
 export const MessageView = (props: {
   message: Message;
@@ -47,16 +47,17 @@ function RenderBlock(props: {
       return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
 
     case 'tool-call':
-      return <ToolCallBlock
-        message={props.message}
-        metadata={props.metadata}
-        sessionId={props.sessionId}
-        getMessageById={props.getMessageById}
-      />;
+      return (
+        <ToolCallBlock
+          message={props.message}
+          metadata={props.metadata}
+          sessionId={props.sessionId}
+          getMessageById={props.getMessageById}
+        />
+      );
 
     case 'agent-event':
       return <AgentEventBlock event={props.message.event} metadata={props.metadata} />;
-
 
     default:
       // Exhaustive check - TypeScript will error if we miss a case
@@ -65,18 +66,21 @@ function RenderBlock(props: {
   }
 }
 
-function UserTextBlock(props: {
-  message: UserTextMessage;
-  sessionId: string;
-}) {
-  const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId]);
+function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
+  const handleOptionPress = React.useCallback(
+    (option: Option) => {
+      sync.sendMessage(props.sessionId, option.title);
+    },
+    [props.sessionId]
+  );
 
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
-        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
+        <MarkdownView
+          markdown={props.message.displayText || props.message.text}
+          onOptionPress={handleOptionPress}
+        />
         {/* {__DEV__ && (
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
@@ -85,14 +89,14 @@ function UserTextBlock(props: {
   );
 }
 
-function AgentTextBlock(props: {
-  message: AgentTextMessage;
-  sessionId: string;
-}) {
+function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string }) {
   const experiments = useSetting('experiments');
-  const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId]);
+  const handleOptionPress = React.useCallback(
+    (option: Option) => {
+      sync.sendMessage(props.sessionId, option.title);
+    },
+    [props.sessionId]
+  );
 
   // Hide thinking messages unless experiments is enabled
   if (props.message.isThinking && !experiments) {
@@ -106,14 +110,13 @@ function AgentTextBlock(props: {
   );
 }
 
-function AgentEventBlock(props: {
-  event: AgentEvent;
-  metadata: Metadata | null;
-}) {
+function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null }) {
   if (props.event.type === 'switch') {
     return (
       <View style={styles.agentEventContainer}>
-        <Text style={styles.agentEventText}>{t('message.switchedToMode', { mode: props.event.mode })}</Text>
+        <Text style={styles.agentEventText}>
+          {t('message.switchedToMode', { mode: props.event.mode })}
+        </Text>
       </View>
     );
   }
@@ -171,7 +174,7 @@ function ToolCallBlock(props: {
   );
 }
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create(theme => ({
   messageContainer: {
     flexDirection: 'row',
     justifyContent: 'center',

@@ -7,11 +7,7 @@ export type PermissionMode =
   | 'safe-yolo'
   | 'yolo';
 
-export type ModelMode =
-  | 'default'
-  | 'gemini-2.5-pro'
-  | 'gemini-2.5-flash'
-  | 'gemini-2.5-flash-lite';
+export type ModelMode = 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite';
 
 export interface SessionMetadata {
   path: string;
@@ -43,22 +39,28 @@ export interface SessionMetadata {
 
 export interface AgentState {
   controlledByUser?: boolean | null;
-  requests?: Record<string, {
-    tool: string;
-    arguments: unknown;
-    createdAt?: number | null;
-  }> | null;
-  completedRequests?: Record<string, {
-    tool: string;
-    arguments: unknown;
-    createdAt?: number | null;
-    completedAt?: number | null;
-    status: 'canceled' | 'denied' | 'approved';
-    reason?: string | null;
-    mode?: string | null;
-    allowedTools?: string[] | null;
-    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort' | null;
-  }> | null;
+  requests?: Record<
+    string,
+    {
+      tool: string;
+      arguments: unknown;
+      createdAt?: number | null;
+    }
+  > | null;
+  completedRequests?: Record<
+    string,
+    {
+      tool: string;
+      arguments: unknown;
+      createdAt?: number | null;
+      completedAt?: number | null;
+      status: 'canceled' | 'denied' | 'approved';
+      reason?: string | null;
+      mode?: string | null;
+      allowedTools?: string[] | null;
+      decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort' | null;
+    }
+  > | null;
 }
 
 export type EncryptionVariant = 'legacy' | 'dataKey';

@@ -15,18 +15,11 @@ export default defineConfig({
     testTimeout: 30000,
     hookTimeout: 30000,
     // Use jsdom for React tests
-    environmentMatchGlobs: [
-      ['apps/free/app/**', 'jsdom'],
-    ],
+    environmentMatchGlobs: [['apps/free/app/**', 'jsdom']],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules/**',
-        'dist/**',
-        '**/*.d.ts',
-        '**/__tests__/**',
-      ],
+      exclude: ['node_modules/**', 'dist/**', '**/*.d.ts', '**/__tests__/**'],
     },
   },
   resolve: {

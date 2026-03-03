@@ -7,10 +7,14 @@
 
 import type { IAgentBackend } from '../../interfaces/agent';
 import { registerAgentFactory } from '../../interfaces/agent';
-import type { McpServerConfig, AcpAgentConfig, AcpPermissionHandler } from '../../types/agent';
 import type { ITransportHandler } from '../../interfaces/transport';
-import { AcpBackend } from './acp';
-import { GeminiTransport, CodexTransport, ClaudeAcpTransport, DefaultTransport } from '../transport/default';
+import type { McpServerConfig, AcpAgentConfig, AcpPermissionHandler } from '../../types/agent';
+import {
+  GeminiTransport,
+  CodexTransport,
+  ClaudeAcpTransport,
+  DefaultTransport,
+} from '../transport/default';
 
 // ============================================================================
 // Generic ACP Backend Factory
@@ -232,23 +236,29 @@ export function createClaudeAcpBackend(options: ClaudeAcpBackendOptions): IAgent
 // ============================================================================
 
 // Register factories with agent registry
-registerAgentFactory('gemini', (config) => createGeminiBackend({
-  cwd: config.cwd,
-  env: config.env,
-  mcpServers: config.mcpServers,
-}));
+registerAgentFactory('gemini', config =>
+  createGeminiBackend({
+    cwd: config.cwd,
+    env: config.env,
+    mcpServers: config.mcpServers,
+  })
+);
 
-registerAgentFactory('codex-acp', (config) => createCodexBackend({
-  cwd: config.cwd,
-  env: config.env,
-  mcpServers: config.mcpServers,
-}));
+registerAgentFactory('codex-acp', config =>
+  createCodexBackend({
+    cwd: config.cwd,
+    env: config.env,
+    mcpServers: config.mcpServers,
+  })
+);
 
-registerAgentFactory('claude-acp', (config) => createClaudeAcpBackend({
-  cwd: config.cwd,
-  env: config.env,
-  mcpServers: config.mcpServers,
-}));
+registerAgentFactory('claude-acp', config =>
+  createClaudeAcpBackend({
+    cwd: config.cwd,
+    env: config.env,
+    mcpServers: config.mcpServers,
+  })
+);
 
 // ============================================================================
 // OpenCode Backend Factory
@@ -302,10 +312,13 @@ export function createOpenCodeBackend(options: OpenCodeBackendOptions): IAgentBa
 
 // Import OpenCodeTransport
 import { OpenCodeTransport } from '../transport/default';
+import { AcpBackend } from './acp';
 
 // Register OpenCode factory
-registerAgentFactory('opencode', (config) => createOpenCodeBackend({
-  cwd: config.cwd,
-  env: config.env,
-  mcpServers: config.mcpServers,
-}));
+registerAgentFactory('opencode', config =>
+  createOpenCodeBackend({
+    cwd: config.cwd,
+    env: config.env,
+    mcpServers: config.mcpServers,
+  })
+);

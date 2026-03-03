@@ -13,13 +13,7 @@ import type {
 } from '../types/agent';
 
 // Re-export types
-export type {
-  AgentId,
-  AgentTransport,
-  McpServerConfig,
-  AgentBackendConfig,
-  AcpAgentConfig,
-};
+export type { AgentId, AgentTransport, McpServerConfig, AgentBackendConfig, AcpAgentConfig };
 
 /** Unique identifier for an agent session */
 export type SessionId = string;
@@ -32,7 +26,11 @@ export type ToolCallId = string;
  */
 export type AgentMessage =
   | { type: 'model-output'; textDelta?: string; fullText?: string }
-  | { type: 'status'; status: 'starting' | 'running' | 'idle' | 'stopped' | 'error'; detail?: string }
+  | {
+      type: 'status';
+      status: 'starting' | 'running' | 'idle' | 'stopped' | 'error';
+      detail?: string;
+    }
   | { type: 'tool-call'; toolName: string; args: Record<string, unknown>; callId: ToolCallId }
   | { type: 'tool-result'; toolName: string; result: unknown; callId: ToolCallId }
   | { type: 'permission-request'; id: string; reason: string; payload: unknown }
@@ -42,8 +40,19 @@ export type AgentMessage =
   | { type: 'event'; name: string; payload: unknown }
   | { type: 'token-count'; [key: string]: unknown }
   | { type: 'exec-approval-request'; call_id: string; [key: string]: unknown }
-  | { type: 'patch-apply-begin'; call_id: string; auto_approved?: boolean; changes: Record<string, unknown> }
-  | { type: 'patch-apply-end'; call_id: string; stdout?: string; stderr?: string; success: boolean };
+  | {
+      type: 'patch-apply-begin';
+      call_id: string;
+      auto_approved?: boolean;
+      changes: Record<string, unknown>;
+    }
+  | {
+      type: 'patch-apply-end';
+      call_id: string;
+      stdout?: string;
+      stderr?: string;
+      success: boolean;
+    };
 
 /** Result of starting a session */
 export interface StartSessionResult {
@@ -135,7 +144,9 @@ export function registerAgentFactory(type: AgentId, factory: AgentBackendFactory
 export function createAgent(type: AgentId, config: AgentBackendConfig): IAgentBackend {
   const factory = agentFactories.get(type);
   if (!factory) {
-    throw new Error(`Agent factory not found: ${type}. Available: ${[...agentFactories.keys()].join(', ')}`);
+    throw new Error(
+      `Agent factory not found: ${type}. Available: ${[...agentFactories.keys()].join(', ')}`
+    );
   }
   return factory(config);
 }
@@ -155,41 +166,64 @@ export function listAgentFactories(): AgentId[] {
 // ============================================================================
 
 /** Type guard for model output messages */
-export function isModelOutputMessage(msg: AgentMessage): msg is { type: 'model-output'; textDelta?: string; fullText?: string } {
+export function isModelOutputMessage(
+  msg: AgentMessage
+): msg is { type: 'model-output'; textDelta?: string; fullText?: string } {
   return msg.type === 'model-output';
 }
 
 /** Type guard for status messages */
-export function isStatusMessage(msg: AgentMessage): msg is { type: 'status'; status: 'starting' | 'running' | 'idle' | 'stopped' | 'error'; detail?: string } {
+export function isStatusMessage(msg: AgentMessage): msg is {
+  type: 'status';
+  status: 'starting' | 'running' | 'idle' | 'stopped' | 'error';
+  detail?: string;
+} {
   return msg.type === 'status';
 }
 
 /** Type guard for tool call messages */
-export function isToolCallMessage(msg: AgentMessage): msg is { type: 'tool-call'; toolName: string; args: Record<string, unknown>; callId: ToolCallId } {
+export function isToolCallMessage(msg: AgentMessage): msg is {
+  type: 'tool-call';
+  toolName: string;
+  args: Record<string, unknown>;
+  callId: ToolCallId;
+} {
   return msg.type === 'tool-call';
 }
 
 /** Type guard for tool result messages */
-export function isToolResultMessage(msg: AgentMessage): msg is { type: 'tool-result'; toolName: string; result: unknown; callId: ToolCallId } {
+export function isToolResultMessage(
+  msg: AgentMessage
+): msg is { type: 'tool-result'; toolName: string; result: unknown; callId: ToolCallId } {
   return msg.type === 'tool-result';
 }
 
 /** Type guard for permission request messages */
-export function isPermissionRequestMessage(msg: AgentMessage): msg is { type: 'permission-request'; id: string; reason: string; payload: unknown } {
+export function isPermissionRequestMessage(
+  msg: AgentMessage
+): msg is { type: 'permission-request'; id: string; reason: string; payload: unknown } {
   return msg.type === 'permission-request';
 }
 
 /** Type guard for permission response messages */
-export function isPermissionResponseMessage(msg: AgentMessage): msg is { type: 'permission-response'; id: string; approved: boolean } {
+export function isPermissionResponseMessage(
+  msg: AgentMessage
+): msg is { type: 'permission-response'; id: string; approved: boolean } {
   return msg.type === 'permission-response';
 }
 
 /** Type guard for event messages */
-export function isEventMessage(msg: AgentMessage): msg is { type: 'event'; name: string; payload: unknown } {
+export function isEventMessage(
+  msg: AgentMessage
+): msg is { type: 'event'; name: string; payload: unknown } {
   return msg.type === 'event';
 }
 
 /** Extract text content from a model output message */
-export function getMessageText(msg: { type: 'model-output'; textDelta?: string; fullText?: string }): string {
+export function getMessageText(msg: {
+  type: 'model-output';
+  textDelta?: string;
+  fullText?: string;
+}): string {
   return msg.textDelta ?? msg.fullText ?? '';
 }

@@ -11,10 +11,10 @@
  * Note: This process must not print to stdout as it would break MCP STDIO.
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
 function parseArgs(argv: string[]): { url: string | null } {
@@ -73,7 +73,7 @@ async function main() {
         title: z.string().describe('The new title for the chat session'),
       },
     },
-    async (args) => {
+    async args => {
       try {
         const client = await ensureHttpClient();
         const response = await client.callTool({ name: 'change_title', arguments: args });
@@ -82,7 +82,10 @@ async function main() {
       } catch (error) {
         return {
           content: [
-            { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
+            {
+              type: 'text',
+              text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}`,
+            },
           ],
           isError: true,
         };
@@ -96,11 +99,10 @@ async function main() {
 }
 
 // Start and surface fatal errors to stderr only
-main().catch((err) => {
+main().catch(err => {
   try {
     process.stderr.write(`[free-mcp] Fatal: ${err instanceof Error ? err.message : String(err)}\n`);
   } finally {
     process.exit(1);
   }
 });
-

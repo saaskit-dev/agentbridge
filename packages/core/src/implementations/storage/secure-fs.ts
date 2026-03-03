@@ -5,14 +5,14 @@
  * Values are encrypted before being written to disk.
  */
 
-import { readFile, writeFile, mkdir, unlink, rename, open, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { constants } from 'node:fs';
-import type { ISecureStorage, SecureStorageOptions } from '../../interfaces/storage';
-import { registerSecureStorageFactory } from '../../interfaces/storage';
+import { readFile, writeFile, mkdir, unlink, rename, open, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { ICrypto } from '../../interfaces/crypto';
 import { createCrypto } from '../../interfaces/crypto';
+import type { ISecureStorage, SecureStorageOptions } from '../../interfaces/storage';
+import { registerSecureStorageFactory } from '../../interfaces/storage';
 
 /** Lock configuration */
 const LOCK_RETRY_INTERVAL_MS = 100;
@@ -32,10 +32,10 @@ class EncryptedFsStorage implements ISecureStorage {
 
   constructor(options?: SecureStorageOptions) {
     this.basePath = options?.namespace ?? process.cwd();
-    
+
     // Initialize crypto first (always needed)
     this.crypto = createCrypto('node');
-    
+
     // Get or generate encryption key
     if (options?.key) {
       this.key = options.key;
@@ -69,7 +69,10 @@ class EncryptedFsStorage implements ISecureStorage {
 
     while (attempts < MAX_LOCK_ATTEMPTS) {
       try {
-        fileHandle = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY);
+        fileHandle = await open(
+          lockPath,
+          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY
+        );
         return async () => {
           if (fileHandle) {
             await fileHandle.close();
@@ -173,7 +176,7 @@ class EncryptedFsStorage implements ISecureStorage {
 }
 
 // Register factory
-registerSecureStorageFactory('fs', (options) => new EncryptedFsStorage(options));
+registerSecureStorageFactory('fs', options => new EncryptedFsStorage(options));
 
 // Export for direct use
 export { EncryptedFsStorage };

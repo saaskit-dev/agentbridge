@@ -1,31 +1,31 @@
-import { Context } from "@/context";
-import { buildUserProfile, UserProfile } from "./type";
-import { db } from "@/storage/db";
-import { RelationshipStatus } from "@prisma/client";
+import { RelationshipStatus } from '@prisma/client';
+import { buildUserProfile, UserProfile } from './type';
+import { Context } from '@/context';
+import { db } from '@/storage/db';
 
 export async function friendList(ctx: Context): Promise<UserProfile[]> {
-    // Query all relationships where current user is fromUserId with friend, pending, or requested status
-    const relationships = await db.userRelationship.findMany({
-        where: {
-            fromUserId: ctx.uid,
-            status: {
-                in: [RelationshipStatus.friend, RelationshipStatus.pending, RelationshipStatus.requested]
-            }
-        },
+  // Query all relationships where current user is fromUserId with friend, pending, or requested status
+  const relationships = await db.userRelationship.findMany({
+    where: {
+      fromUserId: ctx.uid,
+      status: {
+        in: [RelationshipStatus.friend, RelationshipStatus.pending, RelationshipStatus.requested],
+      },
+    },
+    include: {
+      toUser: {
         include: {
-            toUser: {
-                include: {
-                    githubUser: true
-                }
-            }
-        }
-    });
+          githubUser: true,
+        },
+      },
+    },
+  });
 
-    // Build UserProfile objects
-    const profiles: UserProfile[] = [];
-    for (const relationship of relationships) {
-        profiles.push(buildUserProfile(relationship.toUser, relationship.status));
-    }
+  // Build UserProfile objects
+  const profiles: UserProfile[] = [];
+  for (const relationship of relationships) {
+    profiles.push(buildUserProfile(relationship.toUser, relationship.status));
+  }
 
-    return profiles;
+  return profiles;
 }

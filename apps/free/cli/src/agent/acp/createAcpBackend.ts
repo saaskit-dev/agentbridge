@@ -13,9 +13,9 @@
  * @module createAcpBackend
  */
 
-import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from './AcpBackend';
 import type { AgentBackend, McpServerConfig } from '../core';
 import { DefaultTransport, type TransportHandler } from '../transport';
+import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from './AcpBackend';
 
 /**
  * Simplified options for creating an ACP backend

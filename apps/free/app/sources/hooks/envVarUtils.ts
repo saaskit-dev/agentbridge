@@ -4,7 +4,7 @@
  */
 
 interface EnvironmentVariables {
-    [varName: string]: string | null;
+  [varName: string]: string | null;
 }
 
 /**
@@ -29,30 +29,30 @@ interface EnvironmentVariables {
  * resolveEnvVarSubstitution('https://api.example.com', {}) // 'https://api.example.com'
  */
 export function resolveEnvVarSubstitution(
-    value: string,
-    daemonEnv: EnvironmentVariables
+  value: string,
+  daemonEnv: EnvironmentVariables
 ): string | null {
-    // Match ${VAR} or ${VAR:-default} or ${VAR:=default} (bash parameter expansion)
-    // Group 1: Variable name (required)
-    // Group 2: Default value (optional) - includes the :- or := prefix
-    // Group 3: The actual default value without prefix (optional)
-    const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)(:-(.*))?(:=(.*))?}$/);
-    if (match) {
-        const varName = match[1];
-        const defaultValue = match[3] ?? match[5]; // :- default or := default
+  // Match ${VAR} or ${VAR:-default} or ${VAR:=default} (bash parameter expansion)
+  // Group 1: Variable name (required)
+  // Group 2: Default value (optional) - includes the :- or := prefix
+  // Group 3: The actual default value without prefix (optional)
+  const match = value.match(/^\$\{([A-Z_][A-Z0-9_]*)(:-(.*))?(:=(.*))?}$/);
+  if (match) {
+    const varName = match[1];
+    const defaultValue = match[3] ?? match[5]; // :- default or := default
 
-        const daemonValue = daemonEnv[varName];
-        if (daemonValue !== undefined && daemonValue !== null) {
-            return daemonValue;
-        }
-        // Variable not set - use default if provided
-        if (defaultValue !== undefined) {
-            return defaultValue;
-        }
-        return null;
+    const daemonValue = daemonEnv[varName];
+    if (daemonValue !== undefined && daemonValue !== null) {
+      return daemonValue;
     }
-    // Not a substitution - return literal value
-    return value;
+    // Variable not set - use default if provided
+    if (defaultValue !== undefined) {
+      return defaultValue;
+    }
+    return null;
+  }
+  // Not a substitution - return literal value
+  return value;
 }
 
 /**
@@ -70,19 +70,19 @@ export function resolveEnvVarSubstitution(
  * ]) // Returns: ['Z_AI_BASE_URL', 'Z_AI_MODEL']
  */
 export function extractEnvVarReferences(
-    environmentVariables: { name: string; value: string }[] | undefined
+  environmentVariables: { name: string; value: string }[] | undefined
 ): string[] {
-    if (!environmentVariables) return [];
+  if (!environmentVariables) return [];
 
-    const refs = new Set<string>();
-    environmentVariables.forEach(ev => {
-        // Match ${VAR} or ${VAR:-default} or ${VAR:=default} (bash parameter expansion)
-        // Only capture the variable name, not the default value
-        const match = ev.value.match(/^\$\{([A-Z_][A-Z0-9_]*)(:-.*|:=.*)?\}$/);
-        if (match) {
-            // Variable name is already validated by regex pattern [A-Z_][A-Z0-9_]*
-            refs.add(match[1]);
-        }
-    });
-    return Array.from(refs);
+  const refs = new Set<string>();
+  environmentVariables.forEach(ev => {
+    // Match ${VAR} or ${VAR:-default} or ${VAR:=default} (bash parameter expansion)
+    // Only capture the variable name, not the default value
+    const match = ev.value.match(/^\$\{([A-Z_][A-Z0-9_]*)(:-.*|:=.*)?\}$/);
+    if (match) {
+      // Variable name is already validated by regex pattern [A-Z_][A-Z0-9_]*
+      refs.add(match[1]);
+    }
+  });
+  return Array.from(refs);
 }

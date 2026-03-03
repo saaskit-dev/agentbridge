@@ -38,12 +38,12 @@ export FREE_MASTER_SECRET=your-secret-key
 
 ### 环境变量
 
-| 变量 | 描述 | 必需 |
-|------|------|------|
-| `FREE_MASTER_SECRET` | 主密钥 (加密/认证) | 是 |
-| `PORT` | 服务器端口 | 否 (默认 3000) |
-| `DATA_DIR` | 数据目录 | 否 (默认 ./data) |
-| `DATABASE_URL` | 外部 PostgreSQL | 否 (默认用 PGlite) |
+| 变量                 | 描述               | 必需               |
+| -------------------- | ------------------ | ------------------ |
+| `FREE_MASTER_SECRET` | 主密钥 (加密/认证) | 是                 |
+| `PORT`               | 服务器端口         | 否 (默认 3000)     |
+| `DATA_DIR`           | 数据目录           | 否 (默认 ./data)   |
+| `DATABASE_URL`       | 外部 PostgreSQL    | 否 (默认用 PGlite) |
 
 ## 多实例部署
 

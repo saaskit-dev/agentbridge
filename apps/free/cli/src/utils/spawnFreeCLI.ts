@@ -34,11 +34,11 @@
  */
 
 import { spawn, SpawnOptions, type ChildProcess } from 'child_process';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { isBun } from './runtime';
 import { projectPath } from '@/projectPath';
 import { logger } from '@/ui/logger';
-import { existsSync } from 'node:fs';
-import { isBun } from './runtime';
 
 /**
  * Spawn the Free CLI with the given arguments in a cross-platform way.
@@ -56,9 +56,9 @@ export function spawnFreeCLI(args: string[], options: SpawnOptions = {}): ChildP
 
   let directory: string | URL | undefined;
   if ('cwd' in options) {
-    directory = options.cwd
+    directory = options.cwd;
   } else {
-    directory = process.cwd()
+    directory = process.cwd();
   }
   // Note: We're actually executing 'node' with the calculated entrypoint path below,
   // bypassing the 'free' wrapper that would normally be found in the shell's PATH.
@@ -69,12 +69,7 @@ export function spawnFreeCLI(args: string[], options: SpawnOptions = {}): ChildP
   logger.debug(`[SPAWN FREE CLI] Spawning: ${fullCommand} in ${directory}`);
 
   // Use the same Node.js flags that the wrapper script uses
-  const nodeArgs = [
-    '--no-warnings',
-    '--no-deprecation',
-    entrypoint,
-    ...args
-  ];
+  const nodeArgs = ['--no-warnings', '--no-deprecation', entrypoint, ...args];
 
   // Sanity check of the entrypoint path exists
   if (!existsSync(entrypoint)) {

@@ -37,12 +37,12 @@ agentbridge/
     └── app/               # @free/app - React Native 移动端
 ```
 
-| 包名 | 描述 |
-|------|------|
-| `@agentbridge/core` | 核心类型、接口契约、跨平台实现 |
-| `@free/cli` | 命令行工具，连接本地 AI Agent |
-| `@free/server` | 后端服务，加密同步，支持 PGlite/PostgreSQL |
-| `@free/app` | React Native 移动/Web 客户端 |
+| 包名                | 描述                                       |
+| ------------------- | ------------------------------------------ |
+| `@agentbridge/core` | 核心类型、接口契约、跨平台实现             |
+| `@free/cli`         | 命令行工具，连接本地 AI Agent              |
+| `@free/server`      | 后端服务，加密同步，支持 PGlite/PostgreSQL |
+| `@free/app`         | React Native 移动/Web 客户端               |
 
 ## 快速开始
 
@@ -101,13 +101,13 @@ free --claude-env KEY=VALUE       # 设置环境变量
 
 ## 环境变量
 
-| 变量 | 描述 |
-|------|------|
-| `FREE_SERVER_URL` | 服务器地址 (默认: https://free-server.saaskit.app) |
-| `FREE_HOME_DIR` | 数据目录 (默认: ~/.free) |
-| `FREE_DISABLE_CAFFEINATE` | 禁用 macOS 防休眠 |
-| `GEMINI_MODEL` | Gemini 模型 |
-| `GOOGLE_CLOUD_PROJECT` | Google Cloud 项目 ID (Workspace 账号必需) |
+| 变量                      | 描述                                               |
+| ------------------------- | -------------------------------------------------- |
+| `FREE_SERVER_URL`         | 服务器地址 (默认: https://free-server.saaskit.app) |
+| `FREE_HOME_DIR`           | 数据目录 (默认: ~/.free)                           |
+| `FREE_DISABLE_CAFFEINATE` | 禁用 macOS 防休眠                                  |
+| `GEMINI_MODEL`            | Gemini 模型                                        |
+| `GOOGLE_CLOUD_PROJECT`    | Google Cloud 项目 ID (Workspace 账号必需)          |
 
 ## 开发
 
@@ -142,11 +142,11 @@ cd apps/free/server
 
 ### 环境变量
 
-| 变量 | 描述 | 必需 |
-|------|------|------|
-| `FREE_MASTER_SECRET` | 主密钥 | 是 |
-| `PORT` | 端口 | 否 (默认 3000) |
-| `DATABASE_URL` | PostgreSQL 连接 | 否 (默认 PGlite) |
+| 变量                 | 描述            | 必需             |
+| -------------------- | --------------- | ---------------- |
+| `FREE_MASTER_SECRET` | 主密钥          | 是               |
+| `PORT`               | 端口            | 否 (默认 3000)   |
+| `DATABASE_URL`       | PostgreSQL 连接 | 否 (默认 PGlite) |
 
 ## 系统要求
 

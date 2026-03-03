@@ -1,6 +1,6 @@
+import { AudioModule } from 'expo-audio';
 import { Platform, Linking } from 'react-native';
 import { Modal } from '@/modal';
-import { AudioModule } from 'expo-audio';
 
 export interface MicrophonePermissionResult {
   granted: boolean;
@@ -58,7 +58,9 @@ export async function checkMicrophonePermission(): Promise<MicrophonePermissionR
       // Web: Check permission status if available
       if ('permissions' in navigator && 'query' in navigator.permissions) {
         try {
-          const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+          const result = await navigator.permissions.query({
+            name: 'microphone' as PermissionName,
+          });
           return { granted: result.state === 'granted' };
         } catch {
           // Permission API not supported or microphone permission not queryable
@@ -102,8 +104,8 @@ export function showMicrophonePermissionDeniedAlert(canAskAgain: boolean = false
         onPress: () => {
           // Opens app settings on iOS/Android
           Linking.openSettings();
-        }
-      }
+        },
+      },
     ]);
   }
 }

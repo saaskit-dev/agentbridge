@@ -11,14 +11,14 @@ const OPTIONAL_HARDWARE_FEATURES = [
   'android.hardware.faketouch',
   'android.hardware.screen.portrait',
   'android.hardware.screen.landscape',
-  
+
   // Camera features (app uses camera for QR codes but should work without)
   'android.hardware.camera',
   'android.hardware.camera.autofocus',
   'android.hardware.camera.front',
   'android.hardware.camera.flash',
   'android.hardware.camera.any',
-  
+
   // Communication features - not all e-ink devices have these
   'android.hardware.bluetooth',
   'android.hardware.bluetooth_le',
@@ -27,12 +27,12 @@ const OPTIONAL_HARDWARE_FEATURES = [
   'android.hardware.telephony.cdma',
   'android.hardware.wifi',
   'android.hardware.wifi.direct',
-  
+
   // Location features - many e-ink readers don't have GPS
   'android.hardware.location',
   'android.hardware.location.gps',
   'android.hardware.location.network',
-  
+
   // Sensors - e-ink devices often lack these sensors
   'android.hardware.sensor.accelerometer',
   'android.hardware.sensor.barometer',
@@ -42,13 +42,13 @@ const OPTIONAL_HARDWARE_FEATURES = [
   'android.hardware.sensor.proximity',
   'android.hardware.sensor.stepcounter',
   'android.hardware.sensor.stepdetector',
-  
+
   // Audio - some e-ink devices don't have speakers/microphones
   'android.hardware.microphone',
   'android.hardware.audio.output',
   'android.hardware.audio.low_latency',
   'android.hardware.audio.pro',
-  
+
   // Other hardware features
   'android.hardware.nfc',
   'android.hardware.usb.host',
@@ -73,39 +73,35 @@ const INPUT_CONFIGURATION_ATTRIBUTES = [
   { name: 'android:reqTouchScreen', value: 'undefined' },
 ];
 
-
 /**
  * Config plugin to make the app compatible with e-ink readers and other devices
  * by marking hardware features as optional instead of required.
- * 
+ *
  * This prevents Google Play Store from filtering out the app on devices
  * that don't have certain hardware features like cameras, touchscreens, etc.
  */
-const withEinkCompatibility = (
-  config,
-  options = {}
-) => {
+const withEinkCompatibility = (config, options = {}) => {
   const { additionalFeatures = [], verbose = true } = options;
-  
-  return withAndroidManifest(config, (manifestConfig) => {
+
+  return withAndroidManifest(config, manifestConfig => {
     const manifest = manifestConfig.modResults.manifest;
-    
+
     // Ensure uses-feature array exists
     if (!manifest['uses-feature']) {
       manifest['uses-feature'] = [];
     }
-    
+
     // Combine default features with any additional features
     const allFeatures = [...OPTIONAL_HARDWARE_FEATURES, ...additionalFeatures];
-    
+
     // Add each feature with required="false"
     let addedCount = 0;
-    allFeatures.forEach((featureName) => {
+    allFeatures.forEach(featureName => {
       // Check if feature already exists to avoid duplicates
       const existingFeature = manifest['uses-feature']?.find(
-        (f) => f.$?.['android:name'] === featureName
+        f => f.$?.['android:name'] === featureName
       );
-      
+
       if (!existingFeature) {
         const newFeature = {
           $: {
@@ -120,13 +116,13 @@ const withEinkCompatibility = (
         existingFeature.$['android:required'] = 'false';
       }
     });
-    
+
     // Add support for all screen sizes and densities
     // This is important for e-ink devices which may have different screen characteristics
     if (!manifest['supports-screens']) {
       manifest['supports-screens'] = [];
     }
-    
+
     // Clear existing supports-screens and add comprehensive support
     const screenSupport = {
       $: {
@@ -139,20 +135,18 @@ const withEinkCompatibility = (
       },
     };
     manifest['supports-screens'] = [screenSupport];
-    
+
     // Add uses-configuration for different input methods
     // This helps with e-ink devices that may use different input methods
     if (!manifest['uses-configuration']) {
       manifest['uses-configuration'] = [];
     }
-    
+
     // Support for devices without touch screens (navigation keys, trackball, etc.)
     let configCount = 0;
     INPUT_CONFIGURATION_ATTRIBUTES.forEach(({ name, value }) => {
-      const exists = manifest['uses-configuration']?.find(
-        (c) => c.$?.[name] !== undefined
-      );
-      
+      const exists = manifest['uses-configuration']?.find(c => c.$?.[name] !== undefined);
+
       if (!exists) {
         const newConfig = {
           $: {
@@ -163,7 +157,7 @@ const withEinkCompatibility = (
         configCount++;
       }
     });
-    
+
     // Log plugin activity if verbose mode is enabled
     if (verbose) {
       console.log('✅ E-ink compatibility plugin applied successfully');
@@ -171,7 +165,7 @@ const withEinkCompatibility = (
       console.log('   Added comprehensive screen size support');
       console.log(`   Added ${configCount} flexible input method configurations`);
     }
-    
+
     return manifestConfig;
   });
 };

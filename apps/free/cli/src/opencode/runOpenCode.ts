@@ -13,39 +13,38 @@
  * - Local models support
  */
 
-import { render } from 'ink';
-import React from 'react';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { join, resolve } from 'node:path';
-
-import { ApiClient } from '@/api/api';
-import { logger } from '@/ui/logger';
-import { Credentials, readSettings } from '@/persistence';
-import { createSessionMetadata } from '@/utils/createSessionMetadata';
-import { initialMachineMetadata } from '@/daemon/run';
-import { configuration } from '@/configuration';
+import { createOpenCodeBackend } from '@agentbridge/core';
+import { render } from 'ink';
+import React from 'react';
 import packageJson from '../../package.json';
-import { MessageQueue2 } from '@/utils/MessageQueue2';
-import { hashObject } from '@/utils/deterministicJson';
-import { projectPath } from '@/projectPath';
+import type { AgentBackend, AgentMessage } from '@/agent';
+import { ApiClient } from '@/api/api';
+import type { ApiSessionClient } from '@/api/apiSession';
+import { serverCapabilities } from '@/api/serverCapabilities';
+import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startFreeServer } from '@/claude/utils/startFreeServer';
+import { configuration } from '@/configuration';
+import { initialMachineMetadata } from '@/daemon/run';
+import { Credentials, readSettings } from '@/persistence';
+import { logger } from '@/ui/logger';
+import { createSessionMetadata } from '@/utils/createSessionMetadata';
+import { hashObject } from '@/utils/deterministicJson';
+import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { projectPath } from '@/projectPath';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
-import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
-import type { ApiSessionClient } from '@/api/apiSession';
-import { serverCapabilities } from '@/api/serverCapabilities';
-import type { AgentBackend, AgentMessage } from '@/agent';
 import { OpenCodeDisplay } from '@/ui/ink/OpenCodeDisplay';
 import type { PermissionMode } from '@/api/types';
 import { startCaffeinate } from '@/utils/caffeinate';
 import type { SpawnSessionOptions } from '@/modules/common/registerCommonHandlers';
 
 // Import from packages/core
-import { createOpenCodeBackend } from '@agentbridge/core';
 
 /**
  * OpenCode session mode
@@ -97,7 +96,7 @@ export async function runOpenCode(opts: {
 
   await api.getOrCreateMachine({
     machineId,
-    metadata: initialMachineMetadata
+    metadata: initialMachineMetadata,
   });
 
   //
@@ -138,7 +137,7 @@ export async function runOpenCode(opts: {
     metadata,
     state,
     response,
-    onSessionSwap: (newSession) => {
+    onSessionSwap: newSession => {
       if (isProcessingMessage) {
         // Defer swap until current message processing completes
         logger.debug('[OpenCode] Deferring session swap (message in progress)');
@@ -149,7 +148,7 @@ export async function runOpenCode(opts: {
           permissionHandler.updateSession(newSession);
         }
       }
-    }
+    },
   });
   session = initialSession;
 
@@ -167,13 +166,15 @@ export async function runOpenCode(opts: {
   //
 
   type EnhancedMode = OpenCodeMode & { hash: string };
-  const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
-    permissionMode: mode.permissionMode,
-  }));
+  const messageQueue = new MessageQueue2<EnhancedMode>(mode =>
+    hashObject({
+      permissionMode: mode.permissionMode,
+    })
+  );
 
   let currentPermissionMode: PermissionMode | undefined = undefined;
 
-  session.onUserMessage((message) => {
+  session.onUserMessage(message => {
     let messagePermissionMode = currentPermissionMode;
     if (message.meta?.permissionMode) {
       messagePermissionMode = message.meta.permissionMode as PermissionMode;
@@ -199,11 +200,9 @@ export async function runOpenCode(opts: {
   const sendReady = () => {
     session.sendSessionEvent({ type: 'ready' });
     try {
-      api.push().sendToAllDevices(
-        "It's ready!",
-        'OpenCode is waiting for your command',
-        { sessionId: session.sessionId }
-      );
+      api.push().sendToAllDevices("It's ready!", 'OpenCode is waiting for your command', {
+        sessionId: session.sessionId,
+      });
     } catch (pushError) {
       logger.debug('[OpenCode] Failed to send ready push', pushError);
     }
@@ -261,7 +260,7 @@ export async function runOpenCode(opts: {
       if (session) {
         // Save agent session ID for potential resume
         const agentSessionId = acpSessionId;
-        session.updateMetadata((currentMetadata) => ({
+        session.updateMetadata(currentMetadata => ({
           ...currentMetadata,
           lifecycleState: 'archived',
           lifecycleStateSince: Date.now(),
@@ -312,18 +311,21 @@ export async function runOpenCode(opts: {
 
   if (hasTTY) {
     console.clear();
-    inkInstance = render(React.createElement(OpenCodeDisplay, {
-      messageBuffer,
-      logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
-      onExit: async () => {
-        logger.debug('[opencode]: Exiting agent via Ctrl-C');
-        shouldExit = true;
-        await handleAbort();
+    inkInstance = render(
+      React.createElement(OpenCodeDisplay, {
+        messageBuffer,
+        logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
+        onExit: async () => {
+          logger.debug('[opencode]: Exiting agent via Ctrl-C');
+          shouldExit = true;
+          await handleAbort();
+        },
+      }),
+      {
+        exitOnCtrlC: false,
+        patchConsole: false,
       }
-    }), {
-      exitOnCtrlC: false,
-      patchConsole: false
-    });
+    );
   }
 
   if (hasTTY) {
@@ -331,7 +333,7 @@ export async function runOpenCode(opts: {
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true);
     }
-    process.stdin.setEncoding("utf8");
+    process.stdin.setEncoding('utf8');
   }
 
   //
@@ -342,8 +344,8 @@ export async function runOpenCode(opts: {
   const mcpServers: Record<string, { command: string; args: string[] }> = {
     free: {
       command: join(projectPath(), 'bin', 'free-mcp.mjs'),
-      args: ['--url', freeServer.url]
-    }
+      args: ['--url', freeServer.url],
+    },
   };
 
   //
@@ -363,8 +365,8 @@ export async function runOpenCode(opts: {
     permissionHandler: {
       handleToolCall: async (callId: string, toolName: string, input: unknown) => {
         return permissionHandler!.handleToolCall(callId, toolName, input);
-      }
-    }
+      },
+    },
   });
 
   //
@@ -453,7 +455,10 @@ export async function runOpenCode(opts: {
           break;
 
         case 'tool-result':
-          messageBuffer.addMessage(`Tool result: ${JSON.stringify(msg.result).substring(0, 100)}...`, 'result');
+          messageBuffer.addMessage(
+            `Tool result: ${JSON.stringify(msg.result).substring(0, 100)}...`,
+            'result'
+          );
           session.sendAgentMessage('opencode', {
             type: 'tool-result',
             callId: msg.callId,
@@ -468,7 +473,6 @@ export async function runOpenCode(opts: {
           break;
 
         case 'token-count':
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { type: _type, ...restMsg } = msg;
           session.sendAgentMessage('opencode', {
             type: 'token_count',
@@ -492,7 +496,9 @@ export async function runOpenCode(opts: {
       // If pending exit (CLI updated), don't consume new messages
       // Wait for current turn to complete, then exit
       if (pendingExit) {
-        logger.debug('[OpenCode] Pending exit (CLI updated), not consuming new messages, waiting for idle...');
+        logger.debug(
+          '[OpenCode] Pending exit (CLI updated), not consuming new messages, waiting for idle...'
+        );
         // Wait for idle state, then exit will be triggered
         await new Promise(resolve => setTimeout(resolve, 1000));
         continue;
@@ -584,14 +590,18 @@ export async function runOpenCode(opts: {
             lastError = promptError;
             const errObj = promptError as Record<string, unknown>;
             const errorDetails = String(
-              (errObj?.data as Record<string, unknown>)?.details || errObj?.details || errObj?.message || ''
+              (errObj?.data as Record<string, unknown>)?.details ||
+                errObj?.details ||
+                errObj?.message ||
+                ''
             );
             const errorCode = errObj?.code;
 
             // Check for quota exhausted - NOT retryable
-            const isQuotaError = errorDetails.includes('exhausted') ||
-                                 errorDetails.includes('quota') ||
-                                 errorDetails.includes('capacity');
+            const isQuotaError =
+              errorDetails.includes('exhausted') ||
+              errorDetails.includes('quota') ||
+              errorDetails.includes('capacity');
             if (isQuotaError) {
               const quotaMsg = `OpenCode quota exceeded. Try using a different model or wait for quota reset.`;
               messageBuffer.addMessage(quotaMsg, 'status');
@@ -600,14 +610,20 @@ export async function runOpenCode(opts: {
             }
 
             // Check if this is a retryable error (empty response, internal error)
-            const isEmptyResponseError = errorDetails.includes('empty response') ||
-                                         errorDetails.includes('Model stream ended');
+            const isEmptyResponseError =
+              errorDetails.includes('empty response') ||
+              errorDetails.includes('Model stream ended');
             const isInternalError = errorCode === -32603;
             const isRetryable = isEmptyResponseError || isInternalError;
 
             if (isRetryable && attempt < MAX_RETRIES) {
-              logger.debug(`[OpenCode] Retryable error on attempt ${attempt}/${MAX_RETRIES}: ${errorDetails}`);
-              messageBuffer.addMessage(`OpenCode returned empty response, retrying (${attempt}/${MAX_RETRIES})...`, 'status');
+              logger.debug(
+                `[OpenCode] Retryable error on attempt ${attempt}/${MAX_RETRIES}: ${errorDetails}`
+              );
+              messageBuffer.addMessage(
+                `OpenCode returned empty response, retrying (${attempt}/${MAX_RETRIES})...`,
+                'status'
+              );
               await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
               continue;
             }
@@ -620,7 +636,6 @@ export async function runOpenCode(opts: {
         if (lastError && MAX_RETRIES > 1) {
           logger.debug('[OpenCode] Prompt succeeded after retries');
         }
-
       } catch (error) {
         logger.warn('[OpenCode] Error in session:', error);
 
@@ -655,7 +670,9 @@ export async function runOpenCode(opts: {
         // Send accumulated response to mobile app ONLY when turn is complete
         // This prevents message fragmentation from OpenCode's chunked responses
         if (currentResponseText.trim()) {
-          logger.debug(`[OpenCode] Sending complete message to mobile (length: ${currentResponseText.length}): ${currentResponseText.substring(0, 100)}...`);
+          logger.debug(
+            `[OpenCode] Sending complete message to mobile (length: ${currentResponseText.length}): ${currentResponseText.substring(0, 100)}...`
+          );
           session.sendAgentMessage('opencode', {
             type: 'message',
             message: currentResponseText,
@@ -683,7 +700,6 @@ export async function runOpenCode(opts: {
         // Emit ready if idle
         emitReadyIfIdle();
       }
-
     }
   } finally {
     // Cleanup
@@ -708,10 +724,14 @@ export async function runOpenCode(opts: {
     freeServer.stop();
 
     if (process.stdin.isTTY) {
-      try { process.stdin.setRawMode(false); } catch { }
+      try {
+        process.stdin.setRawMode(false);
+      } catch {}
     }
     if (hasTTY) {
-      try { process.stdin.pause(); } catch { }
+      try {
+        process.stdin.pause();
+      } catch {}
     }
 
     clearInterval(keepAliveInterval);
@@ -739,7 +759,11 @@ class OpenCodePermissionHandler {
     this.session = session;
   }
 
-  async handleToolCall(callId: string, toolName: string, input: unknown): Promise<{ decision: 'approved' | 'denied' }> {
+  async handleToolCall(
+    callId: string,
+    toolName: string,
+    input: unknown
+  ): Promise<{ decision: 'approved' | 'denied' }> {
     // For now, auto-approve all tool calls
     // In the future, this could send permission requests to the mobile app
     logger.debug(`[OpenCode] Auto-approving tool call: ${toolName}`);

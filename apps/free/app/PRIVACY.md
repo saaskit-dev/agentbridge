@@ -7,10 +7,12 @@ Free is designed with privacy by default. All sensitive data is end-to-end encry
 ## Data Handling
 
 ### Encrypted Data
+
 - **Messages and Code**: All conversations and code snippets are end-to-end encrypted
 - **Encryption Keys**: Keys are transmitted between your devices in encrypted form
 
 ### Metadata (Not Encrypted)
+
 - Message IDs for ordering and synchronization
 - Timestamps
 - Device IDs for pairing

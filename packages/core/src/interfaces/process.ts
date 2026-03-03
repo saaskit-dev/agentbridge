@@ -78,7 +78,9 @@ export function registerProcessManagerFactory(type: string, factory: ProcessMana
 export function createProcessManager(type: string): IProcessManager {
   const factory = processManagerFactories.get(type);
   if (!factory) {
-    throw new Error(`Process manager factory not found: ${type}. Available: ${[...processManagerFactories.keys()].join(', ')}`);
+    throw new Error(
+      `Process manager factory not found: ${type}. Available: ${[...processManagerFactories.keys()].join(', ')}`
+    );
   }
   return factory();
 }

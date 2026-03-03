@@ -6,6 +6,7 @@
  *
  */
 
+import type { AgentMessage } from '../../interfaces/agent';
 import type {
   ITransportHandler,
   ToolPattern,
@@ -13,7 +14,6 @@ import type {
   StderrResult,
   ToolNameContext,
 } from '../../interfaces/transport';
-import type { AgentMessage } from '../../interfaces/agent';
 import { registerTransportHandler } from '../../interfaces/transport';
 
 /**
@@ -198,11 +198,7 @@ const GEMINI_TOOL_PATTERNS: GeminiToolPattern[] = [
 /**
  * Available Gemini models for error messages
  */
-const AVAILABLE_MODELS = [
-  'gemini-2.5-pro',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-];
+const AVAILABLE_MODELS = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
 /**
  * Gemini CLI transport handler.
@@ -416,8 +412,8 @@ export class GeminiTransport extends DefaultTransport {
       for (const toolPattern of GEMINI_TOOL_PATTERNS) {
         if (toolPattern.inputFields) {
           // Check if any input field matches this tool's signature
-          const hasMatchingField = toolPattern.inputFields.some((field) =>
-            inputKeys.some((key) => key.toLowerCase() === field.toLowerCase())
+          const hasMatchingField = toolPattern.inputFields.some(field =>
+            inputKeys.some(key => key.toLowerCase() === field.toLowerCase())
           );
           if (hasMatchingField) {
             return toolPattern.name;
@@ -429,7 +425,7 @@ export class GeminiTransport extends DefaultTransport {
     // 3. For empty input, use the default tool (if configured)
     // This handles cases like change_title where the title is extracted from context
     if (this.isEmptyInput(input) && toolName === 'other') {
-      const defaultTool = GEMINI_TOOL_PATTERNS.find((p) => p.emptyInputDefault);
+      const defaultTool = GEMINI_TOOL_PATTERNS.find(p => p.emptyInputDefault);
       if (defaultTool) {
         return defaultTool.name;
       }

@@ -1,12 +1,12 @@
 /**
  * GeminiDisplay - Ink UI component for Gemini agent
- * 
+ *
  * This component provides a terminal UI for the Gemini agent,
  * displaying messages, status, and handling user input.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Text, useStdout, useInput } from 'ink';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageBuffer, type BufferedMessage } from './messageBuffer';
 
 interface GeminiDisplayProps {
@@ -16,7 +16,12 @@ interface GeminiDisplayProps {
   onExit?: () => void;
 }
 
-export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({ messageBuffer, logPath, currentModel, onExit }) => {
+export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({
+  messageBuffer,
+  logPath,
+  currentModel,
+  onExit,
+}) => {
   const [messages, setMessages] = useState<BufferedMessage[]>([]);
   const [confirmationMode, setConfirmationMode] = useState<boolean>(false);
   const [actionInProgress, setActionInProgress] = useState<boolean>(false);
@@ -36,15 +41,15 @@ export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({ messageBuffer, log
   useEffect(() => {
     setMessages(messageBuffer.getMessages());
 
-    const unsubscribe = messageBuffer.onUpdate((newMessages) => {
+    const unsubscribe = messageBuffer.onUpdate(newMessages => {
       setMessages(newMessages);
-      
+
       // Extract model from [MODEL:...] messages when messages update
       // Use reverse + find to get the LATEST model message (in case model was changed)
-      const modelMessage = [...newMessages].reverse().find(msg => 
-        msg.type === 'system' && msg.content.startsWith('[MODEL:')
-      );
-      
+      const modelMessage = [...newMessages]
+        .reverse()
+        .find(msg => msg.type === 'system' && msg.content.startsWith('[MODEL:'));
+
       if (modelMessage) {
         const modelMatch = modelMessage.content.match(/\[MODEL:(.+?)\]/);
         if (modelMatch && modelMatch[1]) {
@@ -86,53 +91,67 @@ export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({ messageBuffer, log
     }, 15000); // 15 seconds timeout
   }, [resetConfirmation]);
 
-  useInput(useCallback(async (input, key) => {
-    if (actionInProgress) return;
+  useInput(
+    useCallback(
+      async (input, key) => {
+        if (actionInProgress) return;
 
-    // Handle Ctrl-C
-    if (key.ctrl && input === 'c') {
-      if (confirmationMode) {
-        // Second Ctrl-C, exit
-        resetConfirmation();
-        setActionInProgress(true);
-        await new Promise(resolve => setTimeout(resolve, 100));
-        onExit?.();
-      } else {
-        // First Ctrl-C, show confirmation
-        setConfirmationWithTimeout();
-      }
-      return;
-    }
+        // Handle Ctrl-C
+        if (key.ctrl && input === 'c') {
+          if (confirmationMode) {
+            // Second Ctrl-C, exit
+            resetConfirmation();
+            setActionInProgress(true);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            onExit?.();
+          } else {
+            // First Ctrl-C, show confirmation
+            setConfirmationWithTimeout();
+          }
+          return;
+        }
 
-    // Any other key cancels confirmation
-    if (confirmationMode) {
-      resetConfirmation();
-    }
-  }, [confirmationMode, actionInProgress, onExit, setConfirmationWithTimeout, resetConfirmation]));
+        // Any other key cancels confirmation
+        if (confirmationMode) {
+          resetConfirmation();
+        }
+      },
+      [confirmationMode, actionInProgress, onExit, setConfirmationWithTimeout, resetConfirmation]
+    )
+  );
 
   const getMessageColor = (type: BufferedMessage['type']): string => {
     switch (type) {
-      case 'user': return 'magenta';
-      case 'assistant': return 'cyan';
-      case 'system': return 'blue';
-      case 'tool': return 'yellow';
-      case 'result': return 'green';
-      case 'status': return 'gray';
-      default: return 'white';
+      case 'user':
+        return 'magenta';
+      case 'assistant':
+        return 'cyan';
+      case 'system':
+        return 'blue';
+      case 'tool':
+        return 'yellow';
+      case 'result':
+        return 'green';
+      case 'status':
+        return 'gray';
+      default:
+        return 'white';
     }
   };
 
   const formatMessage = (msg: BufferedMessage): string => {
     const lines = msg.content.split('\n');
     const maxLineLength = terminalWidth - 10;
-    return lines.map(line => {
-      if (line.length <= maxLineLength) return line;
-      const chunks: string[] = [];
-      for (let i = 0; i < line.length; i += maxLineLength) {
-        chunks.push(line.slice(i, i + maxLineLength));
-      }
-      return chunks.join('\n');
-    }).join('\n');
+    return lines
+      .map(line => {
+        if (line.length <= maxLineLength) return line;
+        const chunks: string[] = [];
+        for (let i = 0; i < line.length; i += maxLineLength) {
+          chunks.push(line.slice(i, i + maxLineLength));
+        }
+        return chunks.join('\n');
+      })
+      .join('\n');
   };
 
   return (
@@ -148,13 +167,19 @@ export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({ messageBuffer, log
         overflow="hidden"
       >
         <Box flexDirection="column" marginBottom={1}>
-          <Text color="cyan" bold>✨ Gemini Agent Messages</Text>
-          <Text color="gray" dimColor>{'─'.repeat(Math.min(terminalWidth - 4, 60))}</Text>
+          <Text color="cyan" bold>
+            ✨ Gemini Agent Messages
+          </Text>
+          <Text color="gray" dimColor>
+            {'─'.repeat(Math.min(terminalWidth - 4, 60))}
+          </Text>
         </Box>
 
         <Box flexDirection="column" height={terminalHeight - 10} overflow="hidden">
           {messages.length === 0 ? (
-            <Text color="gray" dimColor>Waiting for messages...</Text>
+            <Text color="gray" dimColor>
+              Waiting for messages...
+            </Text>
           ) : (
             messages
               .filter(msg => {
@@ -176,7 +201,11 @@ export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({ messageBuffer, log
               })
               .slice(-Math.max(1, terminalHeight - 10))
               .map((msg, index, array) => (
-                <Box key={msg.id} flexDirection="column" marginBottom={index < array.length - 1 ? 1 : 0}>
+                <Box
+                  key={msg.id}
+                  flexDirection="column"
+                  marginBottom={index < array.length - 1 ? 1 : 0}
+                >
                   <Text color={getMessageColor(msg.type)} dimColor>
                     {formatMessage(msg)}
                   </Text>
@@ -190,11 +219,7 @@ export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({ messageBuffer, log
       <Box
         width={terminalWidth}
         borderStyle="round"
-        borderColor={
-          actionInProgress ? 'gray' :
-          confirmationMode ? 'red' :
-          'cyan'
-        }
+        borderColor={actionInProgress ? 'gray' : confirmationMode ? 'red' : 'cyan'}
         paddingX={2}
         justifyContent="center"
         alignItems="center"
@@ -207,7 +232,7 @@ export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({ messageBuffer, log
             </Text>
           ) : confirmationMode ? (
             <Text color="red" bold>
-              ⚠️  Press Ctrl-C again to exit the agent
+              ⚠️ Press Ctrl-C again to exit the agent
             </Text>
           ) : (
             <>
@@ -231,4 +256,3 @@ export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({ messageBuffer, log
     </Box>
   );
 };
-

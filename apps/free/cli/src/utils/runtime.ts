@@ -14,37 +14,37 @@ let cachedRuntime: Runtime | null = null;
  * Most reliable detection first, falling back to less reliable methods
  */
 export function getRuntime(): Runtime {
-    if (cachedRuntime) return cachedRuntime;
+  if (cachedRuntime) return cachedRuntime;
 
-    // Method 1: Global runtime objects (most reliable)
-    if (typeof (globalThis as any).Bun !== 'undefined') {
-        cachedRuntime = 'bun';
-        return cachedRuntime;
-    }
-
-    if (typeof (globalThis as any).Deno !== 'undefined') {
-        cachedRuntime = 'deno';
-        return cachedRuntime;
-    }
-
-    // Method 2: Process versions (fallback)
-    if (process?.versions?.bun) {
-        cachedRuntime = 'bun';
-        return cachedRuntime;
-    }
-
-    if (process?.versions?.deno) {
-        cachedRuntime = 'deno';
-        return cachedRuntime;
-    }
-
-    if (process?.versions?.node) {
-        cachedRuntime = 'node';
-        return cachedRuntime;
-    }
-
-    cachedRuntime = 'unknown';
+  // Method 1: Global runtime objects (most reliable)
+  if (typeof (globalThis as any).Bun !== 'undefined') {
+    cachedRuntime = 'bun';
     return cachedRuntime;
+  }
+
+  if (typeof (globalThis as any).Deno !== 'undefined') {
+    cachedRuntime = 'deno';
+    return cachedRuntime;
+  }
+
+  // Method 2: Process versions (fallback)
+  if (process?.versions?.bun) {
+    cachedRuntime = 'bun';
+    return cachedRuntime;
+  }
+
+  if (process?.versions?.deno) {
+    cachedRuntime = 'deno';
+    return cachedRuntime;
+  }
+
+  if (process?.versions?.node) {
+    cachedRuntime = 'node';
+    return cachedRuntime;
+  }
+
+  cachedRuntime = 'unknown';
+  return cachedRuntime;
 }
 
 // Convenience predicates - single responsibility each
