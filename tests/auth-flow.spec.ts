@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
 import crypto from 'crypto';
+import { test, expect } from '@playwright/test';
 
 const SERVER_URL = 'http://localhost:3001';
 
@@ -25,8 +25,8 @@ test.describe('Auth Flow E2E', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         publicKey: publicKeyBase64,
-        supportsV2: true
-      })
+        supportsV2: true,
+      }),
     });
     const createData = await createResponse.json();
     console.log('[TEST] Auth request created:', createData);
@@ -44,8 +44,8 @@ test.describe('Auth Flow E2E', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         publicKey: appPublicKeyBase64,
-        supportsV2: true
-      })
+        supportsV2: true,
+      }),
     });
     const appAuthData = await appAuthResponse.json();
 
@@ -65,8 +65,8 @@ test.describe('Auth Flow E2E', () => {
       body: JSON.stringify({
         publicKey: encodeBase64(signKeypair.publicKey),
         challenge: encodeBase64(challenge),
-        signature: encodeBase64(signature)
-      })
+        signature: encodeBase64(signature),
+      }),
     });
     const authData = await authResponse.json();
     console.log('[TEST] Account created, token:', authData.token?.substring(0, 30) + '...');
@@ -89,13 +89,13 @@ test.describe('Auth Flow E2E', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${appToken}`
+        Authorization: `Bearer ${appToken}`,
       },
       body: JSON.stringify({
         publicKey: publicKeyBase64,
         response: encodeBase64(responseV1),
-        responseV2: null
-      })
+        responseV2: null,
+      }),
     });
     const approveData = await approveResponse.json();
     console.log('[TEST] Approve response:', approveData);
@@ -107,8 +107,8 @@ test.describe('Auth Flow E2E', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         publicKey: publicKeyBase64,
-        supportsV2: true
-      })
+        supportsV2: true,
+      }),
     });
     const pollData = await pollResponse.json();
     console.log('[TEST] Poll response:', pollData);
@@ -130,12 +130,12 @@ test.describe('Auth Flow E2E', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${cliToken}`
+        Authorization: `Bearer ${cliToken}`,
       },
       body: JSON.stringify({
         id: machineId,
-        metadata: 'encrypted-metadata-string' // In real flow, this would be encrypted
-      })
+        metadata: 'encrypted-metadata-string', // In real flow, this would be encrypted
+      }),
     });
     const registerData = await registerResponse.json();
     console.log('[TEST] Machine registered:', registerData);
@@ -143,7 +143,7 @@ test.describe('Auth Flow E2E', () => {
     // Step 7: Verify machines endpoint has data
     console.log('[TEST] Step 7: Checking machines endpoint...');
     const machinesResponse = await fetch(`${SERVER_URL}/v1/machines`, {
-      headers: { 'Authorization': `Bearer ${cliToken}` }
+      headers: { Authorization: `Bearer ${cliToken}` },
     });
     const machinesData = await machinesResponse.json();
     console.log('[TEST] Machines:', machinesData);
@@ -158,13 +158,13 @@ test.describe('Auth Flow E2E', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${cliToken}`
+        Authorization: `Bearer ${cliToken}`,
       },
       body: JSON.stringify({
         tag: 'test-session',
         metadata: 'test-metadata-encrypted',
-        dataEncryptionKey: encodeBase64(new Uint8Array(32))
-      })
+        dataEncryptionKey: encodeBase64(new Uint8Array(32)),
+      }),
     });
     const sessionData = await sessionResponse.json();
     console.log('[TEST] Session created:', sessionData);

@@ -4,18 +4,18 @@ const fs = require('fs');
 
 /**
  * Config plugin to ensure React Native is built from source.
- * 
+ *
  * This is needed for Xcode 26+ (Beta) where prebuilt React Native XCFrameworks
  * have header naming mismatches (React-Core-umbrella.h vs React_Core-umbrella.h).
  * Building from source resolves this issue.
- * 
+ *
  * It modifies ios/Podfile.properties.json to set:
  *   "ios.buildReactNativeFromSource": "true"
  */
-const withSourceBuildRN = (config) => {
+const withSourceBuildRN = config => {
   return withDangerousMod(config, [
     'ios',
-    (modConfig) => {
+    modConfig => {
       const iosDir = path.join(modConfig.modRequest.platformProjectRoot);
       const propsPath = path.join(iosDir, 'Podfile.properties.json');
 

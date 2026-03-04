@@ -31,6 +31,7 @@ free
 ```
 
 这会：
+
 1. 启动 Claude Code 会话
 2. 显示二维码，可用移动端扫码连接
 3. 支持移动端实时监控和干预
@@ -44,6 +45,7 @@ free gemini
 启动 Gemini CLI 会话，支持远程控制。
 
 **First time setup:**
+
 ```bash
 # Authenticate with Google
 free connect gemini
@@ -119,6 +121,7 @@ free sandbox disable    # Disable sandboxing
 - `FREE_HOME_DIR` - Custom home directory for Free data (default: ~/.free)
 - `FREE_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
 - `FREE_EXPERIMENTAL` - Enable experimental features (set to `true`, `1`, or `yes`)
+
 ### Gemini Configuration
 
 - `GEMINI_MODEL` - Override default Gemini model
@@ -148,6 +151,7 @@ free gemini project set your-project-id
 ```
 
 Or use environment variable:
+
 ```bash
 GOOGLE_CLOUD_PROJECT=your-project-id free gemini
 ```

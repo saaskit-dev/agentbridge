@@ -4,13 +4,14 @@
 
 The Free app supports three build variants across **iOS, Android, and macOS desktop**, each with separate bundle IDs so all three can be installed simultaneously:
 
-| Variant | Bundle ID | App Name | Use Case |
-|---------|-----------|----------|----------|
-| **Development** | `app.saaskit.free.dev` | Free (dev) | Local development with hot reload |
-| **Preview** | `app.saaskit.free.preview` | Free (preview) | Beta testing & OTA updates before production |
-| **Production** | `app.saaskit.free` | Free | Public App Store release |
+| Variant         | Bundle ID                  | App Name       | Use Case                                     |
+| --------------- | -------------------------- | -------------- | -------------------------------------------- |
+| **Development** | `app.saaskit.free.dev`     | Free (dev)     | Local development with hot reload            |
+| **Preview**     | `app.saaskit.free.preview` | Free (preview) | Beta testing & OTA updates before production |
+| **Production**  | `app.saaskit.free`         | Free           | Public App Store release                     |
 
 **Why Preview?**
+
 - **Development**: Fast iteration, dev server, instant reload
 - **Preview**: Beta testers get OTA updates (`eas update --branch preview`) without app store submission
 - **Production**: Stable App Store builds
@@ -62,6 +63,7 @@ npm run tauri:build:production
 ```
 
 **How Tauri Variants Work:**
+
 - Base config: `src-tauri/tauri.conf.json` (production defaults)
 - Partial configs: `tauri.dev.conf.json`, `tauri.preview.conf.json`
 - Tauri merges partial configs using [JSON Merge Patch (RFC 7396)](https://datatracker.ietf.org/doc/html/rfc7396)
@@ -83,6 +85,7 @@ npm run start:production
 ## Visual Differences
 
 Each variant displays a different app name on your device:
+
 - **Development**: "Free (dev)" - Yellow/orange theme
 - **Preview**: "Free (preview)" - Preview theme
 - **Production**: "Free" - Standard theme
@@ -94,6 +97,7 @@ This makes it easy to distinguish which version you're testing!
 ### Testing Development Changes
 
 1. **Build development variant:**
+
    ```bash
    npm run ios:dev
    ```
@@ -110,11 +114,13 @@ This makes it easy to distinguish which version you're testing!
 ### Testing Preview (Pre-Release)
 
 1. **Build preview variant:**
+
    ```bash
    npm run ios:preview
    ```
 
 2. **Test OTA updates:**
+
    ```bash
    npm run ota  # Publishes to preview branch
    ```
@@ -124,11 +130,13 @@ This makes it easy to distinguish which version you're testing!
 ### Production Release
 
 1. **Build production variant:**
+
    ```bash
    npm run ios:production
    ```
 
 2. **Submit to App Store:**
+
    ```bash
    npm run submit
    ```
@@ -173,6 +181,7 @@ const variant = process.env.APP_ENV || 'development';
 ```
 
 This controls:
+
 - Bundle identifier
 - App name
 - Associated domains (deep linking)
@@ -214,6 +223,7 @@ npm run start:local-server
 ```
 
 This sets:
+
 - `EXPO_PUBLIC_FREE_SERVER_URL=http://localhost:3005`
 - `EXPO_PUBLIC_DEBUG=1`
 - Debug logging enabled
@@ -247,6 +257,7 @@ This shouldn't happen - each variant has a unique bundle ID. If it does:
 ### All three apps look the same
 
 Check the app name on the home screen:
+
 - "Free (dev)"
 - "Free (preview)"
 - "Free"
@@ -286,7 +297,7 @@ npm run ios:connected-device
 
 The `app.config.js` file reads the `APP_ENV` environment variable:
 
-```javascript
+````javascript
 const variant = process.env.APP_ENV || 'development';
 const bundleId = {
   development: "app.saaskit.free.dev",
@@ -302,6 +313,6 @@ The `cross-env` package ensures this works cross-platform:
     "ios:dev": "cross-env APP_ENV=development expo run:ios"
   }
 }
-```
+````
 
 Cross-platform via `cross-env` - works identically on Windows, macOS, and Linux!

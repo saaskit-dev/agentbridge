@@ -1,5 +1,5 @@
-import type { Encryptor, Decryptor } from './types';
 import { createCrypto } from '../interfaces/crypto';
+import type { Encryptor, Decryptor } from './types';
 
 export class AES256Encryption implements Encryptor, Decryptor {
   private readonly secretKey: Uint8Array;

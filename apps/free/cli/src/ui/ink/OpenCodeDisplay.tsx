@@ -5,8 +5,8 @@
  * displaying messages, status, and handling user input.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Text, useStdout, useInput } from 'ink';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageBuffer, type BufferedMessage } from './messageBuffer';
 
 interface OpenCodeDisplayProps {
@@ -15,7 +15,11 @@ interface OpenCodeDisplayProps {
   onExit?: () => void;
 }
 
-export const OpenCodeDisplay: React.FC<OpenCodeDisplayProps> = ({ messageBuffer, logPath, onExit }) => {
+export const OpenCodeDisplay: React.FC<OpenCodeDisplayProps> = ({
+  messageBuffer,
+  logPath,
+  onExit,
+}) => {
   const [messages, setMessages] = useState<BufferedMessage[]>([]);
   const [confirmationMode, setConfirmationMode] = useState<boolean>(false);
   const [actionInProgress, setActionInProgress] = useState<boolean>(false);
@@ -27,7 +31,7 @@ export const OpenCodeDisplay: React.FC<OpenCodeDisplayProps> = ({ messageBuffer,
   useEffect(() => {
     setMessages(messageBuffer.getMessages());
 
-    const unsubscribe = messageBuffer.onUpdate((newMessages) => {
+    const unsubscribe = messageBuffer.onUpdate(newMessages => {
       setMessages(newMessages);
     });
 
@@ -57,26 +61,31 @@ export const OpenCodeDisplay: React.FC<OpenCodeDisplayProps> = ({ messageBuffer,
     }, 15000);
   }, [resetConfirmation]);
 
-  useInput(useCallback(async (input, key) => {
-    if (actionInProgress) return;
+  useInput(
+    useCallback(
+      async (input, key) => {
+        if (actionInProgress) return;
 
-    // Handle Ctrl-C
-    if (key.ctrl && input === 'c') {
-      if (confirmationMode) {
-        // Second Ctrl-C, exit
-        resetConfirmation();
-        setActionInProgress(true);
-        await new Promise(resolve => setTimeout(resolve, 100));
-        onExit?.();
-      } else {
-        // First Ctrl-C, ask for confirmation
-        setConfirmationWithTimeout();
-      }
-    } else if (confirmationMode) {
-      // Any other key resets confirmation
-      resetConfirmation();
-    }
-  }, [confirmationMode, actionInProgress, onExit, resetConfirmation, setConfirmationWithTimeout]));
+        // Handle Ctrl-C
+        if (key.ctrl && input === 'c') {
+          if (confirmationMode) {
+            // Second Ctrl-C, exit
+            resetConfirmation();
+            setActionInProgress(true);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            onExit?.();
+          } else {
+            // First Ctrl-C, ask for confirmation
+            setConfirmationWithTimeout();
+          }
+        } else if (confirmationMode) {
+          // Any other key resets confirmation
+          resetConfirmation();
+        }
+      },
+      [confirmationMode, actionInProgress, onExit, resetConfirmation, setConfirmationWithTimeout]
+    )
+  );
 
   // Get last N messages to display (leave room for header and status)
   const maxDisplayMessages = terminalHeight - 6;
@@ -86,7 +95,9 @@ export const OpenCodeDisplay: React.FC<OpenCodeDisplayProps> = ({ messageBuffer,
     <Box flexDirection="column" height={terminalHeight}>
       {/* Header */}
       <Box borderStyle="single" borderColor="cyan" paddingX={1}>
-        <Text bold color="cyan">OpenCode Agent</Text>
+        <Text bold color="cyan">
+          OpenCode Agent
+        </Text>
         <Text dimColor> | </Text>
         <Text dimColor>v{require('../../../package.json').version}</Text>
         {logPath && (
@@ -107,25 +118,19 @@ export const OpenCodeDisplay: React.FC<OpenCodeDisplayProps> = ({ messageBuffer,
                 {msg.content}
               </Text>
             )}
-            {msg.type === 'assistant' && (
-              <Text color="white">{msg.content}</Text>
-            )}
+            {msg.type === 'assistant' && <Text color="white">{msg.content}</Text>}
             {msg.type === 'tool' && (
               <Text dimColor color="yellow">
                 [Tool] {msg.content}
               </Text>
             )}
-            {msg.type === 'result' && (
-              <Text dimColor>{msg.content}</Text>
-            )}
+            {msg.type === 'result' && <Text dimColor>{msg.content}</Text>}
             {msg.type === 'system' && (
               <Text dimColor color="gray">
                 {msg.content}
               </Text>
             )}
-            {msg.type === 'status' && (
-              <Text color="blue">{msg.content}</Text>
-            )}
+            {msg.type === 'status' && <Text color="blue">{msg.content}</Text>}
           </Box>
         ))}
       </Box>
@@ -137,9 +142,7 @@ export const OpenCodeDisplay: React.FC<OpenCodeDisplayProps> = ({ messageBuffer,
             Press Ctrl-C again to exit (any other key to cancel)
           </Text>
         ) : (
-          <Text dimColor>
-            Press Ctrl-C twice to exit
-          </Text>
+          <Text dimColor>Press Ctrl-C twice to exit</Text>
         )}
       </Box>
     </Box>

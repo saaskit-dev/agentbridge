@@ -121,7 +121,10 @@ export type TransportHandlerFactory = () => ITransportHandler;
 const transportHandlers = new Map<string, TransportHandlerFactory>();
 
 /** Register a transport handler factory */
-export function registerTransportHandler(agentName: string, factory: TransportHandlerFactory): void {
+export function registerTransportHandler(
+  agentName: string,
+  factory: TransportHandlerFactory
+): void {
   transportHandlers.set(agentName, factory);
 }
 
@@ -129,7 +132,9 @@ export function registerTransportHandler(agentName: string, factory: TransportHa
 export function createTransportHandler(agentName: string): ITransportHandler {
   const factory = transportHandlers.get(agentName);
   if (!factory) {
-    throw new Error(`Transport handler not found: ${agentName}. Available: ${[...transportHandlers.keys()].join(', ')}`);
+    throw new Error(
+      `Transport handler not found: ${agentName}. Available: ${[...transportHandlers.keys()].join(', ')}`
+    );
   }
   return factory();
 }

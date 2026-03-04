@@ -17,10 +17,10 @@
  */
 
 // Main entry point
-export { startApi } from './app/api/api'
+export { startApi } from './app/api/api';
 
 // Storage
-export { db } from './storage/db'
+export { db } from './storage/db';
 
 // Types
-export { Context } from './context'
+export { Context } from './context';

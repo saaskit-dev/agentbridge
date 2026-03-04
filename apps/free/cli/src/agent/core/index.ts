@@ -94,12 +94,6 @@ export { GeminiTransport, geminiTransport } from '../transport';
 // AgentRegistry - Free-specific factory registry
 // ============================================================================
 
-export {
-  AgentRegistry,
-  agentRegistry,
-} from './AgentRegistry';
+export { AgentRegistry, agentRegistry } from './AgentRegistry';
 
-export type {
-  AgentFactory,
-  AgentFactoryOptions,
-} from './AgentRegistry';
+export type { AgentFactory, AgentFactoryOptions } from './AgentRegistry';

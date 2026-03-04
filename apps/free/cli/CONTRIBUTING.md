@@ -29,10 +29,10 @@ yarn unlink:dev    # Remove free-dev symlink
 
 This creates a `free-dev` command in your PATH pointing to your local build, while leaving any npm-installed `free` command untouched.
 
-| Command | Runs |
-|---------|------|
-| `free` | Stable npm version (from `npm install -g @free/cli`) |
-| `free-dev` | Local development version (from this repo) |
+| Command    | Runs                                                 |
+| ---------- | ---------------------------------------------------- |
+| `free`     | Stable npm version (from `npm install -g @free/cli`) |
+| `free-dev` | Local development version (from this repo)           |
 
 **Note:** Run `yarn build` before `yarn link:dev` to ensure the binary exists.
 
@@ -56,17 +56,20 @@ npm run setup:dev
 ```
 
 This creates:
+
 - `~/.free/` - Stable version data (production-ready)
 - `~/.free-dev/` - Development version data (for testing changes)
 
 ### Daily Usage
 
 **Stable (production-ready):**
+
 ```bash
 npm run stable:daemon:start
 ```
 
 **Development (testing changes):**
+
 ```bash
 npm run dev:daemon:start
 ```
@@ -74,6 +77,7 @@ npm run dev:daemon:start
 ## Visual Indicators
 
 You'll always see which version you're using:
+
 - `✅ STABLE MODE - Data: ~/.free`
 - `🔧 DEV MODE - Data: ~/.free-dev`
 
@@ -126,15 +130,16 @@ npm run dev:variant doctor
 
 Both versions maintain complete separation:
 
-| Aspect | Stable | Development |
-|--------|--------|-------------|
-| Data Directory | `~/.free/` | `~/.free-dev/` |
-| Settings | `~/.free/settings.json` | `~/.free-dev/settings.json` |
-| Auth Keys | `~/.free/access.key` | `~/.free-dev/access.key` |
-| Daemon State | `~/.free/daemon.state.json` | `~/.free-dev/daemon.state.json` |
-| Logs | `~/.free/logs/` | `~/.free-dev/logs/` |
+| Aspect         | Stable                      | Development                     |
+| -------------- | --------------------------- | ------------------------------- |
+| Data Directory | `~/.free/`                  | `~/.free-dev/`                  |
+| Settings       | `~/.free/settings.json`     | `~/.free-dev/settings.json`     |
+| Auth Keys      | `~/.free/access.key`        | `~/.free-dev/access.key`        |
+| Daemon State   | `~/.free/daemon.state.json` | `~/.free-dev/daemon.state.json` |
+| Logs           | `~/.free/logs/`             | `~/.free-dev/logs/`             |
 
 **No conflicts!** Both can run simultaneously with separate:
+
 - Authentication sessions
 - Server connections
 - Daemon processes
@@ -146,6 +151,7 @@ Both versions maintain complete separation:
 For automatic environment switching when entering directories:
 
 1. Install [direnv](https://direnv.net/):
+
    ```bash
    # macOS
    brew install direnv
@@ -155,6 +161,7 @@ For automatic environment switching when entering directories:
    ```
 
 2. Setup direnv for this project:
+
    ```bash
    cp .envrc.example .envrc
    direnv allow
@@ -165,40 +172,49 @@ For automatic environment switching when entering directories:
 ## Troubleshooting
 
 ### Commands not working?
+
 ```bash
 npm install
 ```
 
 ### Permission denied on scripts?
+
 ```bash
 chmod +x scripts/*.cjs
 ```
 
 ### Data directories not created?
+
 ```bash
 npm run setup:dev
 ```
 
 ### Both daemons won't start?
+
 Check port conflicts - each daemon needs its own port. The dev daemon will automatically use a different port from stable.
 
 ### How do I check which version is running?
+
 Look for the visual indicator:
+
 - `✅ STABLE MODE` = stable version
 - `🔧 DEV MODE` = development version
 
 Or check the daemon status:
+
 ```bash
 npm run stable:daemon:status   # Shows ~/.free/ data location
 npm run dev:daemon:status       # Shows ~/.free-dev/ data location
 ```
 
 ### `yarn link:dev` fails with permission denied?
+
 ```bash
 sudo yarn link:dev
 ```
 
 ### `free-dev` command not found after linking?
+
 - Ensure your global npm bin is in PATH: `npm bin -g`
 - Try opening a new terminal window
 - Check the symlink was created: `ls -la $(npm bin -g)/free-dev`
@@ -257,6 +273,7 @@ Profile synchronization ensures AI backend configurations created in the Free mo
 ### Profile Schema Validation
 
 The profile schema is defined in both repositories:
+
 - **GUI:** `sources/sync/settings.ts` (AIBackendProfileSchema)
 - **CLI:** `src/persistence.ts` (AIBackendProfileSchema)
 
@@ -265,6 +282,7 @@ The profile schema is defined in both repositories:
 ### Testing Profile Sync
 
 1. **Create profile in GUI:**
+
    ```
    - Open Free mobile/web app
    - Settings → AI Backend Profiles
@@ -273,6 +291,7 @@ The profile schema is defined in both repositories:
    ```
 
 2. **Verify CLI receives profile:**
+
    ```bash
    # Start daemon with dev variant
    npm run dev:daemon:start
@@ -282,6 +301,7 @@ The profile schema is defined in both repositories:
    ```
 
 3. **Test profile-based session spawning:**
+
    ```bash
    # From GUI: Start new session with custom profile
    # Check CLI daemon logs for:
@@ -309,11 +329,13 @@ When modifying profile schemas:
 ### Common Issues
 
 **"Invalid profile" warnings in logs:**
+
 - Check profile has valid UUID (not timestamp)
 - Verify environment variable names match regex: `^[A-Z_][A-Z0-9_]*$`
 - Ensure compatibility.claude or compatibility.codex is true
 
 **Environment variables not expanding:**
+
 - Reference variable must be set in daemon's process.env
 - Check daemon logs for expansion warnings
 - Verify no typos in ${VAR} references
@@ -329,6 +351,7 @@ yarn workspace @free/cli release
 ```
 
 This runs tests, builds, and publishes to npm. The published package includes:
+
 - `free` - Main CLI command
 - `free-mcp` - MCP bridge command
 

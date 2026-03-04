@@ -1,6 +1,6 @@
 /**
  * Gemini Constants
- * 
+ *
  * Centralized constants for Gemini integration including environment variable names
  * and default values.
  */
@@ -26,4 +26,3 @@ export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro';
 export const CHANGE_TITLE_INSTRUCTION = trimIdent(
   `Based on this message, call functions.free__change_title to change chat session title that would represent the current task. If chat idea would change dramatically - call this function again to update the title.`
 );
-

@@ -32,23 +32,23 @@ import type { ApiSessionClient } from '@/api/apiSession';
  * ```
  */
 export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
-    return {
-        sessionId: `offline-${sessionTag}`,
-        sendCodexMessage: () => {},
-        sendAgentMessage: () => {},
-        sendClaudeSessionMessage: () => {},
-        keepAlive: () => {},
-        sendSessionEvent: () => {},
-        sendSessionDeath: () => {},
-        updateLifecycleState: () => {},
-        requestControlTransfer: async () => {},
-        flush: async () => {},
-        close: async () => {},
-        updateMetadata: () => {},
-        updateAgentState: () => {},
-        onUserMessage: () => {},
-        rpcHandlerManager: {
-            registerHandler: () => {}
-        }
-    } as unknown as ApiSessionClient;
+  return {
+    sessionId: `offline-${sessionTag}`,
+    sendCodexMessage: () => {},
+    sendAgentMessage: () => {},
+    sendClaudeSessionMessage: () => {},
+    keepAlive: () => {},
+    sendSessionEvent: () => {},
+    sendSessionDeath: () => {},
+    updateLifecycleState: () => {},
+    requestControlTransfer: async () => {},
+    flush: async () => {},
+    close: async () => {},
+    updateMetadata: () => {},
+    updateAgentState: () => {},
+    onUserMessage: () => {},
+    rpcHandlerManager: {
+      registerHandler: () => {},
+    },
+  } as unknown as ApiSessionClient;
 }

@@ -1,17 +1,21 @@
 # App Store & Google Play Store Information
 
 ## App Name
+
 Free Coder
 
 ## Subtitle / Short Description
+
 Claude Code on the go
 
 ## Categories
+
 - **App Store Primary**: Developer Tools
 - **App Store Secondary**: Productivity
 - **Google Play**: Productivity > Developer Tools
 
 ## Keywords
+
 claude, code, ai, programming, developer, tools, encrypted, secure, coding, assistant, mobile, sync, offline, notifications, privacy
 
 ## App Description / Full Description
@@ -30,12 +34,14 @@ Free Coder is the secure mobile companion for Claude Code that lets you continue
 • Zero-knowledge architecture - we can't read your data
 
 **How It Works:**
+
 1. Install the @free/cli CLI on your computer
 2. Scan a QR code to securely pair your devices
 3. Use 'free' instead of 'claude' to start encrypted sessions
 4. Switch between desktop and mobile instantly
 
 Perfect for developers who:
+
 - Want to monitor long-running tasks on the go
 - Need secure access to proprietary code discussions
 - Value privacy and open-source transparency
@@ -48,11 +54,13 @@ Built by Bay Area engineers who believe the best tools come from scratching your
 Your code. Your privacy. Your Claude Code companion.
 
 ## Promotional Text
+
 **App Store (170 chars)**: Securely continue your Claude Code sessions on mobile. End-to-end encrypted, open source, with push notifications for completed tasks. Your AI coding assistant, anywhere.
 
 **Google Play (80 chars)**: Secure mobile Claude Code companion. Encrypted, open source, with notifications.
 
 ## What's New (for updates)
+
 - Initial release
 - End-to-end encryption for all messages
 - Push notifications for permissions and task completion
@@ -62,23 +70,31 @@ Your code. Your privacy. Your Claude Code companion.
 ## URLs
 
 ### Privacy Policy
+
 https://github.com/kilingzhang/agentbridge/blob/main/PRIVACY.md
 
 ### Support / Contact
+
 https://github.com/kilingzhang/agentbridge/issues
 
 ### Website / Marketing
+
 https://github.com/kilingzhang/agentbridge
+
 ## Additional Google Play Requirements
 
 ### Content Rating
+
 Everyone
 
 ### Target Audience
+
 Developers and software engineers
 
 ### Contains Ads
+
 No
 
 ### In-App Purchases
+
 No

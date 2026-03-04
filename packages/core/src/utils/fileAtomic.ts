@@ -4,8 +4,8 @@
  * Ensures file writes are atomic using temp file + rename pattern.
  */
 
-import { writeFile, rename, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { writeFile, rename, unlink } from 'node:fs/promises';
 
 /**
  * Atomically write content to a file
@@ -16,7 +16,10 @@ import { randomUUID } from 'node:crypto';
  * @param filePath - Target file path
  * @param content - Content to write
  */
-export async function atomicFileWrite(filePath: string, content: string | Uint8Array): Promise<void> {
+export async function atomicFileWrite(
+  filePath: string,
+  content: string | Uint8Array
+): Promise<void> {
   const tmpFile = `${filePath}.${randomUUID()}.tmp`;
 
   try {
@@ -48,8 +51,6 @@ export async function atomicWriteJson(
   data: unknown,
   pretty: boolean = false
 ): Promise<void> {
-  const content = pretty
-    ? JSON.stringify(data, null, 2)
-    : JSON.stringify(data);
+  const content = pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data);
   await atomicFileWrite(filePath, content);
 }

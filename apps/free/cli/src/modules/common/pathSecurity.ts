@@ -1,8 +1,8 @@
 import { resolve } from 'path';
 
 export interface PathValidationResult {
-    valid: boolean;
-    error?: string;
+  valid: boolean;
+  error?: string;
 }
 
 /**
@@ -12,18 +12,21 @@ export interface PathValidationResult {
  * @returns Validation result
  */
 export function validatePath(targetPath: string, workingDirectory: string): PathValidationResult {
-    // Resolve both paths to absolute paths to handle path traversal attempts
-    const resolvedTarget = resolve(workingDirectory, targetPath);
-    const resolvedWorkingDir = resolve(workingDirectory);
+  // Resolve both paths to absolute paths to handle path traversal attempts
+  const resolvedTarget = resolve(workingDirectory, targetPath);
+  const resolvedWorkingDir = resolve(workingDirectory);
 
-    // Check if the resolved target path starts with the working directory
-    // This prevents access to files outside the working directory
-    if (!resolvedTarget.startsWith(resolvedWorkingDir + '/') && resolvedTarget !== resolvedWorkingDir) {
-        return {
-            valid: false,
-            error: `Access denied: Path '${targetPath}' is outside the working directory`
-        };
-    }
+  // Check if the resolved target path starts with the working directory
+  // This prevents access to files outside the working directory
+  if (
+    !resolvedTarget.startsWith(resolvedWorkingDir + '/') &&
+    resolvedTarget !== resolvedWorkingDir
+  ) {
+    return {
+      valid: false,
+      error: `Access denied: Path '${targetPath}' is outside the working directory`,
+    };
+  }
 
-    return { valid: true };
+  return { valid: true };
 }

@@ -1,16 +1,16 @@
 /**
  * Gemini Configuration Utilities
- * 
+ *
  * Utilities for reading and writing Gemini CLI configuration files,
  * including API keys, tokens, and model settings.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import { homedir } from 'os';
 import { execSync } from 'child_process';
-import { logger } from '@/ui/logger';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL } from '../constants';
+import { logger } from '@/ui/logger';
 
 /**
  * Result of reading Gemini local configuration
@@ -32,7 +32,7 @@ export function readGeminiLocalConfig(): GeminiLocalConfig {
   let model: string | null = null;
   let googleCloudProject: string | null = null;
   let googleCloudProjectEmail: string | null = null;
-  
+
   // Try common Gemini CLI config locations
   // Gemini CLI stores OAuth tokens in ~/.gemini/oauth_creds.json after 'gemini auth'
   const possiblePaths = [
@@ -47,17 +47,18 @@ export function readGeminiLocalConfig(): GeminiLocalConfig {
     if (existsSync(configPath)) {
       try {
         const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-        
+
         // Try different possible token field names
         // oauth_creds.json has access_token field
         if (!token) {
-          const foundToken = config.access_token || config.token || config.apiKey || config.GEMINI_API_KEY;
+          const foundToken =
+            config.access_token || config.token || config.apiKey || config.GEMINI_API_KEY;
           if (foundToken && typeof foundToken === 'string') {
             token = foundToken;
             logger.debug(`[Gemini] Found token in ${configPath}`);
           }
         }
-        
+
         // Try to read model from config
         if (!model) {
           const foundModel = config.model || config.GEMINI_MODEL;
@@ -66,17 +67,23 @@ export function readGeminiLocalConfig(): GeminiLocalConfig {
             logger.debug(`[Gemini] Found model in ${configPath}: ${model}`);
           }
         }
-        
+
         // Try to read Google Cloud Project from config
         if (!googleCloudProject) {
-          const foundProject = config.googleCloudProject || config.google_cloud_project || config.projectId;
+          const foundProject =
+            config.googleCloudProject || config.google_cloud_project || config.projectId;
           if (foundProject && typeof foundProject === 'string') {
             googleCloudProject = foundProject;
             // Also get the associated email if stored
-            if (config.googleCloudProjectEmail && typeof config.googleCloudProjectEmail === 'string') {
+            if (
+              config.googleCloudProjectEmail &&
+              typeof config.googleCloudProjectEmail === 'string'
+            ) {
               googleCloudProjectEmail = config.googleCloudProjectEmail;
             }
-            logger.debug(`[Gemini] Found Google Cloud Project in ${configPath}: ${googleCloudProject}${googleCloudProjectEmail ? ` (for ${googleCloudProjectEmail})` : ''}`);
+            logger.debug(
+              `[Gemini] Found Google Cloud Project in ${configPath}: ${googleCloudProject}${googleCloudProjectEmail ? ` (for ${googleCloudProjectEmail})` : ''}`
+            );
           }
         }
       } catch (error) {
@@ -89,10 +96,10 @@ export function readGeminiLocalConfig(): GeminiLocalConfig {
   // Gemini CLI might use gcloud auth application-default print-access-token
   if (!token) {
     try {
-      const gcloudToken = execSync('gcloud auth application-default print-access-token', { 
+      const gcloudToken = execSync('gcloud auth application-default print-access-token', {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 5000
+        timeout: 5000,
       }).trim();
       if (gcloudToken && gcloudToken.length > 0) {
         token = gcloudToken;
@@ -123,7 +130,7 @@ export function readGeminiLocalConfig(): GeminiLocalConfig {
  * 2. Environment variable (GEMINI_MODEL)
  * 3. Local config file
  * 4. Default model
- * 
+ *
  * @param explicitModel - Model explicitly provided (undefined = check sources, null = skip config)
  * @param localConfig - Local config result from readGeminiLocalConfig()
  * @returns The model string to use
@@ -144,7 +151,9 @@ export function determineGeminiModel(
     // No explicit model - check env var first (user override), then local config, then default
     // This allows users to override config via environment variable
     const envModel = process.env[GEMINI_MODEL_ENV];
-    logger.debug(`[Gemini] Model selection: env[GEMINI_MODEL_ENV]=${envModel}, localConfig.model=${localConfig.model}, DEFAULT=${DEFAULT_GEMINI_MODEL}`);
+    logger.debug(
+      `[Gemini] Model selection: env[GEMINI_MODEL_ENV]=${envModel}, localConfig.model=${localConfig.model}, DEFAULT=${DEFAULT_GEMINI_MODEL}`
+    );
     const model = envModel || localConfig.model || DEFAULT_GEMINI_MODEL;
     logger.debug(`[Gemini] Selected model: ${model}`);
     return model;
@@ -153,19 +162,19 @@ export function determineGeminiModel(
 
 /**
  * Save model to Gemini config file
- * 
+ *
  * @param model - The model name to save
  */
 export function saveGeminiModelToConfig(model: string): void {
   try {
     const configDir = join(homedir(), '.gemini');
     const configPath = join(configDir, 'config.json');
-    
+
     // Create directory if it doesn't exist
     if (!existsSync(configDir)) {
       mkdirSync(configDir, { recursive: true });
     }
-    
+
     // Read existing config or create new one
     let config: any = {};
     if (existsSync(configPath)) {
@@ -176,10 +185,10 @@ export function saveGeminiModelToConfig(model: string): void {
         config = {};
       }
     }
-    
+
     // Update model in config
     config.model = model;
-    
+
     // Write config back
     writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
     logger.debug(`[Gemini] Saved model "${model}" to ${configPath}`);
@@ -191,7 +200,7 @@ export function saveGeminiModelToConfig(model: string): void {
 
 /**
  * Save Google Cloud Project ID to Gemini config file
- * 
+ *
  * @param projectId - The Google Cloud Project ID to save
  * @param email - Optional email to associate with this project (for per-account projects)
  */
@@ -199,12 +208,12 @@ export function saveGoogleCloudProjectToConfig(projectId: string, email?: string
   try {
     const configDir = join(homedir(), '.gemini');
     const configPath = join(configDir, 'config.json');
-    
+
     // Create directory if it doesn't exist
     if (!existsSync(configDir)) {
       mkdirSync(configDir, { recursive: true });
     }
-    
+
     // Read existing config or create new one
     let config: Record<string, unknown> = {};
     if (existsSync(configPath)) {
@@ -214,18 +223,20 @@ export function saveGoogleCloudProjectToConfig(projectId: string, email?: string
         config = {};
       }
     }
-    
+
     // Update project in config
     config.googleCloudProject = projectId;
-    
+
     // Store the associated email if provided
     if (email) {
       config.googleCloudProjectEmail = email;
     }
-    
+
     // Write config back
     writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
-    logger.debug(`[Gemini] Saved Google Cloud Project "${projectId}"${email ? ` for ${email}` : ''} to ${configPath}`);
+    logger.debug(
+      `[Gemini] Saved Google Cloud Project "${projectId}"${email ? ` for ${email}` : ''} to ${configPath}`
+    );
   } catch (error) {
     logger.debug(`[Gemini] Failed to save Google Cloud Project to config:`, error);
     throw error; // This is important - let user know if save failed
@@ -235,7 +246,7 @@ export function saveGoogleCloudProjectToConfig(projectId: string, email?: string
 /**
  * Get the initial model value for UI display
  * Priority: env var > local config > default
- * 
+ *
  * @returns The initial model string
  */
 export function getInitialGeminiModel(): string {
@@ -245,7 +256,7 @@ export function getInitialGeminiModel(): string {
 
 /**
  * Determine the source of the model for logging purposes
- * 
+ *
  * @param explicitModel - Model explicitly provided (undefined = check sources, null = skip config)
  * @param localConfig - Local config result from readGeminiLocalConfig()
  * @returns Source identifier: 'explicit' | 'env-var' | 'local-config' | 'default'
@@ -264,4 +275,3 @@ export function getGeminiModelSource(
     return 'default';
   }
 }
-

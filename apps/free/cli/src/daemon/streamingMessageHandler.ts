@@ -8,8 +8,8 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { logger } from '@/ui/logger';
 import { serverCapabilities } from '@/api/serverCapabilities';
+import { logger } from '@/ui/logger';
 
 /**
  * Streaming message state
@@ -44,8 +44,20 @@ export interface StreamingMessageHandlerOptions {
  */
 export type StreamingEphemeralEvent =
   | { type: 'text_delta'; sessionId: string; messageId: string; delta: string; timestamp: number }
-  | { type: 'text_complete'; sessionId: string; messageId: string; fullText: string; timestamp: number }
-  | { type: 'thinking_delta'; sessionId: string; messageId: string; delta: string; timestamp: number };
+  | {
+      type: 'text_complete';
+      sessionId: string;
+      messageId: string;
+      fullText: string;
+      timestamp: number;
+    }
+  | {
+      type: 'thinking_delta';
+      sessionId: string;
+      messageId: string;
+      delta: string;
+      timestamp: number;
+    };
 
 /**
  * Streaming Message Handler
@@ -86,7 +98,9 @@ export class StreamingMessageHandler extends EventEmitter {
     if (this.streamingEnabled) {
       logger.debug('[StreamingMessageHandler] Streaming enabled - typewriter effect active');
     } else {
-      logger.debug('[StreamingMessageHandler] Streaming disabled - server does not support textDelta');
+      logger.debug(
+        '[StreamingMessageHandler] Streaming disabled - server does not support textDelta'
+      );
     }
   }
 
@@ -116,7 +130,9 @@ export class StreamingMessageHandler extends EventEmitter {
       flushTimeout: null,
     });
 
-    logger.debug(`[StreamingMessageHandler] Started streaming message ${messageId} for session ${sessionId}`);
+    logger.debug(
+      `[StreamingMessageHandler] Started streaming message ${messageId} for session ${sessionId}`
+    );
   }
 
   /**
@@ -248,7 +264,7 @@ export class StreamingMessageHandler extends EventEmitter {
    * Get current streaming state for debugging
    */
   getDebugState(): { sessionId: string; messageId: string; accumulatedLength: number }[] {
-    return Array.from(this.streamingStates.values()).map((state) => ({
+    return Array.from(this.streamingStates.values()).map(state => ({
       sessionId: state.sessionId,
       messageId: state.messageId,
       accumulatedLength: state.accumulatedText.length,

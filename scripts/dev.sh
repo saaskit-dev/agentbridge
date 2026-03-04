@@ -230,7 +230,7 @@ start_web() {
 
     log_info "启动 Expo (iOS/Android/Web)..."
 
-    npx expo start 2>&1 | tee "$LOG_DIR/web.log" &
+    npx expo start --clear 2>&1 | tee "$LOG_DIR/web.log" &
     WEB_PID=$!
 
     echo $WEB_PID > "$LOG_DIR/web.pid"
@@ -288,7 +288,7 @@ show_help() {
     echo "用法: $0 [选项]"
     echo ""
     echo "选项:"
-    echo "  --skip-build     跳过构建和 CLI 全局链接步骤"
+    echo "  --clear          清除 Metro 缓存后启动"
     echo "  --server-only    只启动服务器"
     echo "  --web-only       只启动 Web"
     echo "  --no-clean       不清理历史进程"
@@ -316,6 +316,7 @@ main() {
     local server_only=false
     local web_only=false
     local no_clean=false
+    local clear_cache=false
 
     # 解析参数
     while [[ $# -gt 0 ]]; do
@@ -334,6 +335,10 @@ main() {
                 ;;
             --no-clean)
                 no_clean=true
+                shift
+                ;;
+            --clear)
+                clear_cache=true
                 shift
                 ;;
             --help|-h)

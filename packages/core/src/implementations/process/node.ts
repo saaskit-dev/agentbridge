@@ -14,11 +14,7 @@ class NodeProcess implements IProcess {
   private _pid: number;
   private exitPromise: Promise<{ code: number; signal?: string }>;
 
-  constructor(
-    command: string,
-    args: string[],
-    options?: SpawnOptions
-  ) {
+  constructor(command: string, args: string[], options?: SpawnOptions) {
     this.child = spawn(command, args, {
       cwd: options?.cwd,
       env: { ...process.env, ...options?.env },
@@ -27,7 +23,7 @@ class NodeProcess implements IProcess {
 
     this._pid = this.child.pid ?? 0;
 
-    this.exitPromise = new Promise((resolve) => {
+    this.exitPromise = new Promise(resolve => {
       this.child.on('close', (code, signal) => {
         resolve({ code: code ?? 1, signal: signal ?? undefined });
       });
@@ -87,7 +83,7 @@ class NodeProcessManager implements IProcessManager {
   }
 
   exec(command: string, options?: SpawnOptions): Promise<ExecResult> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       nodeExec(
         command,
         {

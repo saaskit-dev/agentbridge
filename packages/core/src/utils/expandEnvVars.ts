@@ -20,10 +20,7 @@
  * expandEnvVars('${UNDEFINED:-default}'); // 'default'
  * ```
  */
-export function expandEnvVars(
-  value: string,
-  sourceEnv: NodeJS.ProcessEnv = process.env
-): string {
+export function expandEnvVars(value: string, sourceEnv: NodeJS.ProcessEnv = process.env): string {
   return value.replace(/\$\{([^}]+)\}/g, (match, expr) => {
     // Support bash parameter expansion: ${VAR:-default}
     const colonDashIndex = expr.indexOf(':-');
@@ -95,9 +92,7 @@ export function getUndefinedVars(
 
   value.replace(/\$\{([^}]+)\}/g, (match, expr) => {
     const colonDashIndex = expr.indexOf(':-');
-    const varName = colonDashIndex !== -1
-      ? expr.substring(0, colonDashIndex)
-      : expr;
+    const varName = colonDashIndex !== -1 ? expr.substring(0, colonDashIndex) : expr;
 
     if (sourceEnv[varName] === undefined) {
       undefinedVars.push(varName);

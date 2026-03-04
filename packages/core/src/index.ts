@@ -17,11 +17,7 @@ export type {
   MessageRole,
 } from './types';
 
-export type {
-  MachineMetadata,
-  DaemonState,
-  Machine,
-} from './types';
+export type { MachineMetadata, DaemonState, Machine } from './types';
 
 export type {
   AgentId,
@@ -31,7 +27,6 @@ export type {
   AgentBackendConfig,
   AcpAgentConfig,
 } from './types';
-
 
 // Server capabilities
 export type {
@@ -49,12 +44,7 @@ export {
 } from './types';
 
 // Interfaces
-export type {
-  ICrypto,
-  EncryptedData,
-  KeyPair,
-  CryptoFactory,
-} from './interfaces';
+export type { ICrypto, EncryptedData, KeyPair, CryptoFactory } from './interfaces';
 export { registerCryptoFactory, createCrypto } from './interfaces';
 
 export type {
@@ -128,7 +118,11 @@ export type {
   ToolNameContext,
   TransportHandlerFactory,
 } from './interfaces';
-export { registerTransportHandler, createTransportHandler, hasTransportHandler } from './interfaces';
+export {
+  registerTransportHandler,
+  createTransportHandler,
+  hasTransportHandler,
+} from './interfaces';
 
 export type {
   IProcessManager,
@@ -228,12 +222,7 @@ export {
 } from './utils';
 
 // Utils - Crypto
-export {
-  hmacSha512,
-  deriveKey,
-  deriveSecretKeyTreeRoot,
-  deriveSecretKeyTreeChild,
-} from './utils';
+export { hmacSha512, deriveKey, deriveSecretKeyTreeRoot, deriveSecretKeyTreeChild } from './utils';
 export type { KeyTreeState } from './utils';
 
 // Utils - Concurrency
@@ -243,31 +232,23 @@ export { AsyncLock } from './utils';
 export { atomicFileWrite, atomicWriteJson } from './utils';
 
 // Utils - JSON
-export {
-  deterministicStringify,
-  hashObject,
-  deepEqual,
-  objectKey,
-} from './utils';
+export { deterministicStringify, hashObject, deepEqual, objectKey } from './utils';
 export type { DeterministicJsonOptions } from './utils';
 
 // Utils - Message Queue
 // Utils - Message Queues
-export { ModeAwareMessageQueue, AsyncIterableQueue, PushableAsyncIterable, createPushableAsyncIterable } from './utils';
+export {
+  ModeAwareMessageQueue,
+  AsyncIterableQueue,
+  PushableAsyncIterable,
+  createPushableAsyncIterable,
+} from './utils';
 
 // Utils - Environment Variables
-export {
-  expandEnvVars,
-  expandEnvironmentVariables,
-  getUndefinedVars,
-} from './utils';
+export { expandEnvVars, expandEnvironmentVariables, getUndefinedVars } from './utils';
 
 // Utils - System (Caffeinate)
-export {
-  startCaffeinate,
-  stopCaffeinate,
-  isCaffeinateRunning,
-} from './utils';
+export { startCaffeinate, stopCaffeinate, isCaffeinateRunning } from './utils';
 export type { CaffeinateOptions } from './utils';
 
 // Utils - Tmux

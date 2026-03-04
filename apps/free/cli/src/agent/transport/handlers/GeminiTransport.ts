@@ -83,14 +83,13 @@ export class GeminiTransport extends CoreGeminiTransport {
       const inputKeys = input && typeof input === 'object' ? Object.keys(input) : [];
       logger.debug(
         `[GeminiTransport] Unknown tool pattern - toolCallId: "${toolCallId}", ` +
-        `toolName: "${toolName}", inputKeys: [${inputKeys.join(', ')}]`
+          `toolName: "${toolName}", inputKeys: [${inputKeys.join(', ')}]`
       );
     }
 
     return result;
   }
 }
-
 
 /**
  * Singleton instance for convenience

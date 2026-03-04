@@ -23,12 +23,7 @@ export type {
   MessageRole,
 } from './message';
 
-export type {
-  MachineMetadata,
-  DaemonState,
-  Machine,
-  GitStatus,
-} from './machine';
+export type { MachineMetadata, DaemonState, Machine, GitStatus } from './machine';
 
 export type {
   AgentId,

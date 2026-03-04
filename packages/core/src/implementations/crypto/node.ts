@@ -1,6 +1,6 @@
 /**
  * Node.js crypto implementation - based on free/cli actual implementation
- * 
+ *
  * Uses:
  * - node:crypto for AES-256-GCM
  * - tweetnacl for NaCl primitives (secretbox, box, sign)
@@ -102,10 +102,7 @@ class NodeCrypto implements ICrypto {
     const nonce = this.getRandomBytes(12); // GCM uses 12-byte nonces
     const cipher = createCipheriv('aes-256-gcm', key, nonce);
 
-    const encrypted = Buffer.concat([
-      cipher.update(plaintext),
-      cipher.final(),
-    ]);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
 
     const tag = cipher.getAuthTag();
 
@@ -119,13 +116,13 @@ class NodeCrypto implements ICrypto {
     return {
       ciphertext: bundle,
       nonce: new Uint8Array(0), // nonce is embedded in bundle
-      tag: new Uint8Array(0),   // tag is embedded in bundle
+      tag: new Uint8Array(0), // tag is embedded in bundle
     };
   }
 
   decryptAesGcm(encrypted: EncryptedData, key: Uint8Array): Uint8Array | null {
     const bundle = encrypted.ciphertext;
-    
+
     // Validate bundle format
     if (bundle.length < 1 + 12 + 16 || bundle[0] !== 0) {
       return null;
@@ -139,10 +136,7 @@ class NodeCrypto implements ICrypto {
       const decipher = createDecipheriv('aes-256-gcm', key, nonce);
       decipher.setAuthTag(authTag);
 
-      const decrypted = Buffer.concat([
-        decipher.update(ciphertext),
-        decipher.final(),
-      ]);
+      const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 
       return new Uint8Array(decrypted);
     } catch {
@@ -172,7 +166,11 @@ class NodeCrypto implements ICrypto {
 
   // === Authentication ===
 
-  authChallenge(secret: Uint8Array): { challenge: Uint8Array; publicKey: Uint8Array; signature: Uint8Array } {
+  authChallenge(secret: Uint8Array): {
+    challenge: Uint8Array;
+    publicKey: Uint8Array;
+    signature: Uint8Array;
+  } {
     const keypair = this.signKeyPairFromSeed(secret);
     const challenge = this.getRandomBytes(32);
     const signature = this.signDetached(challenge, keypair.secretKey);
