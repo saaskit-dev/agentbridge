@@ -90,6 +90,7 @@ android {
     namespace 'app.saaskit.free.dev'
     defaultConfig {
         applicationId 'app.saaskit.free.dev'
+    }
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
