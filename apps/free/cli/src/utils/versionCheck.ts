@@ -33,13 +33,13 @@ export function getCurrentCliVersion(): string {
 export interface VersionMonitorOptions {
   /** The version that was current when the session started */
   startVersion: string;
-  
+
   /** Interval in milliseconds between checks (default: 60000 = 1 minute) */
   checkIntervalMs?: number;
-  
+
   /** Callback when version change is detected */
   onVersionChange: (oldVersion: string, newVersion: string) => void | Promise<void>;
-  
+
   /** Label for logging purposes */
   label?: string;
 }
@@ -64,12 +64,7 @@ export interface VersionMonitorOptions {
  * ```
  */
 export function startVersionMonitor(options: VersionMonitorOptions): () => void {
-  const {
-    startVersion,
-    checkIntervalMs = 60000,
-    onVersionChange,
-    label = 'Session'
-  } = options;
+  const { startVersion, checkIntervalMs = 60000, onVersionChange, label = 'Session' } = options;
 
   let isMonitoring = true;
 
@@ -81,10 +76,10 @@ export function startVersionMonitor(options: VersionMonitorOptions): () => void 
 
       if (currentVersion !== startVersion && currentVersion !== 'unknown') {
         logger.debug(`[${label}] CLI version changed from ${startVersion} to ${currentVersion}`);
-        
+
         isMonitoring = false;
         clearInterval(intervalId);
-        
+
         await onVersionChange(startVersion, currentVersion);
       }
     } catch (error) {
@@ -94,7 +89,9 @@ export function startVersionMonitor(options: VersionMonitorOptions): () => void 
 
   const intervalId = setInterval(checkVersion, checkIntervalMs);
 
-  logger.debug(`[${label}] Started version monitor (startVersion: ${startVersion}, interval: ${checkIntervalMs}ms)`);
+  logger.debug(
+    `[${label}] Started version monitor (startVersion: ${startVersion}, interval: ${checkIntervalMs}ms)`
+  );
 
   return () => {
     if (isMonitoring) {
@@ -109,11 +106,8 @@ export function startVersionMonitor(options: VersionMonitorOptions): () => void 
  * Notify a session process to gracefully exit.
  * Sends SIGTERM first, then SIGKILL after timeout.
  */
-export async function notifySessionToExit(
-  pid: number,
-  timeoutMs: number = 5000
-): Promise<boolean> {
-  return new Promise((resolve) => {
+export async function notifySessionToExit(pid: number, timeoutMs: number = 5000): Promise<boolean> {
+  return new Promise(resolve => {
     let resolved = false;
 
     const cleanup = (success: boolean) => {

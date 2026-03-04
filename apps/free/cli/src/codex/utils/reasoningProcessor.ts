@@ -6,11 +6,11 @@
  */
 
 import {
-    BaseReasoningProcessor,
-    ReasoningToolCall,
-    ReasoningToolResult,
-    ReasoningMessage,
-    ReasoningOutput
+  BaseReasoningProcessor,
+  ReasoningToolCall,
+  ReasoningToolResult,
+  ReasoningMessage,
+  ReasoningOutput,
 } from '@/utils/BaseReasoningProcessor';
 
 // Re-export types for backwards compatibility
@@ -20,25 +20,25 @@ export type { ReasoningToolCall, ReasoningToolResult, ReasoningMessage, Reasonin
  * Codex-specific reasoning processor.
  */
 export class ReasoningProcessor extends BaseReasoningProcessor {
-    protected getToolName(): string {
-        return 'CodexReasoning';
-    }
+  protected getToolName(): string {
+    return 'CodexReasoning';
+  }
 
-    protected getLogPrefix(): string {
-        return '[ReasoningProcessor]';
-    }
+  protected getLogPrefix(): string {
+    return '[ReasoningProcessor]';
+  }
 
-    /**
-     * Process a reasoning delta and accumulate content.
-     */
-    processDelta(delta: string): void {
-        this.processInput(delta);
-    }
+  /**
+   * Process a reasoning delta and accumulate content.
+   */
+  processDelta(delta: string): void {
+    this.processInput(delta);
+  }
 
-    /**
-     * Complete the reasoning section with final text.
-     */
-    complete(fullText: string): void {
-        this.completeReasoning(fullText);
-    }
+  /**
+   * Complete the reasoning section with final text.
+   */
+  complete(fullText: string): void {
+    this.completeReasoning(fullText);
+  }
 }

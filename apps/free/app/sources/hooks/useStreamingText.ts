@@ -9,12 +9,12 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { sync } from '@/sync/sync';
 import type {
   ApiEphemeralTextDelta,
   ApiEphemeralTextComplete,
   ApiEphemeralUpdate,
 } from '@/sync/apiTypes';
+import { sync } from '@/sync/sync';
 
 /**
  * Streaming text state for a message
@@ -110,7 +110,7 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
       switch (update.type) {
         case 'text_delta': {
           const delta = update as ApiEphemeralTextDelta;
-          setState((prev) => {
+          setState(prev => {
             // If this is a new message, reset state
             if (prev.messageId !== delta.messageId) {
               return {
@@ -133,7 +133,7 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
 
         case 'text_complete': {
           const complete = update as ApiEphemeralTextComplete;
-          setState((prev) => {
+          setState(prev => {
             // Handle text_complete even if we didn't track this message
             // (e.g. missed deltas, reconnection scenarios)
             if (prev.messageId !== complete.messageId && prev.messageId !== null) {
@@ -181,7 +181,7 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
 
   // Manually append text (for testing or manual control)
   const appendText = useCallback((text: string) => {
-    setState((prev) => ({
+    setState(prev => ({
       ...prev,
       pendingText: prev.pendingText + text,
     }));

@@ -1,12 +1,12 @@
 /**
  * SecretBox Encryption (NaCl secretbox)
- * 
+ *
  * Uses tweetnacl secretbox for symmetric encryption.
  * Layout: [ nonce(24) | ciphertext+tag ]
  */
 
-import type { Encryptor, Decryptor } from './types';
 import { createCrypto } from '../interfaces/crypto';
+import type { Encryptor, Decryptor } from './types';
 
 /**
  * SecretBox encryption using NaCl secretbox
@@ -34,13 +34,13 @@ export class SecretBoxEncryption implements Encryptor, Decryptor {
         }
         const nonce = item.slice(0, 24);
         const ciphertext = item.slice(24);
-        
+
         const decrypted = this.crypto.secretboxOpen(ciphertext, nonce, this.secretKey);
         if (!decrypted) {
           results.push(null);
           continue;
         }
-        
+
         // Parse JSON
         const text = new TextDecoder().decode(decrypted);
         results.push(JSON.parse(text));
@@ -57,18 +57,18 @@ export class SecretBoxEncryption implements Encryptor, Decryptor {
       // Serialize to JSON
       const json = JSON.stringify(item);
       const plaintext = new TextEncoder().encode(json);
-      
+
       // Generate nonce
       const nonce = this.crypto.getRandomBytes(24);
-      
+
       // Encrypt
       const ciphertext = this.crypto.secretbox(plaintext, nonce, this.secretKey);
-      
+
       // Combine: [ nonce | ciphertext ]
       const result = new Uint8Array(24 + ciphertext.length);
       result.set(nonce, 0);
       result.set(ciphertext, 24);
-      
+
       results.push(result);
     }
     return results;

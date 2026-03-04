@@ -31,11 +31,14 @@ export interface SessionUpdate {
   toolCallId?: string;
   status?: string;
   kind?: string | unknown;
-  content?: {
-    text?: string;
-    error?: string | { message?: string };
-    [key: string]: unknown;
-  } | string | unknown;
+  content?:
+    | {
+        text?: string;
+        error?: string | { message?: string };
+        [key: string]: unknown;
+      }
+    | string
+    | unknown;
   locations?: unknown[];
   messageChunk?: {
     textDelta?: string;
@@ -150,10 +153,7 @@ export function formatDurationMinutes(startTime: number | undefined): string {
 /**
  * Handle agent_message_chunk update (text output from model)
  */
-export function handleAgentMessageChunk(
-  update: SessionUpdate,
-  ctx: HandlerContext
-): HandlerResult {
+export function handleAgentMessageChunk(update: SessionUpdate, ctx: HandlerContext): HandlerResult {
   const content = update.content;
 
   if (!content || typeof content !== 'object' || !('text' in content)) {
@@ -175,7 +175,9 @@ export function handleAgentMessageChunk(
       payload: { text },
     });
   } else {
-    logger.debug(`[AcpBackend] Received message chunk (length: ${text.length}): ${text.substring(0, 50)}...`);
+    logger.debug(
+      `[AcpBackend] Received message chunk (length: ${text.length}): ${text.substring(0, 50)}...`
+    );
     ctx.emit({
       type: 'model-output',
       textDelta: text,
@@ -191,7 +193,9 @@ export function handleAgentMessageChunk(
         logger.debug('[AcpBackend] No more chunks received, emitting idle status');
         ctx.emitIdleStatus();
       } else {
-        logger.debug(`[AcpBackend] Delaying idle status - ${ctx.activeToolCalls.size} active tool calls`);
+        logger.debug(
+          `[AcpBackend] Delaying idle status - ${ctx.activeToolCalls.size} active tool calls`
+        );
       }
     }, idleTimeoutMs);
   }
@@ -202,10 +206,7 @@ export function handleAgentMessageChunk(
 /**
  * Handle agent_thought_chunk update (Gemini's thinking/reasoning)
  */
-export function handleAgentThoughtChunk(
-  update: SessionUpdate,
-  ctx: HandlerContext
-): HandlerResult {
+export function handleAgentThoughtChunk(update: SessionUpdate, ctx: HandlerContext): HandlerResult {
   const content = update.content;
 
   if (!content || typeof content !== 'object' || !('text' in content)) {
@@ -220,7 +221,9 @@ export function handleAgentThoughtChunk(
   // Log thinking chunks when tool calls are active
   if (ctx.activeToolCalls.size > 0) {
     const activeToolCallsList = Array.from(ctx.activeToolCalls);
-    logger.debug(`[AcpBackend] 💭 Thinking chunk received (${text.length} chars) during active tool calls: ${activeToolCallsList.join(', ')}`);
+    logger.debug(
+      `[AcpBackend] 💭 Thinking chunk received (${text.length} chars) during active tool calls: ${activeToolCallsList.join(', ')}`
+    );
   }
 
   ctx.emit({
@@ -256,20 +259,29 @@ export function startToolCall(
   ctx.activeToolCalls.add(toolCallId);
   ctx.toolCallStartTimes.set(toolCallId, startTime);
 
-  logger.debug(`[AcpBackend] ⏱️ Set startTime for ${toolCallId} at ${new Date(startTime).toISOString()} (from ${source})`);
-  logger.debug(`[AcpBackend] 🔧 Tool call START: ${toolCallId} (${toolKind} -> ${realToolName})${isInvestigation ? ' [INVESTIGATION TOOL]' : ''}`);
+  logger.debug(
+    `[AcpBackend] ⏱️ Set startTime for ${toolCallId} at ${new Date(startTime).toISOString()} (from ${source})`
+  );
+  logger.debug(
+    `[AcpBackend] 🔧 Tool call START: ${toolCallId} (${toolKind} -> ${realToolName})${isInvestigation ? ' [INVESTIGATION TOOL]' : ''}`
+  );
 
   if (isInvestigation) {
-    logger.debug(`[AcpBackend] 🔍 Investigation tool detected - extended timeout (10min) will be used`);
+    logger.debug(
+      `[AcpBackend] 🔍 Investigation tool detected - extended timeout (10min) will be used`
+    );
   }
 
   // Set timeout for tool call completion
-  const timeoutMs = ctx.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? DEFAULT_TOOL_CALL_TIMEOUT_MS;
+  const timeoutMs =
+    ctx.transport.getToolCallTimeout?.(toolCallId, toolKindStr) ?? DEFAULT_TOOL_CALL_TIMEOUT_MS;
 
   if (!ctx.toolCallTimeouts.has(toolCallId)) {
     const timeout = setTimeout(() => {
       const duration = formatDuration(ctx.toolCallStartTimes.get(toolCallId));
-      logger.debug(`[AcpBackend] ⏱️ Tool call TIMEOUT (from ${source}): ${toolCallId} (${toolKind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${duration}, removing from active set`);
+      logger.debug(
+        `[AcpBackend] ⏱️ Tool call TIMEOUT (from ${source}): ${toolCallId} (${toolKind}) after ${(timeoutMs / 1000).toFixed(0)}s - Duration: ${duration}, removing from active set`
+      );
 
       ctx.activeToolCalls.delete(toolCallId);
       ctx.toolCallStartTimes.delete(toolCallId);
@@ -282,7 +294,9 @@ export function startToolCall(
     }, timeoutMs);
 
     ctx.toolCallTimeouts.set(toolCallId, timeout);
-    logger.debug(`[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`);
+    logger.debug(
+      `[AcpBackend] ⏱️ Set timeout for ${toolCallId}: ${(timeoutMs / 1000).toFixed(0)}s${isInvestigation ? ' (investigation tool)' : ''}`
+    );
   } else {
     logger.debug(`[AcpBackend] Timeout already set for ${toolCallId}, skipping`);
   }
@@ -303,7 +317,9 @@ export function startToolCall(
 
   // Log investigation tool objective
   if (isInvestigation && args.objective) {
-    logger.debug(`[AcpBackend] 🔍 Investigation tool objective: ${String(args.objective).substring(0, 100)}...`);
+    logger.debug(
+      `[AcpBackend] 🔍 Investigation tool objective: ${String(args.objective).substring(0, 100)}...`
+    );
   }
 
   ctx.emit({
@@ -336,7 +352,9 @@ export function completeToolCall(
     ctx.toolCallTimeouts.delete(toolCallId);
   }
 
-  logger.debug(`[AcpBackend] ✅ Tool call COMPLETED: ${toolCallId} (${toolKindStr}) - Duration: ${duration}. Active tool calls: ${ctx.activeToolCalls.size}`);
+  logger.debug(
+    `[AcpBackend] ✅ Tool call COMPLETED: ${toolCallId} (${toolKindStr}) - Duration: ${duration}. Active tool calls: ${ctx.activeToolCalls.size}`
+  );
 
   ctx.emit({
     type: 'tool-result',
@@ -373,20 +391,31 @@ export function failToolCall(
   if (isInvestigation) {
     const durationStr = formatDuration(startTime);
     const durationMinutes = formatDurationMinutes(startTime);
-    logger.debug(`[AcpBackend] 🔍 Investigation tool ${status.toUpperCase()} after ${durationMinutes} minutes (${durationStr})`);
+    logger.debug(
+      `[AcpBackend] 🔍 Investigation tool ${status.toUpperCase()} after ${durationMinutes} minutes (${durationStr})`
+    );
 
     // Check for 3-minute timeout pattern (Gemini CLI internal timeout)
     if (duration) {
       const threeMinutes = 3 * 60 * 1000;
       const tolerance = 5000;
       if (Math.abs(duration - threeMinutes) < tolerance) {
-        logger.debug(`[AcpBackend] 🔍 ⚠️ Investigation tool failed at ~3 minutes - likely Gemini CLI timeout, not our timeout`);
+        logger.debug(
+          `[AcpBackend] 🔍 ⚠️ Investigation tool failed at ~3 minutes - likely Gemini CLI timeout, not our timeout`
+        );
       }
     }
 
-    logger.debug(`[AcpBackend] 🔍 Investigation tool FAILED - full content:`, JSON.stringify(content, null, 2));
-    logger.debug(`[AcpBackend] 🔍 Investigation tool timeout status BEFORE cleanup: ${hadTimeout ? 'timeout was set' : 'no timeout was set'}`);
-    logger.debug(`[AcpBackend] 🔍 Investigation tool startTime status BEFORE cleanup: ${startTime ? `set at ${new Date(startTime).toISOString()}` : 'not set'}`);
+    logger.debug(
+      `[AcpBackend] 🔍 Investigation tool FAILED - full content:`,
+      JSON.stringify(content, null, 2)
+    );
+    logger.debug(
+      `[AcpBackend] 🔍 Investigation tool timeout status BEFORE cleanup: ${hadTimeout ? 'timeout was set' : 'no timeout was set'}`
+    );
+    logger.debug(
+      `[AcpBackend] 🔍 Investigation tool startTime status BEFORE cleanup: ${startTime ? `set at ${new Date(startTime).toISOString()}` : 'not set'}`
+    );
   }
 
   // Cleanup
@@ -399,11 +428,15 @@ export function failToolCall(
     ctx.toolCallTimeouts.delete(toolCallId);
     logger.debug(`[AcpBackend] Cleared timeout for ${toolCallId} (tool call ${status})`);
   } else {
-    logger.debug(`[AcpBackend] No timeout found for ${toolCallId} (tool call ${status}) - timeout may not have been set`);
+    logger.debug(
+      `[AcpBackend] No timeout found for ${toolCallId} (tool call ${status}) - timeout may not have been set`
+    );
   }
 
   const durationStr = formatDuration(startTime);
-  logger.debug(`[AcpBackend] ❌ Tool call ${status.toUpperCase()}: ${toolCallId} (${toolKindStr}) - Duration: ${durationStr}. Active tool calls: ${ctx.activeToolCalls.size}`);
+  logger.debug(
+    `[AcpBackend] ❌ Tool call ${status.toUpperCase()}: ${toolCallId} (${toolKindStr}) - Duration: ${durationStr}. Active tool calls: ${ctx.activeToolCalls.size}`
+  );
 
   // Extract error detail
   const errorDetail = extractErrorDetail(content);
@@ -417,9 +450,7 @@ export function failToolCall(
   ctx.emit({
     type: 'tool-result',
     toolName: toolKindStr,
-    result: errorDetail
-      ? { error: errorDetail, status }
-      : { error: `Tool call ${status}`, status },
+    result: errorDetail ? { error: errorDetail, status } : { error: `Tool call ${status}`, status },
     callId: toolCallId,
   });
 
@@ -434,10 +465,7 @@ export function failToolCall(
 /**
  * Handle tool_call_update session update
  */
-export function handleToolCallUpdate(
-  update: SessionUpdate,
-  ctx: HandlerContext
-): HandlerResult {
+export function handleToolCallUpdate(update: SessionUpdate, ctx: HandlerContext): HandlerResult {
   const status = update.status;
   const toolCallId = update.toolCallId;
 
@@ -468,20 +496,21 @@ export function handleToolCallUpdate(
 /**
  * Handle tool_call session update (direct tool call)
  */
-export function handleToolCall(
-  update: SessionUpdate,
-  ctx: HandlerContext
-): HandlerResult {
+export function handleToolCall(update: SessionUpdate, ctx: HandlerContext): HandlerResult {
   const toolCallId = update.toolCallId;
   const status = update.status;
 
-  logger.debug(`[AcpBackend] Received tool_call: toolCallId=${toolCallId}, status=${status}, kind=${update.kind}`);
+  logger.debug(
+    `[AcpBackend] Received tool_call: toolCallId=${toolCallId}, status=${status}, kind=${update.kind}`
+  );
 
   // tool_call can come without explicit status, assume 'in_progress' if missing
   const isInProgress = !status || status === 'in_progress' || status === 'pending';
 
   if (!toolCallId || !isInProgress) {
-    logger.debug(`[AcpBackend] Tool call ${toolCallId} not in progress (status: ${status}), skipping`);
+    logger.debug(
+      `[AcpBackend] Tool call ${toolCallId} not in progress (status: ${status}), skipping`
+    );
     return { handled: false };
   }
 
@@ -520,10 +549,7 @@ export function handleLegacyMessageChunk(
 /**
  * Handle plan update
  */
-export function handlePlanUpdate(
-  update: SessionUpdate,
-  ctx: HandlerContext
-): HandlerResult {
+export function handlePlanUpdate(update: SessionUpdate, ctx: HandlerContext): HandlerResult {
   if (!update.plan) {
     return { handled: false };
   }
@@ -540,10 +566,7 @@ export function handlePlanUpdate(
 /**
  * Handle explicit thinking field
  */
-export function handleThinkingUpdate(
-  update: SessionUpdate,
-  ctx: HandlerContext
-): HandlerResult {
+export function handleThinkingUpdate(update: SessionUpdate, ctx: HandlerContext): HandlerResult {
   if (!update.thinking) {
     return { handled: false };
   }

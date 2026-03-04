@@ -33,11 +33,7 @@ export interface CaffeinateOptions {
  * @returns true if caffeinate was started, false otherwise
  */
 export function startCaffeinate(options: CaffeinateOptions = {}): boolean {
-  const {
-    preventIdleSleep = true,
-    preventDiskSleep = true,
-    preventDisplaySleep = false
-  } = options;
+  const { preventIdleSleep = true, preventDiskSleep = true, preventDisplaySleep = false } = options;
 
   // Only run on macOS
   if (process.platform !== 'darwin') {
@@ -63,7 +59,7 @@ export function startCaffeinate(options: CaffeinateOptions = {}): boolean {
     // Spawn caffeinate
     caffeinateProcess = spawn('caffeinate', flags, {
       stdio: 'ignore',
-      detached: false
+      detached: false,
     });
 
     caffeinateProcess.on('error', () => {

@@ -42,7 +42,7 @@ export function deterministicStringify(
     undefinedBehavior = 'omit',
     sortArrays = false,
     replacer,
-    includeSymbols = false
+    includeSymbols = false,
   } = options;
 
   const seen = new WeakSet();
@@ -57,9 +57,12 @@ export function deterministicStringify(
     if (value === null) return null;
     if (value === undefined) {
       switch (undefinedBehavior) {
-        case 'omit': return undefined;
-        case 'null': return null;
-        case 'throw': throw new Error(`Undefined value at key: ${key}`);
+        case 'omit':
+          return undefined;
+        case 'null':
+          return null;
+        case 'throw':
+          throw new Error(`Undefined value at key: ${key}`);
       }
     }
     if (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
@@ -172,11 +175,7 @@ export function hashObject(
  * @param options Stringification options
  * @returns True if objects are deeply equal
  */
-export function deepEqual(
-  a: unknown,
-  b: unknown,
-  options?: DeterministicJsonOptions
-): boolean {
+export function deepEqual(a: unknown, b: unknown, options?: DeterministicJsonOptions): boolean {
   try {
     return deterministicStringify(a, options) === deterministicStringify(b, options);
   } catch {
@@ -191,9 +190,6 @@ export function deepEqual(
  * @param options Stringification options
  * @returns Stable string key
  */
-export function objectKey(
-  obj: unknown,
-  options?: DeterministicJsonOptions
-): string {
+export function objectKey(obj: unknown, options?: DeterministicJsonOptions): string {
   return hashObject(obj, options, 'base64url');
 }

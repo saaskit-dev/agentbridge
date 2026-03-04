@@ -12,9 +12,35 @@ import { spawnSync } from 'node:child_process';
  * Tmux control sequences
  */
 export type TmuxControlSequence =
-  | 'C-m' | 'C-c' | 'C-l' | 'C-u' | 'C-w' | 'C-a' | 'C-b' | 'C-d' | 'C-e' | 'C-f'
-  | 'C-g' | 'C-h' | 'C-i' | 'C-j' | 'C-k' | 'C-n' | 'C-o' | 'C-p' | 'C-q' | 'C-r'
-  | 'C-s' | 'C-t' | 'C-v' | 'C-x' | 'C-y' | 'C-z' | 'C-\\' | 'C-]' | 'C-[';
+  | 'C-m'
+  | 'C-c'
+  | 'C-l'
+  | 'C-u'
+  | 'C-w'
+  | 'C-a'
+  | 'C-b'
+  | 'C-d'
+  | 'C-e'
+  | 'C-f'
+  | 'C-g'
+  | 'C-h'
+  | 'C-i'
+  | 'C-j'
+  | 'C-k'
+  | 'C-n'
+  | 'C-o'
+  | 'C-p'
+  | 'C-q'
+  | 'C-r'
+  | 'C-s'
+  | 'C-t'
+  | 'C-v'
+  | 'C-x'
+  | 'C-y'
+  | 'C-z'
+  | 'C-\\'
+  | 'C-]'
+  | 'C-[';
 
 /**
  * Tmux environment info
@@ -127,14 +153,14 @@ function getTmuxOption(option: string): string | null {
 export function execTmux(args: string[]): TmuxCommandResult {
   const result = spawnSync('tmux', args, {
     encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
 
   return {
     returnCode: result.status ?? 1,
     stdout: result.stdout || '',
     stderr: result.stderr || '',
-    command: ['tmux', ...args]
+    command: ['tmux', ...args],
   };
 }
 
@@ -185,7 +211,10 @@ export function killSession(sessionName: string): TmuxCommandResult {
 export function listSessions(): string[] {
   const result = execTmux(['list-sessions', '-F', '#{session_name}']);
   if (result.returnCode === 0) {
-    return result.stdout.trim().split('\n').filter(s => s.length > 0);
+    return result.stdout
+      .trim()
+      .split('\n')
+      .filter(s => s.length > 0);
   }
   return [];
 }

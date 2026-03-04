@@ -96,10 +96,7 @@ export interface MobileEventMessage {
 /**
  * Union of all mobile message types
  */
-export type MobileMessage =
-  | MobileUserMessage
-  | MobileAgentMessage
-  | MobileEventMessage;
+export type MobileMessage = MobileUserMessage | MobileAgentMessage | MobileEventMessage;
 
 /**
  * Normalized payload format for mobile app

@@ -121,7 +121,7 @@ class ServerCapabilitiesService {
       });
 
       if (!response.ok) {
-    // Endpoint not found - assume legacy server
+        // Endpoint not found - assume legacy server
         if (response.status === 404) {
           logger.debug('[ServerCapabilities] Endpoint not found, assuming legacy server');
           this.capabilities = DEFAULT_CAPABILITIES;
@@ -142,7 +142,9 @@ class ServerCapabilitiesService {
 
       this.capabilities = data as ServerCapabilities;
 
-      logger.info(`[ServerCapabilities] Detected ${this.capabilities.serverType} server v${this.capabilities.version}`);
+      logger.info(
+        `[ServerCapabilities] Detected ${this.capabilities.serverType} server v${this.capabilities.version}`
+      );
 
       // Log enhanced features if available
       const enhancedFeatures = Object.entries(this.capabilities.capabilities.enhanced)

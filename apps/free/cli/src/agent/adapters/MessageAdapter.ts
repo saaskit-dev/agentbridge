@@ -24,7 +24,6 @@ import type {
   TerminalOutputMessage,
   EventMessage,
 } from '../core';
-
 import type {
   MobileAgentType,
   MobileAgentMessage,

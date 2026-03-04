@@ -1,14 +1,11 @@
 /**
  * Socket.IO client implementation
- * 
+ *
  * Note: socket.io-client is a peer dependency. Make sure to install it:
  * npm install socket.io-client
  */
 
-import type {
-  IWebSocketClient,
-  WebSocketClientOptions,
-} from '../../interfaces/websocket';
+import type { IWebSocketClient, WebSocketClientOptions } from '../../interfaces/websocket';
 import { registerWebSocketClientFactory } from '../../interfaces/websocket';
 
 // Dynamic import to handle optional peer dependency

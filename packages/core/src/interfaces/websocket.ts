@@ -1,4 +1,3 @@
-
 // === WebSocket Client ===
 
 /** WebSocket client options */
@@ -43,15 +42,23 @@ export interface IWebSocketClient {
 const wsClientFactories = new Map<string, WebSocketClientFactory>();
 
 /** Register a WebSocket client factory */
-export function registerWebSocketClientFactory(type: string, factory: WebSocketClientFactory): void {
+export function registerWebSocketClientFactory(
+  type: string,
+  factory: WebSocketClientFactory
+): void {
   wsClientFactories.set(type, factory);
 }
 
 /** Create a WebSocket client instance */
-export function createWebSocketClient(type: string, options?: WebSocketClientOptions): IWebSocketClient {
+export function createWebSocketClient(
+  type: string,
+  options?: WebSocketClientOptions
+): IWebSocketClient {
   const factory = wsClientFactories.get(type);
   if (!factory) {
-    throw new Error(`WebSocket client factory not found: ${type}. Available: ${[...wsClientFactories.keys()].join(', ')}`);
+    throw new Error(
+      `WebSocket client factory not found: ${type}. Available: ${[...wsClientFactories.keys()].join(', ')}`
+    );
   }
   return factory(options);
 }
@@ -127,15 +134,23 @@ export interface IWebSocketServer {
 const wsServerFactories = new Map<string, WebSocketServerFactory>();
 
 /** Register a WebSocket server factory */
-export function registerWebSocketServerFactory(type: string, factory: WebSocketServerFactory): void {
+export function registerWebSocketServerFactory(
+  type: string,
+  factory: WebSocketServerFactory
+): void {
   wsServerFactories.set(type, factory);
 }
 
 /** Create a WebSocket server instance */
-export function createWebSocketServer(type: string, options?: WebSocketServerOptions): IWebSocketServer {
+export function createWebSocketServer(
+  type: string,
+  options?: WebSocketServerOptions
+): IWebSocketServer {
   const factory = wsServerFactories.get(type);
   if (!factory) {
-    throw new Error(`WebSocket server factory not found: ${type}. Available: ${[...wsServerFactories.keys()].join(', ')}`);
+    throw new Error(
+      `WebSocket server factory not found: ${type}. Available: ${[...wsServerFactories.keys()].join(', ')}`
+    );
   }
   return factory(options);
 }
@@ -175,7 +190,10 @@ export type OptimisticCallback =
 /** Server to client events */
 export interface ServerToClientEvents {
   update: (data: Update) => void;
-  'rpc-request': (data: { method: string; params: string }, callback: (response: string) => void) => void;
+  'rpc-request': (
+    data: { method: string; params: string },
+    callback: (response: string) => void
+  ) => void;
   'rpc-registered': (data: { method: string }) => void;
   'rpc-unregistered': (data: { method: string }) => void;
   'rpc-error': (data: { type: string; error: string }) => void;
@@ -187,14 +205,28 @@ export interface ServerToClientEvents {
 /** Client to server events */
 export interface ClientToServerEvents {
   message: (data: { sid: string; message: unknown; localId?: string }) => void;
-  'session-alive': (data: { sid: string; time: number; thinking?: boolean; mode?: 'local' | 'remote' }) => void;
+  'session-alive': (data: {
+    sid: string;
+    time: number;
+    thinking?: boolean;
+    mode?: 'local' | 'remote';
+  }) => void;
   'session-end': (data: { sid: string; time: number }) => void;
-  'update-metadata': (data: { sid: string; expectedVersion: number; metadata: string }, callback: OptimisticCallback) => void;
-  'update-state': (data: { sid: string; expectedVersion: number; agentState: string | null }, callback: OptimisticCallback) => void;
-  'ping': (callback: () => void) => void;
+  'update-metadata': (
+    data: { sid: string; expectedVersion: number; metadata: string },
+    callback: OptimisticCallback
+  ) => void;
+  'update-state': (
+    data: { sid: string; expectedVersion: number; agentState: string | null },
+    callback: OptimisticCallback
+  ) => void;
+  ping: (callback: () => void) => void;
   'rpc-register': (data: { method: string }) => void;
   'rpc-unregister': (data: { method: string }) => void;
-  'rpc-call': (data: { method: string; params: string }, callback: (response: RpcResponse) => void) => void;
+  'rpc-call': (
+    data: { method: string; params: string },
+    callback: (response: RpcResponse) => void
+  ) => void;
   'usage-report': (data: {
     key: string;
     sessionId: string;
@@ -202,6 +234,12 @@ export interface ClientToServerEvents {
     cost: { total: number; [key: string]: number };
   }) => void;
   'machine-alive': (data: { machineId: string; time: number }) => void;
-  'machine-update-metadata': (data: { machineId: string; metadata: string; expectedVersion: number }, callback: OptimisticCallback) => void;
-  'machine-update-state': (data: { machineId: string; daemonState: string; expectedVersion: number }, callback: OptimisticCallback) => void;
+  'machine-update-metadata': (
+    data: { machineId: string; metadata: string; expectedVersion: number },
+    callback: OptimisticCallback
+  ) => void;
+  'machine-update-state': (
+    data: { machineId: string; daemonState: string; expectedVersion: number },
+    callback: OptimisticCallback
+  ) => void;
 }

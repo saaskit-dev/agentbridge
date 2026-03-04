@@ -4,9 +4,4 @@
  */
 
 // Database
-export {
-  prisma,
-  connectDatabase,
-  disconnectDatabase,
-  checkDatabaseHealth,
-} from './db'
+export { prisma, connectDatabase, disconnectDatabase, checkDatabaseHealth } from './db';

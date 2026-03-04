@@ -1,9 +1,9 @@
 /**
  * Gemini ACP Backend - Gemini CLI agent via ACP
- * 
+ *
  * This module provides a factory function for creating a Gemini backend
  * that communicates using the Agent Client Protocol (ACP).
- * 
+ *
  * Gemini CLI is a reference ACP implementation from Google that supports
  * the --experimental-acp flag for ACP mode.
  */
@@ -12,18 +12,18 @@ import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '.
 import type { AgentBackend, McpServerConfig, AgentFactoryOptions } from '../core';
 import { agentRegistry } from '../core';
 import { geminiTransport } from '../transport';
-import { logger } from '@/ui/logger';
-import { 
-  GEMINI_API_KEY_ENV, 
-  GOOGLE_API_KEY_ENV, 
-  GEMINI_MODEL_ENV, 
-  DEFAULT_GEMINI_MODEL 
+import {
+  GEMINI_API_KEY_ENV,
+  GOOGLE_API_KEY_ENV,
+  GEMINI_MODEL_ENV,
+  DEFAULT_GEMINI_MODEL,
 } from '@/gemini/constants';
-import { 
-  readGeminiLocalConfig, 
+import {
+  readGeminiLocalConfig,
   determineGeminiModel,
-  getGeminiModelSource
+  getGeminiModelSource,
 } from '@/gemini/utils/config';
+import { logger } from '@/ui/logger';
 
 /**
  * Options for creating a Gemini ACP backend
@@ -31,21 +31,21 @@ import {
 export interface GeminiBackendOptions extends AgentFactoryOptions {
   /** API key for Gemini (defaults to GEMINI_API_KEY or GOOGLE_API_KEY env var) */
   apiKey?: string;
-  
+
   /** OAuth token from Free cloud (via 'free connect gemini') - highest priority */
   cloudToken?: string;
-  
+
   /** Current user email (from OAuth id_token) - used to match per-account project ID */
   currentUserEmail?: string;
-  
+
   /** Model to use. If undefined, will use local config, env var, or default.
    *  If explicitly set to null, will use default (skip local config).
    *  (defaults to GEMINI_MODEL env var or 'gemini-2.5-pro') */
   model?: string | null;
-  
+
   /** MCP servers to make available to the agent */
   mcpServers?: Record<string, McpServerConfig>;
-  
+
   /** Optional permission handler for tool approval */
   permissionHandler?: AcpPermissionHandler;
 }
@@ -72,29 +72,31 @@ export interface GeminiBackendResult {
  * @returns GeminiBackendResult with backend and resolved model (single source of truth)
  */
 export function createGeminiBackend(options: GeminiBackendOptions): GeminiBackendResult {
-
   // Resolve API key from multiple sources (in priority order):
   // 1. Free cloud OAuth token (via 'free connect gemini') - highest priority
   // 2. Local Gemini CLI config files (~/.gemini/)
   // 3. GEMINI_API_KEY environment variable
   // 4. GOOGLE_API_KEY environment variable - lowest priority
-  
+
   // Try reading from local Gemini CLI config (token and model)
   const localConfig = readGeminiLocalConfig();
-  
-  let apiKey = options.cloudToken       // 1. Free cloud token (passed from runGemini)
-    || localConfig.token                // 2. Local config (~/.gemini/)
-    || process.env[GEMINI_API_KEY_ENV]  // 3. GEMINI_API_KEY env var
-    || process.env[GOOGLE_API_KEY_ENV]  // 4. GOOGLE_API_KEY env var
-    || options.apiKey;                  // 5. Explicit apiKey option (fallback)
+
+  const apiKey =
+    options.cloudToken || // 1. Free cloud token (passed from runGemini)
+    localConfig.token || // 2. Local config (~/.gemini/)
+    process.env[GEMINI_API_KEY_ENV] || // 3. GEMINI_API_KEY env var
+    process.env[GOOGLE_API_KEY_ENV] || // 4. GOOGLE_API_KEY env var
+    options.apiKey; // 5. Explicit apiKey option (fallback)
 
   if (!apiKey) {
-    logger.warn(`[Gemini] No API key found. Run 'free connect gemini' to authenticate via Google OAuth, or set ${GEMINI_API_KEY_ENV} environment variable.`);
+    logger.warn(
+      `[Gemini] No API key found. Run 'free connect gemini' to authenticate via Google OAuth, or set ${GEMINI_API_KEY_ENV} environment variable.`
+    );
   }
 
   // Command to run gemini
   const geminiCommand = 'gemini';
-  
+
   // Get model from options, local config, system environment, or use default
   // Priority: options.model (if provided) > local config > env var > default
   // If options.model is undefined, check local config, then env, then use default
@@ -112,13 +114,17 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
   if (localConfig.googleCloudProject) {
     const storedEmail = localConfig.googleCloudProjectEmail;
     const currentEmail = options.currentUserEmail;
-    
+
     // Use project if: no email stored (applies to all), or emails match
     if (!storedEmail || storedEmail === currentEmail) {
       googleCloudProject = localConfig.googleCloudProject;
-      logger.debug(`[Gemini] Using Google Cloud Project: ${googleCloudProject}${storedEmail ? ` (for ${storedEmail})` : ' (global)'}`);
+      logger.debug(
+        `[Gemini] Using Google Cloud Project: ${googleCloudProject}${storedEmail ? ` (for ${storedEmail})` : ' (global)'}`
+      );
     } else {
-      logger.debug(`[Gemini] Skipping stored Google Cloud Project (stored for ${storedEmail}, current user is ${currentEmail || 'unknown'})`);
+      logger.debug(
+        `[Gemini] Skipping stored Google Cloud Project (stored for ${storedEmail}, current user is ${currentEmail || 'unknown'})`
+      );
     }
   }
 
@@ -133,10 +139,12 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
       // Pass model via env var - gemini CLI reads GEMINI_MODEL automatically
       [GEMINI_MODEL_ENV]: model,
       // Pass Google Cloud Project for Workspace accounts
-      ...(googleCloudProject ? { 
-        GOOGLE_CLOUD_PROJECT: googleCloudProject,
-        GOOGLE_CLOUD_PROJECT_ID: googleCloudProject,
-      } : {}),
+      ...(googleCloudProject
+        ? {
+            GOOGLE_CLOUD_PROJECT: googleCloudProject,
+            GOOGLE_CLOUD_PROJECT_ID: googleCloudProject,
+          }
+        : {}),
       // Suppress debug output from gemini CLI to avoid stdout pollution
       NODE_ENV: 'production',
       DEBUG: '',
@@ -146,10 +154,12 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
     transportHandler: geminiTransport,
     hasChangeTitleInstruction: (prompt: string) => {
       const lower = prompt.toLowerCase();
-      return lower.includes('change_title') ||
-             lower.includes('change title') ||
-             lower.includes('set title') ||
-             lower.includes('mcp__free__change_title');
+      return (
+        lower.includes('change_title') ||
+        lower.includes('change title') ||
+        lower.includes('set title') ||
+        lower.includes('mcp__free__change_title')
+      );
     },
   };
 
@@ -174,12 +184,11 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
 
 /**
  * Register Gemini backend with the global agent registry.
- * 
+ *
  * This function should be called during application initialization
  * to make the Gemini agent available for use.
  */
 export function registerGeminiAgent(): void {
-  agentRegistry.register('gemini', (opts) => createGeminiBackend(opts).backend);
+  agentRegistry.register('gemini', opts => createGeminiBackend(opts).backend);
   logger.debug('[Gemini] Registered with agent registry');
 }
-

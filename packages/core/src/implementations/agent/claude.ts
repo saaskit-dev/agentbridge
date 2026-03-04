@@ -1,6 +1,6 @@
 /**
  * Claude Backend - Native Claude Code integration
- * 
+ *
  * This is a simplified stub implementation. For full Claude Code support,
  * this would integrate with @anthropic-ai/claude-code SDK.
  */
@@ -12,10 +12,10 @@ import type {
   StartSessionResult,
   SessionId,
 } from '../../interfaces/agent';
-import type { AgentBackendConfig } from '../../types/agent';
 import { registerAgentFactory } from '../../interfaces/agent';
 import type { IProcessManager, IProcess } from '../../interfaces/process';
 import { createProcessManager } from '../../interfaces/process';
+import type { AgentBackendConfig } from '../../types/agent';
 
 /**
  * Claude Backend - integrates with Claude Code CLI
@@ -38,28 +38,21 @@ class ClaudeBackend implements IAgentBackend {
     // sessionId available for future session tracking
 
     // Build Claude CLI arguments
-    const args = [
-      '--print',
-      '--output-format', 'stream-json',
-    ];
+    const args = ['--print', '--output-format', 'stream-json'];
 
     // Add permission mode if specified
     // This would be mapped from config to Claude CLI flags
 
     // Spawn Claude process
-    this.process = this.processManager.spawn(
-      'claude',
-      args,
-      {
-        cwd: this.config.cwd,
-        env: {
-          ...Object.fromEntries(
-            Object.entries(process.env).filter(([, v]) => v !== undefined)
-          ) as Record<string, string>,
-          ...this.config.env,
-        },
-      }
-    );
+    this.process = this.processManager.spawn('claude', args, {
+      cwd: this.config.cwd,
+      env: {
+        ...(Object.fromEntries(
+          Object.entries(process.env).filter(([, v]) => v !== undefined)
+        ) as Record<string, string>),
+        ...this.config.env,
+      },
+    });
 
     this.running = true;
 
@@ -174,7 +167,8 @@ class ClaudeBackend implements IAgentBackend {
     this.emitMessage({
       type: 'status',
       status: result.code === 0 ? 'stopped' : 'error',
-      detail: result.code === 0 ? 'Process exited normally' : `Process exited with code ${result.code}`,
+      detail:
+        result.code === 0 ? 'Process exited normally' : `Process exited with code ${result.code}`,
     });
   }
 
@@ -201,7 +195,7 @@ class ClaudeBackend implements IAgentBackend {
     if (msgType === 'assistant') {
       const content = msg.message as Record<string, unknown>;
       const textContent = content?.content as Array<Record<string, unknown>> | undefined;
-      
+
       if (textContent) {
         for (const block of textContent) {
           if (block.type === 'text') {
@@ -242,7 +236,7 @@ class ClaudeBackend implements IAgentBackend {
 }
 
 // Register factory
-registerAgentFactory('claude', (config) => new ClaudeBackend(config));
+registerAgentFactory('claude', config => new ClaudeBackend(config));
 
 // Export for direct use
 export { ClaudeBackend };

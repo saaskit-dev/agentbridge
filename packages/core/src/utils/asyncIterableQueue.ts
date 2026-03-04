@@ -33,7 +33,7 @@ export class AsyncIterableQueue<T> implements AsyncIterable<T> {
   private closeResolve?: () => void;
 
   constructor() {
-    this.closePromise = new Promise((resolve) => {
+    this.closePromise = new Promise(resolve => {
       this.closeResolve = resolve;
     });
   }
@@ -129,7 +129,7 @@ export class AsyncIterableQueue<T> implements AsyncIterable<T> {
    * Wait for the next item or queue closure
    */
   private waitForNext(): Promise<T | undefined> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       if (this.closed) {
         resolve(undefined);
         return;
@@ -174,10 +174,7 @@ export class AsyncIterableQueue<T> implements AsyncIterable<T> {
 
       // Wait for next item or abort
       try {
-        const nextItem = await Promise.race([
-          this.waitForNext(),
-          abortPromise
-        ]);
+        const nextItem = await Promise.race([this.waitForNext(), abortPromise]);
         if (nextItem === undefined) {
           return;
         }

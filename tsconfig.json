@@ -3,11 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -24,13 +20,7 @@
     "noFallthroughCasesInSwitch": true,
     "jsx": "react-jsx"
   },
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/dist/**",
-    "examples",
-    "**/node_modules/**"
-  ],
+  "exclude": ["node_modules", "dist", "**/dist/**", "examples", "**/node_modules/**"],
   "references": [
     { "path": "packages/core/types" },
     { "path": "packages/core/interfaces" },

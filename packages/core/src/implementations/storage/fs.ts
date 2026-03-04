@@ -1,6 +1,6 @@
 /**
  * File system storage implementation - based on free/cli actual implementation
- * 
+ *
  * Features:
  * - JSON file storage
  * - O_EXCL file locking for atomic updates (concurrent-safe)
@@ -8,12 +8,10 @@
  * - Retry mechanism for lock acquisition
  */
 
-import { 
-  readFile, writeFile, mkdir, unlink, rename, open, stat
-} from 'node:fs/promises';
 import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
 import { constants } from 'node:fs';
+import { readFile, writeFile, mkdir, unlink, rename, open, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { IStorage, StorageOptions } from '../../interfaces/storage';
 import { registerStorageFactory } from '../../interfaces/storage';
 
@@ -54,7 +52,10 @@ class FsStorage implements IStorage {
     while (attempts < MAX_LOCK_ATTEMPTS) {
       try {
         // Try to create lock file exclusively
-        fileHandle = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY);
+        fileHandle = await open(
+          lockPath,
+          constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY
+        );
         return async () => {
           if (fileHandle) {
             await fileHandle.close();
@@ -145,7 +146,7 @@ class FsStorage implements IStorage {
   async delete(key: string): Promise<void> {
     const filePath = this.getFilePath(key);
     const lockPath = this.getLockPath(key);
-    
+
     if (existsSync(filePath)) {
       const releaseLock = await this.acquireLock(lockPath);
       try {
@@ -180,7 +181,7 @@ class FsStorage implements IStorage {
 }
 
 // Register factory
-registerStorageFactory('fs', (options) => new FsStorage(options));
+registerStorageFactory('fs', options => new FsStorage(options));
 
 // Export for direct use
 export { FsStorage };

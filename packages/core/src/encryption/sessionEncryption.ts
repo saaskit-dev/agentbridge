@@ -1,12 +1,12 @@
 /**
  * Session-specific encryption manager
- * 
+ *
  * Handles batch decryption/encryption of session messages and metadata.
  * Uses an encryption cache for performance.
  */
 
-import type { Cipher } from './types';
 import { encodeBase64, decodeBase64 } from '../utils/encoding';
+import type { Cipher } from './types';
 
 /** Simple LRU cache for decrypted data */
 /** Simple LRU cache for decrypted data */
@@ -123,9 +123,7 @@ export class SessionEncryption {
     }
 
     if (toDecrypt.length > 0) {
-      const encrypted = toDecrypt.map(item =>
-        decodeBase64(item.message.content.c)
-      );
+      const encrypted = toDecrypt.map(item => decodeBase64(item.message.content.c));
 
       const decrypted = await this.cipher.decrypt(encrypted);
 
@@ -191,7 +189,10 @@ export class SessionEncryption {
     return encodeBase64(encrypted[0]);
   }
 
-  async decryptAgentState(version: number, encrypted: string | null | undefined): Promise<unknown | null> {
+  async decryptAgentState(
+    version: number,
+    encrypted: string | null | undefined
+  ): Promise<unknown | null> {
     if (!encrypted) return null;
 
     const cached = this.cache.getCachedAgentState(this.sessionId, version);

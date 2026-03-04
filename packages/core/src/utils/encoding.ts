@@ -24,10 +24,7 @@ export function encodeBase64(buffer: Uint8Array): string {
  * Base64URL uses '-' instead of '+', '_' instead of '/', and removes padding
  */
 export function encodeBase64Url(buffer: Uint8Array): string {
-  return encodeBase64(buffer)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '');
+  return encodeBase64(buffer).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 
 /**
@@ -52,10 +49,9 @@ export function decodeBase64(base64: string): Uint8Array {
  */
 export function decodeBase64Url(base64url: string): Uint8Array {
   // Convert base64url to base64
-  const base64 = base64url
-    .replaceAll('-', '+')
-    .replaceAll('_', '/')
-    + '='.repeat((4 - base64url.length % 4) % 4);
+  const base64 =
+    base64url.replaceAll('-', '+').replaceAll('_', '/') +
+    '='.repeat((4 - (base64url.length % 4)) % 4);
   return decodeBase64(base64);
 }
 

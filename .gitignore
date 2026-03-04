@@ -10,6 +10,14 @@ build/
 .turbo/
 .cache/
 
+# Expo
+.expo/
+web-build/
+
+# Lock files (project uses pnpm)
+package-lock.json
+yarn.lock
+
 # IDE
 .idea/
 .vscode/
@@ -47,3 +55,7 @@ expo-env.d.ts
 
 # Server data files
 apps/free/server/data/
+
+# Claude Code CLI settings
+.claude/
+**/.claude/

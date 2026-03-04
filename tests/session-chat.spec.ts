@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
 import crypto from 'crypto';
+import { test, expect } from '@playwright/test';
 import axios from 'axios';
 
 const SERVER_URL = 'http://localhost:3001';
@@ -41,7 +41,7 @@ test.describe('Claude Session Chat E2E - Web UI', () => {
     console.log('[TEST] Step 2: Creating auth request...');
     await axios.post(`${SERVER_URL}/v1/auth/request`, {
       publicKey: publicKeyBase64,
-      supportsV2: true
+      supportsV2: true,
     });
 
     // Step 3: Navigate to web app and authenticate
@@ -75,7 +75,11 @@ test.describe('Claude Session Chat E2E - Web UI', () => {
     console.log('[TEST] Step 5: Creating new session via UI...');
 
     // Look for new session button - could be a + icon, "New" text, or FAB
-    const newSessionButton = page.locator('[data-testid="new-session-button"], button:has-text("New"), [aria-label*="new"], [aria-label*="New"]').first();
+    const newSessionButton = page
+      .locator(
+        '[data-testid="new-session-button"], button:has-text("New"), [aria-label*="new"], [aria-label*="New"]'
+      )
+      .first();
     const fabButton = page.locator('[data-testid="fab"], .fab, button[class*="fab"]').first();
 
     // Try to find and click a new session button
@@ -119,7 +123,9 @@ test.describe('Claude Session Chat E2E - Web UI', () => {
     await page.waitForTimeout(1000);
 
     // Look for text input or textarea
-    const messageInput = page.locator('textarea, input[type="text"], [contenteditable="true"]').first();
+    const messageInput = page
+      .locator('textarea, input[type="text"], [contenteditable="true"]')
+      .first();
     await messageInput.waitFor({ timeout: 10000 });
 
     // Type a message
@@ -132,7 +138,9 @@ test.describe('Claude Session Chat E2E - Web UI', () => {
     console.log('[TEST] Step 8: Sending message...');
 
     // Look for send button
-    const sendButton = page.locator('button:has-text("Send"), [aria-label*="send"], [data-testid="send-button"]').first();
+    const sendButton = page
+      .locator('button:has-text("Send"), [aria-label*="send"], [data-testid="send-button"]')
+      .first();
     try {
       if (await sendButton.isVisible({ timeout: 2000 })) {
         await sendButton.click();

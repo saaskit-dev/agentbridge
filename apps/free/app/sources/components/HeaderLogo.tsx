@@ -8,20 +8,26 @@ import { useUnistyles } from 'react-native-unistyles';
  * had its own HeaderLeft, the component would unmount/remount.
  */
 export const HeaderLogo = React.memo(() => {
-    const { theme } = useUnistyles();
-    return (
-        <View style={{
-            width: 32,
-            height: 32,
-            alignItems: 'center',
-            justifyContent: 'center',
-        }}>
-            <Text style={{
-                fontSize: 14,
-                fontWeight: 'bold',
-                color: theme.colors.header.tint,
-                letterSpacing: 1,
-            }}>F</Text>
-        </View>
-    );
+  const { theme } = useUnistyles();
+  return (
+    <View
+      style={{
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 14,
+          fontWeight: 'bold',
+          color: theme.colors.header.tint,
+          letterSpacing: 1,
+        }}
+      >
+        F
+      </Text>
+    </View>
+  );
 });

@@ -1,6 +1,6 @@
 /**
  * Axios HTTP client implementation
- * 
+ *
  * Note: axios is a peer dependency. Make sure to install it:
  * npm install axios
  */
@@ -41,10 +41,7 @@ class AxiosHttpClient implements IHttpClient {
     this.timeout = options?.timeout;
   }
 
-  private async doRequest<T>(
-    url: string,
-    config?: RequestConfig
-  ): Promise<HttpResponse<T>> {
+  private async doRequest<T>(url: string, config?: RequestConfig): Promise<HttpResponse<T>> {
     const ax = await getAxios();
 
     const fullUrl = this.baseUrl ? `${this.baseUrl}${url}` : url;
@@ -65,10 +62,7 @@ class AxiosHttpClient implements IHttpClient {
     };
   }
 
-  async request<T = unknown>(
-    url: string,
-    config?: RequestConfig
-  ): Promise<HttpResponse<T>> {
+  async request<T = unknown>(url: string, config?: RequestConfig): Promise<HttpResponse<T>> {
     return this.doRequest<T>(url, config);
   }
 
@@ -104,7 +98,7 @@ class AxiosHttpClient implements IHttpClient {
 }
 
 // Register factory
-registerHttpClientFactory('axios', (options) => new AxiosHttpClient(options));
+registerHttpClientFactory('axios', options => new AxiosHttpClient(options));
 
 // Export for direct use
 export { AxiosHttpClient };

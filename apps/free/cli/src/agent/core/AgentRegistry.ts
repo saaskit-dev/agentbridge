@@ -1,6 +1,6 @@
 /**
  * AgentRegistry - Registry for agent backend factories
- * 
+ *
  * This module provides a central registry for creating agent backends.
  * It allows registering factory functions for different agent types
  * and creating instances of those backends.
@@ -12,7 +12,7 @@ import type { AgentBackend, AgentId } from './fromCore';
 export interface AgentFactoryOptions {
   /** Working directory for the agent */
   cwd: string;
-  
+
   /** Environment variables to pass to the agent */
   env?: Record<string, string>;
 }
@@ -22,14 +22,14 @@ export type AgentFactory = (opts: AgentFactoryOptions) => AgentBackend;
 
 /**
  * Registry for agent backend factories.
- * 
+ *
  * Use this to register and create agent backends by their identifier.
- * 
+ *
  * @example
  * ```ts
  * const registry = new AgentRegistry();
  * registry.register('gemini', createGeminiBackend);
- * 
+ *
  * const backend = registry.create('gemini', { cwd: process.cwd() });
  * await backend.startSession('Hello!');
  * ```
@@ -39,7 +39,7 @@ export class AgentRegistry {
 
   /**
    * Register a factory function for an agent type.
-   * 
+   *
    * @param id - The agent identifier
    * @param factory - Factory function to create the backend
    */
@@ -49,7 +49,7 @@ export class AgentRegistry {
 
   /**
    * Check if an agent type is registered.
-   * 
+   *
    * @param id - The agent identifier to check
    * @returns true if the agent is registered
    */
@@ -59,7 +59,7 @@ export class AgentRegistry {
 
   /**
    * Get the list of registered agent identifiers.
-   * 
+   *
    * @returns Array of registered agent IDs
    */
   list(): AgentId[] {
@@ -68,7 +68,7 @@ export class AgentRegistry {
 
   /**
    * Create an agent backend instance.
-   * 
+   *
    * @param id - The agent identifier
    * @param opts - Options for creating the backend
    * @returns The created agent backend
@@ -86,4 +86,3 @@ export class AgentRegistry {
 
 /** Global agent registry instance */
 export const agentRegistry = new AgentRegistry();
-
