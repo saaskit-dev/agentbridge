@@ -221,17 +221,19 @@ export const SettingsView = React.memo(function SettingsView() {
         </ItemGroup>
       )}
 
-      {/* Support Us */}
-      <ItemGroup>
-        <Item
-          title={t('settings.supportUs')}
-          subtitle={isPro ? t('settings.supportUsSubtitlePro') : t('settings.supportUsSubtitle')}
-          icon={<Ionicons name="rocket-outline" size={29} color="#667eea" />}
-          showChevron={!isPro}
-          onPress={isPro ? undefined : handleSubscribe}
-          detail={isPro ? undefined : '→'}
-        />
-      </ItemGroup>
+      {/* Support Us - only visible in local development */}
+      {__DEV__ && (
+        <ItemGroup>
+          <Item
+            title={t('settings.supportUs')}
+            subtitle={isPro ? t('settings.supportUsSubtitlePro') : t('settings.supportUsSubtitle')}
+            icon={<Ionicons name="rocket-outline" size={29} color="#667eea" />}
+            showChevron={!isPro}
+            onPress={isPro ? undefined : handleSubscribe}
+            detail={isPro ? undefined : '→'}
+          />
+        </ItemGroup>
+      )}
 
       <ItemGroup title={t('settings.connectedAccounts')}>
         <Item
