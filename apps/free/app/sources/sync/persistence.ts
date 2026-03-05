@@ -145,7 +145,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
     const permissionMode: PermissionMode =
       typeof parsed.permissionMode === 'string'
         ? (parsed.permissionMode as PermissionMode)
-        : 'default';
+        : (settingsDefaults.defaultPermissionMode as PermissionMode) ?? 'default';
     const sessionType: NewSessionSessionType =
       parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
     const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();

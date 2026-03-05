@@ -5,16 +5,17 @@ const name = {
   production: 'Free',
 }[variant];
 const bundleId = {
-  development: 'app.saaskit.free.dev',
-  preview: 'app.saaskit.free.preview',
-  production: 'app.saaskit.free',
+  development: 'app.saaskit.freecode.dev',
+  preview: 'app.saaskit.freecode.preview',
+  production: 'app.saaskit.freecode',
 }[variant];
+const googleServicesFile = `./firebase/GoogleService-Info.${variant}.plist`;
 
 export default {
   expo: {
     name,
     slug: 'free',
-    version: '1.6.2',
+    version: '0.0.1',
     runtimeVersion: '18',
     orientation: 'default',
     icon: './sources/assets/images/icon.png',
@@ -38,6 +39,7 @@ export default {
           'Allow $(PRODUCT_NAME) to find and connect to local devices on your network.',
         NSBonjourServices: ['_http._tcp', '_https._tcp'],
       },
+      googleServicesFile,
       associatedDomains: variant === 'production' ? ['applinks:free-server.saaskit.app'] : [],
     },
     android: {
@@ -55,7 +57,7 @@ export default {
       blockedPermissions: ['android.permission.ACTIVITY_RECOGNITION'],
       edgeToEdgeEnabled: true,
       package: bundleId,
-      googleServicesFile: './google-services.json',
+      googleServicesFile: './firebase/google-services.json',
       intentFilters:
         variant === 'production'
           ? [
@@ -80,6 +82,8 @@ export default {
       favicon: './sources/assets/images/favicon.png',
     },
     plugins: [
+      require('./plugins/withVersionSync.js'),  // 自动同步版本到原生项目
+      require('./plugins/withPushNotificationEntitlements.js'),  // 自动配置推送 entitlements
       require('./plugins/withEinkCompatibility.js'),
       require('./plugins/withSourceBuildRN.js'),
       [
@@ -176,9 +180,7 @@ export default {
         root: './sources/app',
       },
       eas: {
-        // TODO: Configure your own EAS project ID
-        // Get from: https://expo.dev/accounts/[your-account]/projects/free/settings
-        // projectId: "YOUR_PROJECT_ID"
+        projectId: '79f0465e-eaa6-47f9-91e0-09e5a5661790',
       },
       app: {
         postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,

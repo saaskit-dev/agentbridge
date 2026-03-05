@@ -365,7 +365,7 @@ export const storage = create<StorageState>()((set, get) => {
           const savedPermissionMode = savedPermissionModes[session.id];
           const defaultPermissionMode: PermissionMode = isSandboxEnabled(session.metadata)
             ? 'bypassPermissions'
-            : 'default';
+            : (state.settings.defaultPermissionMode as PermissionMode) ?? 'default';
           const resolvedPermissionMode: PermissionMode =
             (existingPermissionMode && existingPermissionMode !== 'default'
               ? existingPermissionMode

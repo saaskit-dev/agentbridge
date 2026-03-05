@@ -366,7 +366,7 @@ export const ru: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
-    updateCliInstructions: 'Пожалуйста, выполните npm install -g @free/cli@latest',
+    updateCliInstructions: 'Пожалуйста, выполните curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
     deleteSession: 'Удалить сессию',
     deleteSessionSubtitle: 'Удалить эту сессию навсегда',
     deleteSessionConfirm: 'Удалить сессию навсегда?',
@@ -775,7 +775,7 @@ export const ru: TranslationStructure = {
   machine: {
     offlineUnableToSpawn: 'Запуск отключен: машина offline',
     offlineHelp:
-      '• Убедитесь, что компьютер online\n• Выполните `free daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g @free/cli@latest`',
+      '• Убедитесь, что компьютер online\n• Выполните `free daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`',
     launchNewSessionInDirectory: 'Запустить новую сессию в папке',
     daemon: 'Daemon',
     status: 'Статус',

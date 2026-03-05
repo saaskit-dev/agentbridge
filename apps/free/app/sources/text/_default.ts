@@ -141,6 +141,9 @@ export const en = {
     usageSubtitle: 'View your API usage and costs',
     profiles: 'Profiles',
     profilesSubtitle: 'Manage environment variable profiles for sessions',
+    supportUs: 'Join Us',
+    supportUsSubtitlePro: 'You are a Builder 🎉',
+    supportUsSubtitle: 'Be part of the future',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `${service} account connected`,
@@ -386,7 +389,7 @@ export const en = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
-    updateCliInstructions: 'Please run npm install -g @free/cli@latest',
+    updateCliInstructions: 'Please run curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
     deleteSession: 'Delete Session',
     deleteSessionSubtitle: 'Permanently remove this session',
     deleteSessionConfirm: 'Delete Session Permanently?',
@@ -767,7 +770,7 @@ export const en = {
     launchNewSessionInDirectory: 'Launch New Session in Directory',
     offlineUnableToSpawn: 'Launcher disabled while machine is offline',
     offlineHelp:
-      '• Make sure your computer is online\n• Run `free daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g @free/cli@latest`',
+      '• Make sure your computer is online\n• Run `free daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`',
     daemon: 'Daemon',
     status: 'Status',
     stopDaemon: 'Stop Daemon',

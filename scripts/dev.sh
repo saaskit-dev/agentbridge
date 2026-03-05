@@ -239,8 +239,29 @@ start_web() {
     log_info "等待 Web 应用启动..."
     sleep 5
 
+    # 获取本机内网 IP
+    LOCAL_IP=$(ifconfig | grep -E "inet [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | grep -v "127.0.0.1" | head -1 | awk '{print $2}')
+    if [ -z "$LOCAL_IP" ]; then
+        LOCAL_IP=$(ip addr show | grep -E "inet [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | grep -v "127.0.0.1" | head -1 | awk '{print $2}' | cut -d'/' -f1)
+    fi
+
     log_success "Web 应用已启动 (PID: $WEB_PID)"
-    log_info "Web: http://localhost:$WEB_PORT"
+
+    # 获取所有本机 IP 地址（排除回环地址）
+    log_info "可用地址:"
+    echo "  - http://localhost:$WEB_PORT (本地)"
+
+    # macOS
+    if command -v ifconfig >/dev/null 2>&1; then
+        ifconfig | grep -E "inet [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | grep -v "127.0.0.1" | awk '{print $2}' | while read -r ip; do
+            echo "  - http://$ip:$WEB_PORT"
+        done
+    # Linux
+    elif command -v ip >/dev/null 2>&1; then
+        ip addr show | grep -E "inet [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | grep -v "127.0.0.1" | awk '{print $2}' | cut -d'/' -f1 | while read -r ip; do
+            echo "  - http://$ip:$WEB_PORT"
+        done
+    fi
 }
 
 # ============================================================================
