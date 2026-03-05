@@ -143,6 +143,9 @@ export const zhHans: TranslationStructure = {
     usageSubtitle: '查看 API 使用情况和费用',
     profiles: '配置文件',
     profilesSubtitle: '管理环境配置文件和变量',
+    supportUs: '加入共建',
+    supportUsSubtitlePro: '您已是共建者 🎉',
+    supportUsSubtitle: '成为未来的一部分',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -383,7 +386,7 @@ export const zhHans: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `已安装版本 ${currentVersion}。请更新到 ${requiredVersion} 或更高版本`,
-    updateCliInstructions: '请运行 npm install -g @free/cli@latest',
+    updateCliInstructions: '请运行 curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
     deleteSession: '删除会话',
     deleteSessionSubtitle: '永久删除此会话',
     deleteSessionConfirm: '永久删除会话？',
@@ -755,7 +758,7 @@ export const zhHans: TranslationStructure = {
     launchNewSessionInDirectory: '在目录中启动新会话',
     offlineUnableToSpawn: '设备离线时无法启动',
     offlineHelp:
-      '• 确保您的计算机在线\n• 运行 `free daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `npm install -g @free/cli@latest` 升级',
+      '• 确保您的计算机在线\n• 运行 `free daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash` 升级',
     daemon: '守护进程',
     status: '状态',
     stopDaemon: '停止守护进程',

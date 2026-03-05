@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Free (dev)",
-  "identifier": "app.saaskit.free.dev",
+  "identifier": "app.saaskit.freecode.dev",
   "app": {
     "windows": [
       {

@@ -1,4 +1,4 @@
-package app.saaskit.free.dev
+package app.saaskit.freecode.dev
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
@@ -19,7 +19,7 @@ class MainActivity : ReactActivity() {
     // setTheme(R.style.AppTheme);
     // @generated begin expo-splashscreen - expo prebuild (DO NOT MODIFY) sync-f3ff59a738c56c9a6119210cb55f0b613eb8b6af
     SplashScreenManager.registerOnActivity(this)
-    // @generated end expo-splash-screen
+    // @generated end expo-splashscreen
     super.onCreate(null)
   }
 
@@ -50,7 +50,7 @@ class MainActivity : ReactActivity() {
     * @see <a href="https://developer.android.com/reference/android/app/Activity#onBackPressed()">onBackPressed</a>
     */
   override fun invokeDefaultOnBackPressed() {
-      if (Build.VERSION.SDK_INT <= Build.VERSION.SDK_INT.R) {
+      if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
           if (!moveTaskToBack(false)) {
               // For non-root activities, use the default implementation to finish them.
               super.invokeDefaultOnBackPressed()

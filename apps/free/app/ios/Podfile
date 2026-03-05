@@ -60,17 +60,5 @@ target 'Freedev' do
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
 
-    # Fix fmt consteval error with Xcode 26+ (Beta) clang
-    # The stricter consteval handling in newer clang causes build failures in fmt v11
-    fmt_base_h = File.join(__dir__, 'Pods', 'fmt', 'include', 'fmt', 'base.h')
-    if File.exist?(fmt_base_h)
-      content = File.read(fmt_base_h)
-      patched = content.gsub('#  define FMT_CONSTEVAL consteval', '#  define FMT_CONSTEVAL constexpr')
-      if content != patched
-        File.chmod(0644, fmt_base_h)
-        File.write(fmt_base_h, patched)
-        Pod::UI.puts 'Patched fmt FMT_CONSTEVAL: consteval -> constexpr'
-      end
-    end
   end
 end

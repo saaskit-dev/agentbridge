@@ -18,16 +18,8 @@
     "noUnusedParameters": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
   },
   "exclude": ["node_modules", "dist", "**/dist/**", "examples", "**/node_modules/**"],
-  "references": [
-    { "path": "packages/core/types" },
-    { "path": "packages/core/interfaces" },
-    { "path": "packages/core/protocol" },
-    { "path": "packages/core/utils" },
-    { "path": "apps/free/app" },
-    { "path": "apps/free/cli" },
-    { "path": "apps/free/server" }
-  ]
+  "references": [],
 }

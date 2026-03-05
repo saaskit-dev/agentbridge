@@ -3,6 +3,6 @@
   "_comment_get_from": "1. Build your app and get SHA-256 fingerprint from keystore",
   "_comment_get_from_2": "2. keytool -list -v -keystore your-keystore.jks",
   "_comment_get_from_3": "3. Upload to: https://play.google.com/console -> Setup -> App integrity",
-  "_comment_package": "Should match: app.saaskit.free",
+  "_comment_package": "Should match: app.saaskit.freecode",
   "_placeholder": "Replace entire file with real assetlinks.json from Digital Asset Links tool"
 }
