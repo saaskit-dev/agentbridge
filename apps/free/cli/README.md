@@ -6,6 +6,14 @@ Multi-Agent CLI - Command AI agents anytime, anywhere with enhanced workflows.
 
 ## 安装
 
+**一键安装（推荐）：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash
+```
+
+**或通过 npm：**
+
 ```bash
 npm install -g @free/cli
 ```

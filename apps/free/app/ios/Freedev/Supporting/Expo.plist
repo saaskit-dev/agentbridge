@@ -3,7 +3,7 @@
 <plist version="1.0">
   <dict>
     <key>EXUpdatesCheckOnLaunch</key>
-    <string>NEVER</string>
+    <string>ALWAYS</string>
     <key>EXUpdatesEnabled</key>
     <false/>
     <key>EXUpdatesLaunchWaitMs</key>
@@ -15,9 +15,5 @@
     </dict>
     <key>EXUpdatesRuntimeVersion</key>
     <string>18</string>
-    <!-- TODO: Configure your own Expo updates URL -->
-    <!-- Get from: https://expo.dev/accounts/[your-account]/projects/free -->
-    <!-- <key>EXUpdatesURL</key>
-    <string>https://u.expo.dev/YOUR_PROJECT_ID</string> -->
   </dict>
 </plist>

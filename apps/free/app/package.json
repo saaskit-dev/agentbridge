@@ -2,6 +2,14 @@
   "name": "@free/app",
   "main": "index.ts",
   "version": "0.0.1",
+  "description": "Free - Mobile and Web client for AI Coding Agents",
+  "author": "kilingzhang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kilingzhang/agentbridge.git",
+    "directory": "apps/free/app"
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",

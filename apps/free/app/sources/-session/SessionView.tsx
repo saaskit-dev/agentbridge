@@ -204,8 +204,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const isCliOutdated = cliVersion && !isVersionSupported(cliVersion, MINIMUM_CLI_VERSION);
   const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
   const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
-  // Get permission mode from session object, default to 'default'
-  const permissionMode = session.permissionMode || 'default';
+  // Get permission mode from session object, fall back to global default
+  const globalDefaultPermissionMode = useSetting('defaultPermissionMode');
+  const permissionMode = session.permissionMode || globalDefaultPermissionMode || 'default';
   // Get model mode from session object - for Gemini/OpenCode sessions use explicit model
   const isGeminiSession = session.metadata?.flavor === 'gemini';
   const isOpenCodeSession = session.metadata?.flavor === 'opencode';

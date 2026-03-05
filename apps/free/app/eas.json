@@ -4,7 +4,6 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "base": "apps/free-app",
     "development": {
       "autoIncrement": true,
       "developmentClient": true,
@@ -44,19 +43,6 @@
       "channel": "production",
       "env": {
         "APP_ENV": "production"
-      }
-    }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "_comment": "TODO: Configure your own Apple Developer credentials",
-        "_comment_appleId": "Get from: https://appleid.apple.com - your Apple ID email",
-        "_comment_ascAppId": "Get from: https://appstoreconnect.apple.com -> My Apps -> [Your App] -> App Information -> Apple ID",
-        "_comment_appleTeamId": "Get from: https://developer.apple.com/account -> Membership -> Team ID",
-        "appleId": "",
-        "ascAppId": "",
-        "appleTeamId": ""
       }
     }
   }

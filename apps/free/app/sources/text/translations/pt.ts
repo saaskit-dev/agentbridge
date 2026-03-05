@@ -390,7 +390,7 @@ export const pt: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Versão ${currentVersion} instalada. Atualize para ${requiredVersion} ou posterior`,
-    updateCliInstructions: 'Por favor execute npm install -g @free/cli@latest',
+    updateCliInstructions: 'Por favor execute curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
     deleteSession: 'Excluir sessão',
     deleteSessionSubtitle: 'Remover permanentemente esta sessão',
     deleteSessionConfirm: 'Excluir sessão permanentemente?',
@@ -776,7 +776,7 @@ export const pt: TranslationStructure = {
   machine: {
     offlineUnableToSpawn: 'Inicializador desativado enquanto a máquina está offline',
     offlineHelp:
-      '• Verifique se seu computador está online\n• Execute `free daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `npm install -g @free/cli@latest`',
+      '• Verifique se seu computador está online\n• Execute `free daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`',
     launchNewSessionInDirectory: 'Iniciar nova sessão no diretório',
     daemon: 'Daemon',
     status: 'Status',
