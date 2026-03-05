@@ -318,6 +318,7 @@ function NewSessionWizard() {
   // Variant B (true): Enhanced profile-first wizard with sections
   const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
   const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
+  const defaultPermissionMode = useSetting('defaultPermissionMode');
   const lastUsedModelMode = useSetting('lastUsedModelMode');
   const experimentsEnabled = useSetting('experiments');
   const [profiles, setProfiles] = useSettingMutable('profiles');
@@ -390,7 +391,10 @@ function NewSessionWizard() {
 
   const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
   const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-    // Initialize with last used permission mode if valid, otherwise default to 'default'
+    // Initialize permission mode with priority:
+    // 1. lastUsedPermissionMode (if explicitly set to a non-default value)
+    // 2. defaultPermissionMode from global settings (sync read from storage to avoid undefined on first render)
+    // 3. 'default' as ultimate fallback
     const validClaudeModes: PermissionMode[] = [
       'default',
       'acceptEdits',
@@ -399,7 +403,8 @@ function NewSessionWizard() {
     ];
     const validAcpModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo']; // codex, gemini, opencode
 
-    if (lastUsedPermissionMode) {
+    // Only use lastUsedPermissionMode if it was explicitly set to a non-default value
+    if (lastUsedPermissionMode && lastUsedPermissionMode !== 'default') {
       if (
         (agentType === 'codex' || agentType === 'gemini' || agentType === 'opencode') &&
         validAcpModes.includes(lastUsedPermissionMode as PermissionMode)
@@ -412,7 +417,10 @@ function NewSessionWizard() {
         return lastUsedPermissionMode as PermissionMode;
       }
     }
-    return 'default';
+    // Fall back to the global default permission mode setting
+    // Use sync read from storage to ensure we have a value even on first render
+    const globalDefault = storage.getState().settings.defaultPermissionMode;
+    return (globalDefault as PermissionMode) ?? 'default';
   });
 
   // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below (lines ~670-681)
@@ -476,8 +484,9 @@ function NewSessionWizard() {
 
   const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
     setPermissionMode(mode);
-    // Save the new selection immediately
-    sync.applySettings({ lastUsedPermissionMode: mode });
+    // Save the new selection immediately; store null for 'default' so it falls through
+    // to the global defaultPermissionMode setting next time
+    sync.applySettings({ lastUsedPermissionMode: mode === 'default' ? null : mode });
   }, []);
 
   //
@@ -827,9 +836,9 @@ function NewSessionWizard() {
         : validClaudeModes.includes(permissionMode);
 
     if (!isValidForCurrentAgent) {
-      setPermissionMode('default');
+      setPermissionMode((defaultPermissionMode as PermissionMode) ?? 'default');
     }
-  }, [agentType, permissionMode]);
+  }, [agentType, permissionMode, defaultPermissionMode]);
 
   // Reset model mode when agent type changes to appropriate default
   React.useEffect(() => {
@@ -1185,7 +1194,7 @@ function NewSessionWizard() {
         recentMachinePaths: updatedPaths,
         lastUsedAgent: agentType,
         lastUsedProfile: selectedProfileId,
-        lastUsedPermissionMode: permissionMode,
+        lastUsedPermissionMode: permissionMode === 'default' ? null : permissionMode,
         lastUsedModelMode: modelMode,
       });
 

@@ -469,12 +469,14 @@ class Sync {
     const sandboxEnabled = isSandboxEnabled(session.metadata);
     // Read permission mode from session state.
     // If sandbox is enabled and mode is default/missing, force bypassPermissions.
+    // Otherwise fall back to the global defaultPermissionMode setting.
+    const globalDefault = storage.getState().settings.defaultPermissionMode ?? 'default';
     const permissionMode: PermissionMode =
       session.permissionMode && session.permissionMode !== 'default'
         ? session.permissionMode
         : sandboxEnabled
           ? 'bypassPermissions'
-          : 'default';
+          : globalDefault;
 
     // Read model mode - for Gemini, default to gemini-2.5-pro if not set
     // Read model mode - for Gemini, default to gemini-2.5-pro if not set. OpenCode uses profile config.
@@ -1568,7 +1570,10 @@ class Sync {
         }
 
         if (!apiKey) {
-          console.log(`RevenueCat: No API key found for platform ${Platform.OS}`);
+          console.log(`[RevenueCat] No API key for platform: ${Platform.OS}`);
+          console.log(`[RevenueCat] Apple: ${config.revenueCatAppleKey ? '已设置' : '未设置'}`);
+          console.log(`[RevenueCat] Google: ${config.revenueCatGoogleKey ? '已设置' : '未设置'}`);
+          console.log(`[RevenueCat] Stripe: ${config.revenueCatStripeKey ? '已设置' : '未设置'}`);
           return;
         }
 

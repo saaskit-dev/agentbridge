@@ -21,8 +21,7 @@ import { getGitHubOAuthParams, disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { isUsingCustomServer } from '@/sync/serverConfig';
-import { useLocalSettingMutable, useSetting } from '@/sync/storage';
-import { sync } from '@/sync/sync';
+import { useLocalSettingMutable, useSetting, useEntitlement } from '@/sync/storage';
 import { trackWhatsNewClicked } from '@/track';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -35,6 +34,7 @@ export const SettingsView = React.memo(function SettingsView() {
   const appVersion = Constants.expoConfig?.version || '1.0.0';
   const auth = useAuth();
   const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
+  const isPro = useEntitlement('pro');
   const experiments = useSetting('experiments');
   const isCustomServer = isUsingCustomServer();
   const allMachines = useAllMachines();
@@ -59,6 +59,10 @@ export const SettingsView = React.memo(function SettingsView() {
     if (supported) {
       await Linking.openURL(url);
     }
+  };
+
+  const handleSubscribe = async () => {
+    router.push('/support');
   };
 
   // Use the multi-click hook for version clicks
@@ -216,6 +220,18 @@ export const SettingsView = React.memo(function SettingsView() {
           />
         </ItemGroup>
       )}
+
+      {/* Support Us */}
+      <ItemGroup>
+        <Item
+          title={t('settings.supportUs')}
+          subtitle={isPro ? t('settings.supportUsSubtitlePro') : t('settings.supportUsSubtitle')}
+          icon={<Ionicons name="rocket-outline" size={29} color="#667eea" />}
+          showChevron={!isPro}
+          onPress={isPro ? undefined : handleSubscribe}
+          detail={isPro ? undefined : '→'}
+        />
+      </ItemGroup>
 
       <ItemGroup title={t('settings.connectedAccounts')}>
         <Item

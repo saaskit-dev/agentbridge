@@ -420,7 +420,7 @@ export const ja: TranslationStructure = {
       requiredVersion: string;
     }) =>
       `バージョン ${currentVersion} がインストールされています。${requiredVersion} 以降に更新してください`,
-    updateCliInstructions: 'npm install -g @free/cli@latest を実行してください',
+    updateCliInstructions: 'curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash を実行してください',
     deleteSession: 'セッションを削除',
     deleteSessionSubtitle: 'このセッションを完全に削除',
     deleteSessionConfirm: 'セッションを完全に削除しますか？',
@@ -800,7 +800,7 @@ export const ja: TranslationStructure = {
     launchNewSessionInDirectory: 'ディレクトリで新しいセッションを起動',
     offlineUnableToSpawn: 'マシンがオフラインのためランチャーは無効です',
     offlineHelp:
-      '• コンピューターがオンラインであることを確認してください\n• `free daemon status`を実行して診断してください\n• 最新のCLIバージョンを使用していますか？`npm install -g @free/cli@latest`でアップグレードしてください',
+      '• コンピューターがオンラインであることを確認してください\n• `free daemon status`を実行して診断してください\n• 最新のCLIバージョンを使用していますか？`curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`でアップグレードしてください',
     daemon: 'デーモン',
     status: 'ステータス',
     stopDaemon: 'デーモンを停止',

@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "description": "Mobile and Web client for Claude Code and Codex",
   "author": "kilingzhang",
+  "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/kilingzhang/agentbridge",
   "bugs": "https://github.com/kilingzhang/agentbridge/issues",

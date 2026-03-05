@@ -29,8 +29,8 @@ class Configuration {
 
   constructor() {
     // Server configuration - priority: environment > default (localhost for development)
-    this.serverUrl = process.env.FREE_SERVER_URL || 'http://localhost:3000';
-    this.webappUrl = process.env.FREE_WEBAPP_URL || 'http://localhost:8081';
+    this.serverUrl = process.env.FREE_SERVER_URL || 'https://free-server.saaskit.app';
+    this.webappUrl = process.env.FREE_WEBAPP_URL || 'https://free.saaskit.app';
 
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2);

@@ -620,9 +620,12 @@ export function NewSessionWizard({
     return 'claude';
   });
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
-    if (lastUsedPermissionMode) return lastUsedPermissionMode as PermissionMode;
-    if (defaultPermissionMode) return defaultPermissionMode as PermissionMode;
-    return 'default' as PermissionMode;
+    // Only use lastUsedPermissionMode if explicitly set to a non-default value
+    if (lastUsedPermissionMode && lastUsedPermissionMode !== 'default')
+      return lastUsedPermissionMode as PermissionMode;
+    // Use sync read from storage to ensure we have a value even on first render
+    const globalDefault = storage.getState().settings.defaultPermissionMode;
+    return (globalDefault as PermissionMode) ?? 'default';
   });
   const [modelMode, setModelMode] = useState<ModelMode>('default');
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
@@ -1851,7 +1854,10 @@ export function NewSessionWizard({
                   }
                   onPress={() => {
                     setPermissionMode(option.value as PermissionMode);
-                    setLastUsedPermissionMode(option.value as PermissionMode);
+                    // Store null for 'default' so it falls through to global defaultPermissionMode
+                    setLastUsedPermissionMode(
+                      option.value === 'default' ? null : (option.value as PermissionMode)
+                    );
                   }}
                   showChevron={false}
                   selected={permissionMode === option.value}

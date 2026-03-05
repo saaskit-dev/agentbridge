@@ -48,8 +48,22 @@ agentbridge/
 
 ### 1. 安装 CLI
 
+**一键安装（推荐）：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash
+```
+
+**或通过 npm：**
+
 ```bash
 npm install -g @free/cli
+```
+
+**卸载：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/uninstall.sh | bash
 ```
 
 ### 2. 启动 Agent 会话
