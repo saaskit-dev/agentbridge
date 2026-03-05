@@ -104,7 +104,7 @@ class Sync {
   private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
   private settingsSync: InvalidateSync;
   private profileSync: InvalidateSync;
-  private purchasesSync: InvalidateSync;
+  purchasesSync: InvalidateSync;
   private machinesSync: InvalidateSync;
   private pushTokenSync: InvalidateSync;
   private nativeUpdateSync: InvalidateSync;
@@ -583,7 +583,10 @@ class Sync {
 
   purchaseProduct = async (productId: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      // Check if RevenueCat is initialized
+      // Ensure RevenueCat is initialized (may be async on first load)
+      if (!this.revenueCatInitialized) {
+        await this.purchasesSync.invalidateAndAwait();
+      }
       if (!this.revenueCatInitialized) {
         return { success: false, error: 'RevenueCat not initialized' };
       }
@@ -638,7 +641,10 @@ class Sync {
 
   presentPaywall = async (): Promise<{ success: boolean; purchased?: boolean; error?: string }> => {
     try {
-      // Check if RevenueCat is initialized
+      // Ensure RevenueCat is initialized (may be async on first load)
+      if (!this.revenueCatInitialized) {
+        await this.purchasesSync.invalidateAndAwait();
+      }
       if (!this.revenueCatInitialized) {
         const error = 'RevenueCat not initialized';
         trackPaywallError(error);
