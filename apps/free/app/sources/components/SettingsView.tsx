@@ -382,15 +382,17 @@ export const SettingsView = React.memo(function SettingsView() {
 
       {/* About */}
       <ItemGroup title={t('settings.about')} footer={t('settings.aboutFooter')}>
-        <Item
-          title={t('settings.whatsNew')}
-          subtitle={t('settings.whatsNewSubtitle')}
-          icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
-          onPress={() => {
-            trackWhatsNewClicked();
-            router.push('/changelog');
-          }}
-        />
+        {Platform.OS !== 'web' && (
+          <Item
+            title={t('settings.whatsNew')}
+            subtitle={t('settings.whatsNewSubtitle')}
+            icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
+            onPress={() => {
+              trackWhatsNewClicked();
+              router.push('/changelog');
+            }}
+          />
+        )}
         <Item
           title={t('settings.github')}
           icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
@@ -402,27 +404,32 @@ export const SettingsView = React.memo(function SettingsView() {
           icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
           onPress={handleReportIssue}
         />
-        <Item
-          title={t('settings.privacyPolicy')}
-          icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
-          onPress={async () => {
-            const url = 'https://free-server.saaskit.app/privacy/';
-            const supported = await Linking.canOpenURL(url);
-            if (supported) {
-              await Linking.openURL(url);
-            }
-          }}
-        />
-        <Item
-          title={t('settings.termsOfService')}
-          icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
-          onPress={async () => {
-            const url = 'https://github.com/kilingzhang/agentbridge/blob/main/TERMS.md';
-            if (supported) {
-              await Linking.openURL(url);
-            }
-          }}
-        />
+        {Platform.OS !== 'web' && (
+          <Item
+            title={t('settings.privacyPolicy')}
+            icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
+            onPress={async () => {
+              const url = 'https://free-server.saaskit.app/privacy/';
+              const supported = await Linking.canOpenURL(url);
+              if (supported) {
+                await Linking.openURL(url);
+              }
+            }}
+          />
+        )}
+        {Platform.OS !== 'web' && (
+          <Item
+            title={t('settings.termsOfService')}
+            icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
+            onPress={async () => {
+              const url = 'https://github.com/kilingzhang/agentbridge/blob/main/TERMS.md';
+              const supported = await Linking.canOpenURL(url);
+              if (supported) {
+                await Linking.openURL(url);
+              }
+            }}
+          />
+        )}
         {Platform.OS === 'ios' && (
           <Item
             title={t('settings.eula')}
