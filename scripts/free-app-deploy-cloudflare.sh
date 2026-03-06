@@ -67,7 +67,7 @@ fi
 echo ""
 echo "🏗️  构建 Web 版本 (APP_ENV=$APP_ENV)..."
 rm -rf "$DIST_DIR"
-APP_ENV="$APP_ENV" npx expo export --platform web
+APP_ENV="$APP_ENV" npx expo export --platform web --clear
 
 # 检查构建结果
 if [ ! -d "$DIST_DIR" ]; then
