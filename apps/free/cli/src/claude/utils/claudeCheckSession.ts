@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getProjectPath } from './path';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('claude/utils/claudeCheckSession');
 
 export function claudeCheckSession(sessionId: string, path: string) {
   const projectDir = getProjectPath(path);

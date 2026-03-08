@@ -10,7 +10,8 @@
 
 import type { AgentMessage } from '../core';
 import type { TransportHandler } from '../transport';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('agent/acp/sessionUpdateHandlers');
 
 /**
  * Default timeout for idle detection after message chunks (ms)

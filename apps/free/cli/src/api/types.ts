@@ -94,6 +94,17 @@ export const UpdateMachineBodySchema = z.object({
 
 export type UpdateMachineBody = z.infer<typeof UpdateMachineBodySchema>;
 
+/** Wire trace context forwarded from App through Server to CLI */
+export const WireTraceSchema = z.object({
+  tid: z.string(),
+  sid: z.string(),
+  pid: z.string().optional(),
+  ses: z.string().optional(),
+  mid: z.string().optional(),
+});
+
+export type WireTrace = z.infer<typeof WireTraceSchema>;
+
 /**
  * Update event from server
  */
@@ -102,6 +113,7 @@ export const UpdateSchema = z.object({
   seq: z.number(),
   body: z.union([UpdateBodySchema, UpdateSessionBodySchema, UpdateMachineBodySchema]),
   createdAt: z.number(),
+  _trace: WireTraceSchema.optional(),
 });
 
 export type Update = z.infer<typeof UpdateSchema>;
@@ -139,10 +151,11 @@ export interface ClientToServerEvents {
     time: number;
     thinking: boolean;
     mode?: 'local' | 'remote';
+    _trace?: WireTrace;
   }) => void;
-  'session-end': (data: { sid: string; time: number }) => void;
+  'session-end': (data: { sid: string; time: number; _trace?: WireTrace }) => void;
   'update-metadata': (
-    data: { sid: string; expectedVersion: number; metadata: string },
+    data: { sid: string; expectedVersion: number; metadata: string; _trace?: WireTrace },
     cb: (
       answer:
         | {
@@ -161,7 +174,7 @@ export interface ClientToServerEvents {
     ) => void
   ) => void;
   'update-state': (
-    data: { sid: string; expectedVersion: number; agentState: string | null },
+    data: { sid: string; expectedVersion: number; agentState: string | null; _trace?: WireTrace },
     cb: (
       answer:
         | {
@@ -197,6 +210,7 @@ export interface ClientToServerEvents {
       total: number;
       [key: string]: number;
     };
+    _trace?: WireTrace;
   }) => void;
   // Streaming events (typewriter effect)
   'streaming:text-delta': (data: {
@@ -205,6 +219,7 @@ export interface ClientToServerEvents {
     messageId: string;
     delta: string;
     timestamp: number;
+    _trace?: WireTrace;
   }) => void;
   'streaming:text-complete': (data: {
     type: 'text_complete';
@@ -212,6 +227,7 @@ export interface ClientToServerEvents {
     messageId: string;
     fullText: string;
     timestamp: number;
+    _trace?: WireTrace;
   }) => void;
   'streaming:thinking-delta': (data: {
     type: 'thinking_delta';
@@ -219,6 +235,7 @@ export interface ClientToServerEvents {
     messageId: string;
     delta: string;
     timestamp: number;
+    _trace?: WireTrace;
   }) => void;
 }
 
@@ -327,6 +344,7 @@ export const CreateSessionResponseSchema = z.object({
     metadataVersion: z.number(),
     agentState: z.string().nullable(),
     agentStateVersion: z.number(),
+    dataEncryptionKey: z.string().nullable().optional(),
   }),
 });
 

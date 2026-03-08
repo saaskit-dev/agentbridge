@@ -5,7 +5,8 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import { configuration } from '@/configuration';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/caffeinate');
 
 let caffeinateProcess: ChildProcess | null = null;
 

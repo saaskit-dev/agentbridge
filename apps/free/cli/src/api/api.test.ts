@@ -17,12 +17,6 @@ vi.mock('axios', () => ({
   isAxiosError: mockIsAxiosError,
 }));
 
-vi.mock('@/ui/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-  },
-}));
-
 // Mock encryption utilities
 vi.mock('./encryption', () => ({
   decodeBase64: vi.fn((data: string) => data),

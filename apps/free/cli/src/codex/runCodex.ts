@@ -15,7 +15,7 @@ import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { initialMachineMetadata } from '@/daemon/run';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { Credentials, readSettings } from '@/persistence';
-import { logger } from '@/ui/logger';
+import { Logger, getCollector } from '@agentbridge/core/telemetry';
 import { configuration } from '@/configuration';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -33,10 +33,12 @@ import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import type { ApiSessionClient } from '@/api/apiSession';
 import {
+
   mapCodexMcpMessageToSessionEnvelopes,
   mapCodexProcessorMessageToSessionEnvelopes,
 } from './utils/sessionProtocolMapper';
 
+const logger = new Logger('codex/runCodex');
 type ReadyEventOptions = {
   pending: unknown;
   queueSize: () => number;
@@ -119,8 +121,8 @@ export async function runCodex(opts: {
   const machineId = settings?.machineId;
   const sandboxConfig = opts.noSandbox ? undefined : settings?.sandboxConfig;
   if (!machineId) {
-    console.error(
-      `[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/kilingzhang/agentbridge/issues`
+    logger.error(
+      '[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it.'
     );
     process.exit(1);
   }
@@ -379,7 +381,7 @@ export async function runCodex(opts: {
     inkInstance = render(
       React.createElement(CodexDisplay, {
         messageBuffer,
-        logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
+        logPath: process.env.DEBUG ? (getCollector().getLogFilePath() ?? undefined) : undefined,
         onExit: async () => {
           // Exit the agent
           logger.debug('[codex]: Exiting agent via Ctrl-C');

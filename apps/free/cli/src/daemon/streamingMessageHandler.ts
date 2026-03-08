@@ -9,7 +9,9 @@
 
 import { EventEmitter } from 'node:events';
 import { serverCapabilities } from '@/api/serverCapabilities';
-import { logger } from '@/ui/logger';
+import { Logger, type WireTrace } from '@agentbridge/core/telemetry';
+import { getProcessTraceContext } from '@/telemetry';
+const logger = new Logger('daemon/streamingMessageHandler');
 
 /**
  * Streaming message state
@@ -25,6 +27,14 @@ interface StreamingMessageState {
   lastSentAt: number;
   /** Flush timeout handle */
   flushTimeout: NodeJS.Timeout | null;
+  /** Trace context captured at stream start, propagated with every ephemeral event */
+  trace: WireTrace | undefined;
+  /** Stream start time (ms) for summary log (RFC §17.10) */
+  startTime: number;
+  /** Number of individual text_delta events flushed (RFC §17.10) */
+  deltaCount: number;
+  /** Total characters streamed (RFC §17.10) */
+  totalChars: number;
 }
 
 /**
@@ -40,16 +50,18 @@ export interface StreamingMessageHandlerOptions {
 }
 
 /**
- * Streaming ephemeral event types
+ * Streaming ephemeral event types.
+ * Each variant carries an optional _trace for end-to-end trace correlation (RFC §11.5).
  */
 export type StreamingEphemeralEvent =
-  | { type: 'text_delta'; sessionId: string; messageId: string; delta: string; timestamp: number }
+  | { type: 'text_delta'; sessionId: string; messageId: string; delta: string; timestamp: number; _trace?: WireTrace }
   | {
       type: 'text_complete';
       sessionId: string;
       messageId: string;
       fullText: string;
       timestamp: number;
+      _trace?: WireTrace;
     }
   | {
       type: 'thinking_delta';
@@ -57,6 +69,7 @@ export type StreamingEphemeralEvent =
       messageId: string;
       delta: string;
       timestamp: number;
+      _trace?: WireTrace;
     };
 
 /**
@@ -122,12 +135,22 @@ export class StreamingMessageHandler extends EventEmitter {
     // Clear any existing state for this session
     this.endStreaming(sessionId);
 
+    // Capture current turn's trace context at stream start (RFC §11.5)
+    const ctx = getProcessTraceContext();
+    const trace: WireTrace | undefined = ctx
+      ? { tid: ctx.traceId, sid: ctx.spanId, ses: ctx.sessionId, mid: ctx.machineId }
+      : undefined;
+
     this.streamingStates.set(sessionId, {
       messageId,
       sessionId,
       accumulatedText: '',
       lastSentAt: 0,
       flushTimeout: null,
+      trace,
+      startTime: Date.now(),
+      deltaCount: 0,
+      totalChars: 0,
     });
 
     logger.debug(
@@ -191,6 +214,7 @@ export class StreamingMessageHandler extends EventEmitter {
       messageId: state.messageId,
       delta,
       timestamp: Date.now(),
+      _trace: state.trace,
     });
   }
 
@@ -211,12 +235,15 @@ export class StreamingMessageHandler extends EventEmitter {
 
     // Flush any remaining text
     if (state.accumulatedText.length > 0) {
+      state.deltaCount += 1;
+      state.totalChars += state.accumulatedText.length;
       this.sendEphemeral({
         type: 'text_delta',
         sessionId,
         messageId: state.messageId,
         delta: state.accumulatedText,
         timestamp: Date.now(),
+        _trace: state.trace,
       });
       state.accumulatedText = '';
     }
@@ -228,12 +255,18 @@ export class StreamingMessageHandler extends EventEmitter {
       messageId: state.messageId,
       fullText: fullText ?? '',
       timestamp: Date.now(),
+      _trace: state.trace,
     });
+
+    // RFC §17.10: info-level summary so it appears in production (minLevel: 'info') logs
+    const elapsed = ((Date.now() - state.startTime) / 1000).toFixed(1);
+    logger.info(
+      `Streaming completed: ${state.deltaCount} deltas, ${state.totalChars} chars, ${elapsed}s`,
+      { sessionId, messageId: state.messageId }
+    );
 
     // Remove state
     this.streamingStates.delete(sessionId);
-
-    logger.debug(`[StreamingMessageHandler] Ended streaming for session ${sessionId}`);
   }
 
   /**
@@ -245,6 +278,12 @@ export class StreamingMessageHandler extends EventEmitter {
       return;
     }
 
+    // Track stats for RFC §17.10 summary log
+    state.deltaCount += 1;
+    state.totalChars += state.accumulatedText.length;
+
+    const deltaLen = state.accumulatedText.length;
+
     // Send delta
     this.sendEphemeral({
       type: 'text_delta',
@@ -252,6 +291,14 @@ export class StreamingMessageHandler extends EventEmitter {
       messageId: state.messageId,
       delta: state.accumulatedText,
       timestamp: Date.now(),
+      _trace: state.trace,
+    });
+
+    logger.debug('[streaming] delta sent', {
+      sessionId,
+      messageId: state.messageId,
+      length: deltaLen,
+      traceId: state.trace?.tid,
     });
 
     // Reset state

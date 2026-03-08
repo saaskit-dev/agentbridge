@@ -10,7 +10,8 @@ import { systemPrompt } from './utils/systemPrompt';
 import type { SandboxConfig } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import { initializeSandbox, wrapCommand } from '@/sandbox/manager';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('claude/claudeLocal');
 
 /**
  * Error thrown when the Claude process exits with a non-zero exit code.
@@ -362,7 +363,7 @@ export async function claudeLocal(opts: {
           });
 
           rl.on('error', err => {
-            console.error('Error reading from fd 3:', err);
+            logger.error('Error reading from fd 3:', err);
           });
 
           // Cleanup on child exit

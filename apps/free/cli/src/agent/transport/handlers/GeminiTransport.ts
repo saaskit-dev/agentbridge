@@ -9,7 +9,8 @@
 
 import { GeminiTransport as CoreGeminiTransport } from '@agentbridge/core';
 import type { ToolPattern, ToolNameContext } from '@agentbridge/core';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('agent/transport/handlers/GeminiTransport');
 
 /**
  * Free-specific tool name patterns for Gemini CLI.

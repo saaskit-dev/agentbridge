@@ -9,7 +9,8 @@ import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { projectPath } from '@/projectPath';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('daemon/controlClient');
 
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
@@ -81,8 +82,8 @@ export async function stopDaemonSession(sessionId: string): Promise<boolean> {
   return result.success || false;
 }
 
-export async function spawnDaemonSession(directory: string, sessionId?: string): Promise<any> {
-  const result = await daemonPost('/spawn-session', { directory, sessionId });
+export async function spawnDaemonSession(directory: string, sessionId?: string, sessionTag?: string): Promise<any> {
+  const result = await daemonPost('/spawn-session', { directory, sessionId, sessionTag });
   return result;
 }
 
@@ -91,46 +92,42 @@ export async function stopDaemonHttp(): Promise<void> {
 }
 
 /**
- * The version check is still quite naive.
- * For instance we are not handling the case where we upgraded free,
- * the daemon is still running, and it recieves a new message to spawn a new session.
- * This is a tough case - we need to somehow figure out to restart ourselves,
- * yet still handle the original request.
- *
- * Options:
- * 1. Periodically check during the health checks whether our version is the same as CLIs version. If not - restart.
- * 2. Wait for a command from the machine session, or any other signal to
- * check for version & restart.
- *   a. Handle the request first
- *   b. Let the request fail, restart and rely on the client retrying the request
- *
- * I like option 1 a little better.
- * Maybe we can ... wait for it ... have another daemon to make sure
- * our daemon is always alive and running the latest version.
- *
- * That seems like an overkill and yet another process to manage - lets not do this :D
- *
- * TODO: This function should return a state object with
- * clear state - if it is running / or errored out or something else.
- * Not just a boolean.
- *
- * We can destructure the response on the caller for richer output.
- * For instance when running `free daemon status` we can show more information.
+ * Structured result from daemon running check.
+ * - running:     process exists and daemon state file is present
+ * - stale:       state file exists but the process is no longer alive (will be cleaned up)
+ * - not_running: no state file found
  */
-export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
+export type DaemonRunningState =
+  | { status: 'running'; pid: number; startTime: string; version: string; httpPort?: number }
+  | { status: 'stale'; pid: number }
+  | { status: 'not_running' };
+
+/**
+ * Check whether the daemon is alive and clean up any stale state file.
+ *
+ * Returns a structured DaemonRunningState so callers can show rich output
+ * (e.g. `free daemon status`) without a separate readDaemonState() call.
+ */
+export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<DaemonRunningState> {
   const state = await readDaemonState();
   if (!state) {
-    return false;
+    return { status: 'not_running' };
   }
 
-  // Check if the daemon is running
+  // Check if the daemon process is alive (signal 0 = existence check)
   try {
     process.kill(state.pid, 0);
-    return true;
+    return {
+      status: 'running',
+      pid: state.pid,
+      startTime: state.startTime,
+      version: state.startedWithCliVersion,
+      httpPort: state.httpPort,
+    };
   } catch {
-    logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up state');
+    logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up stale state');
     await cleanupDaemonState();
-    return false;
+    return { status: 'stale', pid: state.pid };
   }
 }
 
@@ -143,15 +140,9 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
  */
 export async function isDaemonRunningCurrentlyInstalledFreeVersion(): Promise<boolean> {
   logger.debug('[DAEMON CONTROL] Checking if daemon is running same version');
-  const runningDaemon = await checkIfDaemonRunningAndCleanupStaleState();
-  if (!runningDaemon) {
+  const daemonState = await checkIfDaemonRunningAndCleanupStaleState();
+  if (daemonState.status !== 'running') {
     logger.debug('[DAEMON CONTROL] No daemon running, returning false');
-    return false;
-  }
-
-  const state = await readDaemonState();
-  if (!state) {
-    logger.debug('[DAEMON CONTROL] No daemon state found, returning false');
     return false;
   }
 
@@ -162,9 +153,9 @@ export async function isDaemonRunningCurrentlyInstalledFreeVersion(): Promise<bo
     const currentCliVersion = packageJson.version;
 
     logger.debug(
-      `[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`
+      `[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${daemonState.version}`
     );
-    return currentCliVersion === state.startedWithCliVersion;
+    return currentCliVersion === daemonState.version;
   } catch (error) {
     logger.debug('[DAEMON CONTROL] Error checking daemon version', error);
     return false;
@@ -195,7 +186,7 @@ export async function stopDaemon() {
       await stopDaemonHttp();
 
       // Wait for daemon to die
-      await waitForProcessDeath(state.pid, 2000);
+      await waitForProcessDeath(state.pid, 8000);
       logger.debug('Daemon stopped gracefully via HTTP');
       return;
     } catch (error) {

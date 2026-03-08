@@ -12,10 +12,11 @@ import { SDKToLogConverter } from './utils/sdkToLogConverter';
 import { RawJSONLines } from '@/claude/types';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { RemoteModeDisplay } from '@/ui/ink/RemoteModeDisplay';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { formatClaudeMessageForInk } from '@/ui/messageFormatterInk';
 import { Future } from '@/utils/future';
 
+const logger = new Logger('claude/claudeRemoteLauncher');
 interface PermissionsField {
   date: number;
   result: 'approved' | 'denied';
@@ -193,7 +194,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
               ) {
                 if (c.content === PLAN_FAKE_REJECT) {
                   logger.debug('[remote]: hack plan mode exit');
-                  logger.debugLargeJson('[remote]: hack plan mode exit', c);
+                  logger.debug('[remote]: hack plan mode exit (detail)');
                   return {
                     ...c,
                     is_error: false,

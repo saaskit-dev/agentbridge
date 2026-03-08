@@ -10,7 +10,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { ApiSessionClient } from '@/api/apiSession';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('claude/utils/startFreeServer');
 
 export async function startFreeServer(client: ApiSessionClient) {
   // Handler that sends title updates via the client

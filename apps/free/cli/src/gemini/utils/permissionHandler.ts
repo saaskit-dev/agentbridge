@@ -7,12 +7,14 @@
 
 import { ApiSessionClient } from '@/api/apiSession';
 import type { PermissionMode } from '@/api/types';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import {
   BasePermissionHandler,
   PermissionResult,
   PendingRequest,
 } from '@/utils/BasePermissionHandler';
+
+const logger = new Logger('gemini/utils/permissionHandler');
 
 // Re-export types for backwards compatibility
 export type { PermissionResult, PendingRequest };

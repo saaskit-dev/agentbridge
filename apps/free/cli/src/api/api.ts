@@ -1,5 +1,7 @@
 import axios from 'axios';
 import chalk from 'chalk';
+import { createHash } from 'node:crypto';
+import tweetnacl from 'tweetnacl';
 import { ApiMachineClient } from './apiMachine';
 import { ApiSessionClient } from './apiSession';
 import {
@@ -9,6 +11,7 @@ import {
   encrypt,
   decrypt,
   libsodiumEncryptForPublicKey,
+  libsodiumPublicKeyFromSecretKey,
 } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
 import type {
@@ -22,8 +25,35 @@ import type {
 } from '@/api/types';
 import { configuration } from '@/configuration';
 import { Credentials } from '@/persistence';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
+
+const logger = new Logger('api/api');
+
+/**
+ * Try to recover a session encryption key from the v1 block of dataEncryptionKey.
+ * The v1 block is encrypted for libsodiumPublicKeyFromSecretKey(machineKey).
+ * Returns the session key if found and decrypted, null otherwise.
+ */
+function tryRecoverSessionKey(dataEncKeyB64: string, machineKey: Uint8Array): Uint8Array | null {
+  try {
+    const bundle = decodeBase64(dataEncKeyB64);
+    // v1 block starts at byte 105: [0x00(1)][block0(104)] = 105 bytes, then [0x01(1)][block1(104)]
+    const V1_OFFSET = 105;
+    if (bundle.length < V1_OFFSET + 1 || bundle[V1_OFFSET] !== 0x01) {
+      return null;
+    }
+    const block = bundle.slice(V1_OFFSET + 1);
+    const ephPubKey = block.slice(0, 32);
+    const nonce = block.slice(32, 56);
+    const ciphertext = block.slice(56);
+    const hashedSeed = new Uint8Array(createHash('sha512').update(machineKey).digest());
+    const boxSecretKey = hashedSeed.slice(0, 32);
+    return tweetnacl.box.open(ciphertext, nonce, ephPubKey, boxSecretKey) || null;
+  } catch {
+    return null;
+  }
+}
 
 export class ApiClient {
   static async create(credential: Credentials) {
@@ -55,16 +85,23 @@ export class ApiClient {
       encryptionKey = getRandomBytes(32);
       encryptionVariant = 'dataKey';
 
-      // Derive and encrypt data encryption key
-      // const contentDataKey = await deriveKey(this.secret, 'Free EnCoder', ['content']);
-      // const publicKey = libsodiumPublicKeyFromSecretKey(contentDataKey);
-      const encryptedDataKey = libsodiumEncryptForPublicKey(
+      // Version 0x00: encrypt for mobile app's public key
+      const encryptedForPublicKey = libsodiumEncryptForPublicKey(
         encryptionKey,
         this.credential.encryption.publicKey
       );
-      dataEncryptionKey = new Uint8Array(encryptedDataKey.length + 1);
-      dataEncryptionKey.set([0], 0); // Version byte
-      dataEncryptionKey.set(encryptedDataKey, 1); // Data key
+      // Version 0x01: encrypt for machine-key-derived box keypair (enables CLI-side key recovery)
+      const machineBoxPubKey = libsodiumPublicKeyFromSecretKey(this.credential.encryption.machineKey);
+      const encryptedForMachineKey = libsodiumEncryptForPublicKey(encryptionKey, machineBoxPubKey);
+
+      // Bundle format: [0x00][block0(104 bytes)][0x01][block1(104 bytes)]
+      dataEncryptionKey = new Uint8Array(
+        1 + encryptedForPublicKey.length + 1 + encryptedForMachineKey.length
+      );
+      dataEncryptionKey.set([0], 0);
+      dataEncryptionKey.set(encryptedForPublicKey, 1);
+      dataEncryptionKey.set([1], 1 + encryptedForPublicKey.length);
+      dataEncryptionKey.set(encryptedForMachineKey, 1 + encryptedForPublicKey.length + 1);
     } else {
       encryptionKey = this.credential.encryption.secret;
       encryptionVariant = 'legacy';
@@ -105,6 +142,22 @@ export class ApiClient {
         encryptionKey: encryptionKey,
         encryptionVariant: encryptionVariant,
       };
+      // For dataKey sessions: try to recover the session key from the v1 block
+      // if the server returned a pre-existing session (key was set by a previous caller).
+      // This allows the daemon to reuse a session created by the test.
+      if (this.credential.encryption.type === 'dataKey' && raw.dataEncryptionKey) {
+        const recovered = tryRecoverSessionKey(raw.dataEncryptionKey, this.credential.encryption.machineKey);
+        if (recovered) {
+          // Session existed with a v1 block; use the recovered key for consistency.
+          // Also re-decrypt metadata/agentState, since the initial decrypt above used the
+          // wrong ephemeral key (which only works for sessions we created ourselves).
+          session.encryptionKey = recovered;
+          session.metadata = decrypt(recovered, encryptionVariant, decodeBase64(raw.metadata));
+          if (raw.agentState) {
+            session.agentState = decrypt(recovered, encryptionVariant, decodeBase64(raw.agentState));
+          }
+        }
+      }
       return session;
     } catch (error) {
       logger.debug('[API] [ERROR] Failed to get or create session:', error);

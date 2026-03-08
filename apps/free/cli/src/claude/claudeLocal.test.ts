@@ -20,14 +20,6 @@ vi.mock('node:child_process', () => ({
   spawn: mockSpawn,
 }));
 
-vi.mock('@/ui/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-  },
-}));
-
 vi.mock('./utils/claudeFindLastSession', () => ({
   claudeFindLastSession: mockClaudeFindLastSession,
 }));

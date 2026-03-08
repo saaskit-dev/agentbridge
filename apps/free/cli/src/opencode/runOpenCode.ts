@@ -29,7 +29,7 @@ import { startFreeServer } from '@/claude/utils/startFreeServer';
 import { configuration } from '@/configuration';
 import { initialMachineMetadata } from '@/daemon/run';
 import { Credentials, readSettings } from '@/persistence';
-import { logger } from '@/ui/logger';
+import { Logger, getCollector } from '@agentbridge/core/telemetry';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { hashObject } from '@/utils/deterministicJson';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
@@ -44,6 +44,7 @@ import type { PermissionMode } from '@/api/types';
 import { startCaffeinate } from '@/utils/caffeinate';
 import type { SpawnSessionOptions } from '@/modules/common/registerCommonHandlers';
 
+const logger = new Logger('opencode/runOpenCode');
 // Import from packages/core
 
 /**
@@ -89,7 +90,7 @@ export async function runOpenCode(opts: {
   const sandboxConfig = settings?.sandboxConfig;
 
   if (!machineId) {
-    console.error(`[START] No machine ID found in settings.`);
+    logger.error('[START] No machine ID found in settings.');
     process.exit(1);
   }
   logger.debug(`Using machineId: ${machineId}`);
@@ -314,7 +315,7 @@ export async function runOpenCode(opts: {
     inkInstance = render(
       React.createElement(OpenCodeDisplay, {
         messageBuffer,
-        logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
+        logPath: process.env.DEBUG ? (getCollector().getLogFilePath() ?? undefined) : undefined,
         onExit: async () => {
           logger.debug('[opencode]: Exiting agent via Ctrl-C');
           shouldExit = true;

@@ -6,13 +6,15 @@
  */
 
 import { ApiSessionClient } from '@/api/apiSession';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import {
+
   BasePermissionHandler,
   PermissionResult,
   PendingRequest,
 } from '@/utils/BasePermissionHandler';
 
+const logger = new Logger('codex/utils/permissionHandler');
 // Re-export types for backwards compatibility
 export type { PermissionResult, PendingRequest };
 

@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { logger } from './logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import type {
   SDKMessage,
   SDKAssistantMessage,
@@ -7,6 +7,8 @@ import type {
   SDKSystemMessage,
   SDKUserMessage,
 } from '@/claude/sdk';
+
+const logger = new Logger('ui/messageFormatter');
 
 export type OnAssistantResultCallback = (result: SDKResultMessage) => void | Promise<void>;
 
@@ -17,7 +19,7 @@ export function formatClaudeMessage(
   message: SDKMessage,
   onAssistantResult?: OnAssistantResultCallback
 ): void {
-  logger.debugLargeJson('[CLAUDE] Message from non interactive & remote mode:', message);
+  logger.debug('[CLAUDE] Message from non interactive & remote mode');
 
   switch (message.type) {
     case 'system': {
@@ -153,7 +155,7 @@ export function formatClaudeMessage(
       } else if (resultMsg.subtype === 'error_during_execution') {
         console.log(chalk.red.bold('\n❌ Error during execution'));
         console.log(chalk.gray(`Completed ${resultMsg.num_turns} turns before error`));
-        logger.debugLargeJson('[RESULT] Error during execution', resultMsg);
+        logger.debug('[RESULT] Error during execution');
       }
       break;
     }
