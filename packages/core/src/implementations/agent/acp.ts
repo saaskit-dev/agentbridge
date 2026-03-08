@@ -697,7 +697,7 @@ export class AcpBackend implements IAgentBackend {
           },
         },
         clientInfo: {
-          name: 'agentbridge',
+          name: 'free',
           version: '1.0.0',
         },
       };
