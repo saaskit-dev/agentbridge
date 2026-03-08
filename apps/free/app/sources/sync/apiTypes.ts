@@ -16,6 +16,7 @@ export const ApiMessageSchema = z.object({
     c: z.string(), // Base64 encoded encrypted content
   }),
   createdAt: z.number(),
+  traceId: z.string().optional(), // RFC §19.3: preserved for cross-layer trace correlation
 });
 
 export type ApiMessage = z.infer<typeof ApiMessageSchema>;

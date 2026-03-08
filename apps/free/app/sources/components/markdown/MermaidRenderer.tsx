@@ -4,6 +4,8 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { WebView } from 'react-native-webview';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/markdown/MermaidRenderer');
 
 // Style for Web platform
 const webStyle: any = {
@@ -53,7 +55,7 @@ export const MermaidRenderer = React.memo((props: { content: string }) => {
           }
         } catch (error) {
           if (isMounted) {
-            console.warn(
+            logger.warn(
               `[Mermaid] ${t('markdown.mermaidRenderFailed')}: ${error instanceof Error ? error.message : String(error)}`
             );
             setHasError(true);

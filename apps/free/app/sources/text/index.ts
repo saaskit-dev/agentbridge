@@ -16,6 +16,8 @@ import { ru } from './translations/ru';
 import { zhHans } from './translations/zh-Hans';
 import { zhHant } from './translations/zh-Hant';
 import { loadSettings } from '@/sync/persistence';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/text');
 
 /**
  * Extract all possible dot-notation keys from the nested translation object
@@ -106,13 +108,13 @@ let found = false;
 if (settings.settings.preferredLanguage && settings.settings.preferredLanguage in translations) {
   currentLanguage = settings.settings.preferredLanguage as SupportedLanguage;
   found = true;
-  console.log(`[i18n] Using preferred language: ${currentLanguage}`);
+  logger.debug(`[i18n] Using preferred language: ${currentLanguage}`);
 }
 
 // Read from device
 if (!found) {
   const locales = Localization.getLocales();
-  console.log(
+  logger.debug(
     `[i18n] Device locales:`,
     locales.map(l => l.languageCode)
   );
@@ -129,30 +131,30 @@ if (!found) {
           chineseVariant = 'zh-Hant';
         }
 
-        console.log(`[i18n] Chinese script code: ${l.languageScriptCode} -> ${chineseVariant}`);
+        logger.debug(`[i18n] Chinese script code: ${l.languageScriptCode} -> ${chineseVariant}`);
 
         if (chineseVariant && chineseVariant in translations) {
           currentLanguage = chineseVariant as SupportedLanguage;
-          console.log(`[i18n] Using Chinese variant: ${currentLanguage}`);
+          logger.debug(`[i18n] Using Chinese variant: ${currentLanguage}`);
           break;
         }
 
         currentLanguage = 'zh-Hans';
-        console.log(`[i18n] Falling back to simplified Chinese: zh-Hans`);
+        logger.debug(`[i18n] Falling back to simplified Chinese: zh-Hans`);
         break;
       }
 
       // Direct match for non-Chinese languages
       if (l.languageCode in translations) {
         currentLanguage = l.languageCode as SupportedLanguage;
-        console.log(`[i18n] Using device locale: ${currentLanguage}`);
+        logger.debug(`[i18n] Using device locale: ${currentLanguage}`);
         break;
       }
     }
   }
 }
 
-console.log(`[i18n] Final language: ${currentLanguage}`);
+logger.debug(`[i18n] Final language: ${currentLanguage}`);
 
 /**
  * Main translation function with strict typing
@@ -190,7 +192,7 @@ export function t<K extends TranslationKey>(
     for (const k of keys) {
       value = value[k];
       if (value === undefined) {
-        console.warn(`Translation missing: ${key}`);
+        logger.warn(`Translation missing: ${key}`);
         return key;
       }
     }
@@ -207,10 +209,10 @@ export function t<K extends TranslationKey>(
     }
 
     // Fallback for unexpected types
-    console.warn(`Invalid translation value type for key: ${key}`);
+    logger.warn(`Invalid translation value type for key: ${key}`);
     return key;
   } catch (error) {
-    console.error(`Translation error for key: ${key}`, error);
+    logger.error(`Translation error for key: ${key}`, error);
     return key;
   }
 }

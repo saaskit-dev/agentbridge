@@ -16,6 +16,8 @@ import { getUserProfile, sendFriendRequest, removeFriend } from '@/sync/apiFrien
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
 import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/user/profile');
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,7 +37,7 @@ export default function UserProfileScreen() {
         const profile = await getUserProfile(credentials, id);
         setUserProfile(profile);
       } catch (error) {
-        console.error('Failed to load user profile:', error);
+        logger.error('Failed to load user profile:', error);
         await Modal.alert(t('errors.failedToLoadProfile'), '', [
           {
             text: t('common.ok'),

@@ -12,6 +12,8 @@ import { useArtifact } from '@/sync/storage';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/artifacts/detail');
 
 const stylesheet = StyleSheet.create(theme => ({
   container: {
@@ -105,7 +107,7 @@ export default function ArtifactDetailScreen() {
         }
       } catch (err) {
         if (!cancelled) {
-          console.error('Failed to load artifact:', err);
+          logger.error('Failed to load artifact:', err);
           setError(t('artifacts.error'));
         }
       } finally {
@@ -150,7 +152,7 @@ export default function ArtifactDetailScreen() {
       // Navigate back
       router.back();
     } catch (err) {
-      console.error('Failed to delete artifact:', err);
+      logger.error('Failed to delete artifact:', err);
       Modal.alert(t('common.error'), 'Failed to delete artifact');
     } finally {
       setIsDeleting(false);

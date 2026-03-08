@@ -163,7 +163,9 @@ export class Encryption {
       return null;
     }
 
-    const decrypted = decryptBox(encryptedKey.slice(1), this.contentKeyPair.privateKey);
+    // Only use first 104 bytes of block0 (ephPubKey:32 + nonce:24 + ciphertext:48)
+    // The bundle may contain an additional v1 block for CLI-side key recovery (bytes 105+)
+    const decrypted = decryptBox(encryptedKey.slice(1, 105), this.contentKeyPair.privateKey);
     if (!decrypted) {
       return null;
     }

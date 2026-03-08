@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/MultiTextInput');
 
 export type SupportedKey =
   | 'Enter'
@@ -130,7 +132,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         const selection = { start: text.length, end: text.length };
         selectionRef.current = selection;
 
-        console.log('📝 MultiTextInput.native: Text changed:', JSON.stringify({ text, selection }));
+        logger.debug('📝 MultiTextInput.native: Text changed:', JSON.stringify({ text, selection }));
 
         onChangeText(text);
 
@@ -156,7 +158,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
             selection.end !== selectionRef.current.end
           ) {
             selectionRef.current = selection;
-            console.log('📍 MultiTextInput.native: Selection changed:', JSON.stringify(selection));
+            logger.debug('📍 MultiTextInput.native: Selection changed:', JSON.stringify(selection));
 
             if (onSelectionChange) {
               onSelectionChange(selection);
@@ -175,7 +177,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
       ref,
       () => ({
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
-          console.log(
+          logger.debug(
             '🎯 MultiTextInput.native: setTextAndSelection:',
             JSON.stringify({ text, selection })
           );

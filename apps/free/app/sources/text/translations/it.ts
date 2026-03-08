@@ -173,6 +173,9 @@ export const it: TranslationStructure = {
     usageSubtitle: 'Vedi il tuo utilizzo API e i costi',
     profiles: 'Profili',
     profilesSubtitle: 'Gestisci i profili delle variabili ambiente per le sessioni',
+    supportUs: 'Unisciti a noi',
+    supportUsSubtitlePro: 'Sei un Costruttore 🎉',
+    supportUsSubtitle: 'Fai parte del futuro',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `Account ${service} collegato`,
@@ -251,8 +254,8 @@ export const it: TranslationStructure = {
     enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
 
     // Default permission mode
-    defaultPermissionMode: 'Default Permission Mode',
-    defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
+    defaultPermissionMode: 'Modalità di autorizzazione predefinita',
+    defaultPermissionModeSubtitle: 'Modalità di autorizzazione predefinita per le nuove sessioni',
   },
 
   errors: {
@@ -421,7 +424,7 @@ export const it: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Versione ${currentVersion} installata. Aggiorna a ${requiredVersion} o successiva`,
-    updateCliInstructions: 'Esegui curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
+    updateCliInstructions: 'Esegui curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Elimina sessione',
     deleteSessionSubtitle: 'Rimuovi definitivamente questa sessione',
     deleteSessionConfirm: 'Eliminare definitivamente la sessione?',
@@ -494,12 +497,12 @@ export const it: TranslationStructure = {
       badgeYolo: 'YOLO',
     },
     opencodePermissionMode: {
-      title: 'OPENCODE PERMISSION MODE',
-      default: 'Default',
-      readOnly: 'Read Only',
+      title: 'MODALITÀ AUTORIZZAZIONE OPENCODE',
+      default: 'Predefinita',
+      readOnly: 'Sola lettura',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only',
+      badgeReadOnly: 'Sola lettura',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
@@ -805,8 +808,8 @@ export const it: TranslationStructure = {
     launchNewSessionInDirectory: 'Avvia nuova sessione nella directory',
     offlineUnableToSpawn: 'Avvio disabilitato quando la macchina è offline',
     offlineHelp:
-      "• Assicurati che il tuo computer sia online\n• Esegui `free daemon status` per diagnosticare\n• Stai usando l'ultima versione della CLI? Aggiorna con `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`",
-    daemon: 'Daemon',
+      "• Assicurati che il tuo computer sia online\n• Esegui `free daemon status` per diagnosticare\n• Stai usando l'ultima versione della CLI? Aggiorna con `curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash`",
+    daemon: 'Demone',
     status: 'Stato',
     stopDaemon: 'Arresta daemon',
     lastKnownPid: 'Ultimo PID noto',
@@ -975,6 +978,29 @@ export const it: TranslationStructure = {
     friendRequestGeneric: 'Nuova richiesta di amicizia',
     friendAccepted: ({ name }: { name: string }) => `Ora sei amico di ${name}`,
     friendAcceptedGeneric: 'Richiesta di amicizia accettata',
+  },
+
+  diagnostics: {
+    title: 'Log diagnostici',
+    subtitle: 'Esporta i log per diagnosticare i problemi',
+    preview: 'Anteprima',
+    export: 'Esporta',
+    timeRange: 'Intervallo di tempo',
+    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
+      `${count} ${count === 1 ? 'voce' : 'voci'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'sessione' : 'sessioni'}` : ''}`,
+    share: 'Condividi log',
+    shareSubtitle: 'Apri il pannello di condivisione per salvare o inviare',
+    copyToClipboard: 'Copia negli appunti',
+    copySubtitle: 'Copia i dati del log come testo JSONL',
+    whatIsIncluded: 'Cosa è incluso',
+    whatIsIncludedSubtitle: 'Log diagnostici dell\'app — nessun contenuto di messaggi, nessun dato personale',
+    privacyNote: 'I log vengono anonimizzati e sanificati prima dell\'esportazione. Il contenuto dei messaggi e i dati sensibili non vengono mai inclusi.',
+    noLogs: 'Nessun log',
+    noLogsMessage: 'Non ci sono voci di log da esportare per l\'intervallo di tempo selezionato.',
+    exported: 'Esportato',
+    exportFailed: 'Esportazione fallita',
+    copied: 'Copiato',
+    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'voce copiata' : 'voci copiate'} negli appunti`,
   },
 } as const;
 

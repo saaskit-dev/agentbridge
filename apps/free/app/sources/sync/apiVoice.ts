@@ -2,6 +2,9 @@ import { getServerUrl } from './serverConfig';
 import { storage } from './storage';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { config } from '@/config';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('app/sync/apiVoice');
 
 export interface VoiceTokenResponse {
   allowed: boolean;
@@ -15,7 +18,7 @@ export async function fetchVoiceToken(
 ): Promise<VoiceTokenResponse> {
   const serverUrl = getServerUrl();
   const userId = storage.getState().profile.id;
-  console.log(`[Voice] User ID: ${userId}`);
+  logger.debug(`[Voice] User ID: ${userId}`);
 
   // Get agent ID from config
   const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;

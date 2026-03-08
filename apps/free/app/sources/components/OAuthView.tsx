@@ -13,6 +13,8 @@ import {
   PKCECodes,
   ClaudeAuthTokens,
 } from '@/utils/oauth';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/OAuthView');
 
 const styles = StyleSheet.create(theme => ({
   container: {
@@ -215,7 +217,7 @@ export const OAuthViewRender = React.memo(
 
     const handleNavigationStateChange = React.useCallback(
       async (navState: any) => {
-        console.log('handleNavigationStateChange', navState.url);
+        logger.debug('handleNavigationStateChange', navState.url);
         // Prevent processing the same URL multiple times
         if (isProcessingRef.current) {
           return;
@@ -258,7 +260,7 @@ export const OAuthViewRender = React.memo(
               Modal.alert(t('common.success'), t('settings.claudeAuthSuccess'));
             }
           } catch (err: any) {
-            console.error('Token exchange failed:', err);
+            logger.error('Token exchange failed:', err);
             const errorMessage = err.message || t('errors.tokenExchangeFailed');
             setError(errorMessage);
             props.config.onError?.(errorMessage);
@@ -288,9 +290,9 @@ export const OAuthViewRender = React.memo(
 
     const handleWebViewError = React.useCallback(
       (syntheticEvent: any) => {
-        console.log('handleWebViewError', syntheticEvent);
+        logger.debug('handleWebViewError', syntheticEvent);
         const { nativeEvent } = syntheticEvent;
-        console.error('WebView error:', nativeEvent);
+        logger.error('WebView error:', nativeEvent);
 
         // Ignore localhost connection errors (expected)
         if (nativeEvent.url?.includes('localhost')) {

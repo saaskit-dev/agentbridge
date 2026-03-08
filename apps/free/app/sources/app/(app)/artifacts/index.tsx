@@ -11,6 +11,8 @@ import { DecryptedArtifact } from '@/sync/artifactTypes';
 import { useArtifacts } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/artifacts');
 // Date formatting
 
 const stylesheet = StyleSheet.create(theme => ({
@@ -129,8 +131,8 @@ export default function ArtifactsScreen() {
 
   // Fetch artifacts on mount
   React.useEffect(() => {
-    console.log('📱 ArtifactsScreen: Component mounted, fetching artifacts');
-    console.log(`📱 ArtifactsScreen: Current artifacts count: ${artifacts.length}`);
+    logger.debug('📱 ArtifactsScreen: Component mounted, fetching artifacts');
+    logger.debug(`📱 ArtifactsScreen: Current artifacts count: ${artifacts.length}`);
     let cancelled = false;
 
     (async () => {
@@ -138,35 +140,35 @@ export default function ArtifactsScreen() {
         // Check if credentials are available
         const credentials = sync.getCredentials();
         if (!credentials) {
-          console.log('📱 ArtifactsScreen: No credentials available, skipping fetch');
+          logger.debug('📱 ArtifactsScreen: No credentials available, skipping fetch');
           return;
         }
 
         setIsLoading(true);
-        console.log('📱 ArtifactsScreen: Calling sync.fetchArtifactsList()');
+        logger.debug('📱 ArtifactsScreen: Calling sync.fetchArtifactsList()');
         await sync.fetchArtifactsList();
-        console.log('📱 ArtifactsScreen: fetchArtifactsList completed');
+        logger.debug('📱 ArtifactsScreen: fetchArtifactsList completed');
       } catch (error) {
-        console.error('📱 ArtifactsScreen: Failed to fetch artifacts:', error);
+        logger.error('📱 ArtifactsScreen: Failed to fetch artifacts:', error);
       } finally {
         if (!cancelled) {
           setIsLoading(false);
-          console.log('📱 ArtifactsScreen: Loading complete');
+          logger.debug('📱 ArtifactsScreen: Loading complete');
         }
       }
     })();
 
     return () => {
       cancelled = true;
-      console.log('📱 ArtifactsScreen: Component unmounted');
+      logger.debug('📱 ArtifactsScreen: Component unmounted');
     };
   }, []);
 
   // Log when artifacts change
   React.useEffect(() => {
-    console.log(`📱 ArtifactsScreen: Artifacts array updated, count: ${artifacts.length}`);
+    logger.debug(`📱 ArtifactsScreen: Artifacts array updated, count: ${artifacts.length}`);
     if (artifacts.length > 0) {
-      console.log('📱 ArtifactsScreen: First artifact:', artifacts[0]);
+      logger.debug('📱 ArtifactsScreen: First artifact:', artifacts[0]);
     }
   }, [artifacts]);
 

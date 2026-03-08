@@ -1,4 +1,6 @@
 import { ChangelogData, ChangelogEntry } from './types';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/changelog/parser');
 
 // This will be populated by the build-time script
 let changelogData: ChangelogData | null = null;
@@ -9,7 +11,7 @@ export function getChangelogData(): ChangelogData {
     try {
       changelogData = require('./changelog.json') as ChangelogData;
     } catch (error) {
-      console.warn('Changelog data not found, returning empty changelog');
+      logger.warn('Changelog data not found, returning empty changelog');
       changelogData = { entries: [], latestVersion: 0 };
     }
   }

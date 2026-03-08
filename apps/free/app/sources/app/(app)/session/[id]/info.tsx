@@ -212,7 +212,7 @@ function SessionInfoContent({ session }: { session: Session }) {
   }, []);
 
   const handleCopyUpdateCommand = useCallback(async () => {
-    const updateCommand = 'curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash';
+    const updateCommand = 'curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash';
     try {
       await Clipboard.setStringAsync(updateCommand);
       Modal.alert(t('common.success'), updateCommand);

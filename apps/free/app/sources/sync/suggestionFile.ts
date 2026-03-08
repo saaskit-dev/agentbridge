@@ -6,6 +6,9 @@
 import Fuse from 'fuse.js';
 import { sessionRipgrep } from './ops';
 import { AsyncLock } from '@/utils/lock';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('app/sync/suggestionFile');
 
 export interface FileItem {
   fileName: string;
@@ -86,14 +89,14 @@ class FileSearchCache {
         return;
       }
 
-      console.log(`FileSearchCache: Refreshing file cache for session ${sessionId}...`);
+      logger.debug(`FileSearchCache: Refreshing file cache for session ${sessionId}...`);
 
       // Use ripgrep to get all files in the project
       const response = await sessionRipgrep(sessionId, ['--files', '--follow'], undefined);
 
       if (!response.success || !response.stdout) {
-        console.error('FileSearchCache: Failed to fetch files', response.error);
-        console.log(response);
+        logger.error('FileSearchCache: Failed to fetch files', response.error);
+        logger.debug(JSON.stringify(response));
         return;
       }
 
@@ -145,7 +148,7 @@ class FileSearchCache {
       cache.lastRefresh = Date.now();
       this.initializeFuse(cache);
 
-      console.log(
+      logger.debug(
         `FileSearchCache: Cached ${cache.files.length} files and directories for session ${sessionId}`
       );
     });

@@ -1,8 +1,10 @@
 import { FeedResponse, FeedResponseSchema, FeedItem } from './feedTypes';
 import { getServerUrl } from './serverConfig';
 import { AuthCredentials } from '@/auth/tokenStorage';
-import { log } from '@/log';
+import { Logger } from '@agentbridge/core/telemetry';
 import { backoff } from '@/utils/time';
+
+const logger = new Logger('app/sync/apiFeed');
 
 /**
  * Fetch user's feed with pagination
@@ -24,7 +26,7 @@ export async function fetchFeed(
     if (options?.after) params.set('after', options.after);
 
     const url = `${API_ENDPOINT}/v1/feed${params.toString() ? `?${params}` : ''}`;
-    log.log(`📰 Fetching feed: ${url}`);
+    logger.debug(`Fetching feed: ${url}`);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -41,7 +43,7 @@ export async function fetchFeed(
     const parsed = FeedResponseSchema.safeParse(data);
 
     if (!parsed.success) {
-      console.error('Failed to parse feed response:', parsed.error);
+      logger.error('Failed to parse feed response:', parsed.error);
       throw new Error('Invalid feed response format');
     }
 

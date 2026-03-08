@@ -3,10 +3,13 @@
  * Provides detailed git status with file-level changes and line statistics
  */
 
+import { Logger } from '@agentbridge/core/telemetry';
 import { parseNumStat, createDiffStatsMap } from './git-parsers/parseDiff';
 import { parseStatusSummaryV2, getCurrentBranchV2 } from './git-parsers/parseStatusV2';
 import { sessionBash } from './ops';
 import { storage } from './storage';
+
+const logger = new Logger('app/sync/gitStatusFiles');
 
 export interface GitFileStatus {
   fileName: string;
@@ -64,7 +67,7 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
 
     return parseGitStatusFilesV2(statusOutput, diffOutput);
   } catch (error) {
-    console.error('Error fetching git status files for session', sessionId, ':', error);
+    logger.error(`Error fetching git status files for session ${sessionId}:`, error);
     return null;
   }
 }
@@ -139,7 +142,7 @@ function parseGitStatusFilesV2(statusOutput: string, combinedDiffOutput: string)
     // Skip directory entries since we're using --untracked-files=all
     // This is a fallback in case git still reports directories
     if (isDirectory) {
-      console.warn(`Unexpected directory in untracked files: ${untrackedPath}`);
+      logger.warn(`Unexpected directory in untracked files: ${untrackedPath}`);
       continue;
     }
 

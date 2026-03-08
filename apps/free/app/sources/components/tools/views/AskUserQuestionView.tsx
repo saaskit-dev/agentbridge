@@ -3,10 +3,12 @@ import * as React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolSectionView } from '../ToolSectionView';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './types';
 import { sessionAllow } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/tools/AskUserQuestionView');
 
 interface QuestionOption {
   label: string;
@@ -250,7 +252,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
       // 2. Send the answer as a message
       await sync.sendMessage(sessionId, responseText);
     } catch (error) {
-      console.error('Failed to submit answer:', error);
+      logger.error('Failed to submit answer:', error);
     } finally {
       setIsSubmitting(false);
     }

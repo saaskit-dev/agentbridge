@@ -12,6 +12,8 @@ import { Modal } from '@/modal';
 import { sessionReadFile, sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/session/file');
 
 interface FileContent {
   content: string;
@@ -85,7 +87,7 @@ export default function FileScreen() {
   try {
     filePath = encodedPath ? atob(encodedPath) : '';
   } catch (error) {
-    console.error('Failed to decode file path:', error);
+    logger.error('Failed to decode file path:', error);
     filePath = encodedPath || ''; // Fallback to original path if decoding fails
   }
 
@@ -243,7 +245,7 @@ export default function FileScreen() {
               setDiffContent(diffResponse.stdout);
             }
           } catch (diffError) {
-            console.log('Could not fetch git diff:', diffError);
+            logger.debug('Could not fetch git diff:', diffError);
             // Continue with file loading even if diff fails
           }
         }
@@ -284,7 +286,7 @@ export default function FileScreen() {
           }
         }
       } catch (error) {
-        console.error('Failed to load file:', error);
+        logger.error('Failed to load file:', error);
         if (!isCancelled) {
           setError('Failed to load file');
         }

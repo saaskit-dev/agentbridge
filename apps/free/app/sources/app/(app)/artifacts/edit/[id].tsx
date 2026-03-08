@@ -18,6 +18,8 @@ import { Modal } from '@/modal';
 import { useArtifact } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/artifacts/edit');
 
 const stylesheet = StyleSheet.create(theme => ({
   container: {
@@ -129,7 +131,7 @@ export default function EditArtifactScreen() {
           setBody(artifact.body || '');
         }
       } catch (err) {
-        console.error('Failed to load artifact for editing:', err);
+        logger.error('Failed to load artifact for editing:', err);
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -169,7 +171,7 @@ export default function EditArtifactScreen() {
       // Navigate back
       router.back();
     } catch (err) {
-      console.error('Failed to update artifact:', err);
+      logger.error('Failed to update artifact:', err);
       await Modal.alert(t('common.error'), t('artifacts.updateError'));
       setIsSaving(false);
     }
