@@ -1,0 +1,473 @@
+#!/bin/bash
+# ============================================================================
+# Free 项目统一入口
+#
+#   ./run              交互式菜单
+#   ./run <command>    直接执行
+#   ./run help         查看帮助
+# ============================================================================
+
+set -e
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+# ─── 颜色 ──────────────────────────────────────────────────────────────────
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+DIM='\033[2m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# ─── 工具函数 ──────────────────────────────────────────────────────────────
+
+die()  { echo -e "${RED}$*${NC}" >&2; exit 1; }
+info() { echo -e "${BLUE}>>>${NC} $*"; }
+
+confirm() {
+    local msg="${1:-确认执行?}"
+    echo ""
+    read -p "$(echo -e "${YELLOW}${msg} [y/N]:${NC} ")" yn
+    case "$yn" in [yY]|[yY][eE][sS]) return 0 ;; *) echo "已取消"; exit 0 ;; esac
+}
+
+pick() {
+    local prompt="$1"; shift
+    local options=("$@")
+    echo ""
+    for i in "${!options[@]}"; do
+        echo -e "    ${GREEN}$((i+1))${NC}) ${options[$i]}"
+    done
+    echo ""
+    read -p "$(echo -e "  ${prompt} ")" choice
+    echo "$choice"
+}
+
+APP_DIR="$ROOT/apps/free/app"
+
+# ─── prebuild 检测 (使用 @expo/fingerprint 官方工具) ─────────────────────
+
+FINGERPRINT_FILE="$APP_DIR/.expo/.prebuild-fingerprint"
+
+# 生成当前 native 指纹
+get_fingerprint() {
+    cd "$APP_DIR"
+    npx @expo/fingerprint fingerprint:generate 2>/dev/null \
+        | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).hash" 2>/dev/null
+}
+
+# prebuild + pod install + 保存指纹
+do_prebuild() {
+    local platform="${1:-}"
+    cd "$APP_DIR"
+    if [ -n "$platform" ]; then
+        rm -rf "$platform"
+        npx expo prebuild --platform "$platform"
+    else
+        rm -rf ios android
+        npx expo prebuild
+    fi
+    if [ -d "$APP_DIR/ios" ]; then
+        info "运行 pod install..."
+        cd "$APP_DIR/ios" && pod install
+        cd "$APP_DIR"
+    fi
+    mkdir -p "$APP_DIR/.expo"
+    get_fingerprint > "$FINGERPRINT_FILE" 2>/dev/null || true
+}
+
+# 检测指纹变更，如有需要则 prebuild
+ensure_prebuild() {
+    local platform="${1:-}"
+    local dir="${platform:-ios}"
+
+    # native 目录不存在 → expo run 会自动 prebuild，但缺少 pod install
+    if [ ! -d "$APP_DIR/$dir" ]; then
+        info "$dir/ 不存在，运行 prebuild..."
+        do_prebuild "$platform"
+        return
+    fi
+
+    # 没有存过指纹 → 首次，记录
+    if [ ! -f "$FINGERPRINT_FILE" ]; then
+        info "记录当前 native 指纹..."
+        mkdir -p "$APP_DIR/.expo"
+        get_fingerprint > "$FINGERPRINT_FILE" 2>/dev/null || true
+        return
+    fi
+
+    # 对比指纹
+    info "检测 native 配置变更..."
+    local current stored
+    current=$(get_fingerprint)
+    stored=$(cat "$FINGERPRINT_FILE" 2>/dev/null)
+
+    if [ -z "$current" ]; then
+        echo -e "${DIM}  指纹生成失败，跳过检测${NC}"
+        return
+    fi
+
+    if [ "$current" != "$stored" ]; then
+        echo -e "${YELLOW}  Native 配置已变更，需要重新 prebuild${NC}"
+        read -p "$(echo -e "${YELLOW}  是否运行 prebuild? [Y/n]:${NC} ")" yn
+        case "$yn" in
+            [nN]*) echo -e "${DIM}  跳过，构建可能失败${NC}" ;;
+            *)     do_prebuild "$platform" ;;
+        esac
+    else
+        echo -e "${DIM}  Native 配置无变更${NC}"
+    fi
+}
+
+# ─── ios / android ────────────────────────────────────────────────────────
+
+cmd_ios() {
+    ensure_prebuild ios
+    cd "$APP_DIR"
+    if [ "${1:-}" = "release" ]; then
+        shift
+        info "iOS Release 构建 (嵌入 JS bundle, 无 Metro)"
+        npx expo run:ios --configuration Release "$@"
+    else
+        npx expo run:ios "$@"
+    fi
+}
+
+cmd_android() {
+    ensure_prebuild android
+    cd "$APP_DIR"
+    if [ "${1:-}" = "release" ]; then
+        shift
+        info "Android Release 构建 (嵌入 JS bundle, 无 Metro)"
+        npx expo run:android --variant release "$@"
+    else
+        npx expo run:android "$@"
+    fi
+}
+
+# ─── dev ───────────────────────────────────────────────────────────────────
+
+cmd_dev() {
+    case "${1:-}" in
+        "")
+            ./scripts/dev.sh
+            ;;
+        quick|--quick|--skip-build)
+            ./scripts/dev.sh --skip-build
+            ;;
+        server|--server-only)
+            ./scripts/dev.sh --server-only
+            ;;
+        web|--web-only)
+            ./scripts/dev.sh --web-only
+            ;;
+        clean|--clear)
+            ./scripts/dev.sh --clear
+            ;;
+        *)
+            ./scripts/dev.sh "$@"
+            ;;
+    esac
+}
+
+# ─── free (dev) ────────────────────────────────────────────────────────────
+
+cmd_free() {
+    export FREE_HOME_DIR=~/.free-dev
+    export FREE_SERVER_URL="http://localhost:3000"
+    export FREE_WEBAPP_URL="http://localhost:8081"
+    free "$@"
+}
+
+# ─── build ─────────────────────────────────────────────────────────────────
+
+cmd_build() {
+    case "${1:-}" in
+        app)
+            info "本地 prebuild (重新生成 ios/ android/)"
+            shift
+            do_prebuild "${1:-}"
+            ;;
+        server)
+            info "构建 Server Docker 镜像 + 推送"
+            ./scripts/free-server-build.sh
+            ;;
+        core)
+            info "构建 Core 包"
+            cd "$ROOT/packages/core" && pnpm build
+            ;;
+        cli)
+            info "构建 CLI + npm link"
+            cd "$ROOT/apps/free/cli" && pnpm build && npm link
+            ;;
+        "")
+            local choice
+            choice=$(pick "构建什么?" "app      本地 prebuild (ios/android)" "server   Server Docker 镜像" "core     Core 包" "cli      CLI 工具")
+            case "$choice" in
+                1) cmd_build app ;;
+                2) cmd_build server ;;
+                3) cmd_build core ;;
+                4) cmd_build cli ;;
+                *) echo "已取消" ;;
+            esac
+            ;;
+        *)
+            die "未知构建目标: $1 (可用: app, server, core, cli)"
+            ;;
+    esac
+}
+
+# ─── release ───────────────────────────────────────────────────────────────
+
+cmd_release() {
+    case "${1:-}" in
+        submit)
+            info "提交 App Store 审核 (使用最新 production build)"
+            confirm "确认提交 App Store 审核?"
+            ./scripts/free-app-release-production.sh submit
+            ;;
+        prod|production|"")
+            info "发布生产版（提交 App Store + Google Play）"
+            confirm "这会构建生产版并自动提交商店"
+            ./scripts/free-app-release-production.sh
+            ;;
+        "")
+            cmd_release prod
+            ;;
+        *)
+            die "未知发布目标: $1 (可用: production, submit)"
+            ;;
+    esac
+}
+
+# ─── deploy ────────────────────────────────────────────────────────────────
+
+cmd_deploy() {
+    case "${1:-}" in
+        web)
+            shift
+            local env="${1:-production}"
+            info "部署 Web 到 Cloudflare Pages (env: $env)"
+            ./scripts/free-app-deploy-cloudflare.sh free-app "$env"
+            ;;
+        server)
+            info "部署 Server 到 VPS (docker pull + restart)"
+            echo -e "${DIM}  注意: 需要在 VPS 上执行，或通过 SSH 远程执行${NC}"
+            echo ""
+            echo "  本地构建推送:  ./run build server"
+            echo "  VPS 上部署:    ./scripts/free-server-deploy.sh"
+            echo ""
+            read -p "$(echo -e "  ${YELLOW}要先构建并推送镜像吗? [y/N]:${NC} ")" yn
+            case "$yn" in
+                [yY]*) ./scripts/free-server-build.sh ;;
+            esac
+            ;;
+        "")
+            local choice
+            choice=$(pick "部署到哪里?" "web       Cloudflare Pages" "server    VPS (Docker)")
+            case "$choice" in
+                1) cmd_deploy web ;;
+                2) cmd_deploy server ;;
+                *) echo "已取消" ;;
+            esac
+            ;;
+        *)
+            die "未知部署目标: $1 (可用: web, server)"
+            ;;
+    esac
+}
+
+# ─── test ──────────────────────────────────────────────────────────────────
+
+cmd_test() {
+    case "${1:-}" in
+        e2e|"")
+            info "启动 E2E 测试 (Server + Web + Playwright)"
+            ./scripts/e2e-test.sh
+            ;;
+        quick)
+            ./scripts/e2e-test.sh --quick
+            ;;
+        start)
+            info "只启动测试服务器（不跑测试）"
+            ./scripts/e2e-test.sh --no-test
+            ;;
+        unit)
+            info "运行单元测试"
+            pnpm test
+            ;;
+        cleanup)
+            ./scripts/e2e-test.sh --cleanup
+            ;;
+        lifecycle)
+            shift
+            info "消息全链路 E2E 集成测试 (Server + Daemon + Claude)"
+            ./scripts/e2e-lifecycle.sh "$@"
+            ;;
+        *)
+            die "未知测试命令: $1 (可用: e2e, quick, start, unit, cleanup, lifecycle)"
+            ;;
+    esac
+}
+
+# ─── version ───────────────────────────────────────────────────────────────
+
+cmd_version() {
+    case "${1:-}" in
+        "")
+            node scripts/version.js
+            ;;
+        *)
+            node scripts/version.js "$@"
+            ;;
+    esac
+}
+
+# ─── ota ───────────────────────────────────────────────────────────────────
+
+cmd_ota() {
+    info "OTA 热更新推送到生产环境"
+    confirm "推送 OTA 到生产环境?"
+    cd "$ROOT/apps/free/app"
+    pnpm ota
+}
+
+# ─── help ──────────────────────────────────────────────────────────────────
+
+cmd_help() {
+    echo ""
+    echo -e "${BOLD}用法:${NC}  ./run [命令] [参数]"
+    echo ""
+    echo -e "${BOLD}开发${NC}"
+    echo "  dev                     启动完整开发环境 (构建 + 全部服务)"
+    echo "  dev quick               跳过构建，快速启动"
+    echo "  dev server              只启动后端"
+    echo "  dev web                 只启动前端"
+    echo "  ios                     编译运行 iOS Debug (热更新)"
+    echo "  ios release             编译运行 iOS Release (嵌入 bundle)"
+    echo "  android                 编译运行 Android Debug (热更新)"
+    echo "  android release         编译运行 Android Release (嵌入 bundle)"
+    echo ""
+    echo -e "${BOLD}构建${NC}"
+    echo "  build app [ios|android] 本地 prebuild (重新生成 native 目录)"
+    echo "  build server            构建 Server Docker 镜像 + 推送"
+    echo "  build core              构建 Core 包"
+    echo "  build cli               构建 CLI + npm link"
+    echo ""
+    echo -e "${BOLD}发版${NC}"
+    echo "  release                 构建生产版并上传 TestFlight (外部 beta)"
+    echo "  release submit          确认没问题后提交 App Store 审核"
+    echo ""
+    echo -e "${BOLD}部署${NC}"
+    echo "  deploy web [环境]       部署 Web 到 Cloudflare Pages"
+    echo "  deploy server           构建 + 部署 Server"
+    echo ""
+    echo -e "${BOLD}测试${NC}"
+    echo "  test                    E2E 测试 (Playwright)"
+    echo "  test quick              快速测试"
+    echo "  test unit               单元测试"
+    echo "  test start              只启动测试服务器"
+    echo "  test cleanup            清理测试进程"
+    echo "  test lifecycle          消息全链路集成测试 (Server+Daemon+Claude)"
+    echo "  test lifecycle --skip-build  跳过构建，直接跑"
+    echo ""
+    echo -e "${BOLD}工具${NC}"
+    echo "  free [args...]          用本地 dev 环境运行 free CLI"
+    echo "  version                 查看当前版本"
+    echo "  version patch|minor|major  升级版本号"
+    echo "  ota                     OTA 热更新推送到生产"
+    echo ""
+    echo -e "${DIM}不带参数运行 ./run 进入交互式菜单${NC}"
+    echo ""
+}
+
+# ─── 交互式菜单 ───────────────────────────────────────────────────────────
+
+show_menu() {
+    echo ""
+    echo -e "${BOLD}${CYAN}  ┌─────────────────────────────────────┐${NC}"
+    echo -e "${BOLD}${CYAN}  │          Free 项目管理              │${NC}"
+    echo -e "${BOLD}${CYAN}  └─────────────────────────────────────┘${NC}"
+    echo ""
+    echo -e "  ${BOLD}开发${NC}"
+    echo -e "    ${GREEN} 1${NC})  dev              启动完整开发环境"
+    echo -e "    ${GREEN} 2${NC})  dev quick         快速启动 (跳过构建)"
+    echo -e "    ${GREEN} 3${NC})  dev server        只启动后端"
+    echo -e "    ${GREEN} 4${NC})  dev web           只启动前端"
+    echo -e "    ${GREEN} 5${NC})  ios               编译运行 iOS (Debug)"
+    echo -e "    ${GREEN} 6${NC})  ios release       编译运行 iOS (Release)"
+    echo -e "    ${GREEN} 7${NC})  android           编译运行 Android (Debug)"
+    echo -e "    ${GREEN} 8${NC})  android release   编译运行 Android (Release)"
+    echo ""
+    echo -e "  ${BOLD}构建${NC}"
+    echo -e "    ${GREEN} 9${NC})  build app         强制 prebuild"
+    echo -e "    ${GREEN}10${NC})  build server      Server Docker 镜像"
+    echo ""
+    echo -e "  ${BOLD}发版${NC}  ${DIM}(EAS 云端构建)${NC}"
+    echo -e "    ${GREEN}11${NC})  release           构建 + 上传 TestFlight (外部 beta)"
+    echo -e "    ${GREEN}12${NC})  release submit    提交 App Store 审核"
+    echo ""
+    echo -e "  ${BOLD}部署${NC}"
+    echo -e "    ${GREEN}13${NC})  deploy web        Web -> Cloudflare"
+    echo -e "    ${GREEN}14${NC})  deploy server     Server -> VPS"
+    echo ""
+    echo -e "  ${BOLD}工具${NC}"
+    echo -e "    ${GREEN}15${NC})  test              E2E 测试 (Playwright)"
+    echo -e "    ${GREEN}19${NC})  test lifecycle    消息全链路集成测试"
+    echo -e "    ${GREEN}16${NC})  version           版本管理"
+    echo -e "    ${GREEN}17${NC})  ota               OTA 热更新"
+    echo -e "    ${GREEN}18${NC})  free [args]       用 dev 环境跑 free CLI"
+    echo ""
+    echo -e "    ${DIM} q)  退出     h) 帮助${NC}"
+    echo ""
+    read -p "  选择: " choice
+
+    case "$choice" in
+        1)  cmd_dev ;;
+        2)  cmd_dev quick ;;
+        3)  cmd_dev server ;;
+        4)  cmd_dev web ;;
+        5)  cmd_ios ;;
+        6)  cmd_ios release ;;
+        7)  cmd_android ;;
+        8)  cmd_android release ;;
+        9)  cmd_build app ;;
+        10) cmd_build server ;;
+        11) cmd_release ;;
+        12) cmd_release submit ;;
+        13) cmd_deploy web ;;
+        14) cmd_deploy server ;;
+        15) cmd_test ;;
+        19) cmd_test lifecycle ;;
+        16) cmd_version ;;
+        17) cmd_ota ;;
+        18) cmd_free ;;
+        q|Q) exit 0 ;;
+        h|H) cmd_help; show_menu ;;
+        "")  show_menu ;;
+        *)   echo -e "  ${RED}无效选择${NC}"; show_menu ;;
+    esac
+}
+
+# ─── 入口 ─────────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+    "")                     show_menu ;;
+    dev)        shift;      cmd_dev "$@" ;;
+    ios)        shift;      cmd_ios "$@" ;;
+    android)    shift;      cmd_android "$@" ;;
+    _check_prebuild)        ensure_prebuild ;;  # dev.sh 内部调用
+    build)      shift;      cmd_build "$@" ;;
+    release)    shift;      cmd_release "$@" ;;
+    deploy)     shift;      cmd_deploy "$@" ;;
+    test)       shift;      cmd_test "$@" ;;
+    version)    shift;      cmd_version "$@" ;;
+    ota)        shift;      cmd_ota "$@" ;;
+    free)       shift;      cmd_free "$@" ;;
+    help|-h|--help)         cmd_help ;;
+    *)          die "未知命令: $1\n运行 ./run help 查看帮助" ;;
+esac

@@ -11,7 +11,7 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/kilingzhang/agentbridge.git
+git clone https://github.com/saaskit-dev/agentbridge.git
 cd agentbridge
 pnpm install
 pnpm build
@@ -90,7 +90,7 @@ chore:    其他杂项
 
 ## 报告问题
 
-请通过 [GitHub Issues](https://github.com/kilingzhang/agentbridge/issues) 提交问题，并尽量包含：
+请通过 [GitHub Issues](https://github.com/saaskit-dev/agentbridge/issues) 提交问题，并尽量包含：
 
 - 问题描述
 - 复现步骤
