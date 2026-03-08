@@ -81,6 +81,7 @@ export type {
   EphemeralPayload,
   RpcResponse,
   OptimisticCallback,
+  WireTrace,
 } from './interfaces';
 export { registerWebSocketClientFactory, createWebSocketClient } from './interfaces';
 export { registerWebSocketServerFactory, createWebSocketServer } from './interfaces';
@@ -150,6 +151,7 @@ export type {
   RpcCallEvent,
   RpcRegisteredEvent,
   RpcErrorEvent,
+  UpdatePayload,
 } from './interfaces';
 
 // Implementations

@@ -5,6 +5,7 @@
 import type { MachineMetadata } from '../types/machine';
 import type { SessionMessage } from '../types/message';
 import type { SessionMetadata } from '../types/session';
+import type { WireTrace } from '../telemetry/types.js';
 
 // === Persistent Events (Updates) ===
 
@@ -240,10 +241,12 @@ export interface UpdatePayload {
     [key: string]: unknown;
   };
   createdAt: number;
+  _trace?: WireTrace;
 }
 
 /** Ephemeral payload structure */
 export interface EphemeralPayload {
   type: EphemeralEvent['type'];
   [key: string]: unknown;
+  _trace?: WireTrace;
 }

@@ -29,6 +29,7 @@ export type {
   EphemeralPayload,
   RpcResponse,
   OptimisticCallback,
+  WireTrace,
 } from './websocket';
 export { registerWebSocketClientFactory, createWebSocketClient } from './websocket';
 export { registerWebSocketServerFactory, createWebSocketServer } from './websocket';
@@ -101,4 +102,5 @@ export type {
   RpcCallEvent,
   RpcRegisteredEvent,
   RpcErrorEvent,
+  UpdatePayload,
 } from './events';
