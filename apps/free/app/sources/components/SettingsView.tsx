@@ -3,7 +3,7 @@ import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
+import { View, ScrollView, Pressable, Platform, Linking, Switch } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
 import { Avatar } from '@/components/Avatar';
@@ -23,6 +23,8 @@ import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { useLocalSettingMutable, useSetting, useEntitlement } from '@/sync/storage';
 import { trackWhatsNewClicked } from '@/track';
+import { setAnalyticsEnabled } from '@/appTelemetry';
+import { TokenStorage } from '@/auth/tokenStorage';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useProfile } from '@/sync/storage';
@@ -34,6 +36,7 @@ export const SettingsView = React.memo(function SettingsView() {
   const appVersion = Constants.expoConfig?.version || '1.0.0';
   const auth = useAuth();
   const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
+  const [analyticsEnabled, setAnalyticsEnabledSetting] = useLocalSettingMutable('analyticsEnabled');
   const isPro = useEntitlement('pro');
   const experiments = useSetting('experiments');
   const isCustomServer = isUsingCustomServer();
@@ -46,7 +49,7 @@ export const SettingsView = React.memo(function SettingsView() {
   const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
   const handleGitHub = async () => {
-    const url = 'https://github.com/kilingzhang/agentbridge';
+    const url = 'https://github.com/saaskit-dev/agentbridge';
     const supported = await Linking.canOpenURL(url);
     if (supported) {
       await Linking.openURL(url);
@@ -54,7 +57,7 @@ export const SettingsView = React.memo(function SettingsView() {
   };
 
   const handleReportIssue = async () => {
-    const url = 'https://github.com/kilingzhang/agentbridge/issues';
+    const url = 'https://github.com/saaskit-dev/agentbridge/issues';
     const supported = await Linking.canOpenURL(url);
     if (supported) {
       await Linking.openURL(url);
@@ -118,7 +121,6 @@ export const SettingsView = React.memo(function SettingsView() {
     );
     if (confirmed) {
       await disconnectService(auth.credentials!, 'anthropic');
-      await sync.refreshProfile();
     }
   });
 
@@ -380,6 +382,41 @@ export const SettingsView = React.memo(function SettingsView() {
         </ItemGroup>
       )}
 
+      {/* Privacy */}
+      {Platform.OS !== 'web' && (
+        <ItemGroup title={t('settingsAccount.privacy')}>
+          <Item
+            title={t('settingsAccount.analytics')}
+            subtitle={analyticsEnabled ? t('settingsAccount.analyticsEnabled') : t('settingsAccount.analyticsDisabled')}
+            icon={<Ionicons name="shield-outline" size={29} color="#007AFF" />}
+            showChevron={false}
+            rightElement={
+              <Switch
+                value={analyticsEnabled ?? true}
+                onValueChange={async enabled => {
+                  setAnalyticsEnabledSetting(enabled);
+                  const credentials = await TokenStorage.getCredentials();
+                  setAnalyticsEnabled(enabled, credentials?.token);
+                }}
+              />
+            }
+          />
+        </ItemGroup>
+      )}
+
+      {/* Diagnostic Logs (RFC §10.4) */}
+      {Platform.OS !== 'web' && (
+        <ItemGroup>
+          <Item
+            title={t('diagnostics.title')}
+            subtitle={t('diagnostics.subtitle')}
+            icon={<Ionicons name="document-text-outline" size={29} color="#5856D6" />}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            onPress={() => router.push('/settings/diagnostics' as any)}
+          />
+        </ItemGroup>
+      )}
+
       {/* About */}
       <ItemGroup title={t('settings.about')} footer={t('settings.aboutFooter')}>
         {Platform.OS !== 'web' && (
@@ -396,7 +433,7 @@ export const SettingsView = React.memo(function SettingsView() {
         <Item
           title={t('settings.github')}
           icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
-          detail="kilingzhang/agentbridge"
+          detail="saaskit-dev/agentbridge"
           onPress={handleGitHub}
         />
         <Item
@@ -422,7 +459,7 @@ export const SettingsView = React.memo(function SettingsView() {
             title={t('settings.termsOfService')}
             icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
             onPress={async () => {
-              const url = 'https://github.com/kilingzhang/agentbridge/blob/main/TERMS.md';
+              const url = 'https://github.com/saaskit-dev/agentbridge/blob/main/TERMS.md';
               const supported = await Linking.canOpenURL(url);
               if (supported) {
                 await Linking.openURL(url);

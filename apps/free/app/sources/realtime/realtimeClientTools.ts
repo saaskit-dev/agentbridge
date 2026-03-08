@@ -4,6 +4,8 @@ import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { trackPermissionResponse } from '@/track';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/realtime/realtimeClientTools');
 
 /**
  * Static client tools for the realtime voice interface.
@@ -21,7 +23,7 @@ export const realtimeClientTools = {
     const parsedMessage = messageSchema.safeParse(parameters);
 
     if (!parsedMessage.success) {
-      console.error('❌ Invalid message parameter:', parsedMessage.error);
+      logger.error('❌ Invalid message parameter:', parsedMessage.error);
       return 'error (invalid message parameter)';
     }
 
@@ -29,12 +31,12 @@ export const realtimeClientTools = {
     const sessionId = getCurrentRealtimeSessionId();
 
     if (!sessionId) {
-      console.error('❌ No active session');
+      logger.error('❌ No active session');
       return 'error (no active session)';
     }
 
-    console.log('🔍 messageClaudeCode called with:', message);
-    console.log('📤 Sending message to session:', sessionId);
+    logger.debug('🔍 messageClaudeCode called with:', message);
+    logger.debug('📤 Sending message to session:', sessionId);
     sync.sendMessage(sessionId, message);
     return "sent [DO NOT say anything else, simply say 'sent']";
   },
@@ -49,7 +51,7 @@ export const realtimeClientTools = {
     const parsedMessage = messageSchema.safeParse(parameters);
 
     if (!parsedMessage.success) {
-      console.error('❌ Invalid decision parameter:', parsedMessage.error);
+      logger.error('❌ Invalid decision parameter:', parsedMessage.error);
       return "error (invalid decision parameter, expected 'allow' or 'deny')";
     }
 
@@ -57,18 +59,18 @@ export const realtimeClientTools = {
     const sessionId = getCurrentRealtimeSessionId();
 
     if (!sessionId) {
-      console.error('❌ No active session');
+      logger.error('❌ No active session');
       return 'error (no active session)';
     }
 
-    console.log('🔍 processPermissionRequest called with:', decision);
+    logger.debug('🔍 processPermissionRequest called with:', decision);
 
     // Get the current session to check for permission requests
     const session = storage.getState().sessions[sessionId];
     const requests = session?.agentState?.requests;
 
     if (!requests || Object.keys(requests).length === 0) {
-      console.error('❌ No active permission request');
+      logger.error('❌ No active permission request');
       return 'error (no active permission request)';
     }
 
@@ -84,7 +86,7 @@ export const realtimeClientTools = {
       }
       return "done [DO NOT say anything else, simply say 'done']";
     } catch (error) {
-      console.error('❌ Failed to process permission:', error);
+      logger.error('❌ Failed to process permission:', error);
       return `error (failed to ${decision} permission)`;
     }
   },

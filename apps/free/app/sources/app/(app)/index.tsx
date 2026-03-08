@@ -14,6 +14,8 @@ import { encodeBase64 } from '@/encryption/base64';
 import { t } from '@/text';
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { useIsLandscape } from '@/utils/responsive';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/index');
 
 export default function Home() {
   const auth = useAuth();
@@ -43,7 +45,7 @@ function NotAuthenticated() {
         trackAccountCreated();
       }
     } catch (error) {
-      console.error('Error creating account', error);
+      logger.error('Error creating account', error);
     }
   };
 

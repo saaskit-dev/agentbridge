@@ -15,6 +15,8 @@ import { Metadata } from '@/sync/storageTypes';
 import { Message, ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
 import { parseToolUseError } from '@/utils/toolErrorParser';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/tools/ToolView');
 
 interface ToolViewProps {
   metadata: Metadata | null;
@@ -131,7 +133,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
   let isToolUseError = false;
   if (tool.state === 'error' && tool.result && parseToolUseError(tool.result).isToolUseError) {
     isToolUseError = true;
-    console.log('isToolUseError', tool.result);
+    logger.debug('isToolUseError', tool.result);
   }
 
   // Check permission status first for denied/canceled states

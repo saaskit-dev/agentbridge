@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { Text, View, ScrollView, Platform, useWindowDimensions } from 'react-native';
-import { StyleSheet } from 'react-native-unistyles';
+import { Text, View, ScrollView, useWindowDimensions } from 'react-native';
 import { CodeView } from '../CodeView';
-import { layout } from '../layout';
+import { toolFullViewStyles } from './toolFullViewStyles';
 import { getToolFullViewComponent } from './views/_all';
 import { useLocalSetting } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/tools/ToolFullView');
 
 interface ToolFullViewProps {
   tool: ToolCall;
@@ -21,11 +22,11 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
   const SpecializedFullView = getToolFullViewComponent(tool.name);
   const screenWidth = useWindowDimensions().width;
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
-  console.log('ToolFullView', devModeEnabled);
+  logger.debug('ToolFullView', devModeEnabled);
 
   return (
-    <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
-      <View style={styles.contentWrapper}>
+    <ScrollView style={[toolFullViewStyles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
+      <View style={toolFullViewStyles.contentWrapper}>
         {/* Tool-specific content or generic fallback */}
         {SpecializedFullView ? (
           <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} />
@@ -34,20 +35,20 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
             {/* Generic fallback for tools without specialized views */}
             {/* Tool Description */}
             {tool.description && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
+              <View style={toolFullViewStyles.section}>
+                <View style={toolFullViewStyles.sectionHeader}>
                   <Ionicons name="information-circle" size={20} color="#5856D6" />
-                  <Text style={styles.sectionTitle}>{t('tools.fullView.description')}</Text>
+                  <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.description')}</Text>
                 </View>
-                <Text style={styles.description}>{tool.description}</Text>
+                <Text style={toolFullViewStyles.description}>{tool.description}</Text>
               </View>
             )}
             {/* Input Parameters */}
             {tool.input && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
+              <View style={toolFullViewStyles.section}>
+                <View style={toolFullViewStyles.sectionHeader}>
                   <Ionicons name="log-in" size={20} color="#5856D6" />
-                  <Text style={styles.sectionTitle}>{t('tools.fullView.inputParams')}</Text>
+                  <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.inputParams')}</Text>
                 </View>
                 <CodeView code={JSON.stringify(tool.input, null, 2)} />
               </View>
@@ -55,10 +56,10 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
 
             {/* Result/Output */}
             {tool.state === 'completed' && tool.result && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
+              <View style={toolFullViewStyles.section}>
+                <View style={toolFullViewStyles.sectionHeader}>
                   <Ionicons name="log-out" size={20} color="#34C759" />
-                  <Text style={styles.sectionTitle}>{t('tools.fullView.output')}</Text>
+                  <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.output')}</Text>
                 </View>
                 <CodeView
                   code={
@@ -72,24 +73,24 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
 
             {/* Error Details */}
             {tool.state === 'error' && tool.result && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
+              <View style={toolFullViewStyles.section}>
+                <View style={toolFullViewStyles.sectionHeader}>
                   <Ionicons name="close-circle" size={20} color="#FF3B30" />
-                  <Text style={styles.sectionTitle}>{t('tools.fullView.error')}</Text>
+                  <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.error')}</Text>
                 </View>
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{String(tool.result)}</Text>
+                <View style={toolFullViewStyles.errorContainer}>
+                  <Text style={toolFullViewStyles.errorText}>{String(tool.result)}</Text>
                 </View>
               </View>
             )}
 
             {/* No Output Message */}
             {tool.state === 'completed' && !tool.result && (
-              <View style={styles.section}>
-                <View style={styles.emptyOutputContainer}>
+              <View style={toolFullViewStyles.section}>
+                <View style={toolFullViewStyles.emptyOutputContainer}>
                   <Ionicons name="checkmark-circle-outline" size={48} color="#34C759" />
-                  <Text style={styles.emptyOutputText}>{t('tools.fullView.completed')}</Text>
-                  <Text style={styles.emptyOutputSubtext}>{t('tools.fullView.noOutput')}</Text>
+                  <Text style={toolFullViewStyles.emptyOutputText}>{t('tools.fullView.completed')}</Text>
+                  <Text style={toolFullViewStyles.emptyOutputSubtext}>{t('tools.fullView.noOutput')}</Text>
                 </View>
               </View>
             )}
@@ -98,10 +99,10 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
 
         {/* Raw JSON View (Dev Mode Only) */}
         {devModeEnabled && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+          <View style={toolFullViewStyles.section}>
+            <View style={toolFullViewStyles.sectionHeader}>
               <Ionicons name="code-slash" size={20} color="#FF9500" />
-              <Text style={styles.sectionTitle}>{t('tools.fullView.rawJsonDevMode')}</Text>
+              <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.rawJsonDevMode')}</Text>
             </View>
             <CodeView
               code={JSON.stringify(
@@ -127,74 +128,3 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create(theme => ({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.surface,
-    paddingTop: 12,
-  },
-  contentWrapper: {
-    maxWidth: layout.maxWidth,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  section: {
-    marginBottom: 28,
-    paddingHorizontal: 4,
-  },
-  sectionFullWidth: {
-    marginBottom: 28,
-    paddingHorizontal: 0,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
-  description: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: theme.colors.textSecondary,
-  },
-  toolId: {
-    fontSize: 12,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-    color: theme.colors.textSecondary,
-  },
-  errorContainer: {
-    backgroundColor: theme.colors.box.error.background,
-    borderRadius: 8,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: theme.colors.box.error.border,
-  },
-  errorText: {
-    fontSize: 14,
-    color: theme.colors.box.error.text,
-    lineHeight: 20,
-  },
-  emptyOutputContainer: {
-    alignItems: 'center',
-    paddingVertical: 48,
-    gap: 12,
-  },
-  emptyOutputText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
-  emptyOutputSubtext: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-  },
-}));
-
-// Export styles for use in specialized views
-export const toolFullViewStyles = styles;

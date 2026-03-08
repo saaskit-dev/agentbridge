@@ -73,6 +73,7 @@ export class SessionEncryption {
             localId: message.localId ?? null,
             content: decryptedData,
             createdAt: message.createdAt,
+            traceId: message.traceId ?? undefined,
           };
           this.cache.setCachedMessage(message.id, result);
           results[index] = result;
@@ -83,6 +84,7 @@ export class SessionEncryption {
             localId: message.localId ?? null,
             content: null,
             createdAt: message.createdAt,
+            traceId: message.traceId ?? undefined,
           };
           this.cache.setCachedMessage(message.id, result);
           results[index] = result;

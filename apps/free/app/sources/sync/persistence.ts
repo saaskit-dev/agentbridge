@@ -4,6 +4,9 @@ import { Profile, profileDefaults, profileParse } from './profile';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('app/sync/persistence');
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
@@ -28,7 +31,7 @@ export function loadSettings(): { settings: Settings; version: number | null } {
       const parsed = JSON.parse(settings);
       return { settings: settingsParse(parsed.settings), version: parsed.version };
     } catch (e) {
-      console.error('Failed to parse settings', e);
+      logger.error('Failed to parse settings', e);
       return { settings: { ...settingsDefaults }, version: null };
     }
   }
@@ -46,7 +49,7 @@ export function loadPendingSettings(): Partial<Settings> {
       const parsed = JSON.parse(pending);
       return SettingsSchema.partial().parse(parsed);
     } catch (e) {
-      console.error('Failed to parse pending settings', e);
+      logger.error('Failed to parse pending settings', e);
       return {};
     }
   }
@@ -64,7 +67,7 @@ export function loadLocalSettings(): LocalSettings {
       const parsed = JSON.parse(localSettings);
       return localSettingsParse(parsed);
     } catch (e) {
-      console.error('Failed to parse local settings', e);
+      logger.error('Failed to parse local settings', e);
       return { ...localSettingsDefaults };
     }
   }
@@ -83,7 +86,7 @@ export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
       const settings = localSettingsParse(parsed);
       return settings.themePreference;
     } catch (e) {
-      console.error('Failed to parse local settings for theme preference', e);
+      logger.error('Failed to parse local settings for theme preference', e);
       return localSettingsDefaults.themePreference;
     }
   }
@@ -97,7 +100,7 @@ export function loadPurchases(): Purchases {
       const parsed = JSON.parse(purchases);
       return purchasesParse(parsed);
     } catch (e) {
-      console.error('Failed to parse purchases', e);
+      logger.error('Failed to parse purchases', e);
       return { ...purchasesDefaults };
     }
   }
@@ -114,7 +117,7 @@ export function loadSessionDrafts(): Record<string, string> {
     try {
       return JSON.parse(drafts);
     } catch (e) {
-      console.error('Failed to parse session drafts', e);
+      logger.error('Failed to parse session drafts', e);
       return {};
     }
   }
@@ -160,7 +163,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
       updatedAt,
     };
   } catch (e) {
-    console.error('Failed to parse new session draft', e);
+    logger.error('Failed to parse new session draft', e);
     return null;
   }
 }
@@ -179,7 +182,7 @@ export function loadSessionPermissionModes(): Record<string, PermissionMode> {
     try {
       return JSON.parse(modes);
     } catch (e) {
-      console.error('Failed to parse session permission modes', e);
+      logger.error('Failed to parse session permission modes', e);
       return {};
     }
   }
@@ -197,7 +200,7 @@ export function loadProfile(): Profile {
       const parsed = JSON.parse(profile);
       return profileParse(parsed);
     } catch (e) {
-      console.error('Failed to parse profile', e);
+      logger.error('Failed to parse profile', e);
       return { ...profileDefaults };
     }
   }

@@ -28,6 +28,8 @@ import {
 } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/NewSessionWizard');
 
 const stylesheet = StyleSheet.create(theme => ({
   container: {
@@ -926,7 +928,7 @@ export function NewSessionWizard({
 
         // Sync active profile to CLI
         profileSyncService.setActiveProfile(selectedProfileId).catch(error => {
-          console.error('[Wizard] Failed to sync active profile to CLI:', error);
+          logger.error('[Wizard] Failed to sync active profile to CLI:', error);
         });
       }
     }
@@ -938,7 +940,7 @@ export function NewSessionWizard({
       try {
         await profileSyncService.bidirectionalSync(allProfiles);
       } catch (error) {
-        console.error('[Wizard] Failed to sync profiles with CLI:', error);
+        logger.error('[Wizard] Failed to sync profiles with CLI:', error);
         // Continue without sync - profiles work locally
       }
     };
@@ -949,7 +951,7 @@ export function NewSessionWizard({
     // Set up sync listener for profile changes
     const handleSyncEvent = (event: any) => {
       if (event.status === 'error') {
-        console.warn('[Wizard] Profile sync error:', event.error);
+        logger.warn('[Wizard] Profile sync error:', event.error);
       }
     };
 
@@ -1087,7 +1089,7 @@ export function NewSessionWizard({
 
         // Sync with CLI
         profileSyncService.syncGuiToCli(updatedProfiles).catch(error => {
-          console.error('[Wizard] Failed to sync new profile with CLI:', error);
+          logger.error('[Wizard] Failed to sync new profile with CLI:', error);
         });
 
         // Auto-select the newly created profile
@@ -1123,7 +1125,7 @@ export function NewSessionWizard({
 
         // Sync with CLI
         profileSyncService.syncGuiToCli(updatedProfiles).catch(error => {
-          console.error('[Wizard] Failed to sync duplicated profile with CLI:', error);
+          logger.error('[Wizard] Failed to sync duplicated profile with CLI:', error);
         });
       }
     });
@@ -1149,7 +1151,7 @@ export function NewSessionWizard({
 
         // Sync with CLI
         profileSyncService.syncGuiToCli(updatedProfiles).catch(error => {
-          console.error('[Wizard] Failed to sync profile deletion with CLI:', error);
+          logger.error('[Wizard] Failed to sync profile deletion with CLI:', error);
         });
 
         // Clear selection if deleted profile was selected

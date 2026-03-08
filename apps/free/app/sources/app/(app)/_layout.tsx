@@ -118,6 +118,12 @@ export default function RootLayout() {
         }}
       />
       <Stack.Screen
+        name="settings/diagnostics"
+        options={{
+          headerTitle: t('diagnostics.title'),
+        }}
+      />
+      <Stack.Screen
         name="terminal/connect"
         options={{
           headerTitle: t('navigation.connectTerminal'),
@@ -254,12 +260,6 @@ export default function RootLayout() {
         name="dev/tools2"
         options={{
           headerTitle: 'Tool Views Demo',
-        }}
-      />
-      <Stack.Screen
-        name="dev/masked-progress"
-        options={{
-          headerTitle: 'Masked Progress',
         }}
       />
       <Stack.Screen

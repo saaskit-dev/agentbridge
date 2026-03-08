@@ -5,7 +5,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./sources/*"],
-      "hello-world": ["../../hello-world"]
+      "hello-world": ["../../hello-world"],
+      "@agentbridge/core": ["../../../packages/core/src/index.ts"],
+      "@agentbridge/core/telemetry": ["../../../packages/core/src/telemetry/index.ts"],
+      "@agentbridge/core/telemetry/node": ["../../../packages/core/src/telemetry/node.ts"]
     },
     "jsx": "react-jsx",
     "esModuleInterop": true,

@@ -1,6 +1,8 @@
 import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/hooks/useUpdates');
 
 export function useUpdates() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -43,7 +45,7 @@ export function useUpdates() {
         setUpdateAvailable(true);
       }
     } catch (error) {
-      console.error('Error checking for updates:', error);
+      logger.error('Error checking for updates:', error);
     } finally {
       setIsChecking(false);
     }
@@ -56,7 +58,7 @@ export function useUpdates() {
       try {
         await Updates.reloadAsync();
       } catch (error) {
-        console.error('Error reloading app:', error);
+        logger.error('Error reloading app:', error);
       }
     }
   };

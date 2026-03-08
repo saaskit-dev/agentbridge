@@ -1,4 +1,7 @@
 import * as z from 'zod';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('app/sync/profile');
 
 //
 // Schema
@@ -57,7 +60,7 @@ Object.freeze(profileDefaults);
 export function profileParse(profile: unknown): Profile {
   const parsed = ProfileSchema.safeParse(profile);
   if (!parsed.success) {
-    console.error('Failed to parse profile:', parsed.error);
+    logger.error('Failed to parse profile:', parsed.error);
     return { ...profileDefaults };
   }
   return parsed.data;

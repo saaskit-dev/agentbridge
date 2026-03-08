@@ -7,7 +7,6 @@ import { Command } from './types';
 import { useAuth } from '@/auth/AuthContext';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { Modal } from '@/modal';
 import { storage } from '@/sync/storage';
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
@@ -128,6 +127,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
   const showCommandPalette = useCallback(() => {
     if (Platform.OS !== 'web' || !commandPaletteEnabled) return;
 
+    const { Modal } = require('@/modal');
     Modal.show({
       component: CommandPalette,
       props: {

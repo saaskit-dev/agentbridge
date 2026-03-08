@@ -14,6 +14,8 @@ import { Modal } from '@/modal';
 import { storeTempText } from '@/sync/persistence';
 import { useLocalSetting } from '@/sync/storage';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/markdown/MarkdownView');
 
 // Option type for callback
 export type Option = {
@@ -38,7 +40,7 @@ export const MarkdownView = React.memo(
         const textId = storeTempText(props.markdown);
         router.push(`/text-selection?textId=${textId}`);
       } catch (error) {
-        console.error('Error storing text for selection:', error);
+        logger.error('Error storing text for selection:', error);
         Modal.alert('Error', 'Failed to open text selection. Please try again.');
       }
     }, [props.markdown, router]);
@@ -240,7 +242,7 @@ function RenderCodeBlock(props: {
         { text: t('common.ok'), style: 'cancel' },
       ]);
     } catch (error) {
-      console.error('Failed to copy code:', error);
+      logger.error('Failed to copy code:', error);
       Modal.alert(t('common.error'), t('markdown.copyFailed'), [
         { text: t('common.ok'), style: 'cancel' },
       ]);

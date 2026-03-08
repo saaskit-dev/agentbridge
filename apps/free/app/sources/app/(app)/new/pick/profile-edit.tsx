@@ -10,6 +10,8 @@ import { layout } from '@/components/layout';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { AIBackendProfile } from '@/sync/settings';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/new/pick/profile-edit');
 
 export default function ProfileEditScreen() {
   const { theme } = useUnistyles();
@@ -24,7 +26,7 @@ export default function ProfileEditScreen() {
       try {
         return JSON.parse(decodeURIComponent(params.profileData));
       } catch (error) {
-        console.error('Failed to parse profile data:', error);
+        logger.error('Failed to parse profile data:', error);
       }
     }
     // Return empty profile for new profile creation

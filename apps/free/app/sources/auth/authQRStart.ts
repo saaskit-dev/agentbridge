@@ -3,6 +3,8 @@ import { getRandomBytes } from 'expo-crypto';
 import { encodeBase64 } from '../encryption/base64';
 import sodium from '@/encryption/libsodium.lib';
 import { getServerUrl } from '@/sync/serverConfig';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/auth/authQRStart');
 
 export interface QRAuthKeyPair {
   publicKey: Uint8Array;
@@ -21,27 +23,27 @@ export function generateAuthKeyPair(): QRAuthKeyPair {
 export async function authQRStart(keypair: QRAuthKeyPair): Promise<boolean> {
   try {
     const serverUrl = getServerUrl();
-    console.log(`[AUTH] Sending auth request to: ${serverUrl}/v1/auth/account/request`);
-    console.log(`[AUTH] Public key: ${encodeBase64(keypair.publicKey).substring(0, 20)}...`);
+    logger.debug(`[AUTH] Sending auth request to: ${serverUrl}/v1/auth/account/request`);
+    logger.debug(`[AUTH] Public key: ${encodeBase64(keypair.publicKey).substring(0, 20)}...`);
 
     const response = await axios.post(`${serverUrl}/v1/auth/account/request`, {
       publicKey: encodeBase64(keypair.publicKey),
     });
 
-    console.log('[AUTH] Auth request sent successfully, response:', response.data);
+    logger.debug('[AUTH] Auth request sent successfully, response:', response.data);
     return true;
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error('[AUTH] Axios error:', {
+      logger.error('[AUTH] Axios error:', {
         message: error.message,
         code: error.code,
         status: error.response?.status,
         data: error.response?.data,
       });
     } else {
-      console.error('[AUTH] Failed to send auth request:', error);
+      logger.error('[AUTH] Failed to send auth request:', error);
     }
-    console.log('Failed to create authentication request, please try again later.');
+    logger.debug('Failed to create authentication request, please try again later.');
     return false;
   }
 }

@@ -15,6 +15,8 @@ import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStat
 import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/session/files');
 
 export default function FilesScreen() {
   const route = useRoute();
@@ -39,7 +41,7 @@ export default function FilesScreen() {
       const result = await getGitStatusFiles(sessionId);
       setGitStatusFiles(result);
     } catch (error) {
-      console.error('Failed to load git status files:', error);
+      logger.error('Failed to load git status files:', error);
       setGitStatusFiles(null);
     } finally {
       setIsLoading(false);
@@ -68,7 +70,7 @@ export default function FilesScreen() {
         const results = await searchFiles(sessionId, searchQuery, { limit: 100 });
         setSearchResults(results);
       } catch (error) {
-        console.error('Failed to search files:', error);
+        logger.error('Failed to search files:', error);
         setSearchResults([]);
       } finally {
         setIsSearching(false);

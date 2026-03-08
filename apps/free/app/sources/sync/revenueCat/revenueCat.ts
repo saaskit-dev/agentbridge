@@ -16,6 +16,9 @@ import {
   PaywallResult,
   PaywallOptions,
 } from './types';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('app/sync/revenueCat');
 
 // Map native log levels to our common ones
 const logLevelMap = {
@@ -108,7 +111,7 @@ class RevenueCatNative implements RevenueCatInterface {
           return PaywallResult.ERROR;
       }
     } catch (error) {
-      console.error('Error presenting paywall:', error);
+      logger.error('Error presenting paywall:', error);
       return PaywallResult.ERROR;
     }
   }
@@ -146,7 +149,7 @@ class RevenueCatNative implements RevenueCatInterface {
           return PaywallResult.ERROR;
       }
     } catch (error) {
-      console.error('Error presenting paywall if needed:', error);
+      logger.error('Error presenting paywall if needed:', error);
       return PaywallResult.ERROR;
     }
   }

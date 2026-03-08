@@ -5,6 +5,7 @@
  * Ensures consistent profile data across both systems with proper conflict resolution.
  */
 
+import { Logger } from '@agentbridge/core/telemetry';
 import { apiSocket } from './apiSocket';
 import {
   AIBackendProfile,
@@ -49,6 +50,8 @@ const DEFAULT_SYNC_CONFIG: ProfileSyncConfig = {
   syncOnAppStart: true,
 };
 
+const logger = new Logger('app/sync/profileSync');
+
 class ProfileSyncService {
   private static instance: ProfileSyncService;
   private syncStatus: SyncStatus = 'idle';
@@ -92,7 +95,7 @@ class ProfileSyncService {
       try {
         listener(event);
       } catch (error) {
-        console.error('[ProfileSync] Event listener error:', error);
+        logger.error('[ProfileSync] Event listener error:', error);
       }
     });
   }
@@ -142,10 +145,10 @@ class ProfileSyncService {
     });
 
     try {
-      // Profiles are stored in GUI settings and available through existing Free sync system
-      // CLI daemon reads profiles from GUI settings via existing channels
-      // TODO: Implement machine RPC endpoints for profile management in CLI daemon
-      console.log(
+      // Profiles are stored in GUI settings and available through existing Free sync system.
+      // CLI daemon reads profiles from settings file via readSettings()/getProfiles() in persistence.ts.
+      // Enhancement opportunity: Add machine RPC endpoints for real-time profile push (vs. file polling).
+      logger.debug(
         `[ProfileSync] GUI profiles stored in Free settings. CLI access via existing infrastructure.`
       );
 
@@ -195,7 +198,7 @@ class ProfileSyncService {
       // Return profiles from current GUI settings
       const currentProfiles = storage.getState().settings.profiles || [];
 
-      console.log(`[ProfileSync] Retrieved ${currentProfiles.length} profiles from Free settings`);
+      logger.debug(`[ProfileSync] Retrieved ${currentProfiles.length} profiles from Free settings`);
 
       this.lastSyncTime = Date.now();
       this.syncStatus = 'success';
@@ -389,12 +392,11 @@ class ProfileSyncService {
       // Store in GUI settings using Free's settings system
       sync.applySettings({ lastUsedProfile: profileId });
 
-      console.log(`[ProfileSync] Set active profile ${profileId} in Free settings`);
+      logger.debug(`[ProfileSync] Set active profile ${profileId} in Free settings`);
 
-      // Note: CLI daemon accesses active profile through Free settings system
-      // TODO: Implement machine RPC endpoint for setting active profile in CLI daemon
+      // CLI daemon reads activeProfileId from settings file via readSettings() in persistence.ts.
     } catch (error) {
-      console.error('[ProfileSync] Failed to set active profile:', error);
+      logger.error('[ProfileSync] Failed to set active profile:', error);
       throw error;
     }
   }
@@ -416,7 +418,7 @@ class ProfileSyncService {
       const activeProfile = profiles.find((p: AIBackendProfile) => p.id === lastUsedProfileId);
 
       if (activeProfile) {
-        console.log(
+        logger.debug(
           `[ProfileSync] Retrieved active profile ${activeProfile.name} from Free settings`
         );
         return activeProfile;
@@ -424,7 +426,7 @@ class ProfileSyncService {
 
       return null;
     } catch (error) {
-      console.error('[ProfileSync] Failed to get active profile:', error);
+      logger.error('[ProfileSync] Failed to get active profile:', error);
       return null;
     }
   }
@@ -444,7 +446,7 @@ class ProfileSyncService {
       try {
         await this.bidirectionalSync(guiProfiles);
       } catch (error) {
-        console.error('[ProfileSync] Auto-sync failed:', error);
+        logger.error('[ProfileSync] Auto-sync failed:', error);
         // Don't throw for auto-sync failures
       }
     }

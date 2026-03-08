@@ -141,6 +141,9 @@ export const pt: TranslationStructure = {
     usageSubtitle: 'Visualizar uso da API e custos',
     profiles: 'Perfis',
     profilesSubtitle: 'Gerenciar perfis de ambiente e variáveis',
+    supportUs: 'Junte-se a nós',
+    supportUsSubtitlePro: 'Você é um Construtor 🎉',
+    supportUsSubtitle: 'Seja parte do futuro',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `Conta ${service} conectada`,
@@ -219,8 +222,8 @@ export const pt: TranslationStructure = {
     enhancedSessionWizardDisabled: 'Usando o lançador de sessão padrão',
 
     // Default permission mode
-    defaultPermissionMode: 'Default Permission Mode',
-    defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
+    defaultPermissionMode: 'Modo de permissão padrão',
+    defaultPermissionModeSubtitle: 'Modo de permissão padrão para novas sessões',
   },
 
   errors: {
@@ -390,7 +393,7 @@ export const pt: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Versão ${currentVersion} instalada. Atualize para ${requiredVersion} ou posterior`,
-    updateCliInstructions: 'Por favor execute curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
+    updateCliInstructions: 'Por favor execute curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Excluir sessão',
     deleteSessionSubtitle: 'Remover permanentemente esta sessão',
     deleteSessionConfirm: 'Excluir sessão permanentemente?',
@@ -435,15 +438,15 @@ export const pt: TranslationStructure = {
     codexPermissionMode: {
       title: 'MODO DE PERMISSÃO CODEX',
       default: 'Configurações do CLI',
-      readOnly: 'Read Only Mode',
+      readOnly: 'Somente leitura',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only Mode',
+      badgeReadOnly: 'Somente leitura',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
     codexModel: {
-      title: 'CODEX MODEL',
+      title: 'MODELO CODEX',
       gpt5CodexLow: 'gpt-5-codex low',
       gpt5CodexMedium: 'gpt-5-codex medium',
       gpt5CodexHigh: 'gpt-5-codex high',
@@ -463,12 +466,12 @@ export const pt: TranslationStructure = {
       badgeYolo: 'YOLO',
     },
     opencodePermissionMode: {
-      title: 'OPENCODE PERMISSION MODE',
-      default: 'Default',
-      readOnly: 'Read Only',
+      title: 'MODO DE PERMISSÃO OPENCODE',
+      default: 'Padrão',
+      readOnly: 'Somente leitura',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only',
+      badgeReadOnly: 'Somente leitura',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
@@ -776,7 +779,7 @@ export const pt: TranslationStructure = {
   machine: {
     offlineUnableToSpawn: 'Inicializador desativado enquanto a máquina está offline',
     offlineHelp:
-      '• Verifique se seu computador está online\n• Execute `free daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`',
+      '• Verifique se seu computador está online\n• Execute `free daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash`',
     launchNewSessionInDirectory: 'Iniciar nova sessão no diretório',
     daemon: 'Daemon',
     status: 'Status',
@@ -977,6 +980,29 @@ export const pt: TranslationStructure = {
     friendRequestGeneric: 'Novo pedido de amizade',
     friendAccepted: ({ name }: { name: string }) => `Agora você é amigo de ${name}`,
     friendAcceptedGeneric: 'Pedido de amizade aceito',
+  },
+
+  diagnostics: {
+    title: 'Logs de diagnóstico',
+    subtitle: 'Exportar logs para ajudar a diagnosticar problemas',
+    preview: 'Visualização prévia',
+    export: 'Exportar',
+    timeRange: 'Intervalo de tempo',
+    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
+      `${count} ${count === 1 ? 'entrada' : 'entradas'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'sessão' : 'sessões'}` : ''}`,
+    share: 'Compartilhar logs',
+    shareSubtitle: 'Abrir painel de compartilhamento do sistema para salvar ou enviar',
+    copyToClipboard: 'Copiar para a área de transferência',
+    copySubtitle: 'Copiar dados de log como texto JSONL',
+    whatIsIncluded: 'O que está incluído',
+    whatIsIncludedSubtitle: 'Logs de diagnóstico do app — sem conteúdo de mensagens nem dados pessoais',
+    privacyNote: 'Os logs são anonimizados e limpos antes de exportar. O conteúdo das mensagens e os dados sensíveis nunca são incluídos.',
+    noLogs: 'Sem logs',
+    noLogsMessage: 'Não há entradas de log para exportar no intervalo de tempo selecionado.',
+    exported: 'Exportado',
+    exportFailed: 'Falha ao exportar',
+    copied: 'Copiado',
+    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'entrada copiada' : 'entradas copiadas'} para a área de transferência`,
   },
 } as const;
 

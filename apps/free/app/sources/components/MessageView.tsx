@@ -5,7 +5,7 @@ import { layout } from './layout';
 import { MarkdownView } from './markdown/MarkdownView';
 import { Option } from './markdown/MarkdownView';
 import { ToolView } from './tools/ToolView';
-import { useSetting } from '@/sync/storage';
+import { useLocalSetting, useSetting } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/sync/typesMessage';
@@ -66,6 +66,29 @@ function RenderBlock(props: {
   }
 }
 
+/** Small monospace overlay shown in dev mode below a message. */
+function DevTraceBadge(props: { traceId?: string; localId?: string | null; id: string; alignSelf?: 'flex-start' | 'flex-end' }) {
+  const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
+  if (!devModeEnabled) return null;
+  return (
+    <View style={[styles.devBadgeContainer, props.alignSelf ? { alignSelf: props.alignSelf } : undefined]}>
+      {!!props.traceId && (
+        <Text style={styles.devBadgeText} selectable>
+          trace:{props.traceId}
+        </Text>
+      )}
+      {!!props.localId && (
+        <Text style={styles.devBadgeText} selectable>
+          local:{props.localId}
+        </Text>
+      )}
+      <Text style={[styles.devBadgeText, { color: '#aaa' }]} selectable>
+        id:{props.id}
+      </Text>
+    </View>
+  );
+}
+
 function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
   const handleOptionPress = React.useCallback(
     (option: Option) => {
@@ -85,6 +108,7 @@ function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
       </View>
+      <DevTraceBadge traceId={props.message.traceId} localId={props.message.localId} id={props.message.id} alignSelf="flex-end" />
     </View>
   );
 }
@@ -106,6 +130,7 @@ function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string })
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+      <DevTraceBadge traceId={props.message.traceId} localId={props.message.localId} id={props.message.id} />
     </View>
   );
 }
@@ -170,6 +195,7 @@ function ToolCallBlock(props: {
         sessionId={props.sessionId}
         messageId={props.message.id}
       />
+      <DevTraceBadge traceId={props.message.traceId} localId={props.message.localId} id={props.message.id} />
     </View>
   );
 }
@@ -221,5 +247,20 @@ const styles = StyleSheet.create(theme => ({
   debugText: {
     color: theme.colors.agentEventText,
     fontSize: 12,
+  },
+  devBadgeContainer: {
+    flexDirection: 'column',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 2,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    gap: 1,
+  },
+  devBadgeText: {
+    fontFamily: 'Courier',
+    fontSize: 9,
+    color: '#4ade80',
   },
 }));

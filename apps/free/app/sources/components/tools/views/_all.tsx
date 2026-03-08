@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { EditViewFull } from './EditViewFull';
 import { MultiEditViewFull } from './MultiEditViewFull';
 import { CodexBashView } from './CodexBashView';
@@ -15,18 +14,9 @@ import { MultiEditView } from './MultiEditView';
 import { TaskView } from './TaskView';
 import { TodoView } from './TodoView';
 import { WriteView } from './WriteView';
-import { Metadata } from '@/sync/storageTypes';
-import { Message, ToolCall } from '@/sync/typesMessage';
+import type { ToolViewComponent } from './types';
 
-export type ToolViewProps = {
-  tool: ToolCall;
-  metadata: Metadata | null;
-  messages: Message[];
-  sessionId?: string;
-};
-
-// Type for tool view components
-export type ToolViewComponent = React.ComponentType<ToolViewProps>;
+export type { ToolViewProps, ToolViewComponent } from './types';
 
 // Registry of tool-specific view components
 export const toolViewRegistry: Record<string, ToolViewComponent> = {

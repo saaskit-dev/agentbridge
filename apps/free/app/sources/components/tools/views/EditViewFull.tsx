@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View } from 'react-native';
-import { toolFullViewStyles } from '../ToolFullView';
+import { toolFullViewStyles } from '../toolFullViewStyles';
 import { knownTools } from '@/components/tools/knownTools';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { Metadata } from '@/sync/storageTypes';

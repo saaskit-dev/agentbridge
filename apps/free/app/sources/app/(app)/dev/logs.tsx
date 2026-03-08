@@ -1,45 +1,65 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import * as React from 'react';
-import { View, Text, FlatList, Pressable } from 'react-native';
+import { View, Text, FlatList, Pressable, ScrollView, Platform } from 'react-native';
+import type { LogEntry, Level } from '@agentbridge/core/telemetry';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { log } from '@/log';
+import { appMemorySink } from '@/appTelemetry';
 import { Modal } from '@/modal';
 
+const LEVELS: Level[] = ['debug', 'info', 'warn', 'error'];
+
+const LEVEL_COLORS: Record<Level, string> = {
+  debug: '#999',
+  info: '#333',
+  warn: '#CC7700',
+  error: '#CC0000',
+};
+
+function formatEntry(entry: LogEntry): string {
+  const ts = new Date(entry.timestamp).toISOString().substring(11, 23);
+  const tracePrefix = entry.traceId ? ` [${entry.traceId.slice(0, 8)}]` : '';
+  return `[${ts}] [${entry.level.toUpperCase()}] [${entry.component}]${tracePrefix} ${entry.message}`;
+}
+
 export default function LogsScreen() {
-  const [logs, setLogs] = React.useState<string[]>([]);
+  const [allEntries, setAllEntries] = React.useState<LogEntry[]>(() => appMemorySink.getEntries());
+  const [levelFilter, setLevelFilter] = React.useState<Level | null>(null);
+  const [componentFilter, setComponentFilter] = React.useState<string | null>(null);
   const flatListRef = React.useRef<FlatList>(null);
 
-  // Subscribe to log changes
   React.useEffect(() => {
-    // Add some sample logs if empty (for demo purposes)
-    if (log.getCount() === 0) {
-      log.log('Logger initialized');
-      log.log('Sample debug message');
-      log.log('Application started successfully');
-    }
-
-    // Initial load
-    setLogs(log.getLogs());
-
-    // Subscribe to changes
-    const unsubscribe = log.onChange(() => {
-      setLogs(log.getLogs());
+    const unsubscribe = appMemorySink.onChange(() => {
+      setAllEntries(appMemorySink.getEntries());
     });
-
     return unsubscribe;
   }, []);
 
-  // Auto-scroll to bottom when new logs arrive
+  const entries = React.useMemo(() => {
+    if (!levelFilter && !componentFilter) return allEntries;
+    return appMemorySink.query({
+      ...(levelFilter ? { level: levelFilter } : {}),
+      ...(componentFilter ? { component: componentFilter } : {}),
+    });
+  }, [allEntries, levelFilter, componentFilter]);
+
+  // Auto-scroll to bottom when new entries arrive (only when no filter active)
   React.useEffect(() => {
-    if (logs.length > 0) {
+    if (entries.length > 0 && !levelFilter && !componentFilter) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: false });
       }, 100);
     }
-  }, [logs.length]);
+  }, [entries.length, levelFilter, componentFilter]);
+
+  const components = React.useMemo(() => {
+    const set = new Set(allEntries.map(e => e.component));
+    return Array.from(set).sort();
+  }, [allEntries]);
 
   const handleClear = async () => {
     const confirmed = await Modal.confirm(
@@ -48,27 +68,58 @@ export default function LogsScreen() {
       { confirmText: 'Clear', destructive: true }
     );
     if (confirmed) {
-      log.clear();
+      appMemorySink.clear();
+      setAllEntries([]);
+      setLevelFilter(null);
+      setComponentFilter(null);
     }
   };
 
   const handleCopyAll = async () => {
-    if (logs.length === 0) {
+    if (entries.length === 0) {
       Modal.alert('No Logs', 'There are no logs to copy');
       return;
     }
 
-    const allLogs = logs.join('\n');
+    const allLogs = entries.map(formatEntry).join('\n');
     await Clipboard.setStringAsync(allLogs);
-    Modal.alert('Copied', `${logs.length} log entries copied to clipboard`);
+    Modal.alert('Copied', `${entries.length} log entries copied to clipboard`);
   };
 
-  const handleAddTestLog = () => {
-    const timestamp = new Date().toLocaleTimeString();
-    log.log(`Test log entry at ${timestamp}`);
+  const handleExport = async () => {
+    const exportEntries = allEntries;
+    if (exportEntries.length === 0) {
+      Modal.alert('No Logs', 'There are no logs to export');
+      return;
+    }
+
+    try {
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const jsonl = exportEntries.map(e => JSON.stringify(e)).join('\n');
+      const filename = `diagnostic-${ts}.jsonl`;
+
+      if (Platform.OS === 'web') {
+        // Web: copy to clipboard as fallback
+        await Clipboard.setStringAsync(jsonl);
+        Modal.alert('Exported', `${exportEntries.length} entries copied to clipboard as JSONL`);
+        return;
+      }
+
+      const file = new File(Paths.cache, filename);
+      file.write(jsonl);
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(file.uri, { mimeType: 'application/x-ndjson', UTI: 'public.text' });
+      } else {
+        Modal.alert('Exported', `Saved to: ${file.uri}`);
+      }
+    } catch (err: unknown) {
+      Modal.alert('Export Failed', err instanceof Error ? err.message : String(err));
+    }
   };
 
-  const renderLogItem = ({ item, index }: { item: string; index: number }) => (
+  const renderLogItem = ({ item }: { item: LogEntry }) => (
     <View
       style={{
         paddingHorizontal: 16,
@@ -81,45 +132,99 @@ export default function LogsScreen() {
         style={{
           fontFamily: 'IBMPlexMono-Regular',
           fontSize: 12,
-          color: '#333',
+          color: LEVEL_COLORS[item.level] ?? '#333',
           lineHeight: 16,
         }}
       >
-        {item}
+        {formatEntry(item)}
       </Text>
     </View>
   );
+
+  const filterChipStyle = (active: boolean) => ({
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: active ? '#007AFF' : '#E5E5EA',
+    marginRight: 6,
+  });
+
+  const filterChipTextStyle = (active: boolean) => ({
+    fontSize: 12,
+    color: active ? '#FFFFFF' : '#333333',
+  });
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F5F5F5' }}>
       {/* Header with actions */}
       <ItemList>
-        <ItemGroup title={`Logs (${logs.length})`}>
+        <ItemGroup title={`Logs (${entries.length}${levelFilter || componentFilter ? ' filtered' : ''})`}>
           <Item
-            title="Add Test Log"
-            subtitle="Add a test log entry with timestamp"
-            icon={<Ionicons name="add-circle-outline" size={24} color="#34C759" />}
-            onPress={handleAddTestLog}
+            title="Export Diagnostic Bundle"
+            subtitle={`${allEntries.length} entries`}
+            icon={<Ionicons name="share-outline" size={24} color="#34C759" />}
+            onPress={handleExport}
+            disabled={allEntries.length === 0}
           />
           <Item
             title="Copy All Logs"
             icon={<Ionicons name="copy-outline" size={24} color="#007AFF" />}
             onPress={handleCopyAll}
-            disabled={logs.length === 0}
+            disabled={entries.length === 0}
           />
           <Item
             title="Clear All Logs"
             icon={<Ionicons name="trash-outline" size={24} color="#FF3B30" />}
             onPress={handleClear}
-            disabled={logs.length === 0}
+            disabled={allEntries.length === 0}
             destructive={true}
           />
         </ItemGroup>
       </ItemList>
 
+      {/* Level filter chips */}
+      <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
+        <Text style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>LEVEL</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <Pressable style={filterChipStyle(levelFilter === null)} onPress={() => setLevelFilter(null)}>
+            <Text style={filterChipTextStyle(levelFilter === null)}>All</Text>
+          </Pressable>
+          {LEVELS.map(level => (
+            <Pressable
+              key={level}
+              style={filterChipStyle(levelFilter === level)}
+              onPress={() => setLevelFilter(levelFilter === level ? null : level)}
+            >
+              <Text style={filterChipTextStyle(levelFilter === level)}>{level.toUpperCase()}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Component filter chips */}
+      {components.length > 0 && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+          <Text style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>COMPONENT</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <Pressable style={filterChipStyle(componentFilter === null)} onPress={() => setComponentFilter(null)}>
+              <Text style={filterChipTextStyle(componentFilter === null)}>All</Text>
+            </Pressable>
+            {components.map(comp => (
+              <Pressable
+                key={comp}
+                style={filterChipStyle(componentFilter === comp)}
+                onPress={() => setComponentFilter(componentFilter === comp ? null : comp)}
+              >
+                <Text style={filterChipTextStyle(componentFilter === comp)}>{comp}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Logs display */}
-      <View style={{ flex: 1, backgroundColor: '#FFFFFF', margin: 16, borderRadius: 8 }}>
-        {logs.length === 0 ? (
+      <View style={{ flex: 1, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginBottom: 16, borderRadius: 8 }}>
+        {entries.length === 0 ? (
           <View
             style={{
               flex: 1,
@@ -137,7 +242,7 @@ export default function LogsScreen() {
                 textAlign: 'center',
               }}
             >
-              No logs yet
+              {levelFilter || componentFilter ? 'No matching logs' : 'No logs yet'}
             </Text>
             <Text
               style={{
@@ -147,15 +252,17 @@ export default function LogsScreen() {
                 textAlign: 'center',
               }}
             >
-              Logs will appear here as they are generated
+              {levelFilter || componentFilter
+                ? 'Try adjusting the filters above'
+                : 'Logs will appear here as they are generated'}
             </Text>
           </View>
         ) : (
           <FlatList
             ref={flatListRef}
-            data={logs}
+            data={entries}
             renderItem={renderLogItem}
-            keyExtractor={(item, index) => index.toString()}
+            keyExtractor={(item, index) => `${item.timestamp}-${index}`}
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingVertical: 8 }}
             showsVerticalScrollIndicator={true}

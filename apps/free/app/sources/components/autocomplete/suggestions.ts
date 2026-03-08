@@ -2,6 +2,8 @@ import * as React from 'react';
 import { CommandSuggestion, FileMentionSuggestion } from '@/components/AgentInputSuggestionView';
 import { searchCommands, CommandItem } from '@/sync/suggestionCommands';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/autocomplete/suggestions');
 
 export async function getCommandSuggestions(
   sessionId: string,
@@ -31,7 +33,7 @@ export async function getCommandSuggestions(
         }),
     }));
   } catch (error) {
-    console.error('Error fetching command suggestions:', error);
+    logger.error('Error fetching command suggestions:', error);
     // Return empty array on error
     return [];
   }
@@ -66,7 +68,7 @@ export async function getFileMentionSuggestions(
         }),
     }));
   } catch (error) {
-    console.error('Error fetching file suggestions:', error);
+    logger.error('Error fetching file suggestions:', error);
     // Return empty array on error
     return [];
   }
@@ -82,18 +84,18 @@ export async function getSuggestions(
     component: React.ComponentType;
   }[]
 > {
-  console.log('💡 getSuggestions called with query:', JSON.stringify(query));
+  logger.debug('💡 getSuggestions called with query:', JSON.stringify(query));
 
   if (!query || query.length === 0) {
-    console.log('💡 getSuggestions: Empty query, returning empty array');
+    logger.debug('💡 getSuggestions: Empty query, returning empty array');
     return [];
   }
 
   // Check if it's a command (starts with /)
   if (query.startsWith('/')) {
-    console.log('💡 getSuggestions: Command detected');
+    logger.debug('💡 getSuggestions: Command detected');
     const result = await getCommandSuggestions(sessionId, query);
-    console.log(
+    logger.debug(
       '💡 getSuggestions: Command suggestions:',
       JSON.stringify(
         result.map(r => ({
@@ -110,9 +112,9 @@ export async function getSuggestions(
 
   // Check if it's a file mention (starts with @)
   if (query.startsWith('@')) {
-    console.log('💡 getSuggestions: File mention detected');
+    logger.debug('💡 getSuggestions: File mention detected');
     const result = await getFileMentionSuggestions(sessionId, query);
-    console.log(
+    logger.debug(
       '💡 getSuggestions: File suggestions:',
       JSON.stringify(
         result.map(r => ({
@@ -128,6 +130,6 @@ export async function getSuggestions(
   }
 
   // No suggestions for other queries
-  console.log('💡 getSuggestions: No matching prefix, returning empty array');
+  logger.debug('💡 getSuggestions: No matching prefix, returning empty array');
   return [];
 }

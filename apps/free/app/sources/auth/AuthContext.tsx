@@ -5,6 +5,8 @@ import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { clearPersistence } from '@/sync/persistence';
 import { syncCreate } from '@/sync/sync';
 import { trackLogout } from '@/track';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/auth/AuthContext');
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -58,7 +60,7 @@ export function AuthProvider({
         await Updates.reloadAsync();
       } catch (error) {
         // In dev mode, reloadAsync will throw ERR_UPDATES_DISABLED
-        console.log('Reload failed (expected in dev mode):', error);
+        logger.debug('Reload failed (expected in dev mode):', error);
       }
     }
   };

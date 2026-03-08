@@ -1,3 +1,6 @@
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/utils/time');
+
 export async function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -51,6 +54,6 @@ export function createBackoff(opts?: {
 
 export const backoff = createBackoff({
   onError: e => {
-    console.warn(e);
+    logger.warn('Backoff error', { error: e });
   },
 });
