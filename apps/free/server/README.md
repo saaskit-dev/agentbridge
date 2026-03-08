@@ -23,7 +23,11 @@ pnpm standalone
 ### 构建镜像
 
 ```bash
-./build.sh
+# 从项目根目录
+./run build server
+
+# 或直接使用脚本
+./scripts/free-server-build.sh
 ```
 
 ### 部署到 VPS
@@ -33,7 +37,10 @@ pnpm standalone
 export FREE_MASTER_SECRET=your-secret-key
 
 # 运行部署脚本
-./deploy.sh
+./scripts/free-server-deploy.sh
+
+# 回滚到上一版本
+./scripts/free-server-deploy.sh rollback
 ```
 
 ### 环境变量
@@ -66,7 +73,5 @@ packages/free/server/
 │   └── storage/         # 数据库和存储
 ├── prisma/              # Prisma schema
 ├── Dockerfile           # Docker 镜像
-├── build.sh             # 构建并推送镜像
-├── deploy.sh            # VPS 部署脚本
 └── start-free.sh        # 容器启动脚本
 ```

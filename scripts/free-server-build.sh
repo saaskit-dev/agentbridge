@@ -34,11 +34,11 @@ echo "   Copied from: $PGLITE_DIR"
 
 # 3. Build Docker image locally (native platform for dev)
 echo "🐳 Building Docker image locally..."
-docker build -t $IMAGE_NAME:latest .
+docker build --build-arg BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") -t $IMAGE_NAME:latest .
 
 # 4. Build and push for linux/amd64 (for VPS deployment)
 echo "🚀 Building and pushing for linux/amd64..."
-docker buildx build --platform linux/amd64 -t $IMAGE_NAME:latest --push .
+docker buildx build --platform linux/amd64 --build-arg BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") -t $IMAGE_NAME:latest --push .
 
 echo ""
 echo "✅ Done!"
