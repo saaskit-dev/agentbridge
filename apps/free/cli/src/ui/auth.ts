@@ -5,7 +5,7 @@ import { render } from 'ink';
 import React from 'react';
 import tweetnacl from 'tweetnacl';
 import { AuthSelector, AuthMethod } from './ink/AuthSelector';
-import { logger } from './logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { displayQRCode } from './qrcode';
 import { decodeBase64, encodeBase64, encodeBase64Url } from '@/api/encryption';
 import { generateWebAuthUrl } from '@/api/webAuth';
@@ -19,6 +19,8 @@ import {
 } from '@/persistence';
 import { openBrowser } from '@/utils/browser';
 import { delay } from '@/utils/time';
+
+const logger = new Logger('ui/auth');
 
 export async function doAuth(): Promise<Credentials | null> {
   console.clear();

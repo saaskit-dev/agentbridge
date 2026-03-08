@@ -16,7 +16,7 @@ Free CLI (`free-cli`) is a command-line tool that wraps Claude Code to enable re
 - **Clean function signatures**: Explicit parameter and return types
 - **As little as possible classes**
 - **Comprehensive JSDoc comments**: Each file includes header comments explaining responsibilities.
-- **Import style**: Uses `@/` alias for src imports, e.g., `import { logger } from '@/ui/logger'`
+- **Import style**: Uses `@/` alias for src imports, e.g., `import { configuration } from '@/configuration'`
 - **File extensions**: Uses `.ts` for TypeScript files
 - **Export style**: Named exports preferred, with occasional default exports for main functions
 
@@ -42,9 +42,11 @@ Free CLI (`free-cli`) is a command-line tool that wraps Claude Code to enable re
 
 ### Logging
 
-- All debugging through file logs to avoid disturbing Claude sessions
-- Console output only for user-facing messages
-- Special handling for large JSON objects with truncation
+- **All debugging via telemetry Logger** — never `console.log` for debug output
+- Use `new Logger('component/name')` from `@agentbridge/core/telemetry` at the top of each file
+- `console.log/error` only for **user-facing terminal output** (chalk messages, QR codes, install steps)
+- Logs written to JSONL files in `~/.free-dev/logs/` with full trace context automatically
+- `getProcessTraceContext()` / `setCurrentTurnTrace()` from `@/telemetry` for per-turn trace propagation
 
 ## Architecture & Key Components
 
@@ -89,7 +91,7 @@ Core Claude Code integration layer.
 
 User interface components.
 
-- **`logger.ts`**: Centralized logging system with file output
+- **`logger.ts`**: Shim re-exporting `Logger` from `@agentbridge/core/telemetry` (kept for backward compat)
 - **`qrcode.ts`**: QR code generation for mobile authentication
 - **`start.ts`**: Main application startup and orchestration
 

@@ -1,4 +1,5 @@
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/MessageQueue2');
 
 interface QueueItem<T> {
   message: string;

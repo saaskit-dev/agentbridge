@@ -26,8 +26,6 @@ export function getEnvironmentInfo(): Record<string, any> {
     FREE_HOME_DIR: process.env.FREE_HOME_DIR,
     FREE_SERVER_URL: process.env.FREE_SERVER_URL,
     FREE_PROJECT_ROOT: process.env.FREE_PROJECT_ROOT,
-    DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING:
-      process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING,
     NODE_ENV: process.env.NODE_ENV,
     DEBUG: process.env.DEBUG,
     workingDirectory: process.cwd(),
@@ -53,7 +51,7 @@ function getLogFiles(logDir: string): { file: string; path: string; modified: Da
 
   try {
     return readdirSync(logDir)
-      .filter(file => file.endsWith('.log'))
+      .filter(file => file.endsWith('.log') || file.endsWith('.jsonl'))
       .map(file => {
         const path = join(logDir, file);
         const stats = statSync(path);
@@ -121,9 +119,6 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
     console.log(
       `FREE_SERVER_URL: ${env.FREE_SERVER_URL ? chalk.green(env.FREE_SERVER_URL) : chalk.gray('not set')}`
     );
-    console.log(
-      `DANGEROUSLY_LOG_TO_SERVER: ${env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING ? chalk.yellow('ENABLED') : chalk.gray('not set')}`
-    );
     console.log(`DEBUG: ${env.DEBUG ? chalk.green(env.DEBUG) : chalk.gray('not set')}`);
     console.log(`NODE_ENV: ${env.NODE_ENV ? chalk.green(env.NODE_ENV) : chalk.gray('not set')}`);
 
@@ -154,28 +149,30 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
   // Daemon status - shown for both 'all' and 'daemon' filters
   console.log(chalk.bold('\n🤖 Daemon Status'));
   try {
-    const isRunning = await checkIfDaemonRunningAndCleanupStaleState();
-    const state = await readDaemonState();
+    const daemonCheck = await checkIfDaemonRunningAndCleanupStaleState();
 
-    if (isRunning && state) {
+    if (daemonCheck.status === 'running') {
       console.log(chalk.green('✓ Daemon is running'));
-      console.log(`  PID: ${state.pid}`);
-      console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
-      console.log(`  CLI Version: ${state.startedWithCliVersion}`);
-      if (state.httpPort) {
-        console.log(`  HTTP Port: ${state.httpPort}`);
+      console.log(`  PID: ${daemonCheck.pid}`);
+      console.log(`  Started: ${new Date(daemonCheck.startTime).toLocaleString()}`);
+      console.log(`  CLI Version: ${daemonCheck.version}`);
+      if (daemonCheck.httpPort) {
+        console.log(`  HTTP Port: ${daemonCheck.httpPort}`);
       }
-    } else if (state && !isRunning) {
-      console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
+    } else if (daemonCheck.status === 'stale') {
+      console.log(chalk.yellow(`⚠️  Daemon state exists but process ${daemonCheck.pid} not running (stale)`));
     } else {
       console.log(chalk.red('❌ Daemon is not running'));
     }
 
-    // Show daemon state file
-    if (state) {
-      console.log(chalk.bold('\n📄 Daemon State:'));
-      console.log(chalk.blue(`Location: ${configuration.daemonStateFile}`));
-      console.log(chalk.gray(JSON.stringify(state, null, 2)));
+    // Show daemon state file for running or stale states
+    if (daemonCheck.status !== 'not_running') {
+      const state = await readDaemonState();
+      if (state) {
+        console.log(chalk.bold('\n📄 Daemon State:'));
+        console.log(chalk.blue(`Location: ${configuration.daemonStateFile}`));
+        console.log(chalk.gray(JSON.stringify(state, null, 2)));
+      }
     }
 
     // All Free processes
@@ -282,7 +279,7 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
     // Support and bug reports
     console.log(chalk.bold('\n🐛 Support & Bug Reports'));
     console.log(
-      `Report issues: ${chalk.blue('https://github.com/kilingzhang/agentbridge/issues')}`
+      `Report issues: ${chalk.blue('https://github.com/saaskit-dev/agentbridge/issues')}`
     );
     console.log(
       `Documentation: ${chalk.blue(configuration.webappUrl.replace(/^https?:\/\//, 'https://').replace(/\/$/, '') + '/')}`

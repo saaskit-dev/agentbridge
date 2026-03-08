@@ -24,7 +24,8 @@ import {
   AbortError,
 } from './types';
 import { getDefaultClaudeCodePath, getCleanEnv, logDebug, streamToStdin } from './utils';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('claude/sdk/query');
 
 /**
  * Query class manages Claude Code process interaction
@@ -377,7 +378,7 @@ export function query(config: { prompt: QueryPrompt; options?: QueryOptions }): 
   // Handle stderr in debug mode
   if (process.env.DEBUG) {
     child.stderr.on('data', data => {
-      console.error('Claude Code stderr:', data.toString());
+      logger.debug('Claude Code stderr:', { stderr: data.toString() });
     });
   }
 

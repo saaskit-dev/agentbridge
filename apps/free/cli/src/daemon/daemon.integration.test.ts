@@ -29,7 +29,7 @@ import {
   stopDaemon,
 } from '@/daemon/controlClient';
 import { readDaemonState, clearDaemonState } from '@/persistence';
-import { getLatestDaemonLog } from '@/ui/logger';
+import { getLatestDaemonLog } from '@/utils/daemonLogs';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 
 // Utility to wait for condition

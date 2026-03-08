@@ -3,9 +3,10 @@ import { join } from 'node:path';
 import { RawJSONLines, RawJSONLinesSchema } from '../types';
 import { getProjectPath } from './path';
 import { startFileWatcher } from '@/modules/watcher/startFileWatcher';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { InvalidateSync } from '@/utils/sync';
 
+const logger = new Logger('claude/utils/sessionScanner');
 /**
  * Known internal Claude Code event types that should be silently skipped.
  * These are written to session JSONL files by Claude Code but are not

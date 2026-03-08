@@ -1,5 +1,6 @@
 import { uninstall as uninstallMac } from './mac/uninstall';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('daemon/uninstall');
 
 export async function uninstall(): Promise<void> {
   if (process.platform !== 'darwin') {

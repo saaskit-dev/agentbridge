@@ -30,7 +30,7 @@ import {
 import { projectPath } from '@/projectPath';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { getEnvironmentInfo } from '@/ui/doctor';
-import { logger } from '@/ui/logger';
+import { Logger, getCollector } from '@agentbridge/core/telemetry';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
@@ -41,7 +41,10 @@ import {
   formatTmuxSessionIdentifier,
 } from '@/utils/tmux';
 import { notifySessionToExit } from '@/utils/versionCheck';
+import { shutdownTelemetry } from '@/telemetry';
+import { createTrace } from '@agentbridge/core/telemetry';
 
+const logger = new Logger('daemon/run');
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
   host: os.hostname(),
@@ -110,6 +113,7 @@ export async function startDaemon(): Promise<void> {
       );
 
       // Fallback - in case startup malfunctions - we will force exit the process with code 1
+      // 15s gives time for graceful shutdown including API calls + telemetry flush
       setTimeout(async () => {
         logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
 
@@ -117,7 +121,7 @@ export async function startDaemon(): Promise<void> {
         await new Promise(resolve => setTimeout(resolve, 100));
 
         process.exit(1);
-      }, 1_000);
+      }, 15_000);
 
       // Start graceful shutdown
       resolve({ source, errorMessage });
@@ -167,7 +171,7 @@ export async function startDaemon(): Promise<void> {
   });
 
   logger.debug('[DAEMON RUN] Starting daemon process...');
-  logger.debugLargeJson('[DAEMON RUN] Environment', getEnvironmentInfo());
+  logger.debug('[DAEMON RUN] Environment');
 
   // Check if already running
   // Check if running daemon version matches current CLI version
@@ -231,7 +235,7 @@ export async function startDaemon(): Promise<void> {
 
     // Handle webhook from free session reporting itself
     const onFreeSessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
-      logger.debugLargeJson(`[DAEMON RUN] Session reported`, sessionMetadata);
+      logger.debug('[DAEMON RUN] Session reported');
 
       const pid = sessionMetadata.hostPid;
       if (!pid) {
@@ -277,9 +281,15 @@ export async function startDaemon(): Promise<void> {
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
-      logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
+      logger.debug('[DAEMON RUN] Spawning session');
 
-      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
+      const {
+        directory,
+        sessionId,
+        machineId,
+        approvedNewDirectoryCreation = true,
+        resumeClaudeSessionId,
+      } = options;
       let directoryCreated = false;
 
       try {
@@ -442,6 +452,27 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
+        // Create a trace context for this session so all child process logs share the same traceId.
+        const sessionTraceCtx = createTrace({
+          sessionId: sessionId || undefined,
+          machineId: machineId || undefined,
+        });
+        extraEnv = {
+          ...extraEnv,
+          FREE_TRACE_ID: sessionTraceCtx.traceId,
+          FREE_SPAN_ID: sessionTraceCtx.spanId,
+          ...(sessionId ? { FREE_SESSION_ID: sessionId } : {}),
+          ...(machineId ? { FREE_MACHINE_ID: machineId } : {}),
+          ...(options.sessionTag ? { FREE_SESSION_TAG: options.sessionTag } : {}),
+        };
+        logger.info('[DAEMON] Session spawning', {
+          traceId: sessionTraceCtx.traceId,
+          sessionId: sessionId || 'new',
+          machineId: machineId || 'unknown',
+          agent: options.agent || 'claude',
+          directory,
+        });
+
         // Check if tmux is available and should be used
         const tmuxAvailable = await isTmuxAvailable();
         let useTmux = tmuxAvailable;
@@ -479,7 +510,11 @@ export async function startDaemon(): Promise<void> {
                 : options.agent === 'opencode'
                   ? 'opencode'
                   : 'claude';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --free-starting-mode remote --started-by daemon`;
+          const resumeArg =
+            resumeClaudeSessionId && (options.agent === 'claude' || !options.agent)
+              ? ` --resume-session-id ${resumeClaudeSessionId}`
+              : '';
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --free-starting-mode remote --started-by daemon${resumeArg}`;
 
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
           // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
@@ -554,9 +589,12 @@ export async function startDaemon(): Promise<void> {
               pidToAwaiter.set(tmuxResult.pid!, {
                 resolver: completedSession => {
                   clearTimeout(timeout);
-                  logger.debug(
-                    `[DAEMON RUN] Session ${completedSession.freeSessionId} fully spawned with webhook (tmux)`
-                  );
+                  logger.info('[DAEMON] Session spawned (tmux)', {
+                    sessionId: completedSession.freeSessionId,
+                    pid: tmuxResult.pid,
+                    agent: options.agent || 'claude',
+                    machineId: machineId || 'unknown',
+                  });
                   resolve({
                     type: 'success',
                     sessionId: completedSession.freeSessionId!,
@@ -601,8 +639,11 @@ export async function startDaemon(): Promise<void> {
           }
           const args = [agentCommand, '--free-starting-mode', 'remote', '--started-by', 'daemon'];
 
-          // TODO: In future, sessionId could be used with --resume to continue existing sessions
-          // For now, we ignore it - each spawn creates a new session
+          // Pass --resume-session-id for Claude agent when resuming a previous Claude Code session
+          if (resumeClaudeSessionId && (options.agent === 'claude' || !options.agent)) {
+            args.push('--resume-session-id', resumeClaudeSessionId);
+          }
+
           const freeProcess = spawnFreeCLI(args, {
             cwd: directory,
             detached: true, // Sessions stay alive when daemon stops
@@ -613,13 +654,13 @@ export async function startDaemon(): Promise<void> {
             },
           });
 
-          // Log output for debugging
+          // Always log stderr (errors); only log stdout in DEBUG mode
+          freeProcess.stderr?.on('data', data => {
+            logger.error(`[DAEMON RUN] Child stderr: ${data.toString().trimEnd()}`);
+          });
           if (process.env.DEBUG) {
             freeProcess.stdout?.on('data', data => {
               logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
-            });
-            freeProcess.stderr?.on('data', data => {
-              logger.debug(`[DAEMON RUN] Child stderr: ${data.toString()}`);
             });
           }
 
@@ -681,9 +722,12 @@ export async function startDaemon(): Promise<void> {
             pidToAwaiter.set(freeProcess.pid!, {
               resolver: completedSession => {
                 clearTimeout(timeout);
-                logger.debug(
-                  `[DAEMON RUN] Session ${completedSession.freeSessionId} fully spawned with webhook`
-                );
+                logger.info('[DAEMON] Session spawned', {
+                  sessionId: completedSession.freeSessionId,
+                  pid: freeProcess.pid,
+                  agent: options.agent || 'claude',
+                  machineId: machineId || 'unknown',
+                });
                 resolve({
                   type: 'success',
                   sessionId: completedSession.freeSessionId!,
@@ -748,7 +792,11 @@ export async function startDaemon(): Promise<void> {
 
     // Handle child process exit
     const onChildExited = (pid: number) => {
-      logger.debug(`[DAEMON RUN] Removing exited process PID ${pid} from tracking`);
+      const session = pidToTrackedSession.get(pid);
+      logger.info('[DAEMON] Session ended', {
+        pid,
+        sessionId: session?.freeSessionId || 'unknown',
+      });
       pidToTrackedSession.delete(pid);
     };
 
@@ -767,7 +815,7 @@ export async function startDaemon(): Promise<void> {
       httpPort: controlPort,
       startTime: new Date().toLocaleString(),
       startedWithCliVersion: packageJson.version,
-      daemonLogPath: logger.logFilePath,
+      daemonLogPath: getCollector().getLogFilePath() ?? '',
     };
     writeDaemonState(fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
@@ -803,6 +851,7 @@ export async function startDaemon(): Promise<void> {
 
     // Connect to server
     apiMachine.connect();
+    logger.info('[DAEMON] Machine connecting to server', { machineId, serverUrl: configuration.serverUrl });
 
     // Every 60 seconds:
     // 1. Prune stale sessions
@@ -891,6 +940,7 @@ export async function startDaemon(): Promise<void> {
           spawnFreeCLI(['daemon', 'start'], {
             detached: true,
             stdio: 'ignore',
+            env: process.env,
           });
         } catch (error) {
           logger.debug(
@@ -899,7 +949,8 @@ export async function startDaemon(): Promise<void> {
           );
         }
 
-        logger.debug('[DAEMON RUN] Daemon restart initiated, exiting');
+        logger.info('[DAEMON RUN] Daemon restart initiated, exiting');
+        await shutdownTelemetry();
         process.exit(0);
       }
 
@@ -976,11 +1027,12 @@ export async function startDaemon(): Promise<void> {
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
 
-      logger.debug('[DAEMON RUN] Cleanup completed, exiting process');
+      logger.info('[DAEMON RUN] Cleanup completed, exiting process');
+      await shutdownTelemetry();
       process.exit(0);
     };
 
-    logger.debug('[DAEMON RUN] Daemon started successfully, waiting for shutdown request');
+    logger.info('[DAEMON RUN] Daemon started successfully, waiting for shutdown request');
 
     // Wait for shutdown request
     const shutdownRequest = await resolvesWhenShutdownRequested;

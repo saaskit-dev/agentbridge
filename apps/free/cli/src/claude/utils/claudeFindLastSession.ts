@@ -2,7 +2,8 @@ import { readdirSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { claudeCheckSession } from './claudeCheckSession';
 import { getProjectPath } from './path';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('claude/utils/claudeFindLastSession');
 
 /**
  * Finds the most recently modified VALID session in the project directory.

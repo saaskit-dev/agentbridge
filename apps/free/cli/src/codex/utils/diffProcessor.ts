@@ -6,7 +6,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('codex/utils/diffProcessor');
 
 export interface DiffToolCall {
   type: 'tool-call';

@@ -50,11 +50,12 @@ import {
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { Credentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
-import { logger } from '@/ui/logger';
+import { Logger, getCollector } from '@agentbridge/core/telemetry';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { hashObject } from '@/utils/deterministicJson';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 
+const logger = new Logger('gemini/runGemini');
 /**
  * Main entry point for the gemini command with ink UI
  */
@@ -85,9 +86,7 @@ export async function runGemini(opts: {
   const machineId = settings?.machineId;
   const sandboxConfig = settings?.sandboxConfig;
   if (!machineId) {
-    console.error(
-      `[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/kilingzhang/agentbridge/issues`
-    );
+    logger.error('[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it.');
     process.exit(1);
   }
   logger.debug(`Using machineId: ${machineId}`);
@@ -500,7 +499,7 @@ export async function runGemini(opts: {
       // Don't log on every render to avoid spam - only log when model changes
       return React.createElement(GeminiDisplay, {
         messageBuffer,
-        logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
+        logPath: process.env.DEBUG ? (getCollector().getLogFilePath() ?? undefined) : undefined,
         currentModel: currentModelValue,
         onExit: async () => {
           logger.debug('[gemini]: Exiting agent via Ctrl-C');
