@@ -1,6 +1,15 @@
 import { Socket } from 'socket.io';
 import { eventRouter } from '@/app/events/eventRouter';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+import type { WireTrace } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/socket/rpcHandler');
+
+function extractWireTrace(data: any): WireTrace | undefined {
+  if (data && typeof data._trace === 'object' && typeof data._trace.tid === 'string') {
+    return data._trace as WireTrace;
+  }
+  return undefined;
+}
 
 export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
   // RPC register - Register this socket as a listener for an RPC method
@@ -16,17 +25,17 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
       // Check if method was already registered
       const previousSocket = rpcListeners.get(method);
       if (previousSocket && previousSocket !== socket) {
-        // log({ module: 'websocket-rpc' }, `RPC method ${method} re-registered: ${previousSocket.id} -> ${socket.id}`);
+        // log.info(`RPC method ${method} re-registered: ${previousSocket.id} -> ${socket.id}`);
       }
 
       // Register this socket as the listener for this method
       rpcListeners.set(method, socket);
 
       socket.emit('rpc-registered', { method });
-      // log({ module: 'websocket-rpc' }, `RPC method registered: ${method} on socket ${socket.id} (user: ${userId})`);
-      // log({ module: 'websocket-rpc' }, `Active RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
+      // log.info(`RPC method registered: ${method} on socket ${socket.id} (user: ${userId})`);
+      // log.info(`Active RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error in rpc-register: ${error}`);
+      log.error(`Error in rpc-register: ${error}`);
       socket.emit('rpc-error', { type: 'register', error: 'Internal error' });
     }
   });
@@ -43,21 +52,21 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
 
       if (rpcListeners.get(method) === socket) {
         rpcListeners.delete(method);
-        // log({ module: 'websocket-rpc' }, `RPC method unregistered: ${method} from socket ${socket.id} (user: ${userId})`);
+        // log.info(`RPC method unregistered: ${method} from socket ${socket.id} (user: ${userId})`);
 
         if (rpcListeners.size === 0) {
           rpcListeners.delete(userId);
-          // log({ module: 'websocket-rpc' }, `All RPC methods unregistered for user ${userId}`);
+          // log.info(`All RPC methods unregistered for user ${userId}`);
         } else {
-          // log({ module: 'websocket-rpc' }, `Remaining RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
+          // log.info(`Remaining RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
         }
       } else {
-        // log({ module: 'websocket-rpc' }, `RPC unregister ignored: ${method} not registered on socket ${socket.id}`);
+        // log.info(`RPC unregister ignored: ${method} not registered on socket ${socket.id}`);
       }
 
       socket.emit('rpc-unregistered', { method });
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error in rpc-unregister: ${error}`);
+      log.error(`Error in rpc-unregister: ${error}`);
       socket.emit('rpc-error', { type: 'unregister', error: 'Internal error' });
     }
   });
@@ -79,7 +88,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
 
       const targetSocket = rpcListeners.get(method);
       if (!targetSocket || !targetSocket.connected) {
-        // log({ module: 'websocket-rpc' }, `RPC call failed: Method ${method} not available (disconnected or not registered)`);
+        // log.info(`RPC call failed: Method ${method} not available (disconnected or not registered)`);
         if (callback) {
           callback({
             ok: false,
@@ -91,7 +100,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
 
       // Don't allow calling your own socket
       if (targetSocket === socket) {
-        // log({ module: 'websocket-rpc' }, `RPC call failed: Attempted self-call on method ${method}`);
+        // log.info(`RPC call failed: Attempted self-call on method ${method}`);
         if (callback) {
           callback({
             ok: false,
@@ -103,17 +112,20 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
 
       // Log RPC call initiation
       const startTime = Date.now();
-      // log({ module: 'websocket-rpc' }, `RPC call initiated: ${socket.id} -> ${method} (target: ${targetSocket.id})`);
+      // log.info(`RPC call initiated: ${socket.id} -> ${method} (target: ${targetSocket.id})`);
 
       // Forward the RPC request to the target socket using emitWithAck
+      // Pass _trace for cross-layer trace correlation (RFC §7.1)
+      const trace = extractWireTrace(data);
       try {
         const response = await targetSocket.timeout(30000).emitWithAck('rpc-request', {
           method,
           params,
+          ...(trace ? { _trace: trace } : {}),
         });
 
         const duration = Date.now() - startTime;
-        // log({ module: 'websocket-rpc' }, `RPC call succeeded: ${method} (${duration}ms)`);
+        // log.info(`RPC call succeeded: ${method} (${duration}ms)`);
 
         // Forward the response back to the caller via callback
         if (callback) {
@@ -125,7 +137,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
       } catch (error) {
         const duration = Date.now() - startTime;
         const errorMsg = error instanceof Error ? error.message : 'RPC call failed';
-        // log({ module: 'websocket-rpc' }, `RPC call failed: ${method} - ${errorMsg} (${duration}ms)`);
+        // log.info(`RPC call failed: ${method} - ${errorMsg} (${duration}ms)`);
 
         // Timeout or error occurred
         if (callback) {
@@ -136,7 +148,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
         }
       }
     } catch (error) {
-      // log({ module: 'websocket', level: 'error' }, `Error in rpc-call: ${error}`);
+      // log.error(`Error in rpc-call: ${error}`);
       if (callback) {
         callback({
           ok: false,
@@ -155,13 +167,13 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
     }
 
     if (methodsToRemove.length > 0) {
-      // log({ module: 'websocket-rpc' }, `Cleaning up RPC methods on disconnect for socket ${socket.id}: ${methodsToRemove.join(', ')}`);
+      // log.info(`Cleaning up RPC methods on disconnect for socket ${socket.id}: ${methodsToRemove.join(', ')}`);
       methodsToRemove.forEach(method => rpcListeners.delete(method));
     }
 
     if (rpcListeners.size === 0) {
       rpcListeners.delete(userId);
-      // log({ module: 'websocket-rpc' }, `All RPC listeners removed for user ${userId}`);
+      // log.info(`All RPC listeners removed for user ${userId}`);
     }
   });
 }

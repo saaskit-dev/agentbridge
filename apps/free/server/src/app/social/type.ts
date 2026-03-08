@@ -1,6 +1,5 @@
 import { RelationshipStatus } from '@prisma/client';
-import { GitHubProfile } from '../api/types';
-import { getPublicUrl, ImageRef } from '@/storage/files';
+import { getPublicUrl } from '@/storage/files';
 
 export type UserProfile = {
   id: string;
@@ -24,23 +23,23 @@ export function buildUserProfile(
     firstName: string | null;
     lastName: string | null;
     username: string | null;
-    avatar: ImageRef | null;
-    githubUser: { profile: GitHubProfile } | null;
+    avatar: unknown;
+    githubUser: { profile: unknown } | null;
   },
   status: RelationshipStatus
 ): UserProfile {
-  const githubProfile = account.githubUser?.profile;
-  const avatarJson = account.avatar;
+  const githubProfile = account.githubUser?.profile as Record<string, unknown> | undefined;
+  const avatarJson = account.avatar as Record<string, unknown> | null | undefined;
 
   let avatar: UserProfile['avatar'] = null;
   if (avatarJson) {
     const avatarData = avatarJson;
     avatar = {
-      path: avatarData.path,
-      url: getPublicUrl(avatarData.path),
-      width: avatarData.width,
-      height: avatarData.height,
-      thumbhash: avatarData.thumbhash,
+      path: avatarData.path as string,
+      url: getPublicUrl(avatarData.path as string),
+      width: avatarData.width as number | undefined,
+      height: avatarData.height as number | undefined,
+      thumbhash: avatarData.thumbhash as string | undefined,
     };
   }
 
@@ -49,8 +48,8 @@ export function buildUserProfile(
     firstName: account.firstName || '',
     lastName: account.lastName,
     avatar,
-    username: account.username || githubProfile?.login || '',
-    bio: githubProfile?.bio || null,
+    username: account.username || (githubProfile?.login as string) || '',
+    bio: (githubProfile?.bio as string) || null,
     status,
   };
 }

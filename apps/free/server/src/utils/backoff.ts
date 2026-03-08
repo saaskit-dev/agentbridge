@@ -1,6 +1,8 @@
 import { AbortedExeption } from './aborted';
 import { delay } from './delay';
-import { warn } from './log';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const log = new Logger('utils/backoff');
 
 function exponentialRandomizedBackoffDelay(
   failureCount: number,
@@ -35,7 +37,7 @@ export function createBackoff(opts?: {
         if (AbortedExeption.isAborted(e)) {
           throw e;
         }
-        warn(e);
+        log.warn(`Backoff retry after error: ${e instanceof Error ? e.message : String(e)}`);
         const waitForRequest = exponentialRandomizedBackoffDelay(
           currentFailureCount,
           minDelay,

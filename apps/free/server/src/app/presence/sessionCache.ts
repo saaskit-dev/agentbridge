@@ -1,6 +1,7 @@
 import { sessionCacheCounter, databaseUpdatesSkippedCounter } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/presence/sessionCache');
 
 interface SessionCacheEntry {
   validUntil: number;
@@ -41,7 +42,7 @@ class ActivityCache {
 
     this.batchTimer = setInterval(() => {
       this.flushPendingUpdates().catch(error => {
-        log({ module: 'session-cache', level: 'error' }, `Error flushing updates: ${error}`);
+        log.error(`Error flushing updates: ${error}`);
       });
     }, this.BATCH_INTERVAL);
   }
@@ -77,9 +78,7 @@ class ActivityCache {
 
       return false;
     } catch (error) {
-      log(
-        { module: 'session-cache', level: 'error' },
-        `Error validating session ${sessionId}: ${error}`
+      log.error(`Error validating session ${sessionId}: ${error}`
       );
       return false;
     }
@@ -121,9 +120,7 @@ class ActivityCache {
 
       return false;
     } catch (error) {
-      log(
-        { module: 'session-cache', level: 'error' },
-        `Error validating machine ${machineId}: ${error}`
+      log.error(`Error validating machine ${machineId}: ${error}`
       );
       return false;
     }
@@ -201,9 +198,9 @@ class ActivityCache {
           )
         );
 
-        log({ module: 'session-cache' }, `Flushed ${sessionUpdates.length} session updates`);
+        log.info(`Flushed ${sessionUpdates.length} session updates`);
       } catch (error) {
-        log({ module: 'session-cache', level: 'error' }, `Error updating sessions: ${error}`);
+        log.error(`Error updating sessions: ${error}`);
       }
     }
 
@@ -224,9 +221,9 @@ class ActivityCache {
           )
         );
 
-        log({ module: 'session-cache' }, `Flushed ${machineUpdates.length} machine updates`);
+        log.info(`Flushed ${machineUpdates.length} machine updates`);
       } catch (error) {
-        log({ module: 'session-cache', level: 'error' }, `Error updating machines: ${error}`);
+        log.error(`Error updating machines: ${error}`);
       }
     }
   }
@@ -256,7 +253,7 @@ class ActivityCache {
 
     // Flush any remaining updates
     this.flushPendingUpdates().catch(error => {
-      log({ module: 'session-cache', level: 'error' }, `Error flushing final updates: ${error}`);
+      log.error(`Error flushing final updates: ${error}`);
     });
   }
 }

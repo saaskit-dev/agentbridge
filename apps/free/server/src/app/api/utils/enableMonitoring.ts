@@ -1,12 +1,20 @@
 import { Fastify } from '../types';
 import { httpRequestsCounter, httpRequestDurationHistogram } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
-import { log } from '@/utils/log';
+import { Logger, continueTrace } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/utils/enableMonitoring');
 
 export function enableMonitoring(app: Fastify) {
   // Add metrics hooks
   app.addHook('onRequest', async (request, reply) => {
     request.startTime = Date.now();
+
+    // RFC §7.2: extract trace context from HTTP headers
+    const traceId = request.headers['x-trace-id'] as string | undefined;
+    const spanId = request.headers['x-span-id'] as string | undefined;
+    if (traceId && spanId) {
+      request.traceCtx = continueTrace({ traceId, spanId });
+    }
   });
 
   app.addHook('onResponse', async (request, reply) => {
@@ -33,7 +41,7 @@ export function enableMonitoring(app: Fastify) {
         service: 'free-server',
       });
     } catch (error) {
-      log({ module: 'health', level: 'error' }, `Health check failed: ${error}`);
+      log.error(`Health check failed: ${error}`);
       reply.code(503).send({
         status: 'error',
         timestamp: new Date().toISOString(),

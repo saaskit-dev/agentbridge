@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { FeedOptions, FeedResult } from './types';
+import { FeedBody, FeedOptions, FeedResult } from './types';
 import { Context } from '@/context';
 import { Tx } from '@/storage/inTx';
 
@@ -42,7 +42,10 @@ export async function feedGet(tx: Tx, ctx: Context, options?: FeedOptions): Prom
   // Return only requested limit
   return {
     items: items.slice(0, limit).map(item => ({
-      ...item,
+      id: item.id,
+      userId: item.userId,
+      repeatKey: item.repeatKey,
+      body: item.body as FeedBody,
       createdAt: item.createdAt.getTime(),
       cursor: '0-' + item.counter.toString(10),
     })),

@@ -1,6 +1,9 @@
 import { Prisma } from '@prisma/client';
+import { Logger } from '@agentbridge/core/telemetry';
 import { db } from '@/storage/db';
 import { delay } from '@/utils/delay';
+
+const logger = new Logger('server/storage/inTx');
 
 export type Tx = Prisma.TransactionClient;
 
@@ -30,7 +33,7 @@ export async function inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
           callback();
         } catch (e) {
           // Ignore errors in callbacks because they are used mostly for notifications
-          console.error(e);
+          logger.error('afterTx callback error:', { error: String(e) });
         }
       }
       return result.result;

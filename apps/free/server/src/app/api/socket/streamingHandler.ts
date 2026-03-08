@@ -7,10 +7,12 @@
 
 import { Socket } from 'socket.io';
 import { eventRouter, ClientConnection } from '@/app/events/eventRouter';
-import { log } from '@/utils/log';
+import { Logger, type WireTrace } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/socket/streamingHandler');
 
 /**
- * Streaming event from CLI
+ * Streaming event from CLI.
+ * Includes optional _trace for end-to-end trace correlation (RFC §11.5).
  */
 interface StreamingEvent {
   type: 'text_delta' | 'text_complete' | 'thinking_delta';
@@ -19,6 +21,7 @@ interface StreamingEvent {
   delta?: string;
   fullText?: string;
   timestamp: number;
+  _trace?: WireTrace;
 }
 
 export function streamingHandler(userId: string, socket: Socket, connection: ClientConnection) {
@@ -28,13 +31,20 @@ export function streamingHandler(userId: string, socket: Socket, connection: Cli
    */
   socket.on('streaming:text-delta', (data: StreamingEvent) => {
     try {
-      const { sessionId, messageId, delta, timestamp } = data;
+      const { sessionId, messageId, delta, timestamp, _trace } = data;
 
       // Validate
       if (!sessionId || !messageId || typeof delta !== 'string') {
-        log({ module: 'websocket', level: 'warn' }, 'Invalid streaming:text-delta event');
+        log.warn('Invalid streaming:text-delta event');
         return;
       }
+
+      log.debug('[streaming] text_delta received', {
+        sessionId,
+        messageId,
+        len: delta.length,
+        traceId: _trace?.tid,
+      });
 
       // Broadcast to all interested clients (skip sender)
       eventRouter.emitEphemeral({
@@ -45,12 +55,13 @@ export function streamingHandler(userId: string, socket: Socket, connection: Cli
           messageId,
           delta,
           timestamp: timestamp || Date.now(),
+          ...(_trace ? { _trace } : {}),
         },
         recipientFilter: { type: 'all-interested-in-session', sessionId },
         skipSenderConnection: connection,
       });
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error handling streaming:text-delta: ${error}`);
+      log.error(`Error handling streaming:text-delta: ${error}`);
     }
   });
 
@@ -60,13 +71,20 @@ export function streamingHandler(userId: string, socket: Socket, connection: Cli
    */
   socket.on('streaming:text-complete', (data: StreamingEvent) => {
     try {
-      const { sessionId, messageId, fullText, timestamp } = data;
+      const { sessionId, messageId, fullText, timestamp, _trace } = data;
 
       // Validate
       if (!sessionId || !messageId || typeof fullText !== 'string') {
-        log({ module: 'websocket', level: 'warn' }, 'Invalid streaming:text-complete event');
+        log.warn('Invalid streaming:text-complete event');
         return;
       }
+
+      log.debug('[streaming] text_complete received', {
+        sessionId,
+        messageId,
+        fullTextLen: fullText.length,
+        traceId: _trace?.tid,
+      });
 
       // Broadcast to all interested clients (skip sender)
       eventRouter.emitEphemeral({
@@ -77,14 +95,13 @@ export function streamingHandler(userId: string, socket: Socket, connection: Cli
           messageId,
           fullText,
           timestamp: timestamp || Date.now(),
+          ...(_trace ? { _trace } : {}),
         },
         recipientFilter: { type: 'all-interested-in-session', sessionId },
         skipSenderConnection: connection,
       });
     } catch (error) {
-      log(
-        { module: 'websocket', level: 'error' },
-        `Error handling streaming:text-complete: ${error}`
+      log.error(`Error handling streaming:text-complete: ${error}`
       );
     }
   });
@@ -95,11 +112,11 @@ export function streamingHandler(userId: string, socket: Socket, connection: Cli
    */
   socket.on('streaming:thinking-delta', (data: StreamingEvent) => {
     try {
-      const { sessionId, messageId, delta, timestamp } = data;
+      const { sessionId, messageId, delta, timestamp, _trace } = data;
 
       // Validate
       if (!sessionId || !messageId || typeof delta !== 'string') {
-        log({ module: 'websocket', level: 'warn' }, 'Invalid streaming:thinking-delta event');
+        log.warn('Invalid streaming:thinking-delta event');
         return;
       }
 
@@ -112,14 +129,13 @@ export function streamingHandler(userId: string, socket: Socket, connection: Cli
           messageId,
           delta,
           timestamp: timestamp || Date.now(),
+          ...(_trace ? { _trace } : {}),
         },
         recipientFilter: { type: 'all-interested-in-session', sessionId },
         skipSenderConnection: connection,
       });
     } catch (error) {
-      log(
-        { module: 'websocket', level: 'error' },
-        `Error handling streaming:thinking-delta: ${error}`
+      log.error(`Error handling streaming:thinking-delta: ${error}`
       );
     }
   });

@@ -2,7 +2,8 @@ import { Socket } from 'socket.io';
 import { buildUsageEphemeral, eventRouter } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
 import { AsyncLock } from '@/utils/lock';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/socket/usageHandler');
 
 export function usageHandler(userId: string, socket: Socket) {
   const receiveUsageLock = new AsyncLock();
@@ -87,9 +88,7 @@ export function usageHandler(userId: string, socket: Socket) {
             },
           });
 
-          log(
-            { module: 'websocket' },
-            `Usage report saved: key=${key}, sessionId=${sessionId || 'none'}, userId=${userId}`
+          log.info(`Usage report saved: key=${key}, sessionId=${sessionId || 'none'}, userId=${userId}`
           );
 
           // Emit usage ephemeral update if sessionId is provided
@@ -116,13 +115,13 @@ export function usageHandler(userId: string, socket: Socket) {
             });
           }
         } catch (error) {
-          log({ module: 'websocket', level: 'error' }, `Failed to save usage report: ${error}`);
+          log.error(`Failed to save usage report: ${error}`);
           if (callback) {
             callback({ success: false, error: 'Failed to save usage report' });
           }
         }
       } catch (error) {
-        log({ module: 'websocket', level: 'error' }, `Error in usage-report handler: ${error}`);
+        log.error(`Error in usage-report handler: ${error}`);
         if (callback) {
           callback({ success: false, error: 'Internal error' });
         }
