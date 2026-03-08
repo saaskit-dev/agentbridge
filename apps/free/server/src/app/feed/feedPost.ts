@@ -43,8 +43,11 @@ export async function feedPost(
     },
   });
 
-  const result = {
-    ...item,
+  const result: UserFeedItem = {
+    id: item.id,
+    userId: item.userId,
+    repeatKey: item.repeatKey,
+    body: item.body as FeedBody,
     createdAt: item.createdAt.getTime(),
     cursor: '0-' + item.counter.toString(10),
   };

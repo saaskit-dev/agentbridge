@@ -1,7 +1,9 @@
 import { Webhooks } from '@octokit/webhooks';
 import type { EmitterWebhookEvent } from '@octokit/webhooks';
 import { App } from 'octokit';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const log = new Logger('modules/github');
 
 let app: App | null = null;
 let webhooks: Webhooks | null = null;
@@ -37,68 +39,43 @@ function registerWebhookHandlers() {
   if (!webhooks) return;
 
   // Type-safe handlers for specific events
-  webhooks.on('push', async ({ id, name, payload }: EmitterWebhookEvent<'push'>) => {
-    log(
-      { module: 'github-webhook', event: 'push' },
-      `Push to ${payload.repository.full_name} by ${payload.pusher.name}`
-    );
+  webhooks.on('push', async ({ payload }: EmitterWebhookEvent<'push'>) => {
+    log.info(`Push to ${payload.repository.full_name} by ${payload.pusher.name}`, { event: 'push' });
   });
 
   webhooks.on(
     'pull_request',
-    async ({ id, name, payload }: EmitterWebhookEvent<'pull_request'>) => {
-      log(
-        { module: 'github-webhook', event: 'pull_request' },
-        `PR ${payload.action} on ${payload.repository.full_name}: #${payload.pull_request.number} - ${payload.pull_request.title}`
-      );
+    async ({ payload }: EmitterWebhookEvent<'pull_request'>) => {
+      log.info(`PR ${payload.action} on ${payload.repository.full_name}: #${payload.pull_request.number} - ${payload.pull_request.title}`, { event: 'pull_request' });
     }
   );
 
-  webhooks.on('issues', async ({ id, name, payload }: EmitterWebhookEvent<'issues'>) => {
-    log(
-      { module: 'github-webhook', event: 'issues' },
-      `Issue ${payload.action} on ${payload.repository.full_name}: #${payload.issue.number} - ${payload.issue.title}`
-    );
+  webhooks.on('issues', async ({ payload }: EmitterWebhookEvent<'issues'>) => {
+    log.info(`Issue ${payload.action} on ${payload.repository.full_name}: #${payload.issue.number} - ${payload.issue.title}`, { event: 'issues' });
   });
 
   webhooks.on(
     ['star.created', 'star.deleted'],
-    async ({ id, name, payload }: EmitterWebhookEvent<'star.created' | 'star.deleted'>) => {
+    async ({ payload }: EmitterWebhookEvent<'star.created' | 'star.deleted'>) => {
       const action = payload.action === 'created' ? 'starred' : 'unstarred';
-      log(
-        { module: 'github-webhook', event: 'star' },
-        `Repository ${action}: ${payload.repository.full_name} by ${payload.sender.login}`
-      );
+      log.info(`Repository ${action}: ${payload.repository.full_name} by ${payload.sender.login}`, { event: 'star' });
     }
   );
 
-  webhooks.on('repository', async ({ id, name, payload }: EmitterWebhookEvent<'repository'>) => {
-    log(
-      { module: 'github-webhook', event: 'repository' },
-      `Repository ${payload.action}: ${payload.repository.full_name}`
-    );
+  webhooks.on('repository', async ({ payload }: EmitterWebhookEvent<'repository'>) => {
+    log.info(`Repository ${payload.action}: ${payload.repository.full_name}`, { event: 'repository' });
   });
 
   // Catch-all for unhandled events
-  webhooks.onAny(async ({ id, name, payload }: EmitterWebhookEvent) => {
-    log({ module: 'github-webhook', event: name as string }, `Received webhook event: ${name}`, {
-      id,
-    });
+  webhooks.onAny(async ({ id, name }: EmitterWebhookEvent) => {
+    log.info(`Received webhook event: ${name as string}`, { event: name as string, id });
   });
 
   webhooks.onError((error: any) => {
-    log(
-      { module: 'github-webhook', level: 'error' },
-      `Webhook handler error: ${error.event?.name}`,
-      error
-    );
+    log.error(`Webhook handler error: ${error.event?.name}`, error);
   });
 }
 
 export function getWebhooks(): Webhooks | null {
   return webhooks;
-}
-
-export function getApp(): App | null {
-  return app;
 }

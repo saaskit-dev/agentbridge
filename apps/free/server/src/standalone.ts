@@ -24,6 +24,7 @@ crypto.subtle.importKey = function (
 } as any;
 
 import * as fs from 'fs';
+import { homedir } from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { createPGlite } from './storage/pgliteLoader';
@@ -366,6 +367,93 @@ async function reset() {
   console.log("Run 'free-server serve' to start fresh.");
 }
 
+/**
+ * RFC §17.11 Option B: Developer trace query tool.
+ * Reads server JSONL log files and filters by traceId / sessionId / level / since.
+ */
+async function logsCommand(argv: string[]): Promise<void> {
+  let traceId: string | undefined;
+  let sessionId: string | undefined;
+  let level: string | undefined;
+  let since: Date | undefined;
+  let outputFormat: 'pretty' | 'jsonl' = 'pretty';
+
+  for (let i = 0; i < argv.length; i++) {
+    switch (argv[i]) {
+      case '--trace': traceId = argv[++i]; break;
+      case '--session': sessionId = argv[++i]; break;
+      case '--level': level = argv[++i]; break;
+      case '--since': {
+        const raw = argv[++i];
+        const m = raw?.match(/^(\d+)(m|h|d)$/);
+        if (m) {
+          const [, n, unit] = m;
+          const ms = parseInt(n) * (unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 86_400_000);
+          since = new Date(Date.now() - ms);
+        } else {
+          since = new Date(raw);
+        }
+        break;
+      }
+      case '--jsonl': outputFormat = 'jsonl'; break;
+    }
+  }
+
+  if (!traceId && !sessionId && !level && !since) {
+    console.error('Provide at least one filter: --trace <id>, --session <id>, --level <lvl>, --since <Nm/h/d>');
+    process.exit(1);
+  }
+
+  const homeDir = process.env.FREE_HOME_DIR
+    ? process.env.FREE_HOME_DIR.replace(/^~/, require('os').homedir())
+    : path.join(require('os').homedir(), '.free');
+  const logsDir = path.join(homeDir, 'logs');
+
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(logsDir)
+      .filter(f => f.startsWith('server-') && f.endsWith('.jsonl'))
+      .map(f => path.join(logsDir, f))
+      .sort();
+  } catch {
+    console.error(`No log files found in ${logsDir}`);
+    process.exit(0);
+  }
+
+  const LEVEL_ORDER: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 3 };
+  let matchCount = 0;
+
+  for (const file of files) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let entry: any;
+      try { entry = JSON.parse(line); } catch { continue; }
+
+      if (traceId && entry.traceId !== traceId) continue;
+      if (sessionId && entry.sessionId !== sessionId) continue;
+      if (level && (LEVEL_ORDER[entry.level] ?? -1) < (LEVEL_ORDER[level] ?? 0)) continue;
+      if (since && new Date(entry.timestamp) < since) continue;
+
+      matchCount++;
+      if (outputFormat === 'jsonl') {
+        console.log(line);
+      } else {
+        const ts = new Date(entry.timestamp).toISOString().substring(11, 23);
+        const traceStr = entry.traceId ? ` [${entry.traceId.slice(0, 8)}]` : '';
+        const lvl = (entry.level ?? 'info').toUpperCase().padEnd(5);
+        console.log(`[${ts}] ${lvl} [${entry.component ?? ''}]${traceStr} ${entry.message}`);
+      }
+    }
+  }
+
+  if (matchCount === 0) {
+    console.log('No matching log entries found.');
+  } else {
+    console.error(`\n(${matchCount} entries matched)`);
+  }
+}
+
 // CLI
 const command = process.argv[2];
 
@@ -388,6 +476,12 @@ switch (command) {
       process.exit(1);
     });
     break;
+  case 'logs':
+    logsCommand(process.argv.slice(3)).catch(e => {
+      console.error(e);
+      process.exit(1);
+    });
+    break;
   case undefined:
   case '--help':
   case '-h':
@@ -397,6 +491,12 @@ Usage:
   free-server migrate    Apply database migrations
   free-server serve      Start the server
   free-server reset      Delete all data and reset to fresh state
+  free-server logs       Query server log files (RFC §17.11 Option B)
+    --trace <id>         Filter by trace ID
+    --session <id>       Filter by session ID
+    --level <lvl>        Minimum log level (debug|info|warn|error)
+    --since <Nm|Nh|Nd>   Time range (e.g. 1h, 30m, 7d)
+    --jsonl              Output raw JSONL instead of pretty format
 
 Environment variables:
   DATA_DIR          Base data directory (default: ./data)

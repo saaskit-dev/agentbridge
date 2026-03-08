@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { type Fastify } from '../types';
 import { auth } from '@/app/auth/auth';
 import { db } from '@/storage/db';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/routes/authRoutes');
 
 export function authRoutes(app: Fastify) {
   app.post(
@@ -76,7 +77,7 @@ export function authRoutes(app: Fastify) {
       }
 
       const publicKeyHex = privacyKit.encodeHex(publicKey);
-      log({ module: 'auth-request' }, `Terminal auth request - publicKey hex: ${publicKeyHex}`);
+      log.info(`Terminal auth request - publicKey hex: ${publicKeyHex}`);
 
       const answer = await db.terminalAuthRequest.upsert({
         where: { publicKey: publicKeyHex },
@@ -151,35 +152,29 @@ export function authRoutes(app: Fastify) {
       },
     },
     async (request, reply) => {
-      log(
-        { module: 'auth-response' },
-        `Auth response endpoint hit - user: ${request.userId}, publicKey: ${request.body.publicKey.substring(0, 20)}...`
+      log.info(`Auth response endpoint hit - user: ${request.userId}, publicKey: ${request.body.publicKey.substring(0, 20)}...`
       );
       const tweetnacl = (await import('tweetnacl')).default;
       const publicKey = privacyKit.decodeBase64(request.body.publicKey);
       const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
       if (!isValid) {
-        log({ module: 'auth-response' }, `Invalid public key length: ${publicKey.length}`);
+        log.info(`Invalid public key length: ${publicKey.length}`);
         return reply.code(401).send({ error: 'Invalid public key' });
       }
       const publicKeyHex = privacyKit.encodeHex(publicKey);
-      log(
-        { module: 'auth-response' },
-        `Looking for auth request with publicKey hex: ${publicKeyHex}`
+      log.info(`Looking for auth request with publicKey hex: ${publicKeyHex}`
       );
       const authRequest = await db.terminalAuthRequest.findUnique({
         where: { publicKey: publicKeyHex },
       });
       if (!authRequest) {
-        log({ module: 'auth-response' }, `Auth request not found for publicKey: ${publicKeyHex}`);
+        log.info(`Auth request not found for publicKey: ${publicKeyHex}`);
         // Let's also check what auth requests exist
         const allRequests = await db.terminalAuthRequest.findMany({
           take: 5,
           orderBy: { createdAt: 'desc' },
         });
-        log(
-          { module: 'auth-response' },
-          `Recent auth requests in DB: ${JSON.stringify(allRequests.map(r => ({ id: r.id, publicKey: r.publicKey.substring(0, 20) + '...', hasResponse: !!r.response })))}`
+        log.info(`Recent auth requests in DB: ${JSON.stringify(allRequests.map(r => ({ id: r.id, publicKey: r.publicKey.substring(0, 20) + '...', hasResponse: !!r.response })))}`
         );
         return reply.code(404).send({ error: 'Request not found' });
       }

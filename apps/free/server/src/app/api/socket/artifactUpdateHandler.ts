@@ -9,9 +9,10 @@ import {
 import { websocketEventsCounter } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
+const log = new Logger('app/api/socket/artifactUpdateHandler');
 export function artifactUpdateHandler(userId: string, socket: Socket) {
   // Read artifact with full body
   socket.on(
@@ -65,7 +66,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
           },
         });
       } catch (error) {
-        log({ module: 'websocket', level: 'error' }, `Error in artifact-read: ${error}`);
+        log.error(`Error in artifact-read: ${error}`);
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }
@@ -271,7 +272,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
 
         callback(response);
       } catch (error) {
-        log({ module: 'websocket', level: 'error' }, `Error in artifact-update: ${error}`);
+        log.error(`Error in artifact-update: ${error}`);
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }
@@ -352,7 +353,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
             headerVersion: 1,
             body: privacyKit.decodeBase64(body),
             bodyVersion: 1,
-            dataEncryptionKey: privacyKit.decodeBase64(dataEncryptionKey),
+            dataEncryptionKey: dataEncryptionKey,
             seq: 0,
           },
         });
@@ -381,7 +382,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
           },
         });
       } catch (error) {
-        log({ module: 'websocket', level: 'error' }, `Error in artifact-create: ${error}`);
+        log.error(`Error in artifact-create: ${error}`);
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }
@@ -443,7 +444,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         // Send success response
         callback({ result: 'success' });
       } catch (error) {
-        log({ module: 'websocket', level: 'error' }, `Error in artifact-delete: ${error}`);
+        log.error(`Error in artifact-delete: ${error}`);
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }

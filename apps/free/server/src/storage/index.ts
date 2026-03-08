@@ -4,4 +4,4 @@
  */
 
 // Database
-export { prisma, connectDatabase, disconnectDatabase, checkDatabaseHealth } from './db';
+export { db, getPGlite, closePGlite } from './db';

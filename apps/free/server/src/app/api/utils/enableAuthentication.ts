@@ -1,19 +1,16 @@
 import { Fastify } from '../types';
 import { auth } from '@/app/auth/auth';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/utils/enableAuthentication');
 
 export function enableAuthentication(app: Fastify) {
   app.decorate('authenticate', async function (request: any, reply: any) {
     try {
       const authHeader = request.headers.authorization;
-      log(
-        { module: 'auth-decorator', level: 'debug' },
-        `Auth check - path: ${request.url}, has header: ${!!authHeader}`
+      log.debug(`Auth check - path: ${request.url}, has header: ${!!authHeader}`
       );
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        log(
-          { module: 'auth-decorator', level: 'debug' },
-          `Auth failed - missing or invalid header`
+        log.debug(`Auth failed - missing or invalid header`
         );
         return reply.code(401).send({ error: 'Missing authorization header' });
       }
@@ -21,11 +18,11 @@ export function enableAuthentication(app: Fastify) {
       const token = authHeader.substring(7);
       const verified = await auth.verifyToken(token);
       if (!verified) {
-        log({ module: 'auth-decorator', level: 'debug' }, `Auth failed - invalid token`);
+        log.debug(`Auth failed - invalid token`);
         return reply.code(401).send({ error: 'Invalid token' });
       }
 
-      log({ module: 'auth-decorator', level: 'debug' }, `Auth success - user: ${verified.userId}`);
+      log.debug(`Auth success - user: ${verified.userId}`);
       request.userId = verified.userId;
     } catch (error) {
       return reply.code(401).send({ error: 'Authentication failed' });

@@ -5,9 +5,10 @@ import { db } from '@/storage/db';
 import { getPublicUrl } from '@/storage/files';
 import { allocateUserSeq } from '@/storage/seq';
 import { AccountProfile } from '@/types';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
+const log = new Logger('app/api/routes/accountRoutes');
 export function accountRoutes(app: Fastify) {
   app.get(
     '/v1/account/profile',
@@ -41,7 +42,7 @@ export function accountRoutes(app: Fastify) {
         firstName: user.firstName,
         lastName: user.lastName,
         username: user.username,
-        avatar: user.avatar ? { ...user.avatar, url: getPublicUrl(user.avatar.path) } : null,
+        avatar: user.avatar ? { ...(user.avatar as any), url: getPublicUrl((user.avatar as any).path) } : null,
         github: user.githubUser ? user.githubUser.profile : null,
         connectedServices: Array.from(connectedVendors),
       });
@@ -59,6 +60,7 @@ export function accountRoutes(app: Fastify) {
             settings: z.string().nullable(),
             settingsVersion: z.number(),
           }),
+          401: z.object({ error: z.string(), code: z.string().optional(), success: z.boolean().optional() }),
           500: z.object({
             error: z.literal('Failed to get account settings'),
           }),
@@ -108,6 +110,7 @@ export function accountRoutes(app: Fastify) {
               currentSettings: z.string().nullable(),
             }),
           ]),
+          401: z.object({ error: z.string(), code: z.string().optional(), success: z.boolean().optional() }),
           500: z.object({
             success: z.literal(false),
             error: z.literal('Failed to update account settings'),
@@ -196,7 +199,7 @@ export function accountRoutes(app: Fastify) {
           version: expectedVersion + 1,
         });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to update account settings: ${error}`);
+        log.error(`Failed to update account settings: ${error}`);
         return reply.code(500).send({
           success: false,
           error: 'Failed to update account settings',
@@ -356,7 +359,7 @@ export function accountRoutes(app: Fastify) {
           totalReports: reports.length,
         });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to query usage reports: ${error}`);
+        log.error(`Failed to query usage reports: ${error}`);
         return reply.code(500).send({ error: 'Failed to query usage reports' });
       }
     }

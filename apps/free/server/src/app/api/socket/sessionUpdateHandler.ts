@@ -11,13 +11,23 @@ import { activityCache } from '@/app/presence/sessionCache';
 import { db } from '@/storage/db';
 import { allocateSessionSeq, allocateUserSeq } from '@/storage/seq';
 import { AsyncLock } from '@/utils/lock';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+import type { WireTrace } from '@agentbridge/core/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
+function extractWireTrace(data: any): WireTrace | undefined {
+  if (data && typeof data._trace === 'object' && typeof data._trace.tid === 'string') {
+    return data._trace as WireTrace;
+  }
+  return undefined;
+}
+
+const log = new Logger('app/api/socket/sessionUpdateHandler');
 export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
   socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
     try {
       const { sid, metadata, expectedVersion } = data;
+      const trace = extractWireTrace(data);
 
       // Validate input
       if (!sid || typeof metadata !== 'string' || typeof expectedVersion !== 'number') {
@@ -72,7 +82,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         sid,
         updSeq,
         randomKeyNaked(12),
-        metadataUpdate
+        metadataUpdate,
+        undefined,
+        trace
       );
       eventRouter.emitUpdate({
         userId,
@@ -83,7 +95,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       // Send success response with new version via callback
       callback({ result: 'success', version: expectedVersion + 1, metadata: metadata });
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error in update-metadata: ${error}`);
+      log.error(`Error in update-metadata: ${error}`);
       if (callback) {
         callback({ result: 'error' });
       }
@@ -93,6 +105,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
   socket.on('update-state', async (data: any, callback: (response: any) => void) => {
     try {
       const { sid, agentState, expectedVersion } = data;
+      const trace = extractWireTrace(data);
 
       // Validate input
       if (
@@ -156,7 +169,8 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         updSeq,
         randomKeyNaked(12),
         undefined,
-        agentStateUpdate
+        agentStateUpdate,
+        trace
       );
       eventRouter.emitUpdate({
         userId,
@@ -167,7 +181,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       // Send success response with new version via callback
       callback({ result: 'success', version: expectedVersion + 1, agentState: agentState });
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error in update-state: ${error}`);
+      log.error(`Error in update-state: ${error}`);
       if (callback) {
         callback({ result: 'error' });
       }
@@ -183,6 +197,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       if (!data || typeof data.time !== 'number' || !data.sid) {
         return;
       }
+      log.debug('[session-alive] received', { sid: data.sid, thinking: data.thinking ?? false });
 
       let t = data.time;
       if (t > Date.now()) {
@@ -210,8 +225,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         payload: sessionActivity,
         recipientFilter: { type: 'user-scoped-only' },
       });
+      log.debug('[session-alive] activity ephemeral emitted', { sid, thinking: thinking || false });
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error in session-alive: ${error}`);
+      log.error(`Error in session-alive: ${error}`);
     }
   });
 
@@ -221,10 +237,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       try {
         websocketEventsCounter.inc({ event_type: 'message' });
         const { sid, message, localId } = data;
+        const trace = extractWireTrace(data);
 
-        log(
-          { module: 'websocket' },
-          `Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`
+        log.info(`Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`
         );
 
         // Resolve session
@@ -263,11 +278,12 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             seq: msgSeq,
             content: msgContent,
             localId: useLocalId,
+            traceId: trace?.tid ?? null,
           },
         });
 
-        // Emit new message update to relevant clients
-        const updatePayload = buildNewMessageUpdate(msg, sid, updSeq, randomKeyNaked(12));
+        // Emit new message update to relevant clients (forward _trace for cross-layer correlation)
+        const updatePayload = buildNewMessageUpdate(msg, sid, updSeq, randomKeyNaked(12), trace);
         eventRouter.emitUpdate({
           userId,
           payload: updatePayload,
@@ -275,7 +291,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
           skipSenderConnection: connection,
         });
       } catch (error) {
-        log({ module: 'websocket', level: 'error' }, `Error in message handler: ${error}`);
+        log.error(`Error in message handler: ${error}`);
       }
     });
   });
@@ -283,6 +299,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
   socket.on('session-end', async (data: { sid: string; time: number }) => {
     try {
       const { sid, time } = data;
+      log.debug('[session-end] received', { sid });
       let t = time;
       if (typeof t !== 'number') {
         return;
@@ -316,8 +333,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         payload: sessionActivity,
         recipientFilter: { type: 'user-scoped-only' },
       });
+      log.debug('[session-end] activity ephemeral emitted (active=false)', { sid });
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error in session-end: ${error}`);
+      log.error(`Error in session-end: ${error}`);
     }
   });
 }

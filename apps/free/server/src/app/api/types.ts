@@ -1,6 +1,7 @@
 import { IncomingMessage, Server, ServerResponse } from 'http';
 import { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
+import type { TraceContext } from '@agentbridge/core/telemetry';
 
 export interface GitHubProfile {
   id: number;
@@ -52,6 +53,8 @@ declare module 'fastify' {
   interface FastifyRequest {
     userId: string;
     startTime?: number;
+    /** Trace context extracted from X-Trace-Id / X-Span-Id headers (RFC §7.2) */
+    traceCtx?: TraceContext;
   }
   interface FastifyInstance {
     authenticate: any;

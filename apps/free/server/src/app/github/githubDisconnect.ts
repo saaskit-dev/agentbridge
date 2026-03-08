@@ -2,9 +2,10 @@ import { buildUpdateAccountUpdate, eventRouter } from '@/app/events/eventRouter'
 import { Context } from '@/context';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
+const log = new Logger('app/github/githubDisconnect');
 /**
  * Disconnects a GitHub account from a user profile.
  *
@@ -26,14 +27,12 @@ export async function githubDisconnect(ctx: Context): Promise<void> {
 
   // Early exit if no GitHub connection
   if (!user?.githubUserId) {
-    log({ module: 'github-disconnect' }, `User ${userId} has no GitHub account connected`);
+    log.info(`User ${userId} has no GitHub account connected`);
     return;
   }
 
   const githubUserId = user.githubUserId;
-  log(
-    { module: 'github-disconnect' },
-    `Disconnecting GitHub account ${githubUserId} from user ${userId}`
+  log.info(`Disconnecting GitHub account ${githubUserId} from user ${userId}`
   );
 
   // Step 2: Transaction for atomic database operations
@@ -71,8 +70,6 @@ export async function githubDisconnect(ctx: Context): Promise<void> {
     recipientFilter: { type: 'user-scoped-only' },
   });
 
-  log(
-    { module: 'github-disconnect' },
-    `GitHub account ${githubUserId} disconnected successfully from user ${userId}`
+  log.info(`GitHub account ${githubUserId} disconnected successfully from user ${userId}`
   );
 }
