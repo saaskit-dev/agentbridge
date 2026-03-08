@@ -1,0 +1,16 @@
+diff --git a/helpers/isNativeReflectConstruct.js b/helpers/isNativeReflectConstruct.js
+index b677e1076382e0cb07e18348b90d8d0b3292394f..40df17283cc9ec8d8b057b231dd403c30106ec27 100644
+--- a/helpers/isNativeReflectConstruct.js
++++ b/helpers/isNativeReflectConstruct.js
+@@ -1,6 +1,11 @@
+ function _isNativeReflectConstruct() {
+   try {
+     var t = !Boolean.prototype.valueOf.call(Reflect.construct(Boolean, [], function () {}));
++    // Also verify Reflect.construct works with Error as target.
++    // Hermes (React Native new arch) passes the Boolean test but fails when
++    // an Arguments exotic object is passed as argumentsList to Reflect.construct(Error, ...).
++    // Testing with Error here causes the fallback path to be used, which is safe.
++    if (t) try { Reflect.construct(Error, [], function () {}); } catch (e) { t = false; }
+   } catch (t) {}
+   return (module.exports = _isNativeReflectConstruct = function _isNativeReflectConstruct() {
+     return !!t;

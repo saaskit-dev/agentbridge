@@ -3,11 +3,11 @@
   "version": "0.0.1",
   "private": true,
   "description": "Universal SDK for AI Coding Agent CLIs",
-  "author": "kilingzhang",
+  "author": "saaskit-dev",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kilingzhang/agentbridge.git"
+    "url": "https://github.com/saaskit-dev/agentbridge.git"
   },
   "workspaces": [
     "packages/core",

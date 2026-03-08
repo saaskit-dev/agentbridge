@@ -3,10 +3,10 @@ set -euo pipefail
 
 # ============================================================================
 # Free CLI - One-line installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash
 # ============================================================================
 
-REPO_URL="https://github.com/kilingzhang/agentbridge.git"
+REPO_URL="https://github.com/saaskit-dev/agentbridge.git"
 INSTALL_DIR="${FREE_INSTALL_DIR:-$HOME/.free/source}"
 BIN_DIR="${FREE_BIN_DIR:-$HOME/.local/bin}"
 BRANCH="${FREE_BRANCH:-main}"
@@ -153,5 +153,5 @@ echo -e "    ${BOLD}free${NC}             # Start Claude Code session"
 echo -e "    ${BOLD}free gemini${NC}      # Start Gemini session"
 echo ""
 echo "  To update later:"
-echo -e "    ${BOLD}curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash${NC}"
+echo -e "    ${BOLD}curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash${NC}"
 echo ""
