@@ -1,6 +1,10 @@
 # Free Server Dockerfile - Optimized for minimal size
 # Multi-stage build to exclude build tools from final image
 
+# Build arguments for version info
+ARG VERSION=0.0.1
+ARG BUILD_TIME
+
 # ===== Stage 1: Build =====
 FROM node:20-slim AS builder
 
@@ -23,6 +27,10 @@ RUN npm install @prisma/client@6.19.2 prisma@6.19.2 privacy-kit@0.0.25 --legacy-
 
 # ===== Stage 2: Runtime =====
 FROM node:20-slim
+
+# Re-declare ARG after FROM
+ARG VERSION=0.0.1
+ARG BUILD_TIME
 
 WORKDIR /app
 
@@ -47,6 +55,9 @@ COPY prisma ./prisma
 # Copy startup script
 COPY start-free.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/start-free.sh
+
+# Write version info
+RUN echo "{\"version\":\"${VERSION}\",\"buildTime\":\"${BUILD_TIME}\"}" > /app/version.json
 
 # Create data directory
 RUN mkdir -p /app/data
