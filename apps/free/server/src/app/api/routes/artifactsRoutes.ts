@@ -9,9 +9,10 @@ import {
 } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
+const log = new Logger('app/api/routes/artifactsRoutes');
 export function artifactsRoutes(app: Fastify) {
   // GET /v1/artifacts - List all artifacts for the account
   app.get(
@@ -60,14 +61,14 @@ export function artifactsRoutes(app: Fastify) {
             id: a.id,
             header: privacyKit.encodeBase64(a.header),
             headerVersion: a.headerVersion,
-            dataEncryptionKey: privacyKit.encodeBase64(a.dataEncryptionKey),
+            dataEncryptionKey: a.dataEncryptionKey,
             seq: a.seq,
             createdAt: a.createdAt.getTime(),
             updatedAt: a.updatedAt.getTime(),
           }))
         );
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to get artifacts: ${error}`);
+        log.error(`Failed to get artifacts: ${error}`);
         return reply.code(500).send({ error: 'Failed to get artifacts' });
       }
     }
@@ -125,13 +126,13 @@ export function artifactsRoutes(app: Fastify) {
           headerVersion: artifact.headerVersion,
           body: privacyKit.encodeBase64(artifact.body),
           bodyVersion: artifact.bodyVersion,
-          dataEncryptionKey: privacyKit.encodeBase64(artifact.dataEncryptionKey),
+          dataEncryptionKey: artifact.dataEncryptionKey,
           seq: artifact.seq,
           createdAt: artifact.createdAt.getTime(),
           updatedAt: artifact.updatedAt.getTime(),
         });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to get artifact: ${error}`);
+        log.error(`Failed to get artifact: ${error}`);
         return reply.code(500).send({ error: 'Failed to get artifact' });
       }
     }
@@ -189,14 +190,14 @@ export function artifactsRoutes(app: Fastify) {
           }
 
           // If exists for same account, return existing (idempotent)
-          log({ module: 'api', artifactId: id, userId }, 'Found existing artifact');
+          log.info('Found existing artifact', { artifactId: id, userId });
           return reply.send({
             id: existingArtifact.id,
             header: privacyKit.encodeBase64(existingArtifact.header),
             headerVersion: existingArtifact.headerVersion,
             body: privacyKit.encodeBase64(existingArtifact.body),
             bodyVersion: existingArtifact.bodyVersion,
-            dataEncryptionKey: privacyKit.encodeBase64(existingArtifact.dataEncryptionKey),
+            dataEncryptionKey: existingArtifact.dataEncryptionKey,
             seq: existingArtifact.seq,
             createdAt: existingArtifact.createdAt.getTime(),
             updatedAt: existingArtifact.updatedAt.getTime(),
@@ -204,7 +205,7 @@ export function artifactsRoutes(app: Fastify) {
         }
 
         // Create new artifact
-        log({ module: 'api', artifactId: id, userId }, 'Creating new artifact');
+        log.info('Creating new artifact', { artifactId: id, userId });
         const artifact = await db.artifact.create({
           data: {
             id,
@@ -213,7 +214,7 @@ export function artifactsRoutes(app: Fastify) {
             headerVersion: 1,
             body: privacyKit.decodeBase64(body),
             bodyVersion: 1,
-            dataEncryptionKey: privacyKit.decodeBase64(dataEncryptionKey),
+            dataEncryptionKey: dataEncryptionKey,
             seq: 0,
           },
         });
@@ -233,13 +234,13 @@ export function artifactsRoutes(app: Fastify) {
           headerVersion: artifact.headerVersion,
           body: privacyKit.encodeBase64(artifact.body),
           bodyVersion: artifact.bodyVersion,
-          dataEncryptionKey: privacyKit.encodeBase64(artifact.dataEncryptionKey),
+          dataEncryptionKey: artifact.dataEncryptionKey,
           seq: artifact.seq,
           createdAt: artifact.createdAt.getTime(),
           updatedAt: artifact.updatedAt.getTime(),
         });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to create artifact: ${error}`);
+        log.error(`Failed to create artifact: ${error}`);
         return reply.code(500).send({ error: 'Failed to create artifact' });
       }
     }
@@ -384,7 +385,7 @@ export function artifactsRoutes(app: Fastify) {
           ...(bodyUpdate && { bodyVersion: bodyUpdate.version }),
         });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to update artifact: ${error}`);
+        log.error(`Failed to update artifact: ${error}`);
         return reply.code(500).send({ error: 'Failed to update artifact' });
       }
     }
@@ -445,7 +446,7 @@ export function artifactsRoutes(app: Fastify) {
 
         return reply.send({ success: true });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to delete artifact: ${error}`);
+        log.error(`Failed to delete artifact: ${error}`);
         return reply.code(500).send({ error: 'Failed to delete artifact' });
       }
     }

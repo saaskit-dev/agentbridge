@@ -1,5 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('server/storage/db');
 import { PGlite } from '@electric-sql/pglite';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPGlite } from 'pglite-prisma-adapter';
@@ -61,7 +64,7 @@ export function getPGlite(): PGlite | null {
  */
 export async function closePGlite(): Promise<void> {
   if (pgliteInstance) {
-    console.log('[DB] Closing PGLite instance...');
+    logger.debug('[DB] Closing PGLite instance...');
     try {
       // First disconnect Prisma
       if (prismaClient) {
@@ -69,9 +72,9 @@ export async function closePGlite(): Promise<void> {
       }
       // Then close PGLite
       await pgliteInstance.close();
-      console.log('[DB] PGLite closed successfully');
+      logger.debug('[DB] PGLite closed successfully');
     } catch (error) {
-      console.error('[DB] Error closing PGLite:', error);
+      logger.error('[DB] Error closing PGLite:', error);
     }
     pgliteInstance = null;
     prismaClient = null;

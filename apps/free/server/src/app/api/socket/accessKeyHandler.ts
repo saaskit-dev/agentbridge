@@ -1,7 +1,8 @@
 import { Socket } from 'socket.io';
 import { eventRouter } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/socket/accessKeyHandler');
 
 export function accessKeyHandler(userId: string, socket: Socket) {
   // Get access key via socket
@@ -71,12 +72,10 @@ export function accessKeyHandler(userId: string, socket: Socket) {
           }
         }
 
-        log(
-          { module: 'websocket-access-key' },
-          `Access key retrieved for session ${sessionId}, machine ${machineId}`
+        log.info(`Access key retrieved for session ${sessionId}, machine ${machineId}`
         );
       } catch (error) {
-        log({ module: 'websocket', level: 'error' }, `Error in access-key-get: ${error}`);
+        log.error(`Error in access-key-get: ${error}`);
         if (callback) {
           callback({
             ok: false,

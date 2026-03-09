@@ -117,6 +117,8 @@ model SessionMessage {
   seq       Int
   /// [SessionMessageContent]
   content   Json
+  /// Trace ID from the originating user action (RFC §19.3). Nullable, unencrypted.
+  traceId   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

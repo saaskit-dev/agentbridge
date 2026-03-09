@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Integration test for v3SessionRoutes - tests message flow from HTTP to socket
  *

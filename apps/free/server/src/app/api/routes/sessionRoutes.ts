@@ -5,9 +5,10 @@ import { eventRouter, buildNewSessionUpdate } from '@/app/events/eventRouter';
 import { sessionDelete } from '@/app/session/sessionDelete';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
+const log = new Logger('app/api/routes/sessionRoutes');
 export function sessionRoutes(app: Fastify) {
   // Sessions API
   app.get(
@@ -255,10 +256,7 @@ export function sessionRoutes(app: Fastify) {
         },
       });
       if (session) {
-        log(
-          { module: 'session-create', sessionId: session.id, userId, tag },
-          `Found existing session: ${session.id} for tag ${tag}`
-        );
+        log.info(`Found existing session: ${session.id} for tag ${tag}`, { sessionId: session.id, userId, tag });
         return reply.send({
           session: {
             id: session.id,
@@ -280,10 +278,7 @@ export function sessionRoutes(app: Fastify) {
         const updSeq = await allocateUserSeq(userId);
 
         // Create session
-        log(
-          { module: 'session-create', userId, tag },
-          `Creating new session for user ${userId} with tag ${tag}`
-        );
+        log.info(`Creating new session for user ${userId} with tag ${tag}`, { userId, tag });
         const session = await db.session.create({
           data: {
             accountId: userId,
@@ -292,23 +287,11 @@ export function sessionRoutes(app: Fastify) {
             dataEncryptionKey: dataEncryptionKey || undefined, // Now stored as base64 string
           },
         });
-        log(
-          { module: 'session-create', sessionId: session.id, userId },
-          `Session created: ${session.id}`
-        );
+        log.info(`Session created: ${session.id}`, { sessionId: session.id, userId });
 
         // Emit new session update
         const updatePayload = buildNewSessionUpdate(session, updSeq, randomKeyNaked(12));
-        log(
-          {
-            module: 'session-create',
-            userId,
-            sessionId: session.id,
-            updateType: 'new-session',
-            updatePayload: JSON.stringify(updatePayload),
-          },
-          `Emitting new-session update to user-scoped connections`
-        );
+        log.info('Emitting new-session update to user-scoped connections', { userId, sessionId: session.id });
         eventRouter.emitUpdate({
           userId,
           payload: updatePayload,

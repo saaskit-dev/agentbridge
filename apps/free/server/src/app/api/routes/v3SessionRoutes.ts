@@ -4,11 +4,24 @@ import { buildNewMessageUpdate, eventRouter } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
 import { allocateSessionSeqBatch, allocateUserSeq } from '@/storage/seq';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
+import { Logger, type WireTrace } from '@agentbridge/core/telemetry';
+
+const log = new Logger('app/api/routes/v3Sessions');
 
 const getMessagesQuerySchema = z.object({
   after_seq: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
+
+// The server forwards _trace to CLI subscribers; the CLI owns the authoritative
+// schema. @see apps/free/cli/src/api/types.ts WireTraceSchema for the full definition.
+// We only verify the required fields (tid/sid) are strings to prevent bad payloads.
+const WireTracePassthroughSchema = z
+  .record(z.unknown())
+  .refine(
+    v => typeof v['tid'] === 'string' && typeof v['sid'] === 'string',
+    { message: '_trace must have string tid and sid' }
+  );
 
 const sendMessagesBodySchema = z.object({
   messages: z
@@ -16,6 +29,7 @@ const sendMessagesBodySchema = z.object({
       z.object({
         content: z.string(),
         localId: z.string().min(1),
+        _trace: WireTracePassthroughSchema.optional(),
       })
     )
     .min(1)
@@ -27,6 +41,7 @@ type SelectedMessage = {
   seq: number;
   content: unknown;
   localId: string | null;
+  traceId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -37,6 +52,7 @@ function toResponseMessage(message: SelectedMessage) {
     seq: message.seq,
     content: message.content,
     localId: message.localId,
+    ...(message.traceId ? { traceId: message.traceId } : {}),
     createdAt: message.createdAt.getTime(),
     updatedAt: message.updatedAt.getTime(),
   };
@@ -47,6 +63,7 @@ function toSendResponseMessage(message: Omit<SelectedMessage, 'content'>) {
     id: message.id,
     seq: message.seq,
     localId: message.localId,
+    ...(message.traceId ? { traceId: message.traceId } : {}),
     createdAt: message.createdAt.getTime(),
     updatedAt: message.updatedAt.getTime(),
   };
@@ -93,6 +110,7 @@ export function v3SessionRoutes(app: Fastify) {
           seq: true,
           content: true,
           localId: true,
+          traceId: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -124,6 +142,8 @@ export function v3SessionRoutes(app: Fastify) {
       const { sessionId } = request.params;
       const { messages } = request.body;
 
+      log.debug('[v3] received messages', { sessionId, messageCount: messages.length });
+
       const session = await db.session.findFirst({
         where: {
           id: sessionId,
@@ -136,7 +156,10 @@ export function v3SessionRoutes(app: Fastify) {
         return reply.code(404).send({ error: 'Session not found' });
       }
 
-      const firstMessageByLocalId = new Map<string, { localId: string; content: string }>();
+      const firstMessageByLocalId = new Map<
+        string,
+        { localId: string; content: string; _trace?: Record<string, unknown> }
+      >();
       for (const message of messages) {
         if (!firstMessageByLocalId.has(message.localId)) {
           firstMessageByLocalId.set(message.localId, message);
@@ -146,6 +169,11 @@ export function v3SessionRoutes(app: Fastify) {
       const uniqueMessages = Array.from(firstMessageByLocalId.values());
       const contentByLocalId = new Map(
         uniqueMessages.map(message => [message.localId, message.content])
+      );
+      const traceByLocalId = new Map<string, WireTrace>(
+        uniqueMessages
+          .filter(m => m._trace)
+          .map(m => [m.localId, m._trace as unknown as WireTrace])
       );
 
       const txResult = await db.$transaction(async tx => {
@@ -159,6 +187,7 @@ export function v3SessionRoutes(app: Fastify) {
             id: true,
             seq: true,
             localId: true,
+            traceId: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -179,6 +208,7 @@ export function v3SessionRoutes(app: Fastify) {
         const createdMessages: Omit<SelectedMessage, 'content'>[] = [];
         for (let i = 0; i < newMessages.length; i += 1) {
           const message = newMessages[i];
+          const trace = traceByLocalId.get(message.localId);
           const createdMessage = await tx.sessionMessage.create({
             data: {
               sessionId,
@@ -188,12 +218,14 @@ export function v3SessionRoutes(app: Fastify) {
                 c: message.content,
               },
               localId: message.localId,
+              traceId: trace?.tid ?? null,
             },
             select: {
               id: true,
               seq: true,
               content: true,
               localId: true,
+              traceId: true,
               createdAt: true,
               updatedAt: true,
             },
@@ -209,12 +241,15 @@ export function v3SessionRoutes(app: Fastify) {
         };
       });
 
+      log.debug('[v3] stored messages', { sessionId, newCount: txResult.createdMessages.length });
+
       for (const message of txResult.createdMessages) {
         const content = message.localId ? contentByLocalId.get(message.localId) : null;
         if (!content) {
           continue;
         }
         const updSeq = await allocateUserSeq(userId);
+        const trace = message.localId ? traceByLocalId.get(message.localId) : undefined;
         const updatePayload = buildNewMessageUpdate(
           {
             ...message,
@@ -225,7 +260,8 @@ export function v3SessionRoutes(app: Fastify) {
           },
           sessionId,
           updSeq,
-          randomKeyNaked(12)
+          randomKeyNaked(12),
+          trace
         );
 
         eventRouter.emitUpdate({
@@ -233,6 +269,7 @@ export function v3SessionRoutes(app: Fastify) {
           payload: updatePayload,
           recipientFilter: { type: 'all-interested-in-session', sessionId },
         });
+        log.debug('[v3] published event', { sessionId, traceId: trace?.tid });
       }
 
       return reply.send({

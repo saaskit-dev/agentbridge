@@ -12,7 +12,7 @@ import { Fastify } from './types';
 import { sessionRoutes } from './routes/sessionRoutes';
 import { startSocket } from './socket';
 import { machinesRoutes } from './routes/machinesRoutes';
-import { devRoutes } from './routes/devRoutes';
+
 import { versionRoutes } from './routes/versionRoutes';
 import { voiceRoutes } from './routes/voiceRoutes';
 import { enableAuthentication } from './utils/enableAuthentication';
@@ -23,19 +23,23 @@ import { feedRoutes } from './routes/feedRoutes';
 import { kvRoutes } from './routes/kvRoutes';
 import { v3SessionRoutes } from './routes/v3SessionRoutes';
 import { capabilitiesRoutes } from './routes/capabilitiesRoutes';
+import { telemetryRoutes } from './routes/telemetryRoutes';
 import { register } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
 import { isLocalStorage, getLocalFilesDir } from '@/storage/files';
-import { log, logger } from '@/utils/log';
+import { Logger, continueTrace, resumeTrace } from '@agentbridge/core/telemetry';
+import { createFastifyLogger } from '@/utils/fastifyLogger';
+import { runWithTrace } from '@/utils/requestTrace';
 import { onShutdown } from '@/utils/shutdown';
 
+const log = new Logger('app/api/api');
 export async function startApi() {
   // Configure
-  log('Starting API...');
+  log.info('Starting API...');
 
   // Start API
   const app = fastify({
-    loggerInstance: logger,
+    loggerInstance: createFastifyLogger(),
     bodyLimit: 1024 * 1024 * 100, // 100MB
   });
   app.register(import('@fastify/cors'), {
@@ -63,6 +67,22 @@ export async function startApi() {
   enableMonitoring(typed);
   enableErrorHandlers(typed);
   enableAuthentication(typed);
+
+  // Extract trace context from HTTP headers and propagate via AsyncLocalStorage.
+  // Must be registered AFTER authentication so it runs early in the request lifecycle.
+  // Covers: X-Trace-Id (required), X-Span-Id (optional, becomes parentSpanId on server).
+  app.addHook('onRequest', (request, _reply, done) => {
+    const traceId = request.headers['x-trace-id'] as string | undefined;
+    const spanId = request.headers['x-span-id'] as string | undefined;
+    if (traceId) {
+      const ctx = spanId
+        ? continueTrace({ traceId, spanId })
+        : resumeTrace(traceId);
+      runWithTrace(ctx, done);
+    } else {
+      done();
+    }
+  });
 
   // Serve local files when using local storage
   if (isLocalStorage()) {
@@ -92,7 +112,6 @@ export async function startApi() {
   machinesRoutes(typed);
   artifactsRoutes(typed);
   accessKeysRoutes(typed);
-  devRoutes(typed);
   versionRoutes(typed);
   voiceRoutes(typed);
   userRoutes(typed);
@@ -100,17 +119,18 @@ export async function startApi() {
   kvRoutes(typed);
   v3SessionRoutes(typed);
   capabilitiesRoutes(typed);
+  telemetryRoutes(typed);
 
   // Metrics endpoint (integrated into main server)
   app.get('/metrics', async (_request, reply) => {
     try {
-      const prismaMetrics = await db.$metrics.prometheus();
+      const prismaMetrics = await (db as any).$metrics?.prometheus?.() ?? '';
       const appMetrics = await register.metrics();
       const combinedMetrics = prismaMetrics + '\n' + appMetrics;
       reply.type('text/plain; version=0.0.4; charset=utf-8');
       reply.send(combinedMetrics);
     } catch (error) {
-      log({ module: 'metrics', level: 'error' }, `Error generating metrics: ${error}`);
+      log.error(`Error generating metrics: ${error}`);
       reply.code(500).send('Internal Server Error');
     }
   });
@@ -126,5 +146,5 @@ export async function startApi() {
   await startSocket(typed);
 
   // End
-  log('API ready on port http://localhost:' + port);
+  log.info('API ready on port http://localhost:' + port);
 }

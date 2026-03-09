@@ -1,7 +1,8 @@
 import fastify from 'fastify';
 import { register } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/monitoring/metrics');
 
 export async function createMetricsServer() {
   const app = fastify({
@@ -11,7 +12,7 @@ export async function createMetricsServer() {
   app.get('/metrics', async (_request, reply) => {
     try {
       // Get Prisma metrics in Prometheus format
-      const prismaMetrics = await db.$metrics.prometheus();
+      const prismaMetrics = await (db as any).$metrics?.prometheus?.() ?? '';
 
       // Get custom application metrics
       const appMetrics = await register.metrics();
@@ -22,7 +23,7 @@ export async function createMetricsServer() {
       reply.type('text/plain; version=0.0.4; charset=utf-8');
       reply.send(combinedMetrics);
     } catch (error) {
-      log({ module: 'metrics', level: 'error' }, `Error generating metrics: ${error}`);
+      log.error(`Error generating metrics: ${error}`);
       reply.code(500).send('Internal Server Error');
     }
   });
@@ -37,7 +38,7 @@ export async function createMetricsServer() {
 export async function startMetricsServer(): Promise<void> {
   const enabled = process.env.METRICS_ENABLED !== 'false';
   if (!enabled) {
-    log({ module: 'metrics' }, 'Metrics server disabled');
+    log.info('Metrics server disabled');
     return;
   }
 
@@ -46,9 +47,9 @@ export async function startMetricsServer(): Promise<void> {
 
   try {
     await app.listen({ port, host: '0.0.0.0' });
-    log({ module: 'metrics' }, `Metrics server listening on port ${port}`);
+    log.info(`Metrics server listening on port ${port}`);
   } catch (error) {
-    log({ module: 'metrics', level: 'error' }, `Failed to start metrics server: ${error}`);
+    log.error(`Failed to start metrics server: ${error}`);
     throw error;
   }
 }

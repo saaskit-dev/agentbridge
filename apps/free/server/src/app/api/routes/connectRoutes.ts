@@ -7,7 +7,8 @@ import { githubDisconnect } from '@/app/github/githubDisconnect';
 import { Context } from '@/context';
 import { decryptString, encryptString } from '@/modules/encrypt';
 import { db } from '@/storage/db';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/routes/connectRoutes');
 
 export function connectRoutes(app: Fastify) {
   // Add content type parser for webhook endpoints to preserve raw body
@@ -33,9 +34,7 @@ export function connectRoutes(app: Fastify) {
       (req as any).rawBody = bodyStr;
       done(null, json);
     } catch (err: any) {
-      log(
-        { module: 'content-parser', level: 'error' },
-        `JSON parse error on ${req.method} ${req.url}: ${err.message}, body: "${body}"`
+      log.error(`JSON parse error on ${req.method} ${req.url}: ${err.message}, body: "${body}"`
       );
       err.statusCode = 400;
       done(err, undefined);
@@ -103,7 +102,7 @@ export function connectRoutes(app: Fastify) {
       // Verify the state token to get userId
       const tokenData = await auth.verifyGithubToken(state);
       if (!tokenData) {
-        log({ module: 'github-oauth' }, `Invalid state token: ${state}`);
+        log.info(`Invalid state token: ${state}`);
         return reply.redirect(
           `${process.env.APP_URL || 'https://free.saaskit.app'}?error=invalid_state`
         );
@@ -173,7 +172,7 @@ export function connectRoutes(app: Fastify) {
           `${process.env.APP_URL || 'https://free.saaskit.app'}?github=connected&user=${encodeURIComponent(userData.login)}`
         );
       } catch (error) {
-        log({ module: 'github-oauth' }, `Error in GitHub GET callback: ${error}`);
+        log.info(`Error in GitHub GET callback: ${error}`);
         return reply.redirect(
           `${process.env.APP_URL || 'https://free.saaskit.app'}?error=server_error`
         );
@@ -208,9 +207,7 @@ export function connectRoutes(app: Fastify) {
       const rawBody = (request as any).rawBody;
 
       if (!rawBody) {
-        log(
-          { module: 'github-webhook', level: 'error' },
-          'Raw body not available for webhook signature verification'
+        log.error('Raw body not available for webhook signature verification'
         );
         return reply.code(500).send({ error: 'Server configuration error' });
       }
@@ -219,7 +216,7 @@ export function connectRoutes(app: Fastify) {
       const { getWebhooks } = await import('@/modules/github');
       const webhooks = getWebhooks();
       if (!webhooks) {
-        log({ module: 'github-webhook', level: 'error' }, 'GitHub webhooks not initialized');
+        log.error('GitHub webhooks not initialized');
         return reply.code(500).send({ error: 'Webhooks not configured' });
       }
 

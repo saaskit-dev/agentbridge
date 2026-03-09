@@ -2,8 +2,10 @@ import { Socket } from 'socket.io';
 import { GitHubProfile } from '@/app/api/types';
 import { getPublicUrl } from '@/storage/files';
 import { AccountProfile } from '@/types';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+import type { WireTrace } from '@agentbridge/core/telemetry';
 
+const log = new Logger('app/events/eventRouter');
 // === CONNECTION TYPES ===
 
 export interface SessionScopedConnection {
@@ -245,6 +247,7 @@ export interface UpdatePayload {
     [key: string]: any;
   };
   createdAt: number;
+  _trace?: WireTrace;
 }
 
 export interface EphemeralPayload {
@@ -428,10 +431,24 @@ class EventRouter {
   }): void {
     const connections = this.userConnections.get(params.userId);
     if (!connections) {
-      log({ module: 'websocket', level: 'warn' }, `No connections found for user ${params.userId}`);
+      log.warn(`No connections found for user ${params.userId}`);
       return;
     }
 
+    const sessionId =
+      params.recipientFilter.type === 'all-interested-in-session'
+        ? params.recipientFilter.sessionId
+        : undefined;
+    const traceId = (params.payload as any)?._trace?.tid;
+
+    log.debug('[eventRouter] emitting event', {
+      event: params.eventName,
+      connections: connections.size,
+      ...(sessionId ? { sessionId } : {}),
+      ...(traceId ? { traceId } : {}),
+    });
+
+    let delivered = 0;
     for (const connection of connections) {
       // Skip message echo
       if (params.skipSenderConnection && connection === params.skipSenderConnection) {
@@ -444,7 +461,14 @@ class EventRouter {
       }
 
       connection.socket.emit(params.eventName, params.payload);
+      delivered += 1;
     }
+
+    log.debug('[eventRouter] event delivered', {
+      event: params.eventName,
+      delivered,
+      ...(sessionId ? { sessionId } : {}),
+    });
   }
 }
 
@@ -460,7 +484,7 @@ export function buildNewSessionUpdate(
     metadataVersion: number;
     agentState: string | null;
     agentStateVersion: number;
-    dataEncryptionKey: Uint8Array | null;
+    dataEncryptionKey: string | null;
     active: boolean;
     lastActiveAt: Date;
     createdAt: Date;
@@ -501,7 +525,8 @@ export function buildNewMessageUpdate(
   },
   sessionId: string,
   updateSeq: number,
-  updateId: string
+  updateId: string,
+  trace?: WireTrace
 ): UpdatePayload {
   return {
     id: updateId,
@@ -519,6 +544,7 @@ export function buildNewMessageUpdate(
       },
     },
     createdAt: Date.now(),
+    ...(trace ? { _trace: trace } : {}),
   };
 }
 
@@ -527,7 +553,8 @@ export function buildUpdateSessionUpdate(
   updateSeq: number,
   updateId: string,
   metadata?: { value: string; version: number },
-  agentState?: { value: string; version: number }
+  agentState?: { value: string | null; version: number },
+  trace?: WireTrace
 ): UpdatePayload {
   return {
     id: updateId,
@@ -539,6 +566,7 @@ export function buildUpdateSessionUpdate(
       agentState,
     },
     createdAt: Date.now(),
+    ...(trace ? { _trace: trace } : {}),
   };
 }
 
@@ -587,7 +615,7 @@ export function buildNewMachineUpdate(
     metadataVersion: number;
     daemonState: string | null;
     daemonStateVersion: number;
-    dataEncryptionKey: Uint8Array | null;
+    dataEncryptionKey: string | null;
     active: boolean;
     lastActiveAt: Date;
     createdAt: Date;
@@ -698,7 +726,7 @@ export function buildNewArtifactUpdate(
     headerVersion: number;
     body: Uint8Array;
     bodyVersion: number;
-    dataEncryptionKey: Uint8Array;
+    dataEncryptionKey: string;
     createdAt: Date;
     updatedAt: Date;
   },

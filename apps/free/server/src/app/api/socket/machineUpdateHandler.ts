@@ -8,9 +8,10 @@ import { machineAliveEventsCounter, websocketEventsCounter } from '@/app/monitor
 import { activityCache } from '@/app/presence/sessionCache';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
+const log = new Logger('app/api/socket/machineUpdateHandler');
 export function machineUpdateHandler(userId: string, socket: Socket) {
   socket.on('machine-alive', async (data: { machineId: string; time: number }) => {
     try {
@@ -47,7 +48,7 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
         recipientFilter: { type: 'user-scoped-only' },
       });
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error in machine-alive: ${error}`);
+      log.error(`Error in machine-alive: ${error}`);
     }
   });
 
@@ -143,7 +144,7 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
         metadata: metadata,
       });
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error in machine-update-metadata: ${error}`);
+      log.error(`Error in machine-update-metadata: ${error}`);
       if (callback) {
         callback({ result: 'error', message: 'Internal error' });
       }
@@ -244,7 +245,7 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
         daemonState: daemonState,
       });
     } catch (error) {
-      log({ module: 'websocket', level: 'error' }, `Error in machine-update-state: ${error}`);
+      log.error(`Error in machine-update-state: ${error}`);
       if (callback) {
         callback({ result: 'error', message: 'Internal error' });
       }

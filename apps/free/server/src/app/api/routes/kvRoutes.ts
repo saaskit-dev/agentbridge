@@ -4,7 +4,8 @@ import { kvBulkGet } from '@/app/kv/kvBulkGet';
 import { kvGet } from '@/app/kv/kvGet';
 import { kvList } from '@/app/kv/kvList';
 import { kvMutate } from '@/app/kv/kvMutate';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/routes/kvRoutes');
 
 export function kvRoutes(app: Fastify) {
   // GET /v1/kv/:key - Get single value
@@ -46,7 +47,7 @@ export function kvRoutes(app: Fastify) {
 
         return reply.send(result);
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to get KV value: ${error}`);
+        log.error(`Failed to get KV value: ${error}`);
         return reply.code(500).send({ error: 'Failed to get value' });
       }
     }
@@ -86,7 +87,7 @@ export function kvRoutes(app: Fastify) {
         const result = await kvList({ uid: userId }, { prefix, limit });
         return reply.send(result);
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to list KV items: ${error}`);
+        log.error(`Failed to list KV items: ${error}`);
         return reply.code(500).send({ error: 'Failed to list items' });
       }
     }
@@ -125,7 +126,7 @@ export function kvRoutes(app: Fastify) {
         const result = await kvBulkGet({ uid: userId }, keys);
         return reply.send(result);
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to bulk get KV values: ${error}`);
+        log.error(`Failed to bulk get KV values: ${error}`);
         return reply.code(500).send({ error: 'Failed to get values' });
       }
     }
@@ -195,7 +196,7 @@ export function kvRoutes(app: Fastify) {
           results: result.results!,
         });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to mutate KV values: ${error}`);
+        log.error(`Failed to mutate KV values: ${error}`);
         return reply.code(500).send({ error: 'Failed to mutate values' });
       }
     }

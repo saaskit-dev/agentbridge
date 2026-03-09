@@ -1,4 +1,6 @@
-import { log } from './log';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const log = new Logger('utils/shutdown');
 
 const shutdownHandlers = new Map<string, Array<() => Promise<void>>>();
 const shutdownController = new AbortController();
@@ -65,11 +67,11 @@ export async function awaitShutdown() {
     shutdownResolve = resolve;
 
     process.on('SIGINT', async () => {
-      log('Received SIGINT signal. Exiting...');
+      log.info('Received SIGINT signal. Exiting...');
       triggerShutdown();
     });
     process.on('SIGTERM', async () => {
-      log('Received SIGTERM signal. Exiting...');
+      log.info('Received SIGTERM signal. Exiting...');
       triggerShutdown();
     });
   });
@@ -89,23 +91,23 @@ export async function awaitShutdown() {
 
   for (const [name, handlers] of handlersSnapshot) {
     totalHandlers += handlers.length;
-    log(`Starting ${handlers.length} shutdown handlers for: ${name}`);
+    log.info(`Starting ${handlers.length} shutdown handlers for: ${name}`);
 
     handlers.forEach((handler, index) => {
       const handlerPromise = handler().then(
         () => {},
-        error => log(`Error in shutdown handler ${name}[${index}]:`, error)
+        error => log.error(`Error in shutdown handler ${name}[${index}]`, error)
       );
       allHandlers.push(handlerPromise);
     });
   }
 
   if (totalHandlers > 0) {
-    log(`Waiting for ${totalHandlers} shutdown handlers to complete...`);
+    log.info(`Waiting for ${totalHandlers} shutdown handlers to complete...`);
     const startTime = Date.now();
     await Promise.all(allHandlers);
     const duration = Date.now() - startTime;
-    log(`All ${totalHandlers} shutdown handlers completed in ${duration}ms`);
+    log.info(`All ${totalHandlers} shutdown handlers completed in ${duration}ms`);
   }
 }
 
@@ -117,7 +119,7 @@ export async function keepAlive<T>(name: string, callback: () => Promise<T>): Pr
   const promise = new Promise<void>(resolve => {
     const unsubscribe = onShutdown(`keepAlive:${name}`, async () => {
       if (!completed) {
-        log(`Waiting for keepAlive operation to complete: ${name}`);
+        log.info(`Waiting for keepAlive operation to complete: ${name}`);
         await promise;
       }
     });
