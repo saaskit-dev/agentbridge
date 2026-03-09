@@ -129,7 +129,7 @@ export const AIBackendProfileSchema = z.object({
 
   // Default permission mode for this profile
   defaultPermissionMode: z
-    .enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo'])
+    .enum(['read-only', 'accept-edits', 'yolo'])
     .optional(),
 
   // Default model mode for this profile
@@ -331,7 +331,7 @@ export const SettingsSchema = z.object({
   lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
   // Default permission mode for new sessions (开启后权限模式)
   defaultPermissionMode: z
-    .enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo'])
+    .enum(['read-only', 'accept-edits', 'yolo'])
     .describe('Default permission mode for new sessions'),
 
   profiles: z
@@ -420,7 +420,7 @@ export const settingsDefaults: Settings = {
   lastUsedPermissionMode: null,
   lastUsedModelMode: null,
   // Default permission mode (开启后权限模式)
-  defaultPermissionMode: 'yolo',
+  defaultPermissionMode: 'accept-edits',
 
   profiles: [],
   lastUsedProfile: null,
@@ -457,6 +457,35 @@ export function settingsParse(settings: unknown): Settings {
   if (parsed.data.preferredLanguage === 'zh') {
     logger.debug('[Settings Migration] Converting language code from "zh" to "zh-Hans"');
     parsed.data.preferredLanguage = 'zh-Hans';
+  }
+
+  // Migration: Convert legacy permission modes to unified 3-mode scheme
+  const migratePermissionMode = (
+    mode: string | null | undefined
+  ): 'read-only' | 'accept-edits' | 'yolo' | undefined => {
+    if (!mode) return undefined;
+    const legacyMap: Record<string, 'read-only' | 'accept-edits' | 'yolo'> = {
+      default: 'accept-edits',
+      acceptEdits: 'accept-edits',
+      bypassPermissions: 'yolo',
+      plan: 'accept-edits',
+      'safe-yolo': 'accept-edits',
+      'read-only': 'read-only',
+      yolo: 'yolo',
+      'accept-edits': 'accept-edits',
+    };
+    return legacyMap[mode];
+  };
+  if (parsed.data.defaultPermissionMode === undefined) {
+    // Might have been stripped by zod because it was a legacy value — read raw
+    const rawDefault = (settings as any).defaultPermissionMode;
+    const migrated = migratePermissionMode(rawDefault);
+    if (migrated) parsed.data.defaultPermissionMode = migrated;
+  }
+  if (parsed.data.lastUsedPermissionMode) {
+    const migrated = migratePermissionMode(parsed.data.lastUsedPermissionMode);
+    if (migrated) parsed.data.lastUsedPermissionMode = migrated;
+    else parsed.data.lastUsedPermissionMode = null;
   }
 
   // Merge defaults, parsed settings, and preserve unknown fields

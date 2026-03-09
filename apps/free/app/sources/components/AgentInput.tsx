@@ -344,16 +344,14 @@ export const AgentInput = React.memo(
       }
       return true;
     }, [props.metadata?.sandbox]);
-    const isSandboxedYoloMode =
-      isSandboxEnabled &&
-      (props.permissionMode === 'bypassPermissions' || props.permissionMode === 'yolo');
+    const isSandboxedYoloMode = isSandboxEnabled && props.permissionMode === 'yolo';
 
     const withSandboxSuffix = React.useCallback(
       (label: string, mode: PermissionMode | undefined) => {
         if (!isSandboxEnabled) {
           return label;
         }
-        if (mode === 'bypassPermissions' || mode === 'yolo') {
+        if (mode === 'yolo') {
           return `${label} (sandboxed)`;
         }
         return label;
@@ -545,12 +543,8 @@ export const AgentInput = React.memo(
           }
           // Handle Shift+Tab for permission mode switching
           if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-            const modeOrder: PermissionMode[] = isCodex
-              ? ['default', 'read-only', 'safe-yolo', 'yolo']
-              : isGemini || isOpenCode
-                ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                : ['default', 'acceptEdits', 'plan', 'bypassPermissions']; // Claude
-            const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
+            const modeOrder: PermissionMode[] = ['read-only', 'accept-edits', 'yolo'];
+            const currentIndex = modeOrder.indexOf(props.permissionMode || 'accept-edits');
             const nextIndex = (currentIndex + 1) % modeOrder.length;
             props.onPermissionModeChange(modeOrder[nextIndex]);
             hapticsLight();
@@ -610,56 +604,15 @@ export const AgentInput = React.memo(
                   {/* Permission Mode Section */}
                   <View style={styles.overlaySection}>
                     <Text style={styles.overlaySectionTitle}>
-                      {isCodex
-                        ? t('agentInput.codexPermissionMode.title')
-                        : isOpenCode
-                          ? t('agentInput.opencodePermissionMode.title')
-                          : isGemini
-                            ? t('agentInput.geminiPermissionMode.title')
-                            : t('agentInput.permissionMode.title')}
+                      {t('agentInput.permissionMode.title')}
                     </Text>
-                    {(isCodex || isGemini || isOpenCode
-                      ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
-                      : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
-                    ).map(mode => {
-                      const modeConfig = isCodex
-                        ? {
-                            default: { label: t('agentInput.codexPermissionMode.default') },
-                            'read-only': { label: t('agentInput.codexPermissionMode.readOnly') },
-                            'safe-yolo': { label: t('agentInput.codexPermissionMode.safeYolo') },
-                            yolo: { label: t('agentInput.codexPermissionMode.yolo') },
-                          }
-                        : isOpenCode
-                          ? {
-                              default: { label: t('agentInput.opencodePermissionMode.default') },
-                              'read-only': {
-                                label: t('agentInput.opencodePermissionMode.readOnly'),
-                              },
-                              'safe-yolo': {
-                                label: t('agentInput.opencodePermissionMode.safeYolo'),
-                              },
-                              yolo: { label: t('agentInput.opencodePermissionMode.yolo') },
-                            }
-                          : isGemini
-                            ? {
-                                default: { label: t('agentInput.geminiPermissionMode.default') },
-                                'read-only': {
-                                  label: t('agentInput.geminiPermissionMode.readOnly'),
-                                },
-                                'safe-yolo': {
-                                  label: t('agentInput.geminiPermissionMode.safeYolo'),
-                                },
-                                yolo: { label: t('agentInput.geminiPermissionMode.yolo') },
-                              }
-                            : {
-                                default: { label: t('agentInput.permissionMode.default') },
-                                acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
-                                plan: { label: t('agentInput.permissionMode.plan') },
-                                bypassPermissions: {
-                                  label: t('agentInput.permissionMode.bypassPermissions'),
-                                },
-                              };
-                      const config = modeConfig[mode as keyof typeof modeConfig];
+                    {(['read-only', 'accept-edits', 'yolo'] as const).map(mode => {
+                      const modeConfig: Record<PermissionMode, { label: string }> = {
+                        'read-only': { label: t('agentInput.permissionMode.readOnly') },
+                        'accept-edits': { label: t('agentInput.permissionMode.acceptEdits') },
+                        yolo: { label: t('agentInput.permissionMode.yolo') },
+                      };
+                      const config = modeConfig[mode];
                       if (!config) return null;
                       const isSelected = props.permissionMode === mode;
 
@@ -982,62 +935,24 @@ export const AgentInput = React.memo(
                       fontSize: 11,
                       color: isSandboxedYoloMode
                         ? '#4169E1'
-                        : props.permissionMode === 'acceptEdits'
-                          ? theme.colors.permission.acceptEdits
-                          : props.permissionMode === 'bypassPermissions'
-                            ? theme.colors.permission.bypass
-                            : props.permissionMode === 'plan'
-                              ? theme.colors.permission.plan
-                              : props.permissionMode === 'read-only'
-                                ? theme.colors.permission.readOnly
-                                : props.permissionMode === 'safe-yolo'
-                                  ? theme.colors.permission.safeYolo
-                                  : props.permissionMode === 'yolo'
-                                    ? theme.colors.permission.yolo
-                                    : theme.colors.textSecondary, // Use secondary text color for default
+                        : props.permissionMode === 'read-only'
+                          ? theme.colors.permission.readOnly
+                          : props.permissionMode === 'accept-edits'
+                            ? theme.colors.permission.acceptEdits
+                            : props.permissionMode === 'yolo'
+                              ? theme.colors.permission.yolo
+                              : theme.colors.textSecondary,
                       ...Typography.default(),
                     }}
                   >
                     {withSandboxSuffix(
-                      isCodex
-                        ? props.permissionMode === 'default'
-                          ? t('agentInput.codexPermissionMode.default')
-                          : props.permissionMode === 'read-only'
-                            ? t('agentInput.codexPermissionMode.badgeReadOnly')
-                            : props.permissionMode === 'safe-yolo'
-                              ? t('agentInput.codexPermissionMode.badgeSafeYolo')
-                              : props.permissionMode === 'yolo'
-                                ? t('agentInput.codexPermissionMode.badgeYolo')
-                                : ''
-                        : isOpenCode
-                          ? props.permissionMode === 'default'
-                            ? t('agentInput.opencodePermissionMode.default')
-                            : props.permissionMode === 'read-only'
-                              ? t('agentInput.opencodePermissionMode.badgeReadOnly')
-                              : props.permissionMode === 'safe-yolo'
-                                ? t('agentInput.opencodePermissionMode.badgeSafeYolo')
-                                : props.permissionMode === 'yolo'
-                                  ? t('agentInput.opencodePermissionMode.badgeYolo')
-                                  : ''
-                          : isGemini
-                            ? props.permissionMode === 'default'
-                              ? t('agentInput.geminiPermissionMode.default')
-                              : props.permissionMode === 'read-only'
-                                ? t('agentInput.geminiPermissionMode.badgeReadOnly')
-                                : props.permissionMode === 'safe-yolo'
-                                  ? t('agentInput.geminiPermissionMode.badgeSafeYolo')
-                                  : props.permissionMode === 'yolo'
-                                    ? t('agentInput.geminiPermissionMode.badgeYolo')
-                                    : ''
-                            : props.permissionMode === 'default'
-                              ? t('agentInput.permissionMode.default')
-                              : props.permissionMode === 'acceptEdits'
-                                ? t('agentInput.permissionMode.badgeAcceptAllEdits')
-                                : props.permissionMode === 'bypassPermissions'
-                                  ? t('agentInput.permissionMode.badgeBypassAllPermissions')
-                                  : props.permissionMode === 'plan'
-                                    ? t('agentInput.permissionMode.badgePlanMode')
-                                    : '',
+                      props.permissionMode === 'read-only'
+                        ? t('agentInput.permissionMode.badgeReadOnly')
+                        : props.permissionMode === 'accept-edits'
+                          ? t('agentInput.permissionMode.badgeAcceptEdits')
+                          : props.permissionMode === 'yolo'
+                            ? t('agentInput.permissionMode.badgeYolo')
+                            : '',
                       props.permissionMode
                     )}
                   </Text>

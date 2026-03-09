@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
   permissionMode: z
-    .enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo'])
+    .enum(['read-only', 'accept-edits', 'yolo'])
     .optional(), // Permission mode for this message
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)

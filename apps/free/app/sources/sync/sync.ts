@@ -487,15 +487,10 @@ class Sync {
     const flavor = session.metadata?.flavor;
     const sandboxEnabled = isSandboxEnabled(session.metadata);
     // Read permission mode from session state.
-    // If sandbox is enabled and mode is default/missing, force bypassPermissions.
-    // Otherwise fall back to the global defaultPermissionMode setting.
-    const globalDefault = storage.getState().settings.defaultPermissionMode ?? 'default';
+    // If sandbox is enabled, force yolo. Otherwise fall back to global default.
+    const globalDefault = storage.getState().settings.defaultPermissionMode ?? 'accept-edits';
     const permissionMode: PermissionMode =
-      session.permissionMode && session.permissionMode !== 'default'
-        ? session.permissionMode
-        : sandboxEnabled
-          ? 'bypassPermissions'
-          : globalDefault;
+      session.permissionMode || (sandboxEnabled ? 'yolo' : globalDefault);
 
     // Read model mode - for Gemini, default to gemini-2.5-pro if not set
     // Read model mode - for Gemini, default to gemini-2.5-pro if not set. OpenCode uses profile config.

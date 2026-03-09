@@ -12,6 +12,7 @@ import { SDKToLogConverter } from './utils/sdkToLogConverter';
 import { RawJSONLines } from '@/claude/types';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { RemoteModeDisplay } from '@/ui/ink/RemoteModeDisplay';
+import type { PermissionMode } from '@/api/types';
 import { Logger } from '@agentbridge/core/telemetry';
 import { formatClaudeMessageForInk } from '@/ui/messageFormatterInk';
 import { Future } from '@/utils/future';
@@ -20,7 +21,7 @@ const logger = new Logger('claude/claudeRemoteLauncher');
 interface PermissionsField {
   date: number;
   result: 'approved' | 'denied';
-  mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+  mode?: PermissionMode;
   allowedTools?: string[];
 }
 

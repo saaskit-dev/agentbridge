@@ -187,7 +187,7 @@ export async function runOpenCode(opts: {
     }
 
     const mode: EnhancedMode = {
-      permissionMode: messagePermissionMode || 'default',
+      permissionMode: messagePermissionMode || 'accept-edits',
       hash: '',
     };
     mode.hash = hashObject({ permissionMode: mode.permissionMode });

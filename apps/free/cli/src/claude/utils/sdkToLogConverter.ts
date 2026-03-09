@@ -52,7 +52,7 @@ export class SDKToLogConverter {
     string,
     {
       approved: boolean;
-      mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+      mode?: 'read-only' | 'accept-edits' | 'yolo';
       reason?: string;
     }
   >;
@@ -64,7 +64,7 @@ export class SDKToLogConverter {
       string,
       {
         approved: boolean;
-        mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+        mode?: 'read-only' | 'accept-edits' | 'yolo';
         reason?: string;
       }
     >
@@ -351,7 +351,7 @@ export function convertSDKToLog(
     string,
     {
       approved: boolean;
-      mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+      mode?: 'read-only' | 'accept-edits' | 'yolo';
       reason?: string;
     }
   >

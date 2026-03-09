@@ -5,33 +5,25 @@ import type { QueryOptions } from '@/claude/sdk';
 export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']>;
 
 /**
- * Map any PermissionMode (7 modes) to a Claude-compatible mode (4 modes)
- * This is the ONLY place where Codex modes are mapped to Claude equivalents.
+ * Map unified PermissionMode to Claude SDK values at the SDK boundary.
  *
  * Mapping:
- * - yolo → bypassPermissions (both skip all permissions)
- * - safe-yolo → default (ask for permissions)
- * - read-only → default (Claude doesn't support read-only)
- *
- * Claude modes pass through unchanged:
- * - default, acceptEdits, bypassPermissions, plan
+ * - read-only    → default (Claude has no read-only; ask for every action)
+ * - accept-edits → acceptEdits
+ * - yolo         → bypassPermissions
  */
 export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode {
-  const codexToClaudeMap: Record<string, ClaudeSdkPermissionMode> = {
-    yolo: 'bypassPermissions',
-    'safe-yolo': 'default',
+  const map: Record<PermissionMode, ClaudeSdkPermissionMode> = {
     'read-only': 'default',
+    'accept-edits': 'acceptEdits',
+    yolo: 'bypassPermissions',
   };
-  return codexToClaudeMap[mode] ?? (mode as ClaudeSdkPermissionMode);
+  return map[mode] ?? 'default';
 }
 
 const VALID_PERMISSION_MODES: readonly PermissionMode[] = [
-  'default',
-  'acceptEdits',
-  'bypassPermissions',
-  'plan',
   'read-only',
-  'safe-yolo',
+  'accept-edits',
   'yolo',
 ] as const;
 
@@ -84,7 +76,7 @@ export function resolveInitialClaudePermissionMode(
   claudeArgs?: string[]
 ): PermissionMode | undefined {
   if (claudeArgs?.includes('--dangerously-skip-permissions')) {
-    return 'bypassPermissions';
+    return 'yolo';
   }
   return extractPermissionModeFromClaudeArgs(claudeArgs) ?? optionMode;
 }
@@ -100,5 +92,5 @@ export function applySandboxPermissionPolicy(
   if (!sandboxEnabled) {
     return mode;
   }
-  return 'bypassPermissions';
+  return 'yolo';
 }

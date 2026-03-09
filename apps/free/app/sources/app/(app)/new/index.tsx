@@ -393,36 +393,11 @@ function NewSessionWizard() {
 
   const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
   const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-    // Initialize permission mode with priority:
-    // 1. lastUsedPermissionMode (if explicitly set to a non-default value)
-    // 2. defaultPermissionMode from global settings (sync read from storage to avoid undefined on first render)
-    // 3. 'default' as ultimate fallback
-    const validClaudeModes: PermissionMode[] = [
-      'default',
-      'acceptEdits',
-      'plan',
-      'bypassPermissions',
-    ];
-    const validAcpModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo']; // codex, gemini, opencode
-
-    // Only use lastUsedPermissionMode if it was explicitly set to a non-default value
-    if (lastUsedPermissionMode && lastUsedPermissionMode !== 'default') {
-      if (
-        (agentType === 'codex' || agentType === 'gemini' || agentType === 'opencode') &&
-        validAcpModes.includes(lastUsedPermissionMode as PermissionMode)
-      ) {
-        return lastUsedPermissionMode as PermissionMode;
-      } else if (
-        agentType === 'claude' &&
-        validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)
-      ) {
-        return lastUsedPermissionMode as PermissionMode;
-      }
+    const validModes: PermissionMode[] = ['read-only', 'accept-edits', 'yolo'];
+    if (lastUsedPermissionMode && validModes.includes(lastUsedPermissionMode as PermissionMode)) {
+      return lastUsedPermissionMode as PermissionMode;
     }
-    // Fall back to the global default permission mode setting
-    // Use sync read from storage to ensure we have a value even on first render
-    const globalDefault = storage.getState().settings.defaultPermissionMode;
-    return (globalDefault as PermissionMode) ?? 'default';
+    return storage.getState().settings.defaultPermissionMode ?? 'accept-edits';
   });
 
   // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below (lines ~670-681)
@@ -486,9 +461,7 @@ function NewSessionWizard() {
 
   const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
     setPermissionMode(mode);
-    // Save the new selection immediately; store null for 'default' so it falls through
-    // to the global defaultPermissionMode setting next time
-    sync.applySettings({ lastUsedPermissionMode: mode === 'default' ? null : mode });
+    sync.applySettings({ lastUsedPermissionMode: mode });
   }, []);
 
   //
@@ -822,25 +795,7 @@ function NewSessionWizard() {
     ]
   );
 
-  // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
-  React.useEffect(() => {
-    const validClaudeModes: PermissionMode[] = [
-      'default',
-      'acceptEdits',
-      'plan',
-      'bypassPermissions',
-    ];
-    const validAcpModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo']; // codex, gemini, opencode
-
-    const isValidForCurrentAgent =
-      agentType === 'codex' || agentType === 'gemini' || agentType === 'opencode'
-        ? validAcpModes.includes(permissionMode)
-        : validClaudeModes.includes(permissionMode);
-
-    if (!isValidForCurrentAgent) {
-      setPermissionMode((defaultPermissionMode as PermissionMode) ?? 'default');
-    }
-  }, [agentType, permissionMode, defaultPermissionMode]);
+  // Permission modes are now unified across all agents - no reset needed on agent type change
 
   // Reset model mode when agent type changes to appropriate default
   React.useEffect(() => {
@@ -1196,7 +1151,7 @@ function NewSessionWizard() {
         recentMachinePaths: updatedPaths,
         lastUsedAgent: agentType,
         lastUsedProfile: selectedProfileId,
-        lastUsedPermissionMode: permissionMode === 'default' ? null : permissionMode,
+        lastUsedPermissionMode: permissionMode,
         lastUsedModelMode: modelMode,
       });
 
@@ -2427,59 +2382,27 @@ function NewSessionWizard() {
                   <Text style={styles.sectionHeader}>4. Permission Mode</Text>
                 </View>
                 <ItemGroup title="">
-                  {(agentType === 'codex'
-                    ? [
-                        {
-                          value: 'default' as PermissionMode,
-                          label: 'Default',
-                          description: 'Ask for permissions',
-                          icon: 'shield-outline',
-                        },
-                        {
-                          value: 'read-only' as PermissionMode,
-                          label: 'Read Only',
-                          description: 'Read-only mode',
-                          icon: 'eye-outline',
-                        },
-                        {
-                          value: 'safe-yolo' as PermissionMode,
-                          label: 'Safe YOLO',
-                          description: 'Workspace write with approval',
-                          icon: 'shield-checkmark-outline',
-                        },
-                        {
-                          value: 'yolo' as PermissionMode,
-                          label: 'YOLO',
-                          description: 'Full access, skip permissions',
-                          icon: 'flash-outline',
-                        },
-                      ]
-                    : [
-                        {
-                          value: 'default' as PermissionMode,
-                          label: 'Default',
-                          description: 'Ask for permissions',
-                          icon: 'shield-outline',
-                        },
-                        {
-                          value: 'acceptEdits' as PermissionMode,
-                          label: 'Accept Edits',
-                          description: 'Auto-approve edits',
-                          icon: 'checkmark-outline',
-                        },
-                        {
-                          value: 'plan' as PermissionMode,
-                          label: 'Plan',
-                          description: 'Plan before executing',
-                          icon: 'list-outline',
-                        },
-                        {
-                          value: 'bypassPermissions' as PermissionMode,
-                          label: 'Yolo',
-                          description: 'Skip all permissions',
-                          icon: 'flash-outline',
-                        },
-                      ]
+                  {(
+                    [
+                      {
+                        value: 'read-only' as PermissionMode,
+                        label: 'Read Only',
+                        description: 'No writes allowed',
+                        icon: 'eye-outline',
+                      },
+                      {
+                        value: 'accept-edits' as PermissionMode,
+                        label: 'Accept Edits',
+                        description: 'Auto-approve file edits',
+                        icon: 'checkmark-outline',
+                      },
+                      {
+                        value: 'yolo' as PermissionMode,
+                        label: 'YOLO',
+                        description: 'Skip all permissions',
+                        icon: 'flash-outline',
+                      },
+                    ] as const
                   ).map((option, index, array) => (
                     <Item
                       key={option.value}
