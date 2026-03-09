@@ -84,7 +84,8 @@ fi
 # ── Install dependencies ────────────────────────────────────────────────────
 
 info "Installing dependencies..."
-pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+pnpm install --frozen-lockfile --filter @agentbridge/core --filter @free/cli 2>/dev/null || \
+pnpm install --filter @agentbridge/core --filter @free/cli
 
 # ── Build ────────────────────────────────────────────────────────────────────
 

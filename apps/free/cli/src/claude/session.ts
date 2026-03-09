@@ -1,5 +1,4 @@
-import { EnhancedMode } from './loop';
-import type { JsRuntime } from './runClaude';
+import type { EnhancedMode, JsRuntime } from './sessionTypes';
 import { ApiClient, ApiSessionClient } from '@/lib';
 import type { SandboxConfig } from '@/persistence';
 import { Logger } from '@agentbridge/core/telemetry';

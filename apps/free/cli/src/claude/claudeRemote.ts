@@ -1,6 +1,5 @@
 import { join, resolve } from 'node:path';
-import { EnhancedMode } from './loop';
-import type { JsRuntime } from './runClaude';
+import type { EnhancedMode, JsRuntime } from './sessionTypes';
 import { PermissionResult } from './sdk/types';
 import { claudeCheckSession } from './utils/claudeCheckSession';
 import { getProjectPath } from './utils/path';

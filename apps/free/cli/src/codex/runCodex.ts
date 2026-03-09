@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import { resolve, join } from 'node:path';
+import chalk from 'chalk';
 import { render } from 'ink';
 import React from 'react';
 import packageJson from '../../package.json';
@@ -107,6 +108,9 @@ export async function runCodex(opts: {
 
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Codex');
+
+  // Show server URL to user
+  console.log(chalk.gray(`Connecting to: ${chalk.cyan(configuration.serverUrl)}`));
 
   const api = await ApiClient.create(opts.credentials);
 
