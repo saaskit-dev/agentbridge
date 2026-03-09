@@ -5,7 +5,7 @@
  * for handling different agent behaviors.
  */
 
-import type { AgentMessage } from './agent';
+import type { AgentMessage } from '../types/messages';
 
 /** Tool name pattern for extraction from toolCallId */
 export interface ToolPattern {
