@@ -1,4 +1,5 @@
 import { githubDisconnect } from './githubDisconnect';
+import { Prisma } from '@prisma/client';
 import { GitHubProfile } from '@/app/api/types';
 import { buildUpdateAccountUpdate, eventRouter } from '@/app/events/eventRouter';
 import { Context } from '@/context';
@@ -72,12 +73,12 @@ export async function githubConnect(
     await tx.githubUser.upsert({
       where: { id: githubUserId },
       update: {
-        profile: githubProfile,
+        profile: githubProfile as unknown as Prisma.InputJsonValue,
         token: encryptString(['user', userId, 'github', 'token'], accessToken),
       },
       create: {
         id: githubUserId,
-        profile: githubProfile,
+        profile: githubProfile as unknown as Prisma.InputJsonValue,
         token: encryptString(['user', userId, 'github', 'token'], accessToken),
       },
     });

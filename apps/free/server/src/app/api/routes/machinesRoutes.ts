@@ -4,9 +4,10 @@ import { eventRouter } from '@/app/events/eventRouter';
 import { buildNewMachineUpdate, buildUpdateMachineUpdate } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
+const log = new Logger('app/api/routes/machinesRoutes');
 export function machinesRoutes(app: Fastify) {
   app.post(
     '/v1/machines',
@@ -35,7 +36,7 @@ export function machinesRoutes(app: Fastify) {
 
       if (machine) {
         // Machine exists - just return it
-        log({ module: 'machines', machineId: id, userId }, 'Found existing machine');
+        log.info('Found existing machine', { machineId: id, userId });
         return reply.send({
           machine: {
             id: machine.id,
@@ -52,7 +53,7 @@ export function machinesRoutes(app: Fastify) {
         });
       } else {
         // Create new machine
-        log({ module: 'machines', machineId: id, userId }, 'Creating new machine');
+        log.info('Creating new machine', { machineId: id, userId });
 
         const newMachine = await db.machine.create({
           data: {

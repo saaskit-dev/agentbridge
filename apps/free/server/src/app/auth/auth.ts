@@ -1,5 +1,6 @@
 import * as privacyKit from 'privacy-kit';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/auth/auth');
 
 interface TokenCacheEntry {
   userId: string;
@@ -23,7 +24,7 @@ class AuthModule {
       return; // Already initialized
     }
 
-    log({ module: 'auth' }, 'Initializing auth module...');
+    log.info('Initializing auth module...');
 
     const generator = await privacyKit.createPersistentTokenGenerator({
       service: 'free',
@@ -48,7 +49,7 @@ class AuthModule {
 
     this.tokens = { generator, verifier, githubVerifier, githubGenerator };
 
-    log({ module: 'auth' }, 'Auth module initialized');
+    log.info('Auth module initialized');
   }
 
   async createToken(userId: string, extras?: any): Promise<string> {
@@ -106,7 +107,7 @@ class AuthModule {
 
       return { userId, extras };
     } catch (error) {
-      log({ module: 'auth', level: 'error' }, `Token verification failed: ${error}`);
+      log.error(`Token verification failed: ${error}`);
       return null;
     }
   }
@@ -120,7 +121,7 @@ class AuthModule {
       }
     }
 
-    log({ module: 'auth' }, `Invalidated tokens for user: ${userId}`);
+    log.info(`Invalidated tokens for user: ${userId}`);
   }
 
   invalidateToken(token: string): void {
@@ -169,7 +170,7 @@ class AuthModule {
 
       return { userId: verified.user as string };
     } catch (error) {
-      log({ module: 'auth', level: 'error' }, `GitHub token verification failed: ${error}`);
+      log.error(`GitHub token verification failed: ${error}`);
       return null;
     }
   }
@@ -179,7 +180,7 @@ class AuthModule {
     // Note: Since tokens are cached "forever" as requested,
     // we don't do automatic cleanup. This method exists if needed later.
     const stats = this.getCacheStats();
-    log({ module: 'auth' }, `Token cache size: ${stats.size} entries`);
+    log.info(`Token cache size: ${stats.size} entries`);
   }
 }
 

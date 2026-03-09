@@ -2,9 +2,10 @@ import { eventRouter, buildDeleteSessionUpdate } from '@/app/events/eventRouter'
 import { Context } from '@/context';
 import { inTx, afterTx } from '@/storage/inTx';
 import { allocateUserSeq } from '@/storage/seq';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
+const log = new Logger('app/session/sessionDelete');
 /**
  * Delete a session and all its related data.
  * Handles:
@@ -29,14 +30,7 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
     });
 
     if (!session) {
-      log(
-        {
-          module: 'session-delete',
-          userId: ctx.uid,
-          sessionId,
-        },
-        `Session not found or not owned by user`
-      );
+      log.info('Session not found or not owned by user', { userId: ctx.uid, sessionId });
       return false;
     }
 
@@ -47,72 +41,32 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
     const deletedMessages = await tx.sessionMessage.deleteMany({
       where: { sessionId },
     });
-    log(
-      {
-        module: 'session-delete',
-        userId: ctx.uid,
-        sessionId,
-        deletedCount: deletedMessages.count,
-      },
-      `Deleted ${deletedMessages.count} session messages`
-    );
+    log.info(`Deleted ${deletedMessages.count} session messages`, { userId: ctx.uid, sessionId, deletedCount: deletedMessages.count });
 
     // 2. Delete usage reports
     const deletedReports = await tx.usageReport.deleteMany({
       where: { sessionId },
     });
-    log(
-      {
-        module: 'session-delete',
-        userId: ctx.uid,
-        sessionId,
-        deletedCount: deletedReports.count,
-      },
-      `Deleted ${deletedReports.count} usage reports`
-    );
+    log.info(`Deleted ${deletedReports.count} usage reports`, { userId: ctx.uid, sessionId, deletedCount: deletedReports.count });
 
     // 3. Delete access keys
     const deletedAccessKeys = await tx.accessKey.deleteMany({
       where: { sessionId },
     });
-    log(
-      {
-        module: 'session-delete',
-        userId: ctx.uid,
-        sessionId,
-        deletedCount: deletedAccessKeys.count,
-      },
-      `Deleted ${deletedAccessKeys.count} access keys`
-    );
+    log.info(`Deleted ${deletedAccessKeys.count} access keys`, { userId: ctx.uid, sessionId, deletedCount: deletedAccessKeys.count });
 
     // 4. Delete the session itself
     await tx.session.delete({
       where: { id: sessionId },
     });
-    log(
-      {
-        module: 'session-delete',
-        userId: ctx.uid,
-        sessionId,
-      },
-      `Session deleted successfully`
-    );
+    log.info('Session deleted successfully', { userId: ctx.uid, sessionId });
 
     // Send notification after transaction commits
     afterTx(tx, async () => {
       const updSeq = await allocateUserSeq(ctx.uid);
       const updatePayload = buildDeleteSessionUpdate(sessionId, updSeq, randomKeyNaked(12));
 
-      log(
-        {
-          module: 'session-delete',
-          userId: ctx.uid,
-          sessionId,
-          updateType: 'delete-session',
-          updatePayload: JSON.stringify(updatePayload),
-        },
-        `Emitting delete-session update to user-scoped connections`
-      );
+      log.info('Emitting delete-session update to user-scoped connections', { userId: ctx.uid, sessionId });
 
       eventRouter.emitUpdate({
         userId: ctx.uid,

@@ -1,3 +1,6 @@
+import { createRequire } from 'module';
+import { homedir } from 'os';
+import { join } from 'path';
 import { auth } from './app/auth/auth';
 import { startTimeout } from './app/presence/timeout';
 import { initEncrypt } from './modules/encrypt';
@@ -7,8 +10,88 @@ import { loadFiles } from './storage/files';
 import { startApi } from '@/app/api/api';
 import { startDatabaseMetricsUpdater } from '@/app/monitoring/metrics2';
 import { activityCache } from '@/app/presence/sessionCache';
-import { log } from '@/utils/log';
+import {
+  Logger,
+  getCollector,
+  isCollectorReady,
+  initTelemetry,
+  RemoteSink,
+  NewRelicBackend,
+  setGlobalContextProvider,
+  type LogSink,
+} from '@agentbridge/core/telemetry';
+import { getCurrentTrace } from './utils/requestTrace';
+import { FileSink, cleanupOldLogs } from '@agentbridge/core/telemetry/node';
+import { shutdownRelay } from '@/utils/telemetryRelay';
 import { awaitShutdown, onShutdown, triggerShutdown, isShuttingDown } from '@/utils/shutdown';
+
+// ─── Telemetry initialization ────────────────────────────────────────────────
+
+function getServerVersion(): string {
+  try {
+    const require = createRequire(import.meta.url);
+    return require('../package.json').version || 'unknown';
+  } catch {
+    return process.env.npm_package_version || 'unknown';
+  }
+}
+
+function getLogsDir(): string {
+  const freeHomeDir = process.env.FREE_HOME_DIR
+    ? process.env.FREE_HOME_DIR.replace(/^~/, homedir())
+    : join(homedir(), '.free');
+  return join(freeHomeDir, 'logs');
+}
+
+const logsDir = getLogsDir();
+
+const sinks: LogSink[] = [
+  new FileSink({
+    dir: logsDir,
+    prefix: 'server',
+    bufferFlushMs: 100,
+  }),
+];
+
+const nrLicenseKey = process.env.NEW_RELIC_LICENSE_KEY;
+if (nrLicenseKey) {
+  sinks.push(
+    new RemoteSink({
+      backend: new NewRelicBackend({
+        licenseKey: nrLicenseKey,
+        region: (process.env.NEW_RELIC_REGION as 'us' | 'eu') || 'us',
+      }),
+      metadata: {
+        deviceId: `server-${process.pid}`,
+        appVersion: getServerVersion(),
+        layer: 'server',
+      },
+    })
+  );
+}
+
+initTelemetry({
+  layer: 'server',
+  sinks,
+  minLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'debug',
+  sanitize: process.env.DEBUG ? false : true,
+  // RFC §17.10: throttle high-frequency streaming events (text_delta fires 10-50x/sec)
+  // text_complete and thinking_delta are infrequent so they remain at the global level.
+  componentLevels: {
+    'app/api/socket/streamingHandler': 'warn',
+  },
+});
+
+setImmediate(() => cleanupOldLogs({ dir: logsDir }));
+
+// Wire per-request/per-socket trace context into all Logger calls
+setGlobalContextProvider(getCurrentTrace);
+
+// ─── Logger ──────────────────────────────────────────────────────────────────
+
+const log = new Logger('main');
+
+// ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
   // Storage
@@ -19,6 +102,10 @@ async function main() {
   onShutdown('activity-cache', async () => {
     activityCache.shutdown();
   });
+  onShutdown('telemetry', async () => {
+    if (isCollectorReady()) await getCollector().close();
+  });
+  onShutdown('telemetry-relay', shutdownRelay);
 
   // Initialize auth module
   await initEncrypt();
@@ -38,118 +125,61 @@ async function main() {
   // Ready
   //
 
-  log('Ready');
+  log.info('Ready');
   await awaitShutdown();
-  log('Shutting down...');
+  log.info('Shutting down...');
 }
 
 // Process-level error handling
 let processExitScheduled = false;
 
-async function gracefulExit(reason: string, error?: Error): Promise<void> {
+async function gracefulExit(reason: string): Promise<void> {
   if (processExitScheduled || isShuttingDown()) {
     return;
   }
   processExitScheduled = true;
 
-  log(
-    {
-      module: 'process-error',
-      level: 'error',
-      stack: error?.stack,
-      name: error?.name,
-    },
-    `Graceful exit triggered: ${reason}`
-  );
+  log.error(`Graceful exit triggered: ${reason}`);
 
   // Trigger shutdown handlers
   triggerShutdown();
 
   // Force exit after 5 seconds if cleanup hangs
   setTimeout(() => {
-    log(
-      {
-        module: 'process-error',
-        level: 'error',
-      },
-      'Forcing exit after timeout'
-    );
+    log.error('Forcing exit after timeout');
     process.exit(1);
   }, 5000);
 }
 
 process.on('uncaughtException', error => {
-  log(
-    {
-      module: 'process-error',
-      level: 'error',
-      stack: error.stack,
-      name: error.name,
-    },
-    `Uncaught Exception: ${error.message}`
-  );
-
-  console.error('Uncaught Exception:', error);
-  gracefulExit('uncaughtException', error);
+  log.error(`Uncaught Exception: ${error.message}`);
+  log.error('Uncaught Exception (full):', { stack: error.stack });
+  gracefulExit('uncaughtException');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   const errorMsg = reason instanceof Error ? reason.message : String(reason);
-  const errorStack = reason instanceof Error ? reason.stack : undefined;
-
-  log(
-    {
-      module: 'process-error',
-      level: 'error',
-      stack: errorStack,
-      reason: String(reason),
-    },
-    `Unhandled Rejection: ${errorMsg}`
-  );
-
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  const error = reason instanceof Error ? reason : new Error(String(reason));
-  gracefulExit('unhandledRejection', error);
+  log.error(`Unhandled Rejection: ${errorMsg}`);
+  log.error('Unhandled Rejection (full):', { reason: String(reason) });
+  gracefulExit('unhandledRejection');
 });
 
 process.on('warning', warning => {
-  log(
-    {
-      module: 'process-warning',
-      level: 'warn',
-      name: warning.name,
-      stack: warning.stack,
-    },
-    `Process Warning: ${warning.message}`
-  );
+  log.warn(`Process Warning: ${warning.message}`);
 });
 
 // Log when the process is about to exit
 process.on('exit', code => {
   if (code !== 0) {
-    log(
-      {
-        module: 'process-exit',
-        level: 'error',
-        exitCode: code,
-      },
-      `Process exiting with code: ${code}`
-    );
+    log.error(`Process exiting with code: ${code}`);
   } else {
-    log(
-      {
-        module: 'process-exit',
-        level: 'info',
-        exitCode: code,
-      },
-      'Process exiting normally'
-    );
+    log.info('Process exiting normally', { exitCode: code });
   }
 });
 
 main()
   .catch(e => {
-    console.error(e);
+    log.error('main() fatal error:', { error: String(e) });
     process.exit(1);
   })
   .then(() => {

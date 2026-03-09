@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { Fastify } from '../types';
 import { db } from '@/storage/db';
-import { log } from '@/utils/log';
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('app/api/routes/accessKeysRoutes');
 
 export function accessKeysRoutes(app: Fastify) {
   // Get Access Key API
@@ -77,7 +78,7 @@ export function accessKeysRoutes(app: Fastify) {
           },
         });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to get access key: ${error}`);
+        log.error(`Failed to get access key: ${error}`);
         return reply.code(500).send({ error: 'Failed to get access key' });
       }
     }
@@ -167,7 +168,7 @@ export function accessKeysRoutes(app: Fastify) {
           },
         });
 
-        log({ module: 'access-keys', userId, sessionId, machineId }, 'Created new access key');
+        log.info('Created new access key', { userId, sessionId, machineId });
 
         return reply.send({
           success: true,
@@ -179,7 +180,7 @@ export function accessKeysRoutes(app: Fastify) {
           },
         });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to create access key: ${error}`);
+        log.error(`Failed to create access key: ${error}`);
         return reply.code(500).send({ error: 'Failed to create access key' });
       }
     }
@@ -287,17 +288,14 @@ export function accessKeysRoutes(app: Fastify) {
           });
         }
 
-        log(
-          { module: 'access-keys', userId, sessionId, machineId },
-          `Updated access key to version ${expectedVersion + 1}`
-        );
+        log.info(`Updated access key to version ${expectedVersion + 1}`, { userId, sessionId, machineId });
 
         return reply.send({
           success: true,
           version: expectedVersion + 1,
         });
       } catch (error) {
-        log({ module: 'api', level: 'error' }, `Failed to update access key: ${error}`);
+        log.error(`Failed to update access key: ${error}`);
         return reply.code(500).send({
           success: false,
           error: 'Failed to update access key',

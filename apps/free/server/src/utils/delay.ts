@@ -1,4 +1,4 @@
-import { warn } from './log';
+import { Logger } from '@agentbridge/core/telemetry';
 
 export async function delay(ms: number, signal?: AbortSignal): Promise<void> {
   if (!signal) {

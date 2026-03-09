@@ -1,4 +1,4 @@
-import { PostgresAdapter } from '@socket.io/postgres-adapter';
+import { createAdapter } from '@socket.io/postgres-adapter';
 import { Pool } from 'pg';
 import { Server, Socket } from 'socket.io';
 import {
@@ -21,9 +21,11 @@ import {
   ClientConnection,
   eventRouter,
 } from '@/app/events/eventRouter';
-import { log } from '@/utils/log';
+import { Logger, continueTrace } from '@agentbridge/core/telemetry';
+import { runWithTrace } from '@/utils/requestTrace';
 import { onShutdown } from '@/utils/shutdown';
 
+const log = new Logger('app/api/socket');
 export async function startSocket(app: Fastify) {
   const io = new Server(app.server, {
     cors: {
@@ -49,26 +51,20 @@ export async function startSocket(app: Fastify) {
       const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
       });
-      io.adapter(PostgresAdapter(pool));
-      log({ module: 'websocket' }, 'PostgreSQL adapter enabled for multi-instance support');
+      io.adapter(createAdapter(pool));
+      log.info('PostgreSQL adapter enabled for multi-instance support');
     } catch (error) {
-      log(
-        { module: 'websocket', level: 'error' },
-        `Failed to initialize PostgreSQL adapter: ${error}`
+      log.error(`Failed to initialize PostgreSQL adapter: ${error}`
       );
     }
   } else {
-    log(
-      { module: 'websocket' },
-      'Running in single-instance mode (PGlite or no external PostgreSQL)'
+    log.info('Running in single-instance mode (PGlite or no external PostgreSQL)'
     );
   }
 
   const rpcListeners = new Map<string, Map<string, Socket>>();
   io.on('connection', async socket => {
-    log(
-      { module: 'websocket', level: 'debug' },
-      `New connection attempt from socket: ${socket.id}`
+    log.debug(`New connection attempt from socket: ${socket.id}`
     );
     const token = socket.handshake.auth.token as string;
     const clientType = socket.handshake.auth.clientType as
@@ -80,7 +76,7 @@ export async function startSocket(app: Fastify) {
     const machineId = socket.handshake.auth.machineId as string | undefined;
 
     if (!token) {
-      log({ module: 'websocket', level: 'debug' }, `No token provided`);
+      log.debug(`No token provided`);
       socket.emit('error', { message: 'Missing authentication token' });
       socket.disconnect();
       return;
@@ -88,7 +84,7 @@ export async function startSocket(app: Fastify) {
 
     // Validate session-scoped clients have sessionId
     if (clientType === 'session-scoped' && !sessionId) {
-      log({ module: 'websocket', level: 'debug' }, `Session-scoped client missing sessionId`);
+      log.debug(`Session-scoped client missing sessionId`);
       socket.emit('error', { message: 'Session ID required for session-scoped clients' });
       socket.disconnect();
       return;
@@ -96,7 +92,7 @@ export async function startSocket(app: Fastify) {
 
     // Validate machine-scoped clients have machineId
     if (clientType === 'machine-scoped' && !machineId) {
-      log({ module: 'websocket', level: 'debug' }, `Machine-scoped client missing machineId`);
+      log.debug(`Machine-scoped client missing machineId`);
       socket.emit('error', { message: 'Machine ID required for machine-scoped clients' });
       socket.disconnect();
       return;
@@ -104,16 +100,14 @@ export async function startSocket(app: Fastify) {
 
     const verified = await auth.verifyToken(token);
     if (!verified) {
-      log({ module: 'websocket', level: 'debug' }, `Invalid token provided`);
+      log.debug(`Invalid token provided`);
       socket.emit('error', { message: 'Invalid authentication token' });
       socket.disconnect();
       return;
     }
 
     const userId = verified.userId;
-    log(
-      { module: 'websocket' },
-      `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`
+    log.info(`Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`
     );
 
     // Store connection based on type
@@ -161,7 +155,7 @@ export async function startSocket(app: Fastify) {
       eventRouter.removeConnection(userId, connection);
       decrementWebSocketConnection(connection.connectionType);
 
-      log({ module: 'websocket' }, `User disconnected: ${userId}`);
+      log.info(`User disconnected: ${userId}`);
 
       // Broadcast daemon offline status
       if (connection.connectionType === 'machine-scoped') {
@@ -175,6 +169,24 @@ export async function startSocket(app: Fastify) {
           payload: machineActivity,
           recipientFilter: { type: 'user-scoped-only' },
         });
+      }
+    });
+
+    // Propagate _trace from incoming socket events into AsyncLocalStorage so every
+    // Logger call inside any handler automatically carries the traceId.
+    // This runs before ALL event handlers on this socket — no per-handler changes needed.
+    socket.use(([_event, data], next) => {
+      const wire = data && typeof data === 'object' ? (data as any)._trace : undefined;
+      if (wire && typeof wire.tid === 'string' && typeof wire.sid === 'string') {
+        const ctx = continueTrace({
+          traceId: wire.tid,
+          spanId: wire.sid,
+          ...(wire.ses ? { sessionId: wire.ses } : {}),
+          ...(wire.mid ? { machineId: wire.mid } : {}),
+        });
+        runWithTrace(ctx, next);
+      } else {
+        next();
       }
     });
 
@@ -193,7 +205,7 @@ export async function startSocket(app: Fastify) {
     accessKeyHandler(userId, socket);
     streamingHandler(userId, socket, connection);
     // Ready
-    log({ module: 'websocket' }, `User connected: ${userId}`);
+    log.info(`User connected: ${userId}`);
   });
 
   onShutdown('api', async () => {
