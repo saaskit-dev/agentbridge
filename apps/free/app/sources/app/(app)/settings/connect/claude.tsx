@@ -1,69 +1,11 @@
-import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { View } from 'react-native';
 import { Platform } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { useAuth } from '@/auth/AuthContext';
-import { OAuthView } from '@/components/OAuthView';
 import { Text } from '@/components/StyledText';
-import { Modal } from '@/modal';
-import { connectService } from '@/sync/apiServices';
-import { sync } from '@/sync/sync';
-import { t } from '@/text';
-import { buildAuthorizationUrl, ClaudeAuthTokens, exchangeCodeForTokens } from '@/utils/oauth';
-import { Logger } from '@agentbridge/core/telemetry';
-const logger = new Logger('app/settings/connect/claude');
 
 export default function ClaudeOAuth() {
-  // const router = useRouter();
-  // const auth = useAuth();
-
-  // const handleSuccess = async (tokens: ClaudeAuthTokens) => {
-  //     try {
-  //         // Send tokens to server which will update profile.connectedServices
-  //         // Pass the raw token response to the server
-  //         await connectService(auth.credentials!, 'anthropic', tokens);
-  //         await sync.refreshProfile();
-
-  //         // The server will handle updating the profile's connectedServices array
-  //         // and it will sync back to the client automatically
-  //         Modal.alert(
-  //             t('common.success'),
-  //             t('settings.claudeAuthSuccess'),
-  //             [
-  //                 {
-  //                     text: t('common.ok'),
-  //                     onPress: () => router.back(),
-  //                 }
-  //             ]
-  //         );
-  //     } catch (error) {
-  //         logger.error('Failed to connect Claude account:', error);
-  //         Modal.alert(
-  //             t('common.error'),
-  //             t('errors.connectServiceFailed', { service: 'Claude' })
-  //         );
-  //     }
-  // };
-
-  return (
-    <>
-      <OAuthViewUnsupported name="Claude" command="free connect claude" />
-      {/* <OAuthView
-                name="Claude"
-                command="free connect claude"
-                backgroundColor={'#1F1E1C'}
-                foregroundColor={'#FFFFFF'}
-                config={{
-                    authUrl: (pkce, state, _redirectUri) =>
-                        buildAuthorizationUrl(pkce.challenge, state),
-                    tokenExchange: exchangeCodeForTokens,
-                    onSuccess: handleSuccess,
-                }}
-            /> */}
-    </>
-  );
+  return <OAuthViewUnsupported name="Claude" command="free connect claude" />;
 }
 
 const OAuthViewUnsupported = React.memo((props: { name: string; command?: string }) => {
@@ -84,57 +26,6 @@ const OAuthViewUnsupported = React.memo((props: { name: string; command?: string
 });
 
 const styles = StyleSheet.create(theme => ({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.surface,
-  },
-  webview: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0)',
-  },
-  loadingContainer: {
-    ...StyleSheet.absoluteFillObject,
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: theme.colors.text,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: theme.colors.surface,
-  },
-  errorText: {
-    fontSize: 16,
-    color: theme.colors.textDestructive,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  retryButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   unsupportedContainer: {
     flex: 1,
     justifyContent: 'center',

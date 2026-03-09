@@ -6,7 +6,7 @@
  */
 
 import { isDeepStrictEqual } from 'node:util';
-import { EnhancedMode, PermissionMode } from '../loop';
+import type { EnhancedMode, PermissionMode } from '../sessionTypes';
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from '../sdk';
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from '../sdk/prompts';
 import { PermissionResult } from '../sdk/types';

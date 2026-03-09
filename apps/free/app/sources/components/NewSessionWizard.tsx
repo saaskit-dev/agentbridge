@@ -581,7 +581,7 @@ interface NewSessionWizardProps {
   onComplete: (config: {
     sessionType: 'simple' | 'worktree';
     profileId: string | null;
-    agentType: 'claude' | 'codex';
+    agentType: 'claude' | 'codex' | 'gemini' | 'opencode';
     permissionMode: PermissionMode;
     modelMode: ModelMode;
     machineId: string;
@@ -615,8 +615,8 @@ export function NewSessionWizard({
   // Wizard state
   const [currentStep, setCurrentStep] = useState<WizardStep>('profile');
   const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
-  const [agentType, setAgentType] = useState<'claude' | 'codex'>(() => {
-    if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
+  const [agentType, setAgentType] = useState<'claude' | 'codex' | 'gemini' | 'opencode'>(() => {
+    if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'gemini' || lastUsedAgent === 'opencode') {
       return lastUsedAgent;
     }
     return 'claude';
@@ -920,10 +920,15 @@ export function NewSessionWizard({
       const selectedProfile = allProfiles.find(p => p.id === selectedProfileId);
       if (selectedProfile) {
         // Auto-select agent type based on profile compatibility
-        if (selectedProfile.compatibility.claude && !selectedProfile.compatibility.codex) {
+        const c = selectedProfile.compatibility;
+        if (c.claude && !c.codex && !c.gemini && !c.opencode) {
           setAgentType('claude');
-        } else if (selectedProfile.compatibility.codex && !selectedProfile.compatibility.claude) {
+        } else if (c.codex && !c.claude && !c.gemini && !c.opencode) {
           setAgentType('codex');
+        } else if (c.gemini && !c.claude && !c.codex && !c.opencode) {
+          setAgentType('gemini');
+        } else if (c.opencode && !c.claude && !c.codex && !c.gemini) {
+          setAgentType('opencode');
         }
 
         // Sync active profile to CLI
@@ -1015,20 +1020,30 @@ export function NewSessionWizard({
     setSelectedProfileId(profile.id);
 
     // Auto-select agent type based on profile compatibility
-    if (profile.compatibility.claude && !profile.compatibility.codex) {
+    const pc = profile.compatibility;
+    if (pc.claude && !pc.codex && !pc.gemini && !pc.opencode) {
       setAgentType('claude');
-    } else if (profile.compatibility.codex && !profile.compatibility.claude) {
+    } else if (pc.codex && !pc.claude && !pc.gemini && !pc.opencode) {
       setAgentType('codex');
+    } else if (pc.gemini && !pc.claude && !pc.codex && !pc.opencode) {
+      setAgentType('gemini');
+    } else if (pc.opencode && !pc.claude && !pc.codex && !pc.gemini) {
+      setAgentType('opencode');
     }
 
     // Get environment variables from profile (no user configuration)
     const environmentVariables = getProfileEnvironmentVariables(profile);
 
+    // Determine agentType from profile when not yet set
+    const resolvedAgentType =
+      agentType ||
+      (pc.claude ? 'claude' : pc.codex ? 'codex' : pc.gemini ? 'gemini' : 'opencode');
+
     // Complete wizard immediately with profile settings
     onComplete({
       sessionType,
       profileId: profile.id,
-      agentType: agentType || (profile.compatibility.claude ? 'claude' : 'codex'),
+      agentType: resolvedAgentType,
       permissionMode,
       modelMode,
       machineId: selectedMachineId,
@@ -1043,10 +1058,15 @@ export function NewSessionWizard({
     setSelectedProfileId(profile.id);
 
     // Auto-select agent type based on profile compatibility
-    if (profile.compatibility.claude && !profile.compatibility.codex) {
+    const ep = profile.compatibility;
+    if (ep.claude && !ep.codex && !ep.gemini && !ep.opencode) {
       setAgentType('claude');
-    } else if (profile.compatibility.codex && !profile.compatibility.claude) {
+    } else if (ep.codex && !ep.claude && !ep.gemini && !ep.opencode) {
       setAgentType('codex');
+    } else if (ep.gemini && !ep.claude && !ep.codex && !ep.opencode) {
+      setAgentType('gemini');
+    } else if (ep.opencode && !ep.claude && !ep.codex && !ep.gemini) {
+      setAgentType('opencode');
     }
 
     // If profile needs configuration, go to profileConfig step

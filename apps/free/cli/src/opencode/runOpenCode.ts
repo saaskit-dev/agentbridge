@@ -16,6 +16,7 @@
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { join, resolve } from 'node:path';
+import chalk from 'chalk';
 import { createOpenCodeBackend } from '@agentbridge/core';
 import { render } from 'ink';
 import React from 'react';
@@ -75,6 +76,9 @@ export async function runOpenCode(opts: {
 
   // Set backend for offline warnings
   connectionState.setBackend('OpenCode');
+
+  // Show server URL to user
+  console.log(chalk.gray(`Connecting to: ${chalk.cyan(configuration.serverUrl)}`));
 
   const api = await ApiClient.create(opts.credentials);
 

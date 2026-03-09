@@ -11,48 +11,14 @@ import type {
   AgentBackendConfig,
   AcpAgentConfig,
 } from '../types/agent';
+import type { ToolCallId, AgentMessage } from '../types/messages';
 
 // Re-export types
 export type { AgentId, AgentTransport, McpServerConfig, AgentBackendConfig, AcpAgentConfig };
+export type { ToolCallId, AgentMessage };
 
 /** Unique identifier for an agent session */
 export type SessionId = string;
-
-/** Unique identifier for a tool call */
-export type ToolCallId = string;
-
-/**
- * Messages emitted by an agent backend during a session.
- */
-export type AgentMessage =
-  | { type: 'model-output'; textDelta?: string; fullText?: string }
-  | {
-      type: 'status';
-      status: 'starting' | 'running' | 'idle' | 'stopped' | 'error';
-      detail?: string;
-    }
-  | { type: 'tool-call'; toolName: string; args: Record<string, unknown>; callId: ToolCallId }
-  | { type: 'tool-result'; toolName: string; result: unknown; callId: ToolCallId }
-  | { type: 'permission-request'; id: string; reason: string; payload: unknown }
-  | { type: 'permission-response'; id: string; approved: boolean }
-  | { type: 'fs-edit'; description: string; diff?: string; path?: string }
-  | { type: 'terminal-output'; data: string }
-  | { type: 'event'; name: string; payload: unknown }
-  | { type: 'token-count'; [key: string]: unknown }
-  | { type: 'exec-approval-request'; call_id: string; [key: string]: unknown }
-  | {
-      type: 'patch-apply-begin';
-      call_id: string;
-      auto_approved?: boolean;
-      changes: Record<string, unknown>;
-    }
-  | {
-      type: 'patch-apply-end';
-      call_id: string;
-      stdout?: string;
-      stderr?: string;
-      success: boolean;
-    };
 
 /** Result of starting a session */
 export interface StartSessionResult {
