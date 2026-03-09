@@ -157,6 +157,9 @@ export function createWebSocketServer(
 
 // === WebSocket Event Types ===
 
+import type { WireTrace } from '../telemetry/types.js';
+export type { WireTrace };
+
 /** Update event from server */
 export interface Update {
   id: string;
@@ -166,12 +169,14 @@ export interface Update {
     [key: string]: unknown;
   };
   createdAt: number;
+  _trace?: WireTrace;
 }
 
 /** Ephemeral event payload */
 export interface EphemeralPayload {
   type: 'activity' | 'machine-activity' | 'usage' | 'machine-status';
   [key: string]: unknown;
+  _trace?: WireTrace;
 }
 
 /** RPC response */
@@ -191,12 +196,12 @@ export type OptimisticCallback =
 export interface ServerToClientEvents {
   update: (data: Update) => void;
   'rpc-request': (
-    data: { method: string; params: string },
+    data: { method: string; params: string; _trace?: WireTrace },
     callback: (response: string) => void
   ) => void;
-  'rpc-registered': (data: { method: string }) => void;
-  'rpc-unregistered': (data: { method: string }) => void;
-  'rpc-error': (data: { type: string; error: string }) => void;
+  'rpc-registered': (data: { method: string; _trace?: WireTrace }) => void;
+  'rpc-unregistered': (data: { method: string; _trace?: WireTrace }) => void;
+  'rpc-error': (data: { type: string; error: string; _trace?: WireTrace }) => void;
   ephemeral: (data: EphemeralPayload) => void;
   auth: (data: { success: boolean; user: string }) => void;
   error: (data: { message: string }) => void;
@@ -204,27 +209,28 @@ export interface ServerToClientEvents {
 
 /** Client to server events */
 export interface ClientToServerEvents {
-  message: (data: { sid: string; message: unknown; localId?: string }) => void;
+  message: (data: { sid: string; message: unknown; localId?: string; _trace?: WireTrace }) => void;
   'session-alive': (data: {
     sid: string;
     time: number;
     thinking?: boolean;
     mode?: 'local' | 'remote';
+    _trace?: WireTrace;
   }) => void;
-  'session-end': (data: { sid: string; time: number }) => void;
+  'session-end': (data: { sid: string; time: number; _trace?: WireTrace }) => void;
   'update-metadata': (
-    data: { sid: string; expectedVersion: number; metadata: string },
+    data: { sid: string; expectedVersion: number; metadata: string; _trace?: WireTrace },
     callback: OptimisticCallback
   ) => void;
   'update-state': (
-    data: { sid: string; expectedVersion: number; agentState: string | null },
+    data: { sid: string; expectedVersion: number; agentState: string | null; _trace?: WireTrace },
     callback: OptimisticCallback
   ) => void;
   ping: (callback: () => void) => void;
-  'rpc-register': (data: { method: string }) => void;
-  'rpc-unregister': (data: { method: string }) => void;
+  'rpc-register': (data: { method: string; _trace?: WireTrace }) => void;
+  'rpc-unregister': (data: { method: string; _trace?: WireTrace }) => void;
   'rpc-call': (
-    data: { method: string; params: string },
+    data: { method: string; params: string; _trace?: WireTrace },
     callback: (response: RpcResponse) => void
   ) => void;
   'usage-report': (data: {
@@ -232,14 +238,39 @@ export interface ClientToServerEvents {
     sessionId: string;
     tokens: { total: number; [key: string]: number };
     cost: { total: number; [key: string]: number };
+    _trace?: WireTrace;
   }) => void;
-  'machine-alive': (data: { machineId: string; time: number }) => void;
+  'machine-alive': (data: { machineId: string; time: number; _trace?: WireTrace }) => void;
   'machine-update-metadata': (
-    data: { machineId: string; metadata: string; expectedVersion: number },
+    data: { machineId: string; metadata: string; expectedVersion: number; _trace?: WireTrace },
     callback: OptimisticCallback
   ) => void;
   'machine-update-state': (
-    data: { machineId: string; daemonState: string; expectedVersion: number },
+    data: { machineId: string; daemonState: string; expectedVersion: number; _trace?: WireTrace },
     callback: OptimisticCallback
   ) => void;
+  /** CLI → Server: streaming text delta for typewriter effect (RFC §7.1) */
+  'streaming:text-delta': (data: {
+    sessionId: string;
+    messageId: string;
+    delta: string;
+    timestamp: number;
+    _trace?: WireTrace;
+  }) => void;
+  /** CLI → Server: signals that text streaming has finished */
+  'streaming:text-complete': (data: {
+    sessionId: string;
+    messageId: string;
+    fullText: string;
+    timestamp: number;
+    _trace?: WireTrace;
+  }) => void;
+  /** CLI → Server: streaming thinking/reasoning delta (RFC §7.1) */
+  'streaming:thinking-delta': (data: {
+    sessionId: string;
+    messageId: string;
+    delta: string;
+    timestamp: number;
+    _trace?: WireTrace;
+  }) => void;
 }
