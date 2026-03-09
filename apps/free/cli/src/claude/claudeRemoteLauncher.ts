@@ -1,7 +1,7 @@
 import { render } from 'ink';
 import React from 'react';
 import { claudeRemote } from './claudeRemote';
-import { EnhancedMode } from './loop';
+import type { EnhancedMode } from './sessionTypes';
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from './sdk';
 import { PLAN_FAKE_REJECT } from './sdk/prompts';
 import { Session } from './session';

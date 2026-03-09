@@ -3,26 +3,14 @@ import { Logger, getCollector } from '@agentbridge/core/telemetry';
 import { claudeLocalLauncher, LauncherResult } from './claudeLocalLauncher';
 import { claudeRemoteLauncher } from './claudeRemoteLauncher';
 import { ApiClient } from '@/lib';
-import type { JsRuntime } from './runClaude';
 import { Session } from './session';
 import { ApiSessionClient } from '@/api/apiSession';
-
-// Re-export permission mode type from api/types
-// Single unified type with 7 modes - Codex modes mapped at SDK boundary
-export type { PermissionMode } from '@/api/types';
-import type { PermissionMode } from '@/api/types';
+import type { EnhancedMode, JsRuntime, PermissionMode } from './sessionTypes';
 import type { SandboxConfig } from '@/persistence';
 
+export type { EnhancedMode, PermissionMode } from './sessionTypes';
+
 const logger = new Logger('claude/loop');
-export interface EnhancedMode {
-  permissionMode: PermissionMode;
-  model?: string;
-  fallbackModel?: string;
-  customSystemPrompt?: string;
-  appendSystemPrompt?: string;
-  allowedTools?: string[];
-  disallowedTools?: string[];
-}
 
 interface LoopOptions {
   path: string;

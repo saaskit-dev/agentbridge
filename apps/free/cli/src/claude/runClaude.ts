@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { join, resolve } from 'node:path';
+import chalk from 'chalk';
 import packageJson from '../../package.json';
 import { projectPath } from '../projectPath';
-import { EnhancedMode, PermissionMode } from './loop';
+import type { EnhancedMode, PermissionMode, JsRuntime } from './sessionTypes';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { Session } from './session';
 import {
@@ -34,9 +35,9 @@ import {
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 
+export type { JsRuntime } from './sessionTypes';
+
 const logger = new Logger('claude/runClaude');
-/** JavaScript runtime to use for spawning Claude Code */
-export type JsRuntime = 'node' | 'bun';
 
 export interface StartOptions {
   model?: string;
@@ -78,6 +79,9 @@ export async function runClaude(
 
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Claude');
+
+  // Show server URL to user
+  console.log(chalk.gray(`Connecting to: ${chalk.cyan(configuration.serverUrl)}`));
 
   // Create session service
   const api = await ApiClient.create(credentials);
