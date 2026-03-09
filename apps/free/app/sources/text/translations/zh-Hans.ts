@@ -386,7 +386,7 @@ export const zhHans: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `已安装版本 ${currentVersion}。请更新到 ${requiredVersion} 或更高版本`,
-    updateCliInstructions: '请运行 curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
+    updateCliInstructions: '请运行 curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: '删除会话',
     deleteSessionSubtitle: '永久删除此会话',
     deleteSessionConfirm: '永久删除会话？',
@@ -430,15 +430,15 @@ export const zhHans: TranslationStructure = {
     codexPermissionMode: {
       title: 'CODEX 权限模式',
       default: 'CLI 设置',
-      readOnly: 'Read Only Mode',
+      readOnly: '只读模式',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only Mode',
+      badgeReadOnly: '只读',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
     codexModel: {
-      title: 'CODEX MODEL',
+      title: 'CODEX 模型',
       gpt5CodexLow: 'gpt-5-codex low',
       gpt5CodexMedium: 'gpt-5-codex medium',
       gpt5CodexHigh: 'gpt-5-codex high',
@@ -758,7 +758,7 @@ export const zhHans: TranslationStructure = {
     launchNewSessionInDirectory: '在目录中启动新会话',
     offlineUnableToSpawn: '设备离线时无法启动',
     offlineHelp:
-      '• 确保您的计算机在线\n• 运行 `free daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash` 升级',
+      '• 确保您的计算机在线\n• 运行 `free daemon status` 进行诊断\n• 您是否在运行最新的 CLI 版本？请使用 `curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash` 升级',
     daemon: '守护进程',
     status: '状态',
     stopDaemon: '停止守护进程',
@@ -952,5 +952,28 @@ export const zhHans: TranslationStructure = {
     friendRequestGeneric: '新的好友请求',
     friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
     friendAcceptedGeneric: '好友请求已接受',
+  },
+
+  diagnostics: {
+    title: '诊断日志',
+    subtitle: '导出日志以帮助诊断问题',
+    preview: '预览',
+    export: '导出',
+    timeRange: '时间范围',
+    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
+      `${count} 条记录${sessions > 0 ? `，${sessions} 个会话` : ''}`,
+    share: '分享日志',
+    shareSubtitle: '打开系统分享面板进行保存或发送',
+    copyToClipboard: '复制到剪贴板',
+    copySubtitle: '将原始日志数据复制为 JSONL 文本',
+    whatIsIncluded: '包含内容',
+    whatIsIncludedSubtitle: '应用诊断日志 — 不含消息内容，不含个人数据',
+    privacyNote: '日志在导出前会进行匿名化和脱敏处理。消息内容和敏感数据不会被包含。',
+    noLogs: '无日志',
+    noLogsMessage: '所选时间范围内没有日志条目可导出。',
+    exported: '已导出',
+    exportFailed: '导出失败',
+    copied: '已复制',
+    copiedToClipboard: ({ count }: { count: number }) => `${count} 条记录已复制到剪贴板`,
   },
 } as const;

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { knownTools } from '../../tools/knownTools';
 import { ToolSectionView } from '../../tools/ToolSectionView';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './types';
 
 export interface Todo {
   content: string;

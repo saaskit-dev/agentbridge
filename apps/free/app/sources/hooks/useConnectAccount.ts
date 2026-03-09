@@ -8,6 +8,8 @@ import { encryptBox } from '@/encryption/libsodium';
 import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/hooks/useConnectAccount');
 
 interface UseConnectAccountOptions {
   onSuccess?: () => void;
@@ -41,7 +43,7 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
         ]);
         return true;
       } catch (e) {
-        console.error(e);
+        logger.error('Failed to link device', { error: e });
         Modal.alert(t('common.error'), t('modals.failedToLinkDevice'), [{ text: t('common.ok') }]);
         options?.onError?.(e);
         return false;

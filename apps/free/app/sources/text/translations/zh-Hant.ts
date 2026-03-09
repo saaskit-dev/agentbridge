@@ -143,6 +143,9 @@ export const zhHant: TranslationStructure = {
     usageSubtitle: '查看 API 使用情況和費用',
     profiles: '設定檔',
     profilesSubtitle: '管理工作階段的環境變數設定檔',
+    supportUs: '加入我們',
+    supportUsSubtitlePro: '您是共建者 🎉',
+    supportUsSubtitle: '成為未來的一部分',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `已連結 ${service} 帳戶`,
@@ -218,8 +221,8 @@ export const zhHant: TranslationStructure = {
     enhancedSessionWizardDisabled: '使用標準工作階段啟動器',
 
     // Default permission mode
-    defaultPermissionMode: 'Default Permission Mode',
-    defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
+    defaultPermissionMode: '預設權限模式',
+    defaultPermissionModeSubtitle: '新工作階段的預設權限模式',
   },
 
   errors: {
@@ -383,7 +386,7 @@ export const zhHant: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `已安裝版本 ${currentVersion}。請更新到 ${requiredVersion} 或更高版本`,
-    updateCliInstructions: '請執行 curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
+    updateCliInstructions: '請執行 curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: '刪除工作階段',
     deleteSessionSubtitle: '永久刪除此工作階段',
     deleteSessionConfirm: '永久刪除工作階段？',
@@ -455,12 +458,12 @@ export const zhHant: TranslationStructure = {
       badgeYolo: 'YOLO',
     },
     opencodePermissionMode: {
-      title: 'OPENCODE PERMISSION MODE',
-      default: 'Default',
-      readOnly: 'Read Only',
+      title: 'OPENCODE 權限模式',
+      default: '預設',
+      readOnly: '唯讀模式',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only',
+      badgeReadOnly: '唯讀',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
@@ -755,7 +758,7 @@ export const zhHant: TranslationStructure = {
     launchNewSessionInDirectory: '在目錄中啟動新工作階段',
     offlineUnableToSpawn: '裝置離線時無法啟動',
     offlineHelp:
-      '• 確保您的電腦在線上\n• 執行 `free daemon status` 進行診斷\n• 您是否在執行最新的 CLI 版本？請使用 `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash` 升級',
+      '• 確保您的電腦在線上\n• 執行 `free daemon status` 進行診斷\n• 您是否在執行最新的 CLI 版本？請使用 `curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash` 升級',
     daemon: '守護程序',
     status: '狀態',
     stopDaemon: '停止守護程序',
@@ -950,5 +953,28 @@ export const zhHant: TranslationStructure = {
       confirm: '刪除',
       cancel: '取消',
     },
+  },
+
+  diagnostics: {
+    title: '診斷日誌',
+    subtitle: '匯出日誌以協助診斷問題',
+    preview: '預覽',
+    export: '匯出',
+    timeRange: '時間範圍',
+    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
+      `${count} 筆記錄${sessions > 0 ? `，${sessions} 個工作階段` : ''}`,
+    share: '分享日誌',
+    shareSubtitle: '開啟系統分享面板以儲存或傳送',
+    copyToClipboard: '複製到剪貼簿',
+    copySubtitle: '將原始日誌資料複製為 JSONL 文字',
+    whatIsIncluded: '包含內容',
+    whatIsIncludedSubtitle: '應用程式診斷日誌 — 不含訊息內容，不含個人資料',
+    privacyNote: '日誌在匯出前會進行匿名化和脫敏處理。訊息內容和敏感資料不會被包含。',
+    noLogs: '無日誌',
+    noLogsMessage: '所選時間範圍內沒有日誌條目可匯出。',
+    exported: '已匯出',
+    exportFailed: '匯出失敗',
+    copied: '已複製',
+    copiedToClipboard: ({ count }: { count: number }) => `${count} 筆記錄已複製到剪貼簿`,
   },
 } as const;

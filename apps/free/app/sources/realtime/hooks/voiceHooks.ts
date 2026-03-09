@@ -16,6 +16,8 @@ import {
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/realtime/voiceHooks');
 
 /**
  * Centralized voice assistant hooks for multi-session context updates.
@@ -34,12 +36,12 @@ let lastFocusSession: string | null = null;
 
 function reportContextualUpdate(update: string | null | undefined) {
   if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-    console.log('🎤 Voice: Reporting contextual update:', update);
+    logger.debug('🎤 Voice: Reporting contextual update:', update);
   }
   if (!update) return;
   const voice = getVoiceSession();
   if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-    console.log('🎤 Voice: Voice session:', voice);
+    logger.debug('🎤 Voice: Voice session:', voice);
   }
   if (!voice || !isVoiceSessionStarted()) return;
   voice.sendContextualUpdate(update);
@@ -47,12 +49,12 @@ function reportContextualUpdate(update: string | null | undefined) {
 
 function reportTextUpdate(update: string | null | undefined) {
   if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-    console.log('🎤 Voice: Reporting text update:', update);
+    logger.debug('🎤 Voice: Reporting text update:', update);
   }
   if (!update) return;
   const voice = getVoiceSession();
   if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-    console.log('🎤 Voice: Voice session:', voice);
+    logger.debug('🎤 Voice: Voice session:', voice);
   }
   if (!voice || !isVoiceSessionStarted()) return;
   voice.sendTextMessage(update);
@@ -127,7 +129,7 @@ export const voiceHooks = {
    */
   onVoiceStarted(sessionId: string): string {
     if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-      console.log('🎤 Voice session started for:', sessionId);
+      logger.debug('🎤 Voice session started for:', sessionId);
     }
     shownSessions.clear();
     let prompt = '';
@@ -161,7 +163,7 @@ export const voiceHooks = {
    */
   onVoiceStopped() {
     if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-      console.log('🎤 Voice session stopped');
+      logger.debug('🎤 Voice session stopped');
     }
     shownSessions.clear();
   },

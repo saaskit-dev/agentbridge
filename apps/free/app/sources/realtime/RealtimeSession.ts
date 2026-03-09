@@ -1,15 +1,15 @@
 import type { VoiceSession } from './types';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { config } from '@/config';
-import { Modal } from '@/modal';
 import { fetchVoiceToken } from '@/sync/apiVoice';
-import { storage } from '@/sync/storage';
-import { sync } from '@/sync/sync';
+import { storage, registerRealtimeSessionInfo } from '@/sync/storage';
 import { t } from '@/text';
 import {
   requestMicrophonePermission,
   showMicrophonePermissionDeniedAlert,
 } from '@/utils/microphonePermissions';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/realtime/RealtimeSession');
 
 let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
@@ -17,7 +17,7 @@ let currentSessionId: string | null = null;
 
 export async function startRealtimeSession(sessionId: string, initialContext?: string) {
   if (!voiceSession) {
-    console.warn('No voice session registered');
+    logger.warn('No voice session registered');
     return;
   }
 
@@ -33,7 +33,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
   const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
 
   if (!agentId) {
-    console.error('Agent ID not configured');
+    logger.error('Agent ID not configured');
     return;
   }
 
@@ -53,17 +53,19 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     // Experiments enabled = full auth flow
     const credentials = await TokenStorage.getCredentials();
     if (!credentials) {
+      const { Modal } = require('@/modal');
       Modal.alert(t('common.error'), t('errors.authenticationFailed'));
       return;
     }
 
     const response = await fetchVoiceToken(credentials, sessionId);
-    console.log('[Voice] fetchVoiceToken response:', response);
+    logger.debug('[Voice] fetchVoiceToken response:', response);
 
     if (!response.allowed) {
-      console.log('[Voice] Not allowed, presenting paywall...');
+      logger.debug('[Voice] Not allowed, presenting paywall...');
+      const { sync } = require('@/sync/sync');
       const result = await sync.presentPaywall();
-      console.log('[Voice] Paywall result:', result);
+      logger.debug('[Voice] Paywall result:', result);
       if (result.purchased) {
         await startRealtimeSession(sessionId, initialContext);
       }
@@ -90,9 +92,10 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
       });
     }
   } catch (error) {
-    console.error('Failed to start realtime session:', error);
+    logger.error('Failed to start realtime session:', error);
     currentSessionId = null;
     voiceSessionStarted = false;
+    const { Modal } = require('@/modal');
     Modal.alert(t('common.error'), t('errors.voiceServiceUnavailable'));
   }
 }
@@ -107,13 +110,13 @@ export async function stopRealtimeSession() {
     currentSessionId = null;
     voiceSessionStarted = false;
   } catch (error) {
-    console.error('Failed to stop realtime session:', error);
+    logger.error('Failed to stop realtime session:', error);
   }
 }
 
 export function registerVoiceSession(session: VoiceSession) {
   if (voiceSession) {
-    console.warn('Voice session already registered, replacing with new one');
+    logger.warn('Voice session already registered, replacing with new one');
   }
   voiceSession = session;
 }
@@ -129,3 +132,9 @@ export function getVoiceSession(): VoiceSession | null {
 export function getCurrentRealtimeSessionId(): string | null {
   return currentSessionId;
 }
+
+// Register with storage to avoid circular dependency
+registerRealtimeSessionInfo(() => ({
+  sessionId: currentSessionId,
+  voiceSession,
+}));

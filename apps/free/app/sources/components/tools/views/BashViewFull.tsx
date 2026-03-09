@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { toolFullViewStyles } from '../ToolFullView';
+import { toolFullViewStyles } from '../toolFullViewStyles';
 import { CommandView } from '@/components/CommandView';
 import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';

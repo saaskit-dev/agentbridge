@@ -30,6 +30,7 @@ export type UserTextMessage = {
   text: string;
   displayText?: string; // Optional text to display in UI instead of actual text
   meta?: MessageMeta;
+  traceId?: string;
 };
 
 export type ModeSwitchMessage = {
@@ -48,6 +49,7 @@ export type AgentTextMessage = {
   text: string;
   isThinking?: boolean;
   meta?: MessageMeta;
+  traceId?: string;
 };
 
 export type ToolCallMessage = {
@@ -58,6 +60,7 @@ export type ToolCallMessage = {
   tool: ToolCall;
   children: Message[];
   meta?: MessageMeta;
+  traceId?: string;
 };
 
 export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage | ModeSwitchMessage;

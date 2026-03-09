@@ -126,6 +126,9 @@ export const ru: TranslationStructure = {
     usageSubtitle: 'Просмотр использования API и затрат',
     profiles: 'Профили',
     profilesSubtitle: 'Управление профилями переменных окружения для сессий',
+    supportUs: 'Присоединяйтесь к нам',
+    supportUsSubtitlePro: 'Вы Строитель 🎉',
+    supportUsSubtitle: 'Будьте частью будущего',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
@@ -192,7 +195,7 @@ export const ru: TranslationStructure = {
     enterToSend: 'Enter для отправки',
     enterToSendEnabled: 'Нажмите Enter для отправки (Shift+Enter для новой строки)',
     enterToSendDisabled: 'Enter вставляет новую строку',
-    commandPalette: 'Command Palette',
+    commandPalette: 'Командная палитра',
     commandPaletteEnabled: 'Нажмите ⌘K для открытия',
     commandPaletteDisabled: 'Быстрый доступ к командам отключён',
     markdownCopyV2: 'Markdown Copy v2',
@@ -204,8 +207,8 @@ export const ru: TranslationStructure = {
     enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
 
     // Default permission mode
-    defaultPermissionMode: 'Default Permission Mode',
-    defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
+    defaultPermissionMode: 'Режим разрешений по умолчанию',
+    defaultPermissionModeSubtitle: 'Режим разрешений по умолчанию для новых сессий',
   },
 
   errors: {
@@ -366,7 +369,7 @@ export const ru: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
-    updateCliInstructions: 'Пожалуйста, выполните curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
+    updateCliInstructions: 'Пожалуйста, выполните curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Удалить сессию',
     deleteSessionSubtitle: 'Удалить эту сессию навсегда',
     deleteSessionConfirm: 'Удалить сессию навсегда?',
@@ -449,7 +452,7 @@ export const ru: TranslationStructure = {
     codexPermissionMode: {
       title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',
       default: 'Настройки CLI',
-      readOnly: 'Read Only Mode',
+      readOnly: 'Только чтение',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
       badgeReadOnly: 'Только чтение',
@@ -457,7 +460,7 @@ export const ru: TranslationStructure = {
       badgeYolo: 'YOLO',
     },
     codexModel: {
-      title: 'CODEX MODEL',
+      title: 'МОДЕЛЬ CODEX',
       gpt5CodexLow: 'gpt-5-codex low',
       gpt5CodexMedium: 'gpt-5-codex medium',
       gpt5CodexHigh: 'gpt-5-codex high',
@@ -477,12 +480,12 @@ export const ru: TranslationStructure = {
       badgeYolo: 'YOLO',
     },
     opencodePermissionMode: {
-      title: 'OPENCODE PERMISSION MODE',
-      default: 'Default',
-      readOnly: 'Read Only',
+      title: 'РЕЖИМ РАЗРЕШЕНИЙ OPENCODE',
+      default: 'По умолчанию',
+      readOnly: 'Только чтение',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only',
+      badgeReadOnly: 'Только чтение',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
@@ -775,9 +778,9 @@ export const ru: TranslationStructure = {
   machine: {
     offlineUnableToSpawn: 'Запуск отключен: машина offline',
     offlineHelp:
-      '• Убедитесь, что компьютер online\n• Выполните `free daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`',
+      '• Убедитесь, что компьютер online\n• Выполните `free daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash`',
     launchNewSessionInDirectory: 'Запустить новую сессию в папке',
-    daemon: 'Daemon',
+    daemon: 'Демон',
     status: 'Статус',
     stopDaemon: 'Остановить daemon',
     lastKnownPid: 'Последний известный PID',
@@ -1002,6 +1005,29 @@ export const ru: TranslationStructure = {
       confirm: 'Удалить',
       cancel: 'Отмена',
     },
+  },
+
+  diagnostics: {
+    title: 'Диагностические логи',
+    subtitle: 'Экспорт логов для диагностики проблем',
+    preview: 'Предпросмотр',
+    export: 'Экспорт',
+    timeRange: 'Временной диапазон',
+    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
+      `${count} ${count === 1 ? 'запись' : count < 5 ? 'записи' : 'записей'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'сессия' : sessions < 5 ? 'сессии' : 'сессий'}` : ''}`,
+    share: 'Поделиться логами',
+    shareSubtitle: 'Открыть системный диалог для сохранения или отправки',
+    copyToClipboard: 'Копировать в буфер обмена',
+    copySubtitle: 'Скопировать данные логов в формате JSONL',
+    whatIsIncluded: 'Что включено',
+    whatIsIncludedSubtitle: 'Диагностические логи приложения — без содержимого сообщений и личных данных',
+    privacyNote: 'Логи анонимизируются и очищаются перед экспортом. Содержимое сообщений и конфиденциальные данные никогда не включаются.',
+    noLogs: 'Нет логов',
+    noLogsMessage: 'Нет записей логов для экспорта за выбранный период.',
+    exported: 'Экспортировано',
+    exportFailed: 'Ошибка экспорта',
+    copied: 'Скопировано',
+    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'запись скопирована' : 'записей скопировано'} в буфер обмена`,
   },
 } as const;
 

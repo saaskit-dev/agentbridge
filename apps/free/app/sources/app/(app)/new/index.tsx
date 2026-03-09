@@ -60,6 +60,8 @@ import { MultiTextInput } from '@/components/MultiTextInput';
 import { StatusDot } from '@/components/StatusDot';
 import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/new');
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => {};
@@ -562,7 +564,7 @@ function NewSessionWizard() {
                 ? 'opencode'
                 : 'claude'; // Fallback to claude (will fail at spawn with clear error)
 
-      console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
+      logger.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
       setAgentType(availableAgent);
     }
   }, [
@@ -896,7 +898,7 @@ function NewSessionWizard() {
             scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
           },
           () => {
-            console.warn('measureLayout failed');
+            logger.warn('measureLayout failed');
           }
         );
       }
@@ -1246,7 +1248,7 @@ function NewSessionWizard() {
         throw new Error('Session spawning failed - no session ID returned.');
       }
     } catch (error) {
-      console.error('Failed to start session', error);
+      logger.error('Failed to start session', error);
       let errorMessage =
         'Failed to start session. Make sure the daemon is running on the target machine.';
       if (error instanceof Error) {

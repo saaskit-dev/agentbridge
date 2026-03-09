@@ -141,6 +141,9 @@ export const ca: TranslationStructure = {
     usageSubtitle: "Veure l'ús de l'API i costos",
     profiles: 'Perfils',
     profilesSubtitle: "Gestiona els perfils d'entorn i variables",
+    supportUs: 'Uneix-te a nosaltres',
+    supportUsSubtitlePro: 'Ets un Constructor 🎉',
+    supportUsSubtitle: 'Sigues part del futur',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,
@@ -219,8 +222,8 @@ export const ca: TranslationStructure = {
     enhancedSessionWizardDisabled: 'Usant el llançador de sessió estàndard',
 
     // Default permission mode
-    defaultPermissionMode: 'Default Permission Mode',
-    defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
+    defaultPermissionMode: 'Mode de permisos predeterminat',
+    defaultPermissionModeSubtitle: 'Mode de permisos predeterminat per a noves sessions',
   },
 
   errors: {
@@ -389,7 +392,7 @@ export const ca: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Versió ${currentVersion} instal·lada. Actualitzeu a ${requiredVersion} o posterior`,
-    updateCliInstructions: 'Si us plau executeu curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
+    updateCliInstructions: 'Si us plau executeu curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Elimina la sessió',
     deleteSessionSubtitle: 'Elimina permanentment aquesta sessió',
     deleteSessionConfirm: 'Eliminar la sessió permanentment?',
@@ -434,15 +437,15 @@ export const ca: TranslationStructure = {
     codexPermissionMode: {
       title: 'MODE DE PERMISOS CODEX',
       default: 'Configuració del CLI',
-      readOnly: 'Read Only Mode',
+      readOnly: 'Només lectura',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only Mode',
+      badgeReadOnly: 'Només lectura',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
     codexModel: {
-      title: 'CODEX MODEL',
+      title: 'MODEL CODEX',
       gpt5CodexLow: 'gpt-5-codex low',
       gpt5CodexMedium: 'gpt-5-codex medium',
       gpt5CodexHigh: 'gpt-5-codex high',
@@ -462,12 +465,12 @@ export const ca: TranslationStructure = {
       badgeYolo: 'YOLO',
     },
     opencodePermissionMode: {
-      title: 'OPENCODE PERMISSION MODE',
-      default: 'Default',
-      readOnly: 'Read Only',
+      title: 'MODE DE PERMISOS OPENCODE',
+      default: 'Per defecte',
+      readOnly: 'Només lectura',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only',
+      badgeReadOnly: 'Només lectura',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
@@ -772,7 +775,7 @@ export const ca: TranslationStructure = {
   machine: {
     offlineUnableToSpawn: 'El llançador està desactivat mentre la màquina està fora de línia',
     offlineHelp:
-      "• Assegura't que l'ordinador estigui en línia\n• Executa `free daemon status` per diagnosticar\n• Fas servir l'última versió del CLI? Actualitza amb `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`",
+      "• Assegura't que l'ordinador estigui en línia\n• Executa `free daemon status` per diagnosticar\n• Fas servir l'última versió del CLI? Actualitza amb `curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash`",
     launchNewSessionInDirectory: 'Inicia una nova sessió al directori',
     daemon: 'Dimoni',
     status: 'Estat',
@@ -973,6 +976,29 @@ export const ca: TranslationStructure = {
     friendRequestGeneric: "Nova sol·licitud d'amistat",
     friendAccepted: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
     friendAcceptedGeneric: "Sol·licitud d'amistat acceptada",
+  },
+
+  diagnostics: {
+    title: 'Registres de diagnòstic',
+    subtitle: "Exporta els registres per ajudar a diagnosticar problemes",
+    preview: 'Previsualització',
+    export: 'Exportar',
+    timeRange: 'Interval de temps',
+    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
+      `${count} ${count === 1 ? 'entrada' : 'entrades'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'sessió' : 'sessions'}` : ''}`,
+    share: 'Compartir registres',
+    shareSubtitle: "Obre el full de compartició del sistema per desar o enviar",
+    copyToClipboard: 'Copiar al porta-retalls',
+    copySubtitle: 'Copia les dades del registre com a text JSONL',
+    whatIsIncluded: "Què s'inclou",
+    whatIsIncludedSubtitle: 'Registres de diagnòstic de l\'app — sense contingut de missatges ni dades personals',
+    privacyNote: "Els registres s'anonimitzen i es netegen abans d'exportar. El contingut dels missatges i les dades sensibles mai s'inclouen.",
+    noLogs: 'Sense registres',
+    noLogsMessage: "No hi ha entrades de registre per exportar en l'interval de temps seleccionat.",
+    exported: 'Exportat',
+    exportFailed: "Error en l'exportació",
+    copied: 'Copiat',
+    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'entrada copiada' : 'entrades copiades'} al porta-retalls`,
   },
 } as const;
 

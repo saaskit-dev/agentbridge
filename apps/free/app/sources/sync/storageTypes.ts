@@ -112,6 +112,7 @@ export interface DecryptedMessage {
   localId: string | null;
   content: any;
   createdAt: number;
+  traceId?: string; // RFC §19.3: preserved from server for cross-layer trace correlation
 }
 
 //

@@ -3,7 +3,7 @@ import * as React from 'react';
 import { Text, View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { knownTools } from '../../tools/knownTools';
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from './types';
 import { ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
 

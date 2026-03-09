@@ -175,6 +175,9 @@ export const ja: TranslationStructure = {
     usageSubtitle: 'API使用量とコストを確認',
     profiles: 'プロファイル',
     profilesSubtitle: 'セッション用の環境変数プロファイルを管理',
+    supportUs: '私たちに参加する',
+    supportUsSubtitlePro: 'あなたはビルダーです 🎉',
+    supportUsSubtitle: '未来の一部になろう',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `${service}アカウントが接続されました`,
@@ -250,8 +253,8 @@ export const ja: TranslationStructure = {
     enhancedSessionWizardDisabled: '標準セッションランチャーを使用',
 
     // Default permission mode
-    defaultPermissionMode: 'Default Permission Mode',
-    defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
+    defaultPermissionMode: 'デフォルト権限モード',
+    defaultPermissionModeSubtitle: '新しいセッションのデフォルト権限モード',
   },
 
   errors: {
@@ -420,7 +423,7 @@ export const ja: TranslationStructure = {
       requiredVersion: string;
     }) =>
       `バージョン ${currentVersion} がインストールされています。${requiredVersion} 以降に更新してください`,
-    updateCliInstructions: 'curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash を実行してください',
+    updateCliInstructions: 'curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash を実行してください',
     deleteSession: 'セッションを削除',
     deleteSessionSubtitle: 'このセッションを完全に削除',
     deleteSessionConfirm: 'セッションを完全に削除しますか？',
@@ -493,12 +496,12 @@ export const ja: TranslationStructure = {
       badgeYolo: 'YOLO',
     },
     opencodePermissionMode: {
-      title: 'OPENCODE PERMISSION MODE',
-      default: 'Default',
-      readOnly: 'Read Only',
+      title: 'OPENCODEパーミッションモード',
+      default: 'デフォルト',
+      readOnly: '読み取り専用',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only',
+      badgeReadOnly: '読み取り専用',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
@@ -800,7 +803,7 @@ export const ja: TranslationStructure = {
     launchNewSessionInDirectory: 'ディレクトリで新しいセッションを起動',
     offlineUnableToSpawn: 'マシンがオフラインのためランチャーは無効です',
     offlineHelp:
-      '• コンピューターがオンラインであることを確認してください\n• `free daemon status`を実行して診断してください\n• 最新のCLIバージョンを使用していますか？`curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`でアップグレードしてください',
+      '• コンピューターがオンラインであることを確認してください\n• `free daemon status`を実行して診断してください\n• 最新のCLIバージョンを使用していますか？`curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash`でアップグレードしてください',
     daemon: 'デーモン',
     status: 'ステータス',
     stopDaemon: 'デーモンを停止',
@@ -969,5 +972,28 @@ export const ja: TranslationStructure = {
     friendRequestGeneric: '新しい友達リクエスト',
     friendAccepted: ({ name }: { name: string }) => `${name}さんと友達になりました`,
     friendAcceptedGeneric: '友達リクエストが承認されました',
+  },
+
+  diagnostics: {
+    title: '診断ログ',
+    subtitle: 'ログをエクスポートして問題を診断',
+    preview: 'プレビュー',
+    export: 'エクスポート',
+    timeRange: '時間範囲',
+    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
+      `${count}件のエントリ${sessions > 0 ? `、${sessions}件のセッション` : ''}`,
+    share: 'ログを共有',
+    shareSubtitle: 'システム共有シートを開いて保存または送信',
+    copyToClipboard: 'クリップボードにコピー',
+    copySubtitle: 'ログデータをJSONLテキストとしてコピー',
+    whatIsIncluded: '含まれる内容',
+    whatIsIncludedSubtitle: 'アプリ診断ログ — メッセージ内容も個人情報も含まれません',
+    privacyNote: 'ログはエクスポート前に匿名化・サニタイズされます。メッセージ内容と機密データは含まれません。',
+    noLogs: 'ログなし',
+    noLogsMessage: '選択した時間範囲にエクスポートするログエントリがありません。',
+    exported: 'エクスポート完了',
+    exportFailed: 'エクスポート失敗',
+    copied: 'コピー済み',
+    copiedToClipboard: ({ count }: { count: number }) => `${count}件のエントリをクリップボードにコピーしました`,
   },
 } as const;

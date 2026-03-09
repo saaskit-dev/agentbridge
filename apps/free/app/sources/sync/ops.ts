@@ -4,8 +4,15 @@
  */
 
 import { apiSocket } from './apiSocket';
+import { getSessionTrace } from './appTraceStore';
 import type { MachineMetadata } from './storageTypes';
-import { sync } from './sync';
+
+// Callback for getting machine encryption, registered by sync.ts to avoid circular dependency
+let _getMachineEncryption: ((machineId: string) => any) | null = null;
+
+export function registerGetMachineEncryption(cb: (machineId: string) => any) {
+  _getMachineEncryption = cb;
+}
 
 // Strict type definitions for all operations
 
@@ -255,7 +262,7 @@ export async function machineUpdateMetadata(
   let currentMetadata = { ...metadata };
   let retryCount = 0;
 
-  const machineEncryption = sync.encryption.getMachineEncryption(machineId);
+  const machineEncryption = _getMachineEncryption?.(machineId);
   if (!machineEncryption) {
     throw new Error(`Machine encryption not found for ${machineId}`);
   }
@@ -272,6 +279,7 @@ export async function machineUpdateMetadata(
       machineId,
       metadata: encryptedMetadata,
       expectedVersion: currentVersion,
+      _trace: getSessionTrace(machineId),
     });
 
     if (result.result === 'success') {

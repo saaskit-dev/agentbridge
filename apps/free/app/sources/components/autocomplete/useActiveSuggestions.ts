@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { ValueSync } from '@/utils/sync';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/autocomplete/useActiveSuggestions');
 
 interface SuggestionOptions {
   clampSelection?: boolean; // If true, clamp instead of preserving exact position
@@ -70,13 +72,13 @@ export function useActiveSuggestions(
   // Sync query to suggestions
   const sync = React.useMemo(() => {
     return new ValueSync<string | null>(async query => {
-      console.log('🎯 useActiveSuggestions: Processing query:', JSON.stringify(query));
+      logger.debug('🎯 useActiveSuggestions: Processing query:', JSON.stringify(query));
       if (!query) {
-        console.log('🎯 useActiveSuggestions: No query, skipping');
+        logger.debug('🎯 useActiveSuggestions: No query, skipping');
         return;
       }
       const suggestions = await handler(query);
-      console.log(
+      logger.debug(
         '🎯 useActiveSuggestions: Got suggestions:',
         JSON.stringify(
           suggestions,

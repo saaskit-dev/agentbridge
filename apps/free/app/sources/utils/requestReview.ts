@@ -12,6 +12,8 @@ import {
   trackReviewStoreShown,
   trackReviewRetryScheduled,
 } from '@/track';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/utils/requestReview');
 
 const localStorage = new MMKV();
 
@@ -35,7 +37,7 @@ export function requestReview() {
       // Check if store review is available
       const isAvailable = await StoreReview.isAvailableAsync();
       if (!isAvailable) {
-        console.log('Store review is not available on this platform');
+        logger.debug('Store review is not available on this platform');
         return;
       }
 
@@ -111,7 +113,7 @@ export function requestReview() {
       // Mark when we last showed the store review
       localStorage.set(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN, new Date().toISOString());
     } catch (error) {
-      console.error('Error requesting review:', error);
+      logger.error('Error requesting review:', error);
     }
   });
 }

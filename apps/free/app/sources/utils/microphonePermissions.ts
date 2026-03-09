@@ -1,7 +1,7 @@
 import { AudioModule } from 'expo-audio';
 import { Platform, Linking } from 'react-native';
-import { Modal } from '@/modal';
-
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/utils/microphonePermissions');
 export interface MicrophonePermissionResult {
   granted: boolean;
   canAskAgain?: boolean;
@@ -24,7 +24,7 @@ export async function requestMicrophonePermission(): Promise<MicrophonePermissio
         return { granted: true };
       } catch (error: any) {
         // User denied permission or browser doesn't support getUserMedia
-        console.error('Web microphone permission denied:', error);
+        logger.error('Web microphone permission denied:', error);
         return { granted: false, canAskAgain: error.name !== 'NotAllowedError' };
       }
     } else {
@@ -44,7 +44,7 @@ export async function requestMicrophonePermission(): Promise<MicrophonePermissio
       return { granted: false, canAskAgain: result.canAskAgain };
     }
   } catch (error) {
-    console.error('Error requesting microphone permission:', error);
+    logger.error('Error requesting microphone permission:', error);
     return { granted: false };
   }
 }
@@ -75,7 +75,7 @@ export async function checkMicrophonePermission(): Promise<MicrophonePermissionR
       return { granted: result.granted, canAskAgain: result.canAskAgain };
     }
   } catch (error) {
-    console.error('Error checking microphone permission:', error);
+    logger.error('Error checking microphone permission:', error);
     return { granted: false };
   }
 }
@@ -84,6 +84,7 @@ export async function checkMicrophonePermission(): Promise<MicrophonePermissionR
  * Show appropriate error message when permission is denied
  */
 export function showMicrophonePermissionDeniedAlert(canAskAgain: boolean = false) {
+  const { Modal } = require('@/modal');
   const title = 'Microphone Access Required';
   const message = canAskAgain
     ? 'Free needs access to your microphone for voice chat. Please grant permission when prompted.'

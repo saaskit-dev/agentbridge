@@ -12,6 +12,8 @@ import { connectService } from '@/sync/apiServices';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { buildAuthorizationUrl, ClaudeAuthTokens, exchangeCodeForTokens } from '@/utils/oauth';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/settings/connect/claude');
 
 export default function ClaudeOAuth() {
   // const router = useRouter();
@@ -37,7 +39,7 @@ export default function ClaudeOAuth() {
   //             ]
   //         );
   //     } catch (error) {
-  //         console.error('Failed to connect Claude account:', error);
+  //         logger.error('Failed to connect Claude account:', error);
   //         Modal.alert(
   //             t('common.error'),
   //             t('errors.connectServiceFailed', { service: 'Claude' })

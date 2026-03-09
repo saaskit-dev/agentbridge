@@ -156,6 +156,9 @@ export const en: TranslationStructure = {
     usageSubtitle: 'View your API usage and costs',
     profiles: 'Profiles',
     profilesSubtitle: 'Manage environment variable profiles for sessions',
+    supportUs: 'Join Us',
+    supportUsSubtitlePro: 'You are a Builder 🎉',
+    supportUsSubtitle: 'Be part of the future',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `${service} account connected`,
@@ -401,7 +404,7 @@ export const en: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
-    updateCliInstructions: 'Please run curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash',
+    updateCliInstructions: 'Please run curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Delete Session',
     deleteSessionSubtitle: 'Permanently remove this session',
     deleteSessionConfirm: 'Delete Session Permanently?',
@@ -782,7 +785,7 @@ export const en: TranslationStructure = {
     launchNewSessionInDirectory: 'Launch New Session in Directory',
     offlineUnableToSpawn: 'Launcher disabled while machine is offline',
     offlineHelp:
-      '• Make sure your computer is online\n• Run `free daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/install.sh | bash`',
+      '• Make sure your computer is online\n• Run `free daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash`',
     daemon: 'Daemon',
     status: 'Status',
     stopDaemon: 'Stop Daemon',
@@ -983,6 +986,29 @@ export const en: TranslationStructure = {
       confirm: 'Delete',
       cancel: 'Cancel',
     },
+  },
+
+  diagnostics: {
+    title: 'Diagnostic Logs',
+    subtitle: 'Export logs to help diagnose issues',
+    preview: 'Preview',
+    export: 'Export',
+    timeRange: 'Time Range',
+    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
+      `${count} ${count === 1 ? 'entry' : 'entries'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'session' : 'sessions'}` : ''}`,
+    share: 'Share Logs',
+    shareSubtitle: 'Open system share sheet to save or send',
+    copyToClipboard: 'Copy to Clipboard',
+    copySubtitle: 'Copy raw log data as JSONL text',
+    whatIsIncluded: 'What is included',
+    whatIsIncludedSubtitle: 'App diagnostic logs — no message content, no personal data',
+    privacyNote: 'Logs are anonymized and sanitized before export. Message content and sensitive data are never included.',
+    noLogs: 'No Logs',
+    noLogsMessage: 'There are no log entries to export for the selected time range.',
+    exported: 'Exported',
+    exportFailed: 'Export Failed',
+    copied: 'Copied',
+    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'entry' : 'entries'} copied to clipboard`,
   },
 } as const;
 

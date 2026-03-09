@@ -1,5 +1,6 @@
 import 'react-native-quick-base64';
 import '../theme.css';
+import { initAppTelemetry, loadPersistedTelemetry, setTelemetryAuthToken, setAnalyticsEnabled } from '@/appTelemetry';
 import { FontAwesome } from '@expo/vector-icons';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import * as Fonts from 'expo-font';
@@ -26,11 +27,17 @@ import sodium from '@/encryption/libsodium.lib';
 import { ModalProvider } from '@/modal';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { syncRestore } from '@/sync/sync';
+import { loadLocalSettings } from '@/sync/persistence';
 import { tracking } from '@/track/tracking';
 import { useTrackScreens } from '@/track/useTrackScreens';
 // import * as SystemUI from 'expo-system-ui';
 import { AsyncLock } from '@/utils/lock';
-import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/layout');
+
+// Initialize telemetry — in-memory ring buffer for diagnostics (Settings → Support)
+// Guard against double-init on Expo hot reload
+initAppTelemetry();
 
 // Configure notification handler for foreground notifications
 Notifications.setNotificationHandler({
@@ -67,13 +74,6 @@ SplashScreen.preventAutoHideAsync();
 
 // Set window background color - now handled by Unistyles
 // SystemUI.setBackgroundColorAsync('white');
-
-// NEVER ENABLE REMOTE LOGGING IN PRODUCTION
-// This is for local debugging with AI only
-// So AI will have all the logs easily accessible in one file for analysis
-if (process.env.PUBLIC_EXPO_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
-  monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds();
-}
 
 // Component to apply horizontal safe area padding
 function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) {
@@ -128,7 +128,7 @@ async function loadFonts() {
       });
     } else {
       // For Tauri, skip Font Face Observer as fonts are loaded via CSS
-      console.log('Do not wait for fonts to load');
+      logger.debug('Do not wait for fonts to load');
       (async () => {
         try {
           await Fonts.loadAsync({
@@ -188,17 +188,23 @@ export default function RootLayout() {
   React.useEffect(() => {
     (async () => {
       try {
+        // Load persisted telemetry logs from AsyncStorage (non-blocking best-effort)
+        void loadPersistedTelemetry();
         await loadFonts();
         await sodium.ready;
         const credentials = await TokenStorage.getCredentials();
-        console.log('credentials', credentials);
+        logger.debug('credentials', credentials);
+        // Wire RemoteSink auth token so telemetry can upload after login (RFC §21.2)
+        // Respect the user's analytics opt-in preference (RFC §8.1)
+        const localSettings = loadLocalSettings();
+        setAnalyticsEnabled(localSettings.analyticsEnabled !== false, credentials?.token);
         if (credentials) {
           await syncRestore(credentials);
         }
 
         setInitState({ credentials });
       } catch (error) {
-        console.error('Error initializing:', error);
+        logger.error('Error initializing:', error);
       }
     })();
   }, []);

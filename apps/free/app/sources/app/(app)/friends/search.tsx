@@ -19,6 +19,8 @@ import { searchUsersByUsername, sendFriendRequest } from '@/sync/apiFriends';
 import { UserProfile } from '@/sync/friendTypes';
 import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/friends/search');
 
 export default function SearchFriendsScreen() {
   const { credentials } = useAuth();
@@ -49,12 +51,12 @@ export default function SearchFriendsScreen() {
 
         if (updatedProfile) {
           trackFriendsConnect();
-          console.log(t('friends.requestSent'));
+          logger.debug(t('friends.requestSent'));
         } else {
           await Modal.alert(t('friends.bothMustHaveGithub'));
         }
       } catch (error: any) {
-        console.error('Failed to send friend request:', error);
+        logger.error('Failed to send friend request:', error);
         if (error.message?.includes('yourself')) {
           await Modal.alert(t('friends.cannotAddYourself'));
         } else {

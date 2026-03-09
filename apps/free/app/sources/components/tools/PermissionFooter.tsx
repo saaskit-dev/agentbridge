@@ -12,6 +12,8 @@ import { useUnistyles } from 'react-native-unistyles';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/tools/PermissionFooter');
 
 interface PermissionFooterProps {
   permission: {
@@ -59,7 +61,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionAllow(sessionId, permission.id);
     } catch (error) {
-      console.error('Failed to approve permission:', error);
+      logger.error('Failed to approve permission:', error);
     } finally {
       setLoadingButton(null);
     }
@@ -80,7 +82,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
       // Update the session permission mode to 'acceptEdits' for future permissions
       storage.getState().updateSessionPermissionMode(sessionId, 'acceptEdits');
     } catch (error) {
-      console.error('Failed to approve all edits:', error);
+      logger.error('Failed to approve all edits:', error);
     } finally {
       setLoadingAllEdits(false);
     }
@@ -107,7 +109,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
 
       await sessionAllow(sessionId, permission.id, undefined, [toolIdentifier]);
     } catch (error) {
-      console.error('Failed to approve for session:', error);
+      logger.error('Failed to approve for session:', error);
     } finally {
       setLoadingForSession(false);
     }
@@ -126,7 +128,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionDeny(sessionId, permission.id);
     } catch (error) {
-      console.error('Failed to deny permission:', error);
+      logger.error('Failed to deny permission:', error);
     } finally {
       setLoadingButton(null);
     }
@@ -140,7 +142,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved');
     } catch (error) {
-      console.error('Failed to approve permission:', error);
+      logger.error('Failed to approve permission:', error);
     } finally {
       setLoadingButton(null);
     }
@@ -153,7 +155,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved_for_session');
     } catch (error) {
-      console.error('Failed to approve for session:', error);
+      logger.error('Failed to approve for session:', error);
     } finally {
       setLoadingForSession(false);
     }
@@ -166,7 +168,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionDeny(sessionId, permission.id, undefined, undefined, 'abort');
     } catch (error) {
-      console.error('Failed to abort permission:', error);
+      logger.error('Failed to abort permission:', error);
     } finally {
       setLoadingButton(null);
     }

@@ -19,6 +19,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
+import { useAuth } from '@/auth/AuthContext';
 import {
   storage,
   useIsDataReady,
@@ -42,6 +43,8 @@ import {
   useSessionStatus,
 } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/session/SessionView');
 
 export const SessionView = React.memo((props: { id: string }) => {
   const sessionId = props.id;
@@ -187,6 +190,19 @@ export const SessionView = React.memo((props: { id: string }) => {
   );
 });
 
+/** Decode JWT payload to extract sub (userId). Returns null on failure. */
+function decodeJwtSub(token: string): string | null {
+  try {
+    const seg = token.split('.')[1];
+    if (!seg) return null;
+    const b64 = seg.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(seg.length / 4) * 4, '=');
+    const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+    return payload.sub ?? payload.userId ?? payload.user ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function SessionViewLoaded({ sessionId, session }: { sessionId: string; session: Session }) {
   const { theme } = useUnistyles();
   const router = useRouter();
@@ -217,6 +233,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const sessionUsage = useSessionUsage(sessionId);
   const alwaysShowContextSize = useSetting('alwaysShowContextSize');
   const experiments = useSetting('experiments');
+  const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
+  const { credentials } = useAuth();
+  const devUserId = devModeEnabled && credentials ? decodeJwtSub(credentials.token) : null;
 
   // Use draft hook for auto-saving message drafts
   const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -282,7 +301,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
         await startRealtimeSession(sessionId, initialPrompt);
         tracking?.capture('voice_session_started', { sessionId });
       } catch (error) {
-        console.error('Failed to start realtime session:', error);
+        logger.error('Failed to start realtime session:', error);
         Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
         tracking?.capture('voice_session_error', {
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -389,6 +408,39 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
 
   return (
     <>
+      {/* Dev Info Badge - session/user IDs */}
+      {devModeEnabled && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            bottom: safeArea.bottom + 80,
+            left: 0,
+            right: 0,
+            alignItems: 'center',
+            zIndex: 997,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              borderRadius: 6,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+            }}
+          >
+            <Text style={{ color: '#0f0', fontFamily: 'monospace', fontSize: 10, opacity: 0.9 }}>
+              sid:{sessionId}
+            </Text>
+            {!!devUserId && (
+              <Text style={{ color: '#0ff', fontFamily: 'monospace', fontSize: 10, opacity: 0.9 }}>
+                uid:{devUserId}
+              </Text>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* CLI Version Warning Overlay - Subtle centered pill */}
       {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
         <Pressable
