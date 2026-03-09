@@ -92,8 +92,8 @@ android {
         applicationId 'app.saaskit.freecode.dev'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode project.hasProperty('versionCode') ? versionCode.toInteger() : 1
-        versionName project.hasProperty('versionName') ? versionName : '0.0.1'
+        versionCode 1
+        versionName "0.0.1"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

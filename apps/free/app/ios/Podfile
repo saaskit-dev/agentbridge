@@ -60,5 +60,35 @@ target 'Freedev' do
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
 
+    # Workaround: Xcode 26 beta's Apple Clang has a consteval bug with fmt 11.x.
+    # Force-disable consteval to avoid "not a constant expression" errors.
+    # Step 1: Append FMT_USE_CONSTEVAL=0 to fmt's xcconfig files (xcconfig takes
+    # precedence over pbxproj build settings, so we must patch the xcconfig).
+    fmt_support = File.join(__dir__, 'Pods', 'Target Support Files', 'fmt')
+    if File.directory?(fmt_support)
+      Dir.glob(File.join(fmt_support, '*.xcconfig')).each do |xcconfig|
+        content = File.read(xcconfig)
+        unless content.include?('FMT_USE_CONSTEVAL')
+          content = content.sub(
+            /^(GCC_PREPROCESSOR_DEFINITIONS\s*=.*)$/,
+            '\1 FMT_USE_CONSTEVAL=0'
+          )
+          File.write(xcconfig, content)
+        end
+      end
+    end
+    # Step 2: Patch fmt/base.h so its auto-detection doesn't override the flag.
+    fmt_base_h = File.join(__dir__, 'Pods', 'fmt', 'include', 'fmt', 'base.h')
+    if File.exist?(fmt_base_h)
+      content = File.read(fmt_base_h)
+      guard_marker = '#ifndef FMT_USE_CONSTEVAL'
+      detect_comment = '// Detect consteval, C++20 constexpr extensions and std::is_constant_evaluated.'
+      unless content.include?(guard_marker)
+        content = content.sub(detect_comment, guard_marker + "\n" + detect_comment)
+        content = content.sub("#endif\n#if FMT_USE_CONSTEVAL", "#endif\n#endif // ifndef FMT_USE_CONSTEVAL\n#if FMT_USE_CONSTEVAL")
+        File.write(fmt_base_h, content)
+        Pod::UI.puts 'Patched fmt/base.h with #ifndef FMT_USE_CONSTEVAL guard'
+      end
+    end
   end
 end
