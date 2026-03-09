@@ -5,72 +5,37 @@ import {
   mapToClaudeMode,
   resolveInitialClaudePermissionMode,
 } from './permissionMode';
-import type { PermissionMode } from '@/api/types';
 
 describe('mapToClaudeMode', () => {
-  describe('Codex modes are mapped to Claude equivalents', () => {
-    it('maps yolo → bypassPermissions', () => {
-      expect(mapToClaudeMode('yolo')).toBe('bypassPermissions');
-    });
-
-    it('maps safe-yolo → default', () => {
-      expect(mapToClaudeMode('safe-yolo')).toBe('default');
-    });
-
-    it('maps read-only → default', () => {
-      expect(mapToClaudeMode('read-only')).toBe('default');
-    });
+  it('maps read-only → default (Claude has no read-only)', () => {
+    expect(mapToClaudeMode('read-only')).toBe('default');
   });
 
-  describe('Claude modes pass through unchanged', () => {
-    it('passes through default', () => {
-      expect(mapToClaudeMode('default')).toBe('default');
-    });
-
-    it('passes through acceptEdits', () => {
-      expect(mapToClaudeMode('acceptEdits')).toBe('acceptEdits');
-    });
-
-    it('passes through bypassPermissions', () => {
-      expect(mapToClaudeMode('bypassPermissions')).toBe('bypassPermissions');
-    });
-
-    it('passes through plan', () => {
-      expect(mapToClaudeMode('plan')).toBe('plan');
-    });
+  it('maps accept-edits → acceptEdits', () => {
+    expect(mapToClaudeMode('accept-edits')).toBe('acceptEdits');
   });
 
-  describe('all 7 PermissionMode values are handled', () => {
-    const allModes: PermissionMode[] = [
-      'default',
-      'acceptEdits',
-      'bypassPermissions',
-      'plan', // Claude modes
-      'read-only',
-      'safe-yolo',
-      'yolo', // Codex modes
-    ];
+  it('maps yolo → bypassPermissions', () => {
+    expect(mapToClaudeMode('yolo')).toBe('bypassPermissions');
+  });
 
-    it('returns a valid Claude mode for every PermissionMode', () => {
-      const validClaudeModes = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
-
-      allModes.forEach(mode => {
-        const result = mapToClaudeMode(mode);
-        expect(validClaudeModes).toContain(result);
-      });
+  it('returns a valid Claude SDK mode for every PermissionMode', () => {
+    const validClaudeModes = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
+    (['read-only', 'accept-edits', 'yolo'] as const).forEach(mode => {
+      expect(validClaudeModes).toContain(mapToClaudeMode(mode));
     });
   });
 });
 
 describe('extractPermissionModeFromClaudeArgs', () => {
   it('extracts mode from --permission-mode VALUE', () => {
-    expect(extractPermissionModeFromClaudeArgs(['--permission-mode', 'bypassPermissions'])).toBe(
-      'bypassPermissions'
-    );
+    expect(extractPermissionModeFromClaudeArgs(['--permission-mode', 'yolo'])).toBe('yolo');
   });
 
   it('extracts mode from --permission-mode=VALUE', () => {
-    expect(extractPermissionModeFromClaudeArgs(['--foo', '--permission-mode=plan'])).toBe('plan');
+    expect(extractPermissionModeFromClaudeArgs(['--foo', '--permission-mode=read-only'])).toBe(
+      'read-only'
+    );
   });
 
   it('returns undefined for invalid mode', () => {
@@ -81,38 +46,36 @@ describe('extractPermissionModeFromClaudeArgs', () => {
 describe('resolveInitialClaudePermissionMode', () => {
   it('uses --dangerously-skip-permissions as highest priority', () => {
     expect(
-      resolveInitialClaudePermissionMode('default', [
+      resolveInitialClaudePermissionMode('accept-edits', [
         '--permission-mode',
-        'plan',
+        'read-only',
         '--dangerously-skip-permissions',
       ])
-    ).toBe('bypassPermissions');
+    ).toBe('yolo');
   });
 
   it('uses mode from claude args when present', () => {
     expect(
-      resolveInitialClaudePermissionMode('default', ['--permission-mode', 'acceptEdits'])
-    ).toBe('acceptEdits');
+      resolveInitialClaudePermissionMode('accept-edits', ['--permission-mode', 'accept-edits'])
+    ).toBe('accept-edits');
   });
 
   it('falls back to option mode when claude args have no mode', () => {
-    expect(resolveInitialClaudePermissionMode('bypassPermissions', ['--foo'])).toBe(
-      'bypassPermissions'
-    );
+    expect(resolveInitialClaudePermissionMode('yolo', ['--foo'])).toBe('yolo');
   });
 });
 
 describe('applySandboxPermissionPolicy', () => {
-  it('forces bypassPermissions when sandbox is enabled', () => {
-    expect(applySandboxPermissionPolicy('default', true)).toBe('bypassPermissions');
-    expect(applySandboxPermissionPolicy(undefined, true)).toBe('bypassPermissions');
+  it('forces yolo when sandbox is enabled', () => {
+    expect(applySandboxPermissionPolicy('accept-edits', true)).toBe('yolo');
+    expect(applySandboxPermissionPolicy(undefined, true)).toBe('yolo');
   });
 
-  it('forces bypassPermissions for plan mode when sandbox is enabled', () => {
-    expect(applySandboxPermissionPolicy('plan', true)).toBe('bypassPermissions');
+  it('forces yolo for read-only mode when sandbox is enabled', () => {
+    expect(applySandboxPermissionPolicy('read-only', true)).toBe('yolo');
   });
 
   it('returns original mode when sandbox is disabled', () => {
-    expect(applySandboxPermissionPolicy('acceptEdits', false)).toBe('acceptEdits');
+    expect(applySandboxPermissionPolicy('accept-edits', false)).toBe('accept-edits');
   });
 });

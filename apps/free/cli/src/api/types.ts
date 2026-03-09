@@ -3,25 +3,12 @@ import { UsageSchema } from '@/claude/types';
 import type { SandboxConfig } from '@/persistence';
 
 /**
- * Permission mode type - includes both Claude and Codex modes
- * Must match MessageMetaSchema.permissionMode enum values
- *
- * Claude modes: default, acceptEdits, bypassPermissions, plan
- * Codex modes: read-only, safe-yolo, yolo
- *
- * When calling Claude SDK, Codex modes are mapped at the SDK boundary:
- * - yolo → bypassPermissions
- * - safe-yolo → default
- * - read-only → default
+ * Unified permission mode type across all agents.
+ * At each agent boundary, these are translated to agent-specific values:
+ * - Claude SDK:  read-only→default, accept-edits→acceptEdits, yolo→bypassPermissions
+ * - Codex:       read-only→never+read-only, accept-edits→on-request+workspace-write, yolo→on-failure+danger-full-access
  */
-export type PermissionMode =
-  | 'default'
-  | 'acceptEdits'
-  | 'bypassPermissions'
-  | 'plan'
-  | 'read-only'
-  | 'safe-yolo'
-  | 'yolo';
+export type PermissionMode = 'read-only' | 'accept-edits' | 'yolo';
 
 /**
  * Usage data type from Claude
@@ -318,7 +305,7 @@ export type SessionMessage = z.infer<typeof SessionMessageSchema>;
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
   permissionMode: z
-    .enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo'])
+    .enum(['read-only', 'accept-edits', 'yolo'])
     .optional(), // Permission mode for this message
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)

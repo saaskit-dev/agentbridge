@@ -21,7 +21,7 @@ interface SessionPermissionRequest {
   id: string;
   approved: boolean;
   reason?: string;
-  mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+  mode?: 'read-only' | 'accept-edits' | 'yolo';
   allowTools?: string[];
   decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
 }
@@ -332,7 +332,7 @@ export async function sessionAbort(sessionId: string): Promise<void> {
 export async function sessionAllow(
   sessionId: string,
   id: string,
-  mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
+  mode?: 'read-only' | 'accept-edits' | 'yolo',
   allowedTools?: string[],
   decision?: 'approved' | 'approved_for_session'
 ): Promise<void> {
@@ -352,7 +352,7 @@ export async function sessionAllow(
 export async function sessionDeny(
   sessionId: string,
   id: string,
-  mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
+  mode?: 'read-only' | 'accept-edits' | 'yolo',
   allowedTools?: string[],
   decision?: 'denied' | 'abort'
 ): Promise<void> {

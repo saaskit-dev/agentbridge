@@ -78,9 +78,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
 
     setLoadingAllEdits(true);
     try {
-      await sessionAllow(sessionId, permission.id, 'acceptEdits');
-      // Update the session permission mode to 'acceptEdits' for future permissions
-      storage.getState().updateSessionPermissionMode(sessionId, 'acceptEdits');
+      await sessionAllow(sessionId, permission.id, 'accept-edits');
+      // Update the session permission mode to 'accept-edits' for future permissions
+      storage.getState().updateSessionPermissionMode(sessionId, 'accept-edits');
     } catch (error) {
       logger.error('Failed to approve all edits:', error);
     } finally {
@@ -201,9 +201,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
   // Detect which button was used based on mode (for Claude) or decision (for Codex)
   const isApprovedViaAllow =
     isApproved &&
-    permission.mode !== 'acceptEdits' &&
+    permission.mode !== 'accept-edits' &&
     !isToolAllowed(toolName, toolInput, permission.allowedTools);
-  const isApprovedViaAllEdits = isApproved && permission.mode === 'acceptEdits';
+  const isApprovedViaAllEdits = isApproved && permission.mode === 'accept-edits';
   const isApprovedForSession =
     isApproved && isToolAllowed(toolName, toolInput, permission.allowedTools);
 

@@ -158,17 +158,7 @@ interface StorageState {
   setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
   getActiveSessions: () => Session[];
   updateSessionDraft: (sessionId: string, draft: string | null) => void;
-  updateSessionPermissionMode: (
-    sessionId: string,
-    mode:
-      | 'default'
-      | 'acceptEdits'
-      | 'bypassPermissions'
-      | 'plan'
-      | 'read-only'
-      | 'safe-yolo'
-      | 'yolo'
-  ) => void;
+  updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) => void;
   updateSessionModelMode: (
     sessionId: string,
     mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite'
@@ -382,18 +372,12 @@ export const storage = create<StorageState>()((set, get) => {
           const existingPermissionMode = state.sessions[session.id]?.permissionMode;
           const savedPermissionMode = savedPermissionModes[session.id];
           const defaultPermissionMode: PermissionMode = isSandboxEnabled(session.metadata)
-            ? 'bypassPermissions'
-            : (state.settings.defaultPermissionMode as PermissionMode) ?? 'default';
+            ? 'yolo'
+            : (state.settings.defaultPermissionMode as PermissionMode) ?? 'accept-edits';
           const resolvedPermissionMode: PermissionMode =
-            (existingPermissionMode && existingPermissionMode !== 'default'
-              ? existingPermissionMode
-              : undefined) ||
-            (savedPermissionMode && savedPermissionMode !== 'default'
-              ? savedPermissionMode
-              : undefined) ||
-            (session.permissionMode && session.permissionMode !== 'default'
-              ? session.permissionMode
-              : undefined) ||
+            existingPermissionMode ||
+            savedPermissionMode ||
+            session.permissionMode ||
             defaultPermissionMode;
 
           mergedSessions[session.id] = {
@@ -870,17 +854,7 @@ export const storage = create<StorageState>()((set, get) => {
           sessionListViewData,
         };
       }),
-    updateSessionPermissionMode: (
-      sessionId: string,
-      mode:
-        | 'default'
-        | 'acceptEdits'
-        | 'bypassPermissions'
-        | 'plan'
-        | 'read-only'
-        | 'safe-yolo'
-        | 'yolo'
-    ) =>
+    updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) =>
       set(state => {
         const session = state.sessions[sessionId];
         if (!session) return state;
@@ -897,7 +871,7 @@ export const storage = create<StorageState>()((set, get) => {
         // Collect all permission modes for persistence
         const allModes: Record<string, PermissionMode> = {};
         Object.entries(updatedSessions).forEach(([id, sess]) => {
-          if (sess.permissionMode && sess.permissionMode !== 'default') {
+          if (sess.permissionMode) {
             allModes[id] = sess.permissionMode;
           }
         });

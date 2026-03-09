@@ -291,11 +291,11 @@ describe('SDKToLogConverter', () => {
         string,
         {
           approved: boolean;
-          mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+          mode?: 'read-only' | 'accept-edits' | 'yolo';
           reason?: string;
         }
       >();
-      responses.set('tool_123', { approved: true, mode: 'acceptEdits' });
+      responses.set('tool_123', { approved: true, mode: 'accept-edits' });
 
       const converterWithResponses = new SDKToLogConverter(context, responses);
 
@@ -316,7 +316,7 @@ describe('SDKToLogConverter', () => {
       const logMessage = converterWithResponses.convert(sdkMessage);
 
       expect(logMessage).toBeTruthy();
-      expect((logMessage as any).mode).toBe('acceptEdits');
+      expect((logMessage as any).mode).toBe('accept-edits');
       expect((logMessage as any).toolUseResult).toBeUndefined(); // toolUseResult is not added when using array content
     });
 
@@ -325,7 +325,7 @@ describe('SDKToLogConverter', () => {
         string,
         {
           approved: boolean;
-          mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+          mode?: 'read-only' | 'accept-edits' | 'yolo';
           reason?: string;
         }
       >();
@@ -358,11 +358,11 @@ describe('SDKToLogConverter', () => {
         string,
         {
           approved: boolean;
-          mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+          mode?: 'read-only' | 'accept-edits' | 'yolo';
           reason?: string;
         }
       >();
-      responses.set('tool_789', { approved: true, mode: 'bypassPermissions' });
+      responses.set('tool_789', { approved: true, mode: 'yolo' });
 
       const converterWithResponses = new SDKToLogConverter(context, responses);
 
@@ -384,7 +384,7 @@ describe('SDKToLogConverter', () => {
       const logMessage = converterWithResponses.convert(sdkMessage);
 
       expect(logMessage).toBeTruthy();
-      expect((logMessage as any).mode).toBe('bypassPermissions');
+      expect((logMessage as any).mode).toBe('yolo');
       expect((logMessage as any).toolUseResult).toBeUndefined(); // toolUseResult is not added when using array content
     });
 
@@ -393,11 +393,11 @@ describe('SDKToLogConverter', () => {
         string,
         {
           approved: boolean;
-          mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+          mode?: 'read-only' | 'accept-edits' | 'yolo';
           reason?: string;
         }
       >();
-      responses.set('tool_abc', { approved: false, mode: 'plan', reason: 'User rejected' });
+      responses.set('tool_abc', { approved: false, mode: 'accept-edits', reason: 'User rejected' });
 
       const sdkMessage: SDKUserMessage = {
         type: 'user',
@@ -416,7 +416,7 @@ describe('SDKToLogConverter', () => {
       const logMessage = convertSDKToLog(sdkMessage, context, responses);
 
       expect(logMessage).toBeTruthy();
-      expect((logMessage as any).mode).toBe('plan');
+      expect((logMessage as any).mode).toBe('accept-edits');
     });
   });
 });

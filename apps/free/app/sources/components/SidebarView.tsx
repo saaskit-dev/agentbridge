@@ -229,28 +229,7 @@ export const SidebarView = React.memo(() => {
 
           {/* Navigation icons */}
           <View style={styles.rightContainer}>
-            <Pressable
-              onPress={() => router.push('/(app)/inbox')}
-              hitSlop={15}
-              style={styles.notificationButton}
-            >
-              <Image
-                source={require('@/assets/images/brutalist/Brutalism 27.png')}
-                contentFit="contain"
-                style={[{ width: 32, height: 32 }]}
-                tintColor={theme.colors.header.tint}
-              />
-              {friendRequests.length > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {friendRequests.length > 99 ? '99+' : friendRequests.length}
-                  </Text>
-                </View>
-              )}
-              {inboxHasContent && friendRequests.length === 0 && (
-                <View style={styles.indicatorDot} />
-              )}
-            </Pressable>
+            {/* NOTE: Inbox button temporarily hidden */}
             <Pressable onPress={() => router.push('/settings')} hitSlop={15}>
               <Image
                 source={require('@/assets/images/brutalist/Brutalism 9.png')}

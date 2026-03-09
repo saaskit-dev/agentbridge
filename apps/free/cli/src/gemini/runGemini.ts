@@ -224,7 +224,7 @@ export async function runGemini(opts: {
     // Resolve permission mode (validate) - same as Codex
     let messagePermissionMode = currentPermissionMode;
     if (message.meta?.permissionMode) {
-      const validModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+      const validModes: PermissionMode[] = ['read-only', 'accept-edits', 'yolo'];
       if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
         messagePermissionMode = message.meta.permissionMode as PermissionMode;
         currentPermissionMode = messagePermissionMode;
@@ -238,14 +238,14 @@ export async function runGemini(opts: {
       }
     } else {
       logger.debug(
-        `[Gemini] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`
+        `[Gemini] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'accept-edits (effective)'}`
       );
     }
 
     // Initialize permission mode if not set yet
     if (currentPermissionMode === undefined) {
-      currentPermissionMode = 'default';
-      updatePermissionMode('default');
+      currentPermissionMode = 'accept-edits';
+      updatePermissionMode('accept-edits');
     }
 
     // Resolve model; explicit null resets to default (undefined)
@@ -295,7 +295,7 @@ export async function runGemini(opts: {
     }
 
     const mode: GeminiMode = {
-      permissionMode: messagePermissionMode || 'default',
+      permissionMode: messagePermissionMode || 'accept-edits',
       model: messageModel,
       originalUserMessage, // Store original message separately
     };
