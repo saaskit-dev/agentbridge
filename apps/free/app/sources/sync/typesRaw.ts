@@ -1,6 +1,9 @@
 import { isCuid } from '@paralleldrive/cuid2';
 import * as z from 'zod';
+import { Logger } from '@agentbridge/core/telemetry';
 import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
+
+const logger = new Logger('app/sync/typesRaw');
 
 //
 // Raw types
@@ -586,6 +589,7 @@ export type NormalizedMessage = (
   isSidechain: boolean;
   meta?: MessageMeta;
   usage?: UsageData;
+  traceId?: string; // RFC §19.3: propagated from server DB for cross-layer trace correlation
 };
 
 export function normalizeRawMessage(
@@ -597,10 +601,10 @@ export function normalizeRawMessage(
   // Zod transform handles normalization during validation
   const parsed = rawRecordSchema.safeParse(raw);
   if (!parsed.success) {
-    console.error('=== VALIDATION ERROR ===');
-    console.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
-    console.error('Raw message:', JSON.stringify(raw, null, 2));
-    console.error('=== END ERROR ===');
+    logger.error('=== VALIDATION ERROR ===');
+    logger.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
+    logger.error('Raw message:', JSON.stringify(raw, null, 2));
+    logger.error('=== END ERROR ===');
     return null;
   }
   raw = parsed.data;

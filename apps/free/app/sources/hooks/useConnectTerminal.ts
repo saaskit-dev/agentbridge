@@ -12,6 +12,8 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { trackAccountCreated } from '@/track';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/hooks/useConnectTerminal');
 
 interface UseConnectTerminalOptions {
   onSuccess?: () => void;
@@ -60,7 +62,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
         ]);
         return true;
       } catch (e) {
-        console.error(e);
+        logger.error('Failed to connect terminal', { error: e });
         Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [
           { text: t('common.ok') },
         ]);
@@ -108,7 +110,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
         ]);
         return true;
       } catch (e) {
-        console.error(e);
+        logger.error('Failed to connect terminal', { error: e });
         Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [
           { text: t('common.ok') },
         ]);

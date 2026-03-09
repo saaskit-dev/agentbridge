@@ -116,6 +116,9 @@ import { MessageMeta } from '../typesMessageMeta';
 import { AgentEvent, NormalizedMessage, UsageData } from '../typesRaw';
 import { parseMessageAsEvent } from './messageToEvent';
 import { createTracer, traceMessages, TracerState } from './reducerTracer';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('app/sync/reducer');
 
 type ReducerMessage = {
   id: string;
@@ -127,6 +130,8 @@ type ReducerMessage = {
   event: AgentEvent | null;
   tool: ToolCall | null;
   meta?: MessageMeta;
+  localId?: string | null;
+  traceId?: string;
 };
 
 type StoredPermission = {
@@ -208,16 +213,16 @@ export function reducer(
   agentState?: AgentState | null
 ): ReducerResult {
   if (ENABLE_LOGGING) {
-    console.log(
+    logger.debug(
       `[REDUCER] Called with ${messages.length} messages, agentState: ${agentState ? 'YES' : 'NO'}`
     );
     if (agentState?.requests) {
-      console.log(
+      logger.debug(
         `[REDUCER] AgentState has ${Object.keys(agentState.requests).length} pending requests`
       );
     }
     if (agentState?.completedRequests) {
-      console.log(
+      logger.debug(
         `[REDUCER] AgentState has ${Object.keys(agentState.completedRequests).length} completed requests`
       );
     }
@@ -240,7 +245,7 @@ export function reducer(
   //
 
   if (ENABLE_LOGGING) {
-    console.log(`[REDUCER] Phase 0.5: Message-to-Event Conversion`);
+    logger.debug(`[REDUCER] Phase 0.5: Message-to-Event Conversion`);
   }
 
   const messagesToProcess: NormalizedMessage[] = [];
@@ -317,7 +322,7 @@ export function reducer(
     const event = parseMessageAsEvent(msg);
     if (event) {
       if (ENABLE_LOGGING) {
-        console.log(`[REDUCER] Converting message ${msg.id} to event:`, event);
+        logger.debug(`[REDUCER] Converting message ${msg.id} to event:`, event);
       }
       convertedEvents.push({ message: msg, event });
       // Mark as processed to prevent duplication
@@ -366,7 +371,7 @@ export function reducer(
   //
 
   if (ENABLE_LOGGING) {
-    console.log(`[REDUCER] Phase 0: Processing AgentState`);
+    logger.debug(`[REDUCER] Phase 0: Processing AgentState`);
   }
   if (agentState) {
     // Process pending permission requests
@@ -384,7 +389,7 @@ export function reducer(
           const message = state.messages.get(existingMessageId);
           if (message?.tool && !message.tool.permission) {
             if (ENABLE_LOGGING) {
-              console.log(`[REDUCER] Updating existing tool ${permId} with permission`);
+              logger.debug(`[REDUCER] Updating existing tool ${permId} with permission`);
             }
             message.tool.permission = {
               id: permId,
@@ -394,7 +399,7 @@ export function reducer(
           }
         } else {
           if (ENABLE_LOGGING) {
-            console.log(`[REDUCER] Creating new message for permission ${permId}`);
+            logger.debug(`[REDUCER] Creating new message for permission ${permId}`);
           }
 
           // Create a new tool message for the permission request
@@ -538,7 +543,7 @@ export function reducer(
           // No existing message - check if tool ID is in incoming messages
           if (incomingToolIds.has(permId)) {
             if (ENABLE_LOGGING) {
-              console.log(`[REDUCER] Storing permission ${permId} for incoming tool`);
+              logger.debug(`[REDUCER] Storing permission ${permId} for incoming tool`);
             }
             // Store permission for when tool arrives in Phase 2
             state.permissions.set(permId, {
@@ -640,6 +645,8 @@ export function reducer(
         tool: null,
         event: null,
         meta: msg.meta,
+        localId: msg.localId,
+        traceId: msg.traceId,
       });
 
       // Track both localId and messageId
@@ -678,6 +685,7 @@ export function reducer(
             tool: null,
             event: null,
             meta: msg.meta,
+            traceId: msg.traceId,
           });
           changed.add(mid);
         }
@@ -690,7 +698,7 @@ export function reducer(
   //
 
   if (ENABLE_LOGGING) {
-    console.log(`[REDUCER] Phase 2: Processing tool calls`);
+    logger.debug(`[REDUCER] Phase 2: Processing tool calls`);
   }
   for (const msg of nonSidechainMessages) {
     if (msg.role === 'agent') {
@@ -701,7 +709,7 @@ export function reducer(
 
           if (existingMessageId) {
             if (ENABLE_LOGGING) {
-              console.log(`[REDUCER] Found existing message for tool ${c.id}`);
+              logger.debug(`[REDUCER] Found existing message for tool ${c.id}`);
             }
             // Update existing message with tool execution details
             const message = state.messages.get(existingMessageId);
@@ -737,7 +745,7 @@ export function reducer(
             }
           } else {
             if (ENABLE_LOGGING) {
-              console.log(`[REDUCER] Creating new message for tool ${c.id}`);
+              logger.debug(`[REDUCER] Creating new message for tool ${c.id}`);
             }
             // Check if there's a stored permission for this tool
             const permission = state.permissions.get(c.id);
@@ -756,7 +764,7 @@ export function reducer(
             // Add permission info if found
             if (permission) {
               if (ENABLE_LOGGING) {
-                console.log(`[REDUCER] Found stored permission for tool ${c.id}`);
+                logger.debug(`[REDUCER] Found stored permission for tool ${c.id}`);
               }
               toolCall.permission = {
                 id: c.id,
@@ -787,6 +795,7 @@ export function reducer(
               tool: toolCall,
               event: null,
               meta: msg.meta,
+              traceId: msg.traceId,
             });
 
             state.toolIdToMessageId.set(c.id, mid);
@@ -1117,8 +1126,8 @@ export function reducer(
   //
 
   if (ENABLE_LOGGING) {
-    console.log(JSON.stringify(messages, null, 2));
-    console.log(`[REDUCER] Changed messages: ${changed.size}`);
+    logger.debug(JSON.stringify(messages, null, 2));
+    logger.debug(`[REDUCER] Changed messages: ${changed.size}`);
   }
 
   return {
@@ -1169,22 +1178,24 @@ function convertReducerMessageToMessage(
   if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
     return {
       id: reducerMsg.id,
-      localId: null,
+      localId: reducerMsg.localId ?? null,
       createdAt: reducerMsg.createdAt,
       kind: 'user-text',
       text: reducerMsg.text,
       ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
       meta: reducerMsg.meta,
+      ...(reducerMsg.traceId && { traceId: reducerMsg.traceId }),
     };
   } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {
     return {
       id: reducerMsg.id,
-      localId: null,
+      localId: reducerMsg.localId ?? null,
       createdAt: reducerMsg.createdAt,
       kind: 'agent-text',
       text: reducerMsg.text,
       ...(reducerMsg.isThinking && { isThinking: true }),
       meta: reducerMsg.meta,
+      ...(reducerMsg.traceId && { traceId: reducerMsg.traceId }),
     };
   } else if (reducerMsg.role === 'agent' && reducerMsg.tool !== null) {
     // Convert children recursively
@@ -1199,12 +1210,13 @@ function convertReducerMessageToMessage(
 
     return {
       id: reducerMsg.id,
-      localId: null,
+      localId: reducerMsg.localId ?? null,
       createdAt: reducerMsg.createdAt,
       kind: 'tool-call',
       tool: { ...reducerMsg.tool },
       children: childMessages,
       meta: reducerMsg.meta,
+      ...(reducerMsg.traceId && { traceId: reducerMsg.traceId }),
     };
   } else if (reducerMsg.role === 'agent' && reducerMsg.event !== null) {
     return {

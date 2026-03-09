@@ -1,5 +1,8 @@
+import { Logger } from '@agentbridge/core/telemetry';
 import * as Random from 'expo-crypto';
 import { ArtifactHeader, ArtifactBody } from '../artifactTypes';
+
+const logger = new Logger('app/sync/encryption/artifact');
 import { AES256Encryption } from './encryptor';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 
@@ -44,7 +47,7 @@ export class ArtifactEncryption {
         title: typeof header.title === 'string' ? header.title : null,
       };
     } catch (error) {
-      console.error('Failed to decrypt artifact header:', error);
+      logger.error('Failed to decrypt artifact header:', error);
       return null;
     }
   }
@@ -76,7 +79,7 @@ export class ArtifactEncryption {
         body: typeof body.body === 'string' ? body.body : null,
       };
     } catch (error) {
-      console.error('Failed to decrypt artifact body:', error);
+      logger.error('Failed to decrypt artifact body:', error);
       return null;
     }
   }

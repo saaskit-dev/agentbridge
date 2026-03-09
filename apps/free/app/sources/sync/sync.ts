@@ -26,7 +26,7 @@ import {
 } from '@/track';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
-import { log } from '@/log';
+import { Logger, continueTrace, type TraceContext } from '@agentbridge/core/telemetry';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
@@ -48,14 +48,18 @@ import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from '
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
-import { storage } from './storage';
+import { registerGetMachineEncryption } from './ops';
+import { storage, registerApplySettingsCallback, registerAssumeUsersCallback } from './storage';
 import { Session, Machine } from './storageTypes';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { apiSocket } from '@/sync/apiSocket';
+import { setSessionTrace, getSessionTrace, clearSessionTrace } from '@/sync/appTraceStore';
 import { Encryption } from '@/sync/encryption/encryption';
 import { InvalidateSync } from '@/utils/sync';
+
+const logger = new Logger('app/sync');
 
 function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
   const sandbox = metadata?.sandbox;
@@ -79,9 +83,24 @@ type V3PostSessionMessagesResponse = {
   }>;
 };
 
+/**
+ * Minimal wire trace — mirrors packages/core WireTrace without adding a Node.js dependency.
+ * Must stay in sync with packages/core/src/telemetry/types.ts WireTrace.
+ * App generates tid/sid/ses; machineId (mid) is added by the daemon layer if needed.
+ */
+type WireTrace = { tid: string; sid: string; ses?: string; mid?: string };
+
+function makeWireTrace(sessionId: string): WireTrace {
+  const traceId = randomUUID();
+  // spanId: 12-char hex, consistent with core's generateSpanId()
+  const spanId = randomUUID().replace(/-/g, '').slice(0, 12);
+  return { tid: traceId, sid: spanId, ses: sessionId };
+}
+
 type OutboxMessage = {
   localId: string;
   content: string;
+  _trace?: WireTrace;
 };
 
 class Sync {
@@ -169,20 +188,20 @@ class Sync {
             'Message failed to send in background after 30s. Please retry.'
           );
         }
-        log.log('📱 App became active');
+        logger.debug('📱 App became active');
         this.purchasesSync.invalidate();
         this.profileSync.invalidate();
         this.machinesSync.invalidate();
         this.pushTokenSync.invalidate();
         this.sessionsSync.invalidate();
         this.nativeUpdateSync.invalidate();
-        log.log('📱 App became active: Invalidating artifacts sync');
+        logger.debug('📱 App became active: Invalidating artifacts sync');
         this.artifactsSync.invalidate();
         this.friendsSync.invalidate();
         this.friendRequestsSync.invalidate();
         this.feedSync.invalidate();
       } else {
-        log.log(`📱 App state changed to: ${nextAppState}`);
+        logger.debug(`📱 App state changed to: ${nextAppState}`);
         this.maybeStartBackgroundSendWatchdog();
       }
     });
@@ -230,7 +249,7 @@ class Sync {
     }
 
     // Invalidate sync
-    log.log('🔄 #init: Invalidating all syncs');
+    logger.debug('🔄 #init: Invalidating all syncs');
     this.sessionsSync.invalidate();
     this.settingsSync.invalidate();
     this.profileSync.invalidate();
@@ -242,7 +261,7 @@ class Sync {
     this.friendRequestsSync.invalidate();
     this.artifactsSync.invalidate();
     this.feedSync.invalidate();
-    log.log('🔄 #init: All syncs invalidated, including artifacts');
+    logger.debug('🔄 #init: All syncs invalidated, including artifacts');
 
     // Wait for both sessions and machines to load, then mark as ready
     Promise.all([this.sessionsSync.awaitQueue(), this.machinesSync.awaitQueue()])
@@ -250,7 +269,7 @@ class Sync {
         storage.getState().applyReady();
       })
       .catch(error => {
-        console.error('Failed to load initial data:', error);
+        logger.error('Failed to load initial data:', error);
       });
   }
 
@@ -333,7 +352,7 @@ class Sync {
       return;
     }
 
-    log.log('📨 Pending messages detected in background. Starting 30s send watchdog.');
+    logger.debug('📨 Pending messages detected in background. Starting 30s send watchdog.');
     this.backgroundSendStartedAt = Date.now();
     this.backgroundSendTimeout = setTimeout(() => {
       this.backgroundSendTimeout = null;
@@ -367,7 +386,7 @@ class Sync {
         },
       });
     } catch (error) {
-      log.log(`Failed to schedule background send timeout notification: ${error}`);
+      logger.debug(`Failed to schedule background send timeout notification: ${error}`);
     }
   }
 
@@ -378,7 +397,7 @@ class Sync {
     try {
       await Notifications.cancelScheduledNotificationAsync(this.backgroundSendNotificationId);
     } catch (error) {
-      log.log(`Failed to cancel background send timeout notification: ${error}`);
+      logger.debug(`Failed to cancel background send timeout notification: ${error}`);
     } finally {
       this.backgroundSendNotificationId = null;
     }
@@ -398,7 +417,7 @@ class Sync {
         trigger: null,
       });
     } catch (error) {
-      log.log(`Failed to schedule message failure notification: ${error}`);
+      logger.debug(`Failed to schedule message failure notification: ${error}`);
     }
   }
 
@@ -454,14 +473,14 @@ class Sync {
     const encryption = this.encryption.getSessionEncryption(sessionId);
     if (!encryption) {
       // Should never happen
-      console.error(`Session ${sessionId} not found`);
+      logger.error(`Session ${sessionId} not found`);
       return;
     }
 
     // Get session data from storage
     const session = storage.getState().sessions[sessionId];
     if (!session) {
-      console.error(`Session ${sessionId} not found in storage`);
+      logger.error(`Session ${sessionId} not found in storage`);
       return;
     }
 
@@ -485,8 +504,12 @@ class Sync {
     const modelMode =
       session.modelMode || (isGemini ? 'gemini-2.5-pro' : isOpenCode ? 'default' : 'default');
 
-    // Generate local ID
+    // Generate local ID and per-message trace context.
+    // The trace travels App → Server → CLI so all layers log with the same traceId.
     const localId = randomUUID();
+    const trace = makeWireTrace(sessionId);
+    // Update session trace store so subsequent RPC calls on this session carry the same trace (RFC §7.1)
+    setSessionTrace(sessionId, trace);
 
     // Determine sentFrom based on platform
     let sentFrom: string;
@@ -546,6 +569,7 @@ class Sync {
     pending.push({
       localId,
       content: encryptedRawRecord,
+      _trace: trace,
     });
 
     this.getSendSync(sessionId).invalidate();
@@ -697,7 +721,7 @@ class Sync {
 
     if (missingIds.length === 0) return;
 
-    log.log(`👤 Fetching ${missingIds.length} missing users...`);
+    logger.debug(`👤 Fetching ${missingIds.length} missing users...`);
 
     // Fetch missing users in parallel
     const results = await Promise.all(
@@ -706,7 +730,7 @@ class Sync {
           const profile = await getUserProfile(this.credentials!, id);
           return { id, profile }; // profile is null if 404
         } catch (error) {
-          console.error(`Failed to fetch user ${id}:`, error);
+          logger.error(`Failed to fetch user ${id}:`, error);
           return { id, profile: null }; // Treat errors as 404
         }
       })
@@ -719,7 +743,7 @@ class Sync {
     });
 
     storage.getState().applyUsers(usersMap);
-    log.log(
+    logger.debug(
       `👤 Applied ${results.length} users to cache (${results.filter(r => r.profile).length} found, ${results.filter(r => !r.profile).length} not found)`
     );
   }
@@ -777,7 +801,7 @@ class Sync {
       if (session.dataEncryptionKey) {
         const decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey);
         if (!decrypted) {
-          console.error(`Failed to decrypt data encryption key for session ${session.id}`);
+          logger.error(`Failed to decrypt data encryption key for session ${session.id}`);
           continue;
         }
         sessionKeys.set(session.id, decrypted);
@@ -793,7 +817,7 @@ class Sync {
       // Get session encryption (should always exist after initialization)
       const sessionEncryption = this.encryption.getSessionEncryption(session.id);
       if (!sessionEncryption) {
-        console.error(`Session encryption not found for ${session.id} - this should never happen`);
+        logger.error(`Session encryption not found for ${session.id} - this should never happen`);
         continue;
       }
 
@@ -822,7 +846,7 @@ class Sync {
 
     // Apply to storage
     this.applySessions(decryptedSessions);
-    log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
+    logger.debug(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
   };
 
   public refreshMachines = async () => {
@@ -839,16 +863,16 @@ class Sync {
 
   // Artifact methods
   public fetchArtifactsList = async (): Promise<void> => {
-    log.log('📦 fetchArtifactsList: Starting artifact sync');
+    logger.debug('📦 fetchArtifactsList: Starting artifact sync');
     if (!this.credentials) {
-      log.log('📦 fetchArtifactsList: No credentials, skipping');
+      logger.debug('📦 fetchArtifactsList: No credentials, skipping');
       return;
     }
 
     try {
-      log.log('📦 fetchArtifactsList: Fetching artifacts from server');
+      logger.debug('📦 fetchArtifactsList: Fetching artifacts from server');
       const artifacts = await fetchArtifacts(this.credentials);
-      log.log(`📦 fetchArtifactsList: Received ${artifacts.length} artifacts from server`);
+      logger.debug(`📦 fetchArtifactsList: Received ${artifacts.length} artifacts from server`);
       const decryptedArtifacts: DecryptedArtifact[] = [];
 
       for (const artifact of artifacts) {
@@ -858,7 +882,7 @@ class Sync {
             artifact.dataEncryptionKey
           );
           if (!decryptedKey) {
-            console.error(`Failed to decrypt key for artifact ${artifact.id}`);
+            logger.error(`Failed to decrypt key for artifact ${artifact.id}`);
             continue;
           }
 
@@ -885,7 +909,7 @@ class Sync {
             isDecrypted: !!header,
           });
         } catch (err) {
-          console.error(`Failed to decrypt artifact ${artifact.id}:`, err);
+          logger.error(`Failed to decrypt artifact ${artifact.id}:`, err);
           // Add with decryption failed flag
           decryptedArtifacts.push({
             id: artifact.id,
@@ -900,14 +924,14 @@ class Sync {
         }
       }
 
-      log.log(
+      logger.debug(
         `📦 fetchArtifactsList: Successfully decrypted ${decryptedArtifacts.length} artifacts`
       );
       storage.getState().applyArtifacts(decryptedArtifacts);
-      log.log('📦 fetchArtifactsList: Artifacts applied to storage');
+      logger.debug('📦 fetchArtifactsList: Artifacts applied to storage');
     } catch (error) {
-      log.log(`📦 fetchArtifactsList: Error fetching artifacts: ${error}`);
-      console.error('Failed to fetch artifacts:', error);
+      logger.debug(`📦 fetchArtifactsList: Error fetching artifacts: ${error}`);
+      logger.error('Failed to fetch artifacts:', error);
       throw error;
     }
   };
@@ -921,7 +945,7 @@ class Sync {
       // Decrypt the data encryption key
       const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey);
       if (!decryptedKey) {
-        console.error(`Failed to decrypt key for artifact ${artifactId}`);
+        logger.error(`Failed to decrypt key for artifact ${artifactId}`);
         return null;
       }
 
@@ -949,7 +973,7 @@ class Sync {
         isDecrypted: !!header,
       };
     } catch (error) {
-      console.error(`Failed to fetch artifact ${artifactId}:`, error);
+      logger.error(`Failed to fetch artifact ${artifactId}:`, error);
       return null;
     }
   }
@@ -1014,7 +1038,7 @@ class Sync {
 
       return artifactId;
     } catch (error) {
-      console.error('Failed to create artifact:', error);
+      logger.error('Failed to create artifact:', error);
       throw error;
     }
   }
@@ -1121,7 +1145,7 @@ class Sync {
 
       storage.getState().updateArtifact(updatedArtifact);
     } catch (error) {
-      console.error('Failed to update artifact:', error);
+      logger.error('Failed to update artifact:', error);
       throw error;
     }
   }
@@ -1129,7 +1153,7 @@ class Sync {
   private fetchMachines = async () => {
     if (!this.credentials) return;
 
-    console.log('📊 Sync: Fetching machines...');
+    logger.debug('📊 Sync: Fetching machines...');
     const API_ENDPOINT = getServerUrl();
     const response = await fetch(`${API_ENDPOINT}/v1/machines`, {
       headers: {
@@ -1139,12 +1163,12 @@ class Sync {
     });
 
     if (!response.ok) {
-      console.error(`Failed to fetch machines: ${response.status}`);
+      logger.error(`Failed to fetch machines: ${response.status}`);
       return;
     }
 
     const data = await response.json();
-    console.log(`📊 Sync: Fetched ${Array.isArray(data) ? data.length : 0} machines from server`);
+    logger.debug(`📊 Sync: Fetched ${Array.isArray(data) ? data.length : 0} machines from server`);
     const machines = data as Array<{
       id: string;
       metadata: string;
@@ -1165,7 +1189,7 @@ class Sync {
       if (machine.dataEncryptionKey) {
         const decryptedKey = await this.encryption.decryptEncryptionKey(machine.dataEncryptionKey);
         if (!decryptedKey) {
-          console.error(`Failed to decrypt data encryption key for machine ${machine.id}`);
+          logger.error(`Failed to decrypt data encryption key for machine ${machine.id}`);
           continue;
         }
         machineKeysMap.set(machine.id, decryptedKey);
@@ -1185,7 +1209,7 @@ class Sync {
       // Get machine-specific encryption (might exist from previous initialization)
       const machineEncryption = this.encryption.getMachineEncryption(machine.id);
       if (!machineEncryption) {
-        console.error(`Machine encryption not found for ${machine.id} - this should never happen`);
+        logger.error(`Machine encryption not found for ${machine.id} - this should never happen`);
         continue;
       }
 
@@ -1215,7 +1239,7 @@ class Sync {
           daemonStateVersion: machine.daemonStateVersion || 0,
         });
       } catch (error) {
-        console.error(`Failed to decrypt machine ${machine.id}:`, error);
+        logger.error(`Failed to decrypt machine ${machine.id}:`, error);
         // Still add the machine with null metadata
         decryptedMachines.push({
           id: machine.id,
@@ -1234,19 +1258,19 @@ class Sync {
 
     // Replace entire machine state with fetched machines
     storage.getState().applyMachines(decryptedMachines, true);
-    log.log(`🖥️ fetchMachines completed - processed ${decryptedMachines.length} machines`);
+    logger.debug(`🖥️ fetchMachines completed - processed ${decryptedMachines.length} machines`);
   };
 
   private fetchFriends = async () => {
     if (!this.credentials) return;
 
     try {
-      log.log('👥 Fetching friends list...');
+      logger.debug('👥 Fetching friends list...');
       const friendsList = await getFriendsList(this.credentials);
       storage.getState().applyFriends(friendsList);
-      log.log(`👥 fetchFriends completed - processed ${friendsList.length} friends`);
+      logger.debug(`👥 fetchFriends completed - processed ${friendsList.length} friends`);
     } catch (error) {
-      console.error('Failed to fetch friends:', error);
+      logger.error('Failed to fetch friends:', error);
       // Silently handle error - UI will show appropriate state
     }
   };
@@ -1254,14 +1278,14 @@ class Sync {
   private fetchFriendRequests = async () => {
     // Friend requests are now included in the friends list with status='pending'
     // This method is kept for backward compatibility but does nothing
-    log.log('👥 fetchFriendRequests called - now handled by fetchFriends');
+    logger.debug('👥 fetchFriendRequests called - now handled by fetchFriends');
   };
 
   private fetchFeed = async () => {
     if (!this.credentials) return;
 
     try {
-      log.log('📰 Fetching feed...');
+      logger.debug('📰 Fetching feed...');
       const state = storage.getState();
       const existingItems = state.feedItems;
       const head = state.feedHead;
@@ -1338,11 +1362,11 @@ class Sync {
 
       // Apply only compatible items to storage
       storage.getState().applyFeedItems(compatibleItems);
-      log.log(
+      logger.debug(
         `📰 fetchFeed completed - loaded ${compatibleItems.length} compatible items (${allItems.length - compatibleItems.length} filtered)`
       );
     } catch (error) {
-      console.error('Failed to fetch feed:', error);
+      logger.error('Failed to fetch feed:', error);
     }
   };
 
@@ -1402,7 +1426,7 @@ class Sync {
           }
 
           // Log and retry
-          console.log('settings version-mismatch, retrying', {
+          logger.debug('settings version-mismatch, retrying', {
             serverVersion: data.currentVersion,
             retry: retryCount + 1,
             pendingKeys: Object.keys(this.pendingSettings),
@@ -1444,7 +1468,7 @@ class Sync {
     }
 
     // Log
-    console.log(
+    logger.debug(
       'settings',
       JSON.stringify({
         settings: parsedSettings,
@@ -1484,7 +1508,7 @@ class Sync {
     const parsedProfile = profileParse(data);
 
     // Log profile data for debugging
-    console.log(
+    logger.debug(
       'profile',
       JSON.stringify({
         id: parsedProfile.id,
@@ -1536,12 +1560,12 @@ class Sync {
       });
 
       if (!response.ok) {
-        console.log(`[fetchNativeUpdate] Request failed: ${response.status}`);
+        logger.debug(`[fetchNativeUpdate] Request failed: ${response.status}`);
         return;
       }
 
       const data = await response.json();
-      console.log('[fetchNativeUpdate] Data:', data);
+      logger.debug('[fetchNativeUpdate] Data:', data);
 
       // Apply update status to storage
       if (data.update_required && data.update_url) {
@@ -1555,7 +1579,7 @@ class Sync {
         });
       }
     } catch (error) {
-      console.log('[fetchNativeUpdate] Error:', error);
+      logger.debug('[fetchNativeUpdate] Error:', error);
       storage.getState().applyNativeUpdateStatus(null);
     }
   };
@@ -1576,10 +1600,10 @@ class Sync {
         }
 
         if (!apiKey) {
-          console.log(`[RevenueCat] No API key for platform: ${Platform.OS}`);
-          console.log(`[RevenueCat] Apple: ${config.revenueCatAppleKey ? '已设置' : '未设置'}`);
-          console.log(`[RevenueCat] Google: ${config.revenueCatGoogleKey ? '已设置' : '未设置'}`);
-          console.log(`[RevenueCat] Stripe: ${config.revenueCatStripeKey ? '已设置' : '未设置'}`);
+          logger.debug(`[RevenueCat] No API key for platform: ${Platform.OS}`);
+          logger.debug(`[RevenueCat] Apple: ${config.revenueCatAppleKey ? '已设置' : '未设置'}`);
+          logger.debug(`[RevenueCat] Google: ${config.revenueCatGoogleKey ? '已设置' : '未设置'}`);
+          logger.debug(`[RevenueCat] Stripe: ${config.revenueCatStripeKey ? '已设置' : '未设置'}`);
           return;
         }
 
@@ -1596,7 +1620,7 @@ class Sync {
         });
 
         this.revenueCatInitialized = true;
-        console.log('RevenueCat initialized successfully');
+        logger.debug('RevenueCat initialized successfully');
       }
 
       // Sync purchases
@@ -1608,7 +1632,7 @@ class Sync {
       // Apply to storage (storage handles the transformation)
       storage.getState().applyPurchases(customerInfo);
     } catch (error) {
-      console.error('Failed to sync purchases:', error);
+      logger.error('Failed to sync purchases:', error);
       // Don't throw - purchases are optional
     }
   };
@@ -1634,10 +1658,13 @@ class Sync {
           messages: batch.map(message => ({
             localId: message.localId,
             content: message.content,
+            ...(message._trace ? { _trace: message._trace } : {}),
           })),
         }),
         headers: {
           'Content-Type': 'application/json',
+          // RFC §7.2: carry trace context in HTTP headers for server-side log correlation
+          ...(batch[0]?._trace ? { 'X-Trace-Id': batch[0]._trace.tid, 'X-Span-Id': batch[0]._trace.sid } : {}),
         },
         signal: controller.signal,
       });
@@ -1677,11 +1704,11 @@ class Sync {
   };
 
   private fetchMessages = async (sessionId: string) => {
-    log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
+    logger.debug(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
 
     const encryption = this.encryption.getSessionEncryption(sessionId);
     if (!encryption) {
-      log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
+      logger.debug(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
       throw new Error(`Session encryption not ready for ${sessionId}`);
     }
 
@@ -1690,8 +1717,11 @@ class Sync {
     let totalNormalized = 0;
 
     while (hasMore) {
+      const sessionTrace = getSessionTrace(sessionId);
       const response = await apiSocket.request(
-        `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`
+        `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`,
+        // RFC §7.2: carry trace context in HTTP headers for server-side log correlation
+        sessionTrace ? { headers: { 'X-Trace-Id': sessionTrace.tid, 'X-Span-Id': sessionTrace.sid } } : undefined
       );
       if (!response.ok) {
         throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
@@ -1720,6 +1750,7 @@ class Sync {
           decrypted.content
         );
         if (normalized) {
+          if (decrypted.traceId) normalized.traceId = decrypted.traceId;
           normalizedMessages.push(normalized);
         }
       }
@@ -1732,7 +1763,7 @@ class Sync {
       this.sessionLastSeq.set(sessionId, maxSeq);
       hasMore = !!data.hasMore;
       if (hasMore && maxSeq === afterSeq) {
-        log.log(
+        logger.debug(
           `💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`
         );
         break;
@@ -1741,13 +1772,13 @@ class Sync {
     }
 
     storage.getState().applyMessagesLoaded(sessionId);
-    log.log(
+    logger.debug(
       `💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`
     );
   };
 
   private registerPushToken = async () => {
-    log.log('registerPushToken');
+    logger.debug('registerPushToken');
     // Only register on mobile platforms
     if (Platform.OS === 'web') {
       return;
@@ -1756,16 +1787,16 @@ class Sync {
     // Request permission
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    log.log('existingStatus: ' + JSON.stringify(existingStatus));
+    logger.debug('existingStatus: ' + JSON.stringify(existingStatus));
 
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    log.log('finalStatus: ' + JSON.stringify(finalStatus));
+    logger.debug('finalStatus: ' + JSON.stringify(finalStatus));
 
     if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
+      logger.debug('Failed to get push token for push notification!');
       return;
     }
 
@@ -1774,14 +1805,14 @@ class Sync {
       Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
 
     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    log.log('tokenData: ' + JSON.stringify(tokenData));
+    logger.debug('tokenData: ' + JSON.stringify(tokenData));
 
     // Register with server
     try {
       await registerPushToken(this.credentials, tokenData.data);
-      log.log('Push token registered successfully');
+      logger.debug('Push token registered successfully');
     } catch (error) {
-      log.log('Failed to register push token: ' + JSON.stringify(error));
+      logger.debug('Failed to register push token: ' + JSON.stringify(error));
     }
   };
 
@@ -1792,10 +1823,10 @@ class Sync {
 
     // Subscribe to connection state changes
     apiSocket.onReconnected(() => {
-      log.log('🔌 Socket reconnected');
+      logger.debug('🔌 Socket reconnected');
       this.sessionsSync.invalidate();
       this.machinesSync.invalidate();
-      log.log('🔌 Socket reconnected: Invalidating artifacts sync');
+      logger.debug('🔌 Socket reconnected: Invalidating artifacts sync');
       this.artifactsSync.invalidate();
       this.friendsSync.invalidate();
       this.friendRequestsSync.invalidate();
@@ -1817,22 +1848,31 @@ class Sync {
   };
 
   private handleUpdate = async (update: unknown) => {
-    console.log('🔄 Sync: handleUpdate called with:', JSON.stringify(update).substring(0, 300));
+    // RFC §9.1 Step 8: extract _trace from incoming server update before Zod strips it
+    const rawWireTrace = (update && typeof update === 'object') ? (update as Record<string, unknown>)._trace : undefined;
+    let traceCtx: TraceContext | undefined;
+    if (rawWireTrace && typeof (rawWireTrace as any).tid === 'string' && typeof (rawWireTrace as any).sid === 'string') {
+      const wt = rawWireTrace as { tid: string; sid: string; ses?: string; mid?: string };
+      traceCtx = continueTrace({ traceId: wt.tid, spanId: wt.sid, sessionId: wt.ses, machineId: wt.mid });
+      // RFC §7.1: keep session trace fresh so subsequent RPC calls carry the correct trace
+      if (wt.ses) setSessionTrace(wt.ses, { tid: traceCtx.traceId, sid: traceCtx.spanId, ses: traceCtx.sessionId });
+    }
+    const log = traceCtx ? logger.withContext(traceCtx) : logger;
+
     const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
     if (!validatedUpdate.success) {
-      console.log('❌ Sync: Invalid update received:', validatedUpdate.error);
-      console.error('❌ Sync: Invalid update data:', update);
+      log.warn('Invalid update received from server');
       return;
     }
     const updateData = validatedUpdate.data;
-    console.log(`🔄 Sync: Validated update type: ${updateData.body.t}`);
+    log.debug('Update received', { type: updateData.body.t });
 
     if (updateData.body.t === 'new-message') {
       // Get encryption
       const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
       if (!encryption) {
         // Should never happen
-        console.error(`Session ${updateData.body.sid} not found`);
+        logger.error(`Session ${updateData.body.sid} not found`);
         this.fetchSessions(); // Just fetch sessions again
         return;
       }
@@ -1873,7 +1913,7 @@ class Sync {
             sessionEventType === 'turn-start' ||
             sessionEventType === 'turn-end'
           ) {
-            console.log(
+            logger.debug(
               `🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}, sessionEventType=${sessionEventType}`
             );
           }
@@ -1888,7 +1928,7 @@ class Sync {
             (contentType === 'session' && sessionEventType === 'turn-start');
 
           if (isTaskComplete || isTaskStarted) {
-            console.log(
+            logger.debug(
               `🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`
             );
           }
@@ -1915,7 +1955,7 @@ class Sync {
           const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
           const incomingSeq = updateData.body.message.seq;
           if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-            console.log('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
+            logger.debug('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
             this.enqueueMessages(updateData.body.sid, [lastMessage]);
             this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
             let hasMutableTool = false;
@@ -1940,10 +1980,10 @@ class Sync {
       // Ping session
       this.onSessionVisible(updateData.body.sid);
     } else if (updateData.body.t === 'new-session') {
-      log.log('🆕 New session update received');
+      logger.debug('🆕 New session update received');
       this.sessionsSync.invalidate();
     } else if (updateData.body.t === 'delete-session') {
-      log.log('🗑️ Delete session update received');
+      logger.debug('🗑️ Delete session update received');
       const sessionId = updateData.body.sid;
 
       // Remove session from storage
@@ -1963,15 +2003,16 @@ class Sync {
       this.sessionLastSeq.delete(sessionId);
       this.sessionMessageQueue.delete(sessionId);
       this.sessionQueueProcessing.delete(sessionId);
+      clearSessionTrace(sessionId);
 
-      log.log(`🗑️ Session ${sessionId} deleted from local storage`);
+      logger.debug(`🗑️ Session ${sessionId} deleted from local storage`);
     } else if (updateData.body.t === 'update-session') {
       const session = storage.getState().sessions[updateData.body.id];
       if (session) {
         // Get session encryption
         const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
         if (!sessionEncryption) {
-          console.error(
+          logger.error(
             `Session encryption not found for ${updateData.body.id} - this should never happen`
           );
           return;
@@ -2030,7 +2071,7 @@ class Sync {
           const wasControlledByUser = session.agentState?.controlledByUser;
           const isNowControlledByUser = agentState?.controlledByUser;
           if (!wasControlledByUser && isNowControlledByUser) {
-            log.log(
+            logger.debug(
               `🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`
             );
             this.onSessionVisible(updateData.body.id);
@@ -2067,18 +2108,18 @@ class Sync {
           // Version compatibility check
           const settingsSchemaVersion = parsedSettings.schemaVersion ?? 1;
           if (settingsSchemaVersion > SUPPORTED_SCHEMA_VERSION) {
-            console.warn(
+            logger.warn(
               `⚠️ Received settings schema v${settingsSchemaVersion}, ` +
                 `we support v${SUPPORTED_SCHEMA_VERSION}. Update app for full functionality.`
             );
           }
 
           storage.getState().applySettings(parsedSettings, accountUpdate.settings.version);
-          log.log(
+          logger.debug(
             `📋 Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`
           );
         } catch (error) {
-          console.error('❌ Failed to process settings update:', error);
+          logger.error('❌ Failed to process settings update:', error);
           // Don't crash on settings sync errors, just log
         }
       }
@@ -2104,7 +2145,7 @@ class Sync {
       // Get machine-specific encryption (might not exist if machine wasn't initialized)
       const machineEncryption = this.encryption.getMachineEncryption(machineId);
       if (!machineEncryption) {
-        console.error(`Machine encryption not found for ${machineId} - cannot decrypt updates`);
+        logger.error(`Machine encryption not found for ${machineId} - cannot decrypt updates`);
         return;
       }
 
@@ -2119,7 +2160,7 @@ class Sync {
           updatedMachine.metadata = metadata;
           updatedMachine.metadataVersion = metadataUpdate.version;
         } catch (error) {
-          console.error(`Failed to decrypt machine metadata for ${machineId}:`, error);
+          logger.error(`Failed to decrypt machine metadata for ${machineId}:`, error);
         }
       }
 
@@ -2134,14 +2175,14 @@ class Sync {
           updatedMachine.daemonState = daemonState;
           updatedMachine.daemonStateVersion = daemonStateUpdate.version;
         } catch (error) {
-          console.error(`Failed to decrypt machine daemonState for ${machineId}:`, error);
+          logger.error(`Failed to decrypt machine daemonState for ${machineId}:`, error);
         }
       }
 
       // Update storage using applyMachines which rebuilds sessionListViewData
       storage.getState().applyMachines([updatedMachine]);
     } else if (updateData.body.t === 'relationship-updated') {
-      log.log('👥 Received relationship-updated update');
+      logger.debug('👥 Received relationship-updated update');
       const relationshipUpdate = updateData.body;
 
       // Apply the relationship update to storage
@@ -2160,7 +2201,7 @@ class Sync {
       this.friendRequestsSync.invalidate();
       this.feedSync.invalidate();
     } else if (updateData.body.t === 'new-artifact') {
-      log.log('📦 Received new-artifact update');
+      logger.debug('📦 Received new-artifact update');
       const artifactUpdate = updateData.body;
       const artifactId = artifactUpdate.artifactId;
 
@@ -2170,7 +2211,7 @@ class Sync {
           artifactUpdate.dataEncryptionKey
         );
         if (!decryptedKey) {
-          console.error(`Failed to decrypt key for new artifact ${artifactId}`);
+          logger.error(`Failed to decrypt key for new artifact ${artifactId}`);
           return;
         }
 
@@ -2204,19 +2245,19 @@ class Sync {
         };
 
         storage.getState().addArtifact(decryptedArtifact);
-        log.log(`📦 Added new artifact ${artifactId} to storage`);
+        logger.debug(`📦 Added new artifact ${artifactId} to storage`);
       } catch (error) {
-        console.error(`Failed to process new artifact ${artifactId}:`, error);
+        logger.error(`Failed to process new artifact ${artifactId}:`, error);
       }
     } else if (updateData.body.t === 'update-artifact') {
-      log.log('📦 Received update-artifact update');
+      logger.debug('📦 Received update-artifact update');
       const artifactUpdate = updateData.body;
       const artifactId = artifactUpdate.artifactId;
 
       // Get existing artifact
       const existingArtifact = storage.getState().artifacts[artifactId];
       if (!existingArtifact) {
-        console.error(`Artifact ${artifactId} not found in storage`);
+        logger.error(`Artifact ${artifactId} not found in storage`);
         // Fetch all artifacts to sync
         this.artifactsSync.invalidate();
         return;
@@ -2226,7 +2267,7 @@ class Sync {
         // Get the data encryption key from memory
         const dataEncryptionKey = this.artifactDataKeys.get(artifactId);
         if (!dataEncryptionKey) {
-          console.error(`Encryption key not found for artifact ${artifactId}, fetching artifacts`);
+          logger.error(`Encryption key not found for artifact ${artifactId}, fetching artifacts`);
           this.artifactsSync.invalidate();
           return;
         }
@@ -2258,12 +2299,12 @@ class Sync {
         }
 
         storage.getState().updateArtifact(updatedArtifact);
-        log.log(`📦 Updated artifact ${artifactId} in storage`);
+        logger.debug(`📦 Updated artifact ${artifactId} in storage`);
       } catch (error) {
-        console.error(`Failed to process artifact update ${artifactId}:`, error);
+        logger.error(`Failed to process artifact update ${artifactId}:`, error);
       }
     } else if (updateData.body.t === 'delete-artifact') {
-      log.log('📦 Received delete-artifact update');
+      logger.debug('📦 Received delete-artifact update');
       const artifactUpdate = updateData.body;
       const artifactId = artifactUpdate.artifactId;
 
@@ -2273,7 +2314,7 @@ class Sync {
       // Remove encryption key from memory
       this.artifactDataKeys.delete(artifactId);
     } else if (updateData.body.t === 'new-feed-post') {
-      log.log('📰 Received new-feed-post update');
+      logger.debug('📰 Received new-feed-post update');
       const feedUpdate = updateData.body;
 
       // Convert to FeedItem with counter from cursor
@@ -2298,7 +2339,7 @@ class Sync {
         const userProfile = users[feedItem.body.uid];
         if (userProfile === null || userProfile === undefined) {
           // User was not found or 404, don't store this item
-          log.log(`📰 Skipping feed item ${feedItem.id} - user ${feedItem.body.uid} not found`);
+          logger.debug(`📰 Skipping feed item ${feedItem.id} - user ${feedItem.body.uid} not found`);
           return;
         }
       }
@@ -2309,7 +2350,7 @@ class Sync {
   };
 
   private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
-    // log.log(`🔄 Flushing activity updates for ${updates.size} sessions - acquiring lock`);
+    // logger.debug(`🔄 Flushing activity updates for ${updates.size} sessions - acquiring lock`);
 
     const sessions: Session[] = [];
 
@@ -2327,26 +2368,26 @@ class Sync {
     }
 
     if (sessions.length > 0) {
-      // console.log('flushing activity updates ' + sessions.length);
+      // logger.debug('flushing activity updates ' + sessions.length);
       this.applySessions(sessions);
-      // log.log(`🔄 Activity updates flushed - updated ${sessions.length} sessions`);
+      // logger.debug(`🔄 Activity updates flushed - updated ${sessions.length} sessions`);
     }
   };
 
   private handleEphemeralUpdate = (update: unknown) => {
     const validatedUpdate = ApiEphemeralUpdateSchema.safeParse(update);
     if (!validatedUpdate.success) {
-      console.log('Invalid ephemeral update received:', validatedUpdate.error);
-      console.error('Invalid ephemeral update received:', update);
+      logger.debug('Invalid ephemeral update received:', validatedUpdate.error);
+      logger.error('Invalid ephemeral update received:', update);
       return;
     } else {
-      // console.log('Ephemeral update received:', update);
+      // logger.debug('Ephemeral update received:', update);
     }
     const updateData = validatedUpdate.data;
 
     // Process activity updates through smart debounce accumulator
     if (updateData.type === 'activity') {
-      // console.log('adding activity update ' + updateData.id);
+      // logger.debug('adding activity update ' + updateData.id);
       this.activityAccumulator.addUpdate(updateData);
     }
 
@@ -2371,7 +2412,7 @@ class Sync {
       try {
         callback(updateData);
       } catch (error) {
-        console.error('Error in ephemeral update callback:', error);
+        logger.error('Error in ephemeral update callback:', error);
       }
     });
   };
@@ -2427,6 +2468,11 @@ class Sync {
 // Global singleton instance
 export const sync = new Sync();
 
+// Register callbacks to break circular dependencies
+registerApplySettingsCallback(delta => sync.applySettings(delta));
+registerAssumeUsersCallback(userIds => sync.assumeUsers(userIds));
+registerGetMachineEncryption(machineId => sync.encryption.getMachineEncryption(machineId));
+
 //
 // Init sequence
 //
@@ -2434,7 +2480,7 @@ export const sync = new Sync();
 let isInitialized = false;
 export async function syncCreate(credentials: AuthCredentials) {
   if (isInitialized) {
-    console.warn('Sync already initialized: ignoring');
+    logger.warn('Sync already initialized: ignoring');
     return;
   }
   isInitialized = true;
@@ -2443,7 +2489,7 @@ export async function syncCreate(credentials: AuthCredentials) {
 
 export async function syncRestore(credentials: AuthCredentials) {
   if (isInitialized) {
-    console.warn('Sync already initialized: ignoring');
+    logger.warn('Sync already initialized: ignoring');
     return;
   }
   isInitialized = true;

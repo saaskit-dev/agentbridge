@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { toolFullViewStyles } from '../ToolFullView';
+import { toolFullViewStyles } from '../toolFullViewStyles';
 import { DiffView } from '@/components/diff/DiffView';
 import { knownTools } from '@/components/tools/knownTools';
 import { useSetting } from '@/sync/storage';

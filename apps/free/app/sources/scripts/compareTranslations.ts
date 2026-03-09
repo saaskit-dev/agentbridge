@@ -12,10 +12,13 @@ const __dirname = dirname(__filename);
 import { ca } from '../text/translations/ca';
 import { en } from '../text/translations/en';
 import { es } from '../text/translations/es';
+import { it } from '../text/translations/it';
+import { ja } from '../text/translations/ja';
 import { pl } from '../text/translations/pl';
 import { pt } from '../text/translations/pt';
 import { ru } from '../text/translations/ru';
 import { zhHans } from '../text/translations/zh-Hans';
+import { zhHant } from '../text/translations/zh-Hant';
 
 const translations = {
   en,
@@ -24,7 +27,10 @@ const translations = {
   es,
   pt,
   ca,
+  it,
+  ja,
   'zh-Hans': zhHans,
+  'zh-Hant': zhHant,
 };
 
 const languageNames: Record<string, string> = {
@@ -34,7 +40,10 @@ const languageNames: Record<string, string> = {
   es: 'Spanish',
   pt: 'Portuguese',
   ca: 'Catalan',
+  it: 'Italian',
+  ja: 'Japanese',
   'zh-Hans': 'Chinese (Simplified)',
+  'zh-Hant': 'Chinese (Traditional)',
 };
 
 // Function to recursively extract all keys from an object
@@ -82,6 +91,65 @@ function checkIfEnglish(path: string, value: any, englishValue: any, lang: strin
       'HTTPS',
       'ID',
       'PID',
+      // Brand / product names and compound phrases containing them
+      'Claude',
+      'Codex',
+      'Gemini',
+      'OpenCode',
+      'Free',
+      'EULA',
+      'Free Home',
+      'Free Session ID',
+      'Claude Code Session ID',
+      // Technical gaming/permission terms used across languages
+      'YOLO',
+      'Safe YOLO',
+      'Worktree',
+      'Markdown Copy v2',
+      // Connectivity terms widely used in English in many languages
+      'online',
+      'offline',
+      // Model names (remain in English globally)
+      'gpt-5-codex low',
+      'gpt-5-codex medium',
+      'gpt-5-codex high',
+      'GPT-5 Minimal',
+      'GPT-5 Low',
+      'GPT-5 Medium',
+      'GPT-5 High',
+      // UI labels that are acceptable in English (used as-is in many languages)
+      'Status',
+      'Host',
+      'Model',
+      'Terminal',
+      'Terminals',
+      'FOLDER',
+      'FILE',
+      'MODEL',
+      'Simple',
+      'Social',
+      // International tech words used verbatim in many European languages
+      'Error',
+      'error',
+      'Home',
+      'Account',
+      'Input',
+      'Output',
+      'File',
+      'Server',
+      'Backup',
+      'Daemon',
+      'Privacy',
+      'Analytics',
+      'Tokens',
+      'Diff',
+      'Experiments',
+      'Gradient',
+      'Cost',
+      // Git technical terms
+      'detached HEAD',
+      // URL placeholder
+      'https://example.com',
     ];
     for (const term of technicalTerms) {
       if (value === term || englishValue === term) {

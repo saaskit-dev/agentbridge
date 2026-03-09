@@ -1,5 +1,6 @@
 import React from 'react';
 import { create } from 'zustand';
+import { Logger } from '@agentbridge/core/telemetry';
 import { useShallow } from 'zustand/react/shallow';
 import { DecryptedArtifact } from './artifactTypes';
 import { FeedItem } from './feedTypes';
@@ -30,9 +31,26 @@ import type { PermissionMode } from '@/components/PermissionModeSelector';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from './settings';
 import type { CustomerInfo } from './revenueCat/types';
-import { sync } from './sync';
-import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from '@/components/tools/knownTools';
+
+const logger = new Logger('app/sync/storage');
+
+// Callbacks registered by external modules to avoid circular dependencies
+let _applySettingsCallback: ((delta: Partial<Settings>) => void) | null = null;
+let _assumeUsersCallback: ((userIds: string[]) => Promise<void>) | null = null;
+let _getRealtimeSessionInfo: (() => { sessionId: string | null; voiceSession: any }) | null = null;
+
+export function registerApplySettingsCallback(cb: (delta: Partial<Settings>) => void) {
+  _applySettingsCallback = cb;
+}
+
+export function registerAssumeUsersCallback(cb: (userIds: string[]) => Promise<void>) {
+  _assumeUsersCallback = cb;
+}
+
+export function registerRealtimeSessionInfo(cb: () => { sessionId: string | null; voiceSession: any }) {
+  _getRealtimeSessionInfo = cb;
+}
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -427,7 +445,7 @@ export const storage = create<StorageState>()((set, get) => {
           listData.push(...inactiveSessions);
         }
 
-        // console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
+        // logger.debug(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
 
         // Process AgentState updates for sessions that already have messages loaded
         const updatedSessionMessages = { ...state.sessionMessages };
@@ -444,10 +462,11 @@ export const storage = create<StorageState>()((set, get) => {
             (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))
           ) {
             // Check for NEW permission requests before processing
-            const currentRealtimeSessionId = getCurrentRealtimeSessionId();
-            const voiceSession = getVoiceSession();
+            const realtimeInfo = _getRealtimeSessionInfo?.() ?? { sessionId: null, voiceSession: null };
+            const currentRealtimeSessionId = realtimeInfo.sessionId;
+            const voiceSession = realtimeInfo.voiceSession;
 
-            // console.log('[REALTIME DEBUG] Permission check:', {
+            // logger.debug('[REALTIME DEBUG] Permission check:', {
             //     currentRealtimeSessionId,
             //     sessionId: session.id,
             //     match: currentRealtimeSessionId === session.id,
@@ -465,7 +484,7 @@ export const storage = create<StorageState>()((set, get) => {
                 if (!oldRequests[requestId]) {
                   // This is a NEW permission request
                   const toolName = request.tool;
-                  // console.log('[REALTIME DEBUG] Sending permission notification for:', toolName);
+                  // logger.debug('[REALTIME DEBUG] Sending permission notification for:', toolName);
                   voiceSession.sendTextMessage(
                     `Claude is requesting permission to use the ${toolName} tool`
                   );
@@ -960,14 +979,12 @@ export const storage = create<StorageState>()((set, get) => {
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) =>
       set(state => {
-        console.log(`🗂️ Storage.applyArtifacts: Applying ${artifacts.length} artifacts`);
+        logger.debug(`applyArtifacts: applying ${artifacts.length} artifacts`);
         const mergedArtifacts = { ...state.artifacts };
         artifacts.forEach(artifact => {
           mergedArtifacts[artifact.id] = artifact;
         });
-        console.log(
-          `🗂️ Storage.applyArtifacts: Total artifacts after merge: ${Object.keys(mergedArtifacts).length}`
-        );
+        logger.debug(`applyArtifacts: total after merge: ${Object.keys(mergedArtifacts).length}`);
 
         return {
           ...state,
@@ -1093,10 +1110,7 @@ export const storage = create<StorageState>()((set, get) => {
       return get().users[userId]; // Returns UserProfile | null | undefined
     },
     assumeUsers: async (userIds: string[]) => {
-      // This will be implemented in sync.ts as it needs access to credentials
-      // Just a placeholder here for the interface
-      const { sync } = await import('./sync');
-      return sync.assumeUsers(userIds);
+      return _assumeUsersCallback?.(userIds);
     },
     // Feed methods
     applyFeedItems: (items: FeedItem[]) =>
@@ -1218,7 +1232,7 @@ export function useSettingMutable<K extends keyof Settings>(
 ): [Settings[K], (value: Settings[K]) => void] {
   const setValue = React.useCallback(
     (value: Settings[K]) => {
-      sync.applySettings({ [name]: value });
+      _applySettingsCallback?.({ [name]: value });
     },
     [name]
   );

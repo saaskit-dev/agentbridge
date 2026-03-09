@@ -1,4 +1,4 @@
-import type { MarkdownBlock } from './parseMarkdown';
+import type { MarkdownBlock } from './markdownTypes';
 import { parseMarkdownSpans } from './parseMarkdownSpans';
 
 function parseTable(

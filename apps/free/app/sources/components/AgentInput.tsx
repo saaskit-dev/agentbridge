@@ -37,6 +37,8 @@ import { useSetting } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { Theme } from '@/theme';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/AgentInput');
 
 interface AgentInputProps {
   value: string;
@@ -393,7 +395,7 @@ export const AgentInput = React.memo(
 
     // Handle combined text and selection state changes
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-      // console.log('📝 Input state changed:', JSON.stringify(newState));
+      // logger.debug('📝 Input state changed:', JSON.stringify(newState));
       setInputState(newState);
     }, []);
 
@@ -413,7 +415,7 @@ export const AgentInput = React.memo(
 
     // Debug logging
     // React.useEffect(() => {
-    //     console.log('🔍 Autocomplete Debug:', JSON.stringify({
+    //     logger.debug('🔍 Autocomplete Debug:', JSON.stringify({
     //         value: props.value,
     //         inputState,
     //         activeWord,
@@ -445,7 +447,7 @@ export const AgentInput = React.memo(
           end: result.cursorPosition,
         });
 
-        // console.log('Selected suggestion:', suggestion.text);
+        // logger.debug('Selected suggestion:', suggestion.text);
 
         // Small haptic feedback
         hapticsLight();
@@ -491,7 +493,7 @@ export const AgentInput = React.memo(
       } catch (error) {
         // Shake on error
         shakerRef.current?.shake();
-        console.error('Abort RPC call failed:', error);
+        logger.error('Abort RPC call failed:', error);
       } finally {
         setIsAborting(false);
       }

@@ -3,6 +3,8 @@ import { decodeBase64, encodeBase64 } from '../encryption/base64';
 import { QRAuthKeyPair } from './authQRStart';
 import { decryptBox } from '@/encryption/libsodium';
 import { getServerUrl } from '@/sync/serverConfig';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/auth/authQRWait');
 
 export interface AuthCredentials {
   secret: Uint8Array;
@@ -33,18 +35,18 @@ export async function authQRWait(
 
         const decrypted = decryptBox(encryptedResponse, keypair.secretKey);
         if (decrypted) {
-          console.log('\n\n✓ Authentication successful\n');
+          logger.debug('\n\n✓ Authentication successful\n');
           return {
             secret: decrypted,
             token: token,
           };
         } else {
-          console.log('\n\nFailed to decrypt response. Please try again.');
+          logger.debug('\n\nFailed to decrypt response. Please try again.');
           return null;
         }
       }
     } catch (error) {
-      console.log('\n\nFailed to check authentication status. Please try again.');
+      logger.debug('\n\nFailed to check authentication status. Please try again.');
       return null;
     }
 

@@ -15,6 +15,8 @@ import type {
   ApiEphemeralUpdate,
 } from '@/sync/apiTypes';
 import { sync } from '@/sync/sync';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/hooks/useStreamingText');
 
 /**
  * Streaming text state for a message
@@ -64,7 +66,7 @@ export interface UseStreamingTextReturn {
  * const { state, reset } = useStreamingText({
  *   sessionId: session.id,
  *   onTextComplete: (messageId, fullText) => {
- *     console.log('Streaming complete:', messageId, fullText);
+ *     logger.debug('Streaming complete:', messageId, fullText);
  *   },
  * });
  *

@@ -1,9 +1,20 @@
+const path = require('path');
 const { getDefaultConfig } = require('expo/metro-config');
+
+const projectRoot = __dirname;
+const workspaceRoot = path.resolve(projectRoot, '../../..');
 
 const config = getDefaultConfig(__dirname, {
   // Enable CSS support for web
   isCSSEnabled: true,
 });
+
+// Watch workspace packages so Metro can resolve @agentbridge/core
+config.watchFolders = [workspaceRoot];
+config.resolver.nodeModulesPaths = [
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(workspaceRoot, 'node_modules'),
+];
 
 // Add support for .wasm files (required by Skia for all platforms)
 // Source: https://shopify.github.io/react-native-skia/docs/getting-started/installation/
@@ -22,11 +33,21 @@ config.transformer.getTransformOptions = async () => ({
 // Do NOT manually set unstable_enablePackageExports as it causes bugs
 // See: https://github.com/facebook/metro/issues/1464
 
-// Fix @noble/hashes and similar packages that import with .js extension
+// Fix packages that use Node ESM .js import convention (Metro can't resolve .js → .ts)
+// - @noble/hashes: all imports from that namespace
+// - @agentbridge/core relative imports: ONLY when originating from packages/core/src/
+//   (scoped to avoid accidentally affecting npm packages like react-textarea-autosize
+//    whose internal .js imports are real JS files, not TypeScript ESM)
+const agentbridgeCorePattern = path.resolve(workspaceRoot, 'packages/core/src');
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName.startsWith('@noble/') && moduleName.endsWith('.js')) {
-    const strippedModule = moduleName.replace(/\.js$/, '');
-    return context.resolveRequest(context, strippedModule, platform);
+  if (moduleName.endsWith('.js')) {
+    const isNoble = moduleName.startsWith('@noble/');
+    const isCoreRelative =
+      moduleName.startsWith('.') && context.originModulePath.startsWith(agentbridgeCorePattern);
+    if (isNoble || isCoreRelative) {
+      const strippedModule = moduleName.replace(/\.js$/, '');
+      return context.resolveRequest(context, strippedModule, platform);
+    }
   }
   return context.resolveRequest(context, moduleName, platform);
 };

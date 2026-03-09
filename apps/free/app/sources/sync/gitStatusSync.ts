@@ -3,6 +3,7 @@
  * Provides real-time git repository status tracking using remote bash commands
  */
 
+import { Logger } from '@agentbridge/core/telemetry';
 import { parseCurrentBranch } from './git-parsers/parseBranch';
 import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';
@@ -18,6 +19,8 @@ import { projectManager, createProjectKey } from './projectManager';
 import { storage } from './storage';
 import { GitStatus } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
+
+const logger = new Logger('app/sync/gitStatusSync');
 
 export class GitStatusSync {
   // Map project keys to sync instances
@@ -143,7 +146,7 @@ export class GitStatusSync {
       });
 
       if (!statusResult || !statusResult.success) {
-        console.error('Failed to get git status:', statusResult?.error || 'No response');
+        logger.error('Failed to get git status:', statusResult?.error || 'No response');
         return;
       }
 
@@ -177,7 +180,7 @@ export class GitStatusSync {
         projectManager.updateProjectGitStatus(projectKey, gitStatus);
       }
     } catch (error) {
-      console.error('Error fetching git status for session', sessionId, ':', error);
+      logger.error(`Error fetching git status for session ${sessionId}:`, error);
       // Don't apply error state, just skip this update
     }
   }

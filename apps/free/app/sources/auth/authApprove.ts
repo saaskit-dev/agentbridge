@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { encodeBase64 } from '../encryption/base64';
 import { getServerUrl } from '@/sync/serverConfig';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/auth/authApprove');
 
 interface AuthRequestStatus {
   status: 'not_found' | 'pending' | 'authorized';
@@ -31,13 +33,13 @@ export async function authApprove(
   // Handle different status cases
   if (status === 'not_found') {
     // Already authorized, no need to approve again
-    console.log('Auth request already authorized or not found');
+    logger.debug('Auth request already authorized or not found');
     return;
   }
 
   if (status === 'authorized') {
     // Already authorized, no need to approve again
-    console.log('Auth request already authorized');
+    logger.debug('Auth request already authorized');
     return;
   }
 

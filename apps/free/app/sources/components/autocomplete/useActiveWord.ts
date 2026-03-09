@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { findActiveWord } from './findActiveWord';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/components/autocomplete/useActiveWord');
 
 export function useActiveWord(
   text: string,
@@ -8,7 +10,7 @@ export function useActiveWord(
 ) {
   return React.useMemo(() => {
     const w = findActiveWord(text, selection, prefixes);
-    // console.log('🔎 useActiveWord:', JSON.stringify({
+    // logger.debug('🔎 useActiveWord:', JSON.stringify({
     //     text,
     //     selection,
     //     prefixes,

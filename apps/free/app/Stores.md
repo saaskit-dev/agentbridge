@@ -71,15 +71,15 @@ Your code. Your privacy. Your Claude Code companion.
 
 ### Privacy Policy
 
-https://github.com/kilingzhang/agentbridge/blob/main/PRIVACY.md
+https://github.com/saaskit-dev/agentbridge/blob/main/PRIVACY.md
 
 ### Support / Contact
 
-https://github.com/kilingzhang/agentbridge/issues
+https://github.com/saaskit-dev/agentbridge/issues
 
 ### Website / Marketing
 
-https://github.com/kilingzhang/agentbridge
+https://github.com/saaskit-dev/agentbridge
 
 ## Additional Google Play Requirements
 

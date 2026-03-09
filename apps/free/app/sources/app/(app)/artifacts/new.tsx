@@ -18,6 +18,8 @@ import { Text } from '@/components/StyledText';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/artifacts/new');
 
 const stylesheet = StyleSheet.create(theme => ({
   container: {
@@ -105,7 +107,7 @@ export default function NewArtifactScreen() {
       // Navigate to the new artifact
       router.replace(`/artifacts/${artifactId}`);
     } catch (err) {
-      console.error('Failed to create artifact:', err);
+      logger.error('Failed to create artifact:', err);
       await Modal.alert(t('common.error'), t('artifacts.createError'));
       setIsSaving(false);
     }

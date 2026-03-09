@@ -1,6 +1,9 @@
 import { io, Socket } from 'socket.io-client';
 import { Encryption } from './encryption/encryption';
 import { TokenStorage } from '@/auth/tokenStorage';
+import { getSessionTrace } from './appTraceStore';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('app/sync/apiSocket');
 
 //
 // Types
@@ -123,6 +126,7 @@ class ApiSocket {
     const result = await this.socket!.emitWithAck('rpc-call', {
       method: `${sessionId}:${method}`,
       params: await sessionEncryption.encryptRaw(params),
+      _trace: getSessionTrace(sessionId),
     });
 
     if (result.ok) {
@@ -143,6 +147,7 @@ class ApiSocket {
     const result = await this.socket!.emitWithAck('rpc-call', {
       method: `${machineId}:${method}`,
       params: await machineEncryption.encryptRaw(params),
+      _trace: getSessionTrace(machineId),
     });
 
     if (result.ok) {
@@ -152,7 +157,9 @@ class ApiSocket {
   }
 
   send(event: string, data: any) {
-    this.socket!.emit(event, data);
+    const sessionId = data?.sessionId ?? data?.sid;
+    const trace = sessionId ? getSessionTrace(sessionId) : undefined;
+    this.socket!.emit(event, trace ? { ...data, _trace: trace } : data);
     return true;
   }
 
@@ -160,7 +167,9 @@ class ApiSocket {
     if (!this.socket) {
       throw new Error('Socket not connected');
     }
-    return await this.socket.emitWithAck(event, data);
+    const sessionId = data?.sessionId ?? data?.sid;
+    const trace = sessionId ? getSessionTrace(sessionId) : undefined;
+    return await this.socket.emitWithAck(event, trace ? { ...data, _trace: trace } : data);
   }
 
   //
@@ -220,8 +229,8 @@ class ApiSocket {
 
     // Connection events
     this.socket.on('connect', () => {
-      // console.log('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
-      // console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
+      // logger.debug('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
+      // logger.debug('🔌 SyncSocket: Socket ID:', this.socket?.id);
       this.updateStatus('connected');
       if (!this.socket?.recovered) {
         this.reconnectedListeners.forEach(listener => listener());
@@ -229,30 +238,30 @@ class ApiSocket {
     });
 
     this.socket.on('disconnect', reason => {
-      // console.log('🔌 SyncSocket: Disconnected', reason);
+      // logger.debug('🔌 SyncSocket: Disconnected', reason);
       this.updateStatus('disconnected');
     });
 
     // Error events
     this.socket.on('connect_error', error => {
-      // console.error('🔌 SyncSocket: Connection error', error);
+      // logger.error('🔌 SyncSocket: Connection error', error);
       this.updateStatus('error');
     });
 
     this.socket.on('error', error => {
-      // console.error('🔌 SyncSocket: Error', error);
+      // logger.error('🔌 SyncSocket: Error', error);
       this.updateStatus('error');
     });
 
     // Message handling
     this.socket.onAny((event, data) => {
-      // console.log(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
+      // logger.debug(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
       const handler = this.messageHandlers.get(event);
       if (handler) {
-        // console.log(`📥 SyncSocket: Calling handler for '${event}'`);
+        // logger.debug(`📥 SyncSocket: Calling handler for '${event}'`);
         handler(data);
       } else {
-        // console.log(`📥 SyncSocket: No handler registered for '${event}'`);
+        // logger.debug(`📥 SyncSocket: No handler registered for '${event}'`);
       }
     });
   }
