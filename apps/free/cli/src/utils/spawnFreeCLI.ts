@@ -38,7 +38,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { isBun } from './runtime';
 import { projectPath } from '@/projectPath';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/spawnFreeCLI');
 
 /**
  * Spawn the Free CLI with the given arguments in a cross-platform way.

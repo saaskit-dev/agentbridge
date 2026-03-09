@@ -7,7 +7,8 @@ import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('modules/common/registerCommonHandlers');
 
 const execAsync = promisify(exec);
 
@@ -119,6 +120,10 @@ export interface SpawnSessionOptions {
   machineId?: string;
   directory: string;
   sessionId?: string;
+  /** Session tag to use when creating/finding session. Enables test sessions to be shared with daemon. */
+  sessionTag?: string;
+  /** Claude Code session ID to resume (passed as --resume-session-id). Only applies to claude agent. */
+  resumeClaudeSessionId?: string;
   approvedNewDirectoryCreation?: boolean;
   agent?: 'claude' | 'codex' | 'gemini' | 'opencode';
   token?: string; // OAuth token for authentication
@@ -397,7 +402,7 @@ export function registerCommonHandlers(
   rpcHandlerManager.registerHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>(
     'getDirectoryTree',
     async data => {
-      logger.debug('Get directory tree request:', data.path, 'maxDepth:', data.maxDepth);
+      logger.debug(`Get directory tree request: ${data.path} maxDepth: ${data.maxDepth}`);
 
       // Validate path is within working directory
       const validation = validatePath(data.path, workingDirectory);
@@ -495,7 +500,7 @@ export function registerCommonHandlers(
 
   // Ripgrep handler - raw interface to ripgrep
   rpcHandlerManager.registerHandler<RipgrepRequest, RipgrepResponse>('ripgrep', async data => {
-    logger.debug('Ripgrep request with args:', data.args, 'cwd:', data.cwd);
+    logger.debug(`Ripgrep request with args: ${JSON.stringify(data.args)} cwd: ${data.cwd}`);
 
     // Validate cwd if provided
     if (data.cwd) {
@@ -526,7 +531,7 @@ export function registerCommonHandlers(
   rpcHandlerManager.registerHandler<DifftasticRequest, DifftasticResponse>(
     'difftastic',
     async data => {
-      logger.debug('Difftastic request with args:', data.args, 'cwd:', data.cwd);
+      logger.debug(`Difftastic request with args: ${JSON.stringify(data.args)} cwd: ${data.cwd}`);
 
       // Validate cwd if provided
       if (data.cwd) {

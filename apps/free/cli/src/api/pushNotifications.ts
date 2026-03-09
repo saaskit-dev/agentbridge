@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('api/pushNotifications');
 
 export interface PushToken {
   id: string;

@@ -50,9 +50,10 @@ import {
   handlePlanUpdate,
   handleThinkingUpdate,
 } from './sessionUpdateHandlers';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { delay } from '@/utils/time';
 
+const logger = new Logger('agent/acp/AcpBackend');
 /**
  * Retry configuration for ACP operations
  */

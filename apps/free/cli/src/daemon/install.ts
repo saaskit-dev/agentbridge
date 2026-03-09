@@ -1,5 +1,6 @@
 import chalk from 'chalk';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('daemon/install');
 
 // Platform-specific imports
 let macInstall: typeof import('./mac/installUser') | null = null;

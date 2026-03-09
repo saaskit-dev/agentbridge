@@ -50,9 +50,10 @@
 
 import axios from 'axios';
 import chalk from 'chalk';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { exponentialBackoffDelay } from '@/utils/time';
 
+const logger = new Logger('utils/serverConnectionErrors');
 /**
  * Configuration for offline reconnection behavior.
  * Uses dependency injection for testability.

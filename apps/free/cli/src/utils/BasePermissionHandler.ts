@@ -9,7 +9,8 @@
 
 import { ApiSessionClient } from '@/api/apiSession';
 import { AgentState } from '@/api/types';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/BasePermissionHandler');
 
 /**
  * Permission response from the mobile app.

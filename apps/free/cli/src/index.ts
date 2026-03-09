@@ -6,6 +6,9 @@
  * Simple argument parsing without any CLI framework dependencies
  */
 
+import { initCliTelemetry, shutdownTelemetry } from './telemetry';
+initCliTelemetry();
+
 import { execFileSync } from 'node:child_process';
 import chalk from 'chalk';
 import { z } from 'zod';
@@ -29,10 +32,16 @@ import { install } from './daemon/install';
 import { startDaemon } from './daemon/run';
 import { readCredentials, readSettings } from './persistence';
 import { authAndSetupMachineIfNeeded } from './ui/auth';
-import { getLatestDaemonLog } from './ui/logger';
-import { logger } from './ui/logger';
+import { getLatestDaemonLog } from './utils/daemonLogs';
+import { Logger } from '@agentbridge/core/telemetry';
+import { exportDiagnostic } from '@agentbridge/core/telemetry/node';
+import { configuration } from '@/configuration';
 import { extractNoSandboxFlag } from './utils/sandboxFlags';
 import { runClaude, StartOptions } from '@/claude/runClaude';
+
+const logger = new Logger('index');
+// Flush telemetry before exit (beforeExit fires for async, exit is sync-only)
+process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
 
 (async () => {
   const args = process.argv.slice(2);
@@ -483,7 +492,7 @@ import { runClaude, StartOptions } from '@/claude/runClaude';
       // Wait for daemon to write state file (up to 5 seconds)
       let started = false;
       for (let i = 0; i < 50; i++) {
-        if (await checkIfDaemonRunningAndCleanupStaleState()) {
+        if ((await checkIfDaemonRunningAndCleanupStaleState()).status === 'running') {
           started = true;
           break;
         }
@@ -562,6 +571,139 @@ ${chalk.bold('Note:')} The daemon runs in the background and manages sessions.
 
 ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('free doctor clean')}
 `);
+    }
+    return;
+  } else if (subcommand === 'diagnostic') {
+    // free diagnostic export [--session <id>] [--trace <id>] [--since <duration>]
+    const diagSubcommand = args[1];
+    if (diagSubcommand === 'export') {
+      const diagArgs = args.slice(2);
+      let sessionId: string | undefined;
+      let traceId: string | undefined;
+      let since: string | undefined;
+      for (let i = 0; i < diagArgs.length; i++) {
+        if (diagArgs[i] === '--session' && diagArgs[i + 1]) sessionId = diagArgs[++i];
+        else if (diagArgs[i] === '--trace' && diagArgs[i + 1]) traceId = diagArgs[++i];
+        else if (diagArgs[i] === '--since' && diagArgs[i + 1]) since = diagArgs[++i];
+      }
+      // Parse --since as relative duration (e.g. "1h", "24h", "7d")
+      let sinceIso: string | undefined;
+      if (since) {
+        const match = since.match(/^(\d+)([smhd])$/);
+        if (match) {
+          const [, n, unit] = match;
+          const ms = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[unit as 's'|'m'|'h'|'d']!;
+          sinceIso = new Date(Date.now() - Number(n) * ms).toISOString();
+        }
+      }
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const outputPath = `${process.cwd()}/diagnostic-${ts}.zip`;
+      try {
+        const result = exportDiagnostic({
+          logDirs: [configuration.logsDir],
+          outputPath,
+          traceId,
+          sessionId,
+          since: sinceIso,
+          environment: {
+            platform: process.platform,
+            nodeVersion: process.version,
+            cliVersion: packageJson.version,
+            logsDir: configuration.logsDir,
+          },
+        });
+        console.log(chalk.green(`✓ Created ${result.outputPath} (${result.entriesCount} entries)`));
+      } catch (err) {
+        console.error(chalk.red('Error:'), err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    } else {
+      console.log(`
+${chalk.bold('free diagnostic')} - Diagnostic log export
+
+${chalk.bold('Usage:')}
+  free diagnostic export                  Export all local logs
+  free diagnostic export --session <id>   Export logs for a session
+  free diagnostic export --trace <id>     Export logs for a trace ID
+  free diagnostic export --since <dur>    Export logs since duration (e.g. 1h, 24h, 7d)
+
+${chalk.bold('Output:')} diagnostic-<timestamp>.zip (logs.jsonl + environment.json)
+`);
+    }
+    return;
+  } else if (subcommand === 'logs') {
+    // free logs [search] [--trace <id>] [--session <id>] [--level <lvl>] [--since <dur>]
+    const logsArgs = args.slice(1);
+    let traceId: string | undefined;
+    let sessionId: string | undefined;
+    let level: string | undefined;
+    let since: string | undefined;
+    let showHelp = false;
+    for (let i = 0; i < logsArgs.length; i++) {
+      if (logsArgs[i] === '--trace' && logsArgs[i + 1]) traceId = logsArgs[++i];
+      else if (logsArgs[i] === '--session' && logsArgs[i + 1]) sessionId = logsArgs[++i];
+      else if (logsArgs[i] === '--level' && logsArgs[i + 1]) level = logsArgs[++i];
+      else if (logsArgs[i] === '--since' && logsArgs[i + 1]) since = logsArgs[++i];
+      else if (logsArgs[i] === '--help' || logsArgs[i] === '-h') showHelp = true;
+    }
+    if (showHelp || logsArgs.length === 0) {
+      console.log(`
+${chalk.bold('free logs')} - Search local log files
+
+${chalk.bold('Usage:')}
+  free logs search [options]
+
+${chalk.bold('Options:')}
+  --trace <id>      Filter by trace ID
+  --session <id>    Filter by session ID
+  --level <lvl>     Filter by level (debug|info|warn|error)
+  --since <dur>     Only show logs since duration (e.g. 1h, 24h, 7d)
+
+${chalk.bold('Log directory:')} ${configuration.logsDir}
+`);
+      return;
+    }
+    // Parse --since
+    let sinceIso: string | undefined;
+    if (since) {
+      const match = since.match(/^(\d+)([smhd])$/);
+      if (match) {
+        const [, n, unit] = match;
+        const ms = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[unit as 's'|'m'|'h'|'d']!;
+        sinceIso = new Date(Date.now() - Number(n) * ms).toISOString();
+      }
+    }
+    // Read and filter JSONL files
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const logsDir = configuration.logsDir;
+    let count = 0;
+    try {
+      const files = readdirSync(logsDir)
+        .filter((f: string) => f.endsWith('.jsonl'))
+        .sort()
+        .map((f: string) => join(logsDir, f));
+
+      for (const file of files) {
+        const lines = readFileSync(file, 'utf-8').split('\n');
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const entry = JSON.parse(line) as Record<string, unknown>;
+            if (traceId && entry.traceId !== traceId) continue;
+            if (sessionId && entry.sessionId !== sessionId) continue;
+            if (level && entry.level !== level) continue;
+            if (sinceIso && typeof entry.timestamp === 'string' && entry.timestamp < sinceIso) continue;
+            console.log(line);
+            count++;
+          } catch { /* skip malformed lines */ }
+        }
+      }
+      if (count === 0) console.log(chalk.gray('No matching log entries found.'));
+      else console.error(chalk.gray(`\n${count} entries`));
+    } catch (err) {
+      console.error(chalk.red('Error reading logs:'), err instanceof Error ? err.message : String(err));
+      process.exit(1);
     }
     return;
   } else {
@@ -676,6 +818,8 @@ ${chalk.bold('Usage:')}
   free daemon            Manage background service that allows
                             to spawn new sessions away from your computer
   free doctor            System diagnostics & troubleshooting
+  free diagnostic        Export diagnostic log bundle
+  free logs              Search local log files
 
 ${chalk.bold('Examples:')}
   free                    Start session

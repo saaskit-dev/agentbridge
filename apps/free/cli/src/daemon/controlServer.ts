@@ -9,7 +9,8 @@ import { z } from 'zod';
 import { TrackedSession } from './types';
 import { Metadata } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('daemon/controlServer');
 
 export function startDaemonControlServer({
   getChildren,
@@ -136,6 +137,7 @@ export function startDaemonControlServer({
           body: z.object({
             directory: z.string(),
             sessionId: z.string().optional(),
+            sessionTag: z.string().optional(),
           }),
           response: {
             200: z.object({
@@ -157,12 +159,12 @@ export function startDaemonControlServer({
         },
       },
       async (request, reply) => {
-        const { directory, sessionId } = request.body;
+        const { directory, sessionId, sessionTag } = request.body;
 
         logger.debug(
           `[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}`
         );
-        const result = await spawnSession({ directory, sessionId });
+        const result = await spawnSession({ directory, sessionId, sessionTag });
 
         switch (result.type) {
           case 'success':

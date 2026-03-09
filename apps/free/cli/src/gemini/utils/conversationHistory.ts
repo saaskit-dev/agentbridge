@@ -6,7 +6,8 @@
  * without losing conversation context.
  */
 
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('gemini/utils/conversationHistory');
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';

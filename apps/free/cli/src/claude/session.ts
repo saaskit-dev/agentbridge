@@ -2,9 +2,10 @@ import { EnhancedMode } from './loop';
 import type { JsRuntime } from './runClaude';
 import { ApiClient, ApiSessionClient } from '@/lib';
 import type { SandboxConfig } from '@/persistence';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 
+const logger = new Logger('claude/session');
 export class Session {
   readonly path: string;
   readonly logPath: string;

@@ -1,5 +1,5 @@
 import { MessageQueue2 } from '@/utils/MessageQueue2';
-import { logger } from '@/ui/logger';
+import { Logger, getCollector } from '@agentbridge/core/telemetry';
 import { claudeLocalLauncher, LauncherResult } from './claudeLocalLauncher';
 import { claudeRemoteLauncher } from './claudeRemoteLauncher';
 import { ApiClient } from '@/lib';
@@ -13,6 +13,7 @@ export type { PermissionMode } from '@/api/types';
 import type { PermissionMode } from '@/api/types';
 import type { SandboxConfig } from '@/persistence';
 
+const logger = new Logger('claude/loop');
 export interface EnhancedMode {
   permissionMode: PermissionMode;
   model?: string;
@@ -47,7 +48,7 @@ interface LoopOptions {
 }
 export async function loop(opts: LoopOptions): Promise<number> {
   // Get log path for debug display
-  const logPath = logger.logFilePath;
+  const logPath = getCollector().getLogFilePath() ?? '';
   const session = new Session({
     api: opts.api,
     client: opts.session,
@@ -67,13 +68,14 @@ export async function loop(opts: LoopOptions): Promise<number> {
 
   opts.onSessionReady?.(session);
 
+  const sessionId = opts.session.sessionId;
   let mode: 'local' | 'remote' = opts.startingMode ?? 'local';
   while (true) {
-    logger.debug(`[loop] Iteration with mode: ${mode}`);
+    logger.debug('[loop] Iteration', { mode, sessionId });
 
     // Check if pending exit is requested (e.g., from SIGTERM during CLI update)
     if (opts.isPendingExit?.()) {
-      logger.debug('[loop] Pending exit requested, breaking loop');
+      logger.debug('[loop] Pending exit requested, breaking loop', { sessionId });
       return 0;
     }
 

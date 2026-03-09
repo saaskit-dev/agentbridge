@@ -10,9 +10,10 @@ import {
 } from '@/daemon/controlClient';
 import { readCredentials, clearCredentials, clearMachineId, readSettings } from '@/persistence';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 
+const logger = new Logger('commands/auth');
 export async function handleAuthCommand(args: string[]): Promise<void> {
   const subcommand = args[0];
 
@@ -130,7 +131,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       const maxAttempts = 100; // 10 seconds max
 
       while (!started && attempts < maxAttempts) {
-        started = await checkIfDaemonRunningAndCleanupStaleState();
+        started = (await checkIfDaemonRunningAndCleanupStaleState()).status === 'running';
         if (!started) {
           await new Promise(resolve => setTimeout(resolve, 100));
           attempts++;
@@ -140,7 +141,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       if (started) {
         console.log(chalk.green('✓ Daemon started'));
       } else {
-        console.log(chalk.red('✗ Failed to start daemon. Please check logs at ~/.free/logs/'));
+        console.log(chalk.red(`✗ Failed to start daemon. Please check logs at ${configuration.logsDir}`));
         process.exit(1);
       }
     } else {
@@ -253,9 +254,9 @@ async function handleAuthStatus(): Promise<void> {
 
   // Daemon status
   try {
-    const running = await checkIfDaemonRunningAndCleanupStaleState();
-    if (running) {
-      console.log(chalk.green('✓ Daemon running'));
+    const daemonState = await checkIfDaemonRunningAndCleanupStaleState();
+    if (daemonState.status === 'running') {
+      console.log(chalk.green(`✓ Daemon running (PID ${daemonState.pid})`));
     } else {
       console.log(chalk.gray('✗ Daemon not running'));
     }

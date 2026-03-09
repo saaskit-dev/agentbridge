@@ -1,5 +1,6 @@
 import open from 'open';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/browser');
 
 /**
  * Attempts to open a URL in the default browser

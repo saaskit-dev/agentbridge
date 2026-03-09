@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import packageJson from '../../package.json';
 import { projectPath } from '../projectPath';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -14,7 +14,7 @@ import { ApiClient } from '@/api/api';
 import { AgentState, Metadata } from '@/api/types';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { loop } from '@/claude/loop';
-import { logger } from '@/ui/logger';
+import { Logger, getCollector } from '@agentbridge/core/telemetry';
 import { Credentials, readSettings } from '@/persistence';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { hashObject } from '@/utils/deterministicJson';
@@ -34,6 +34,7 @@ import {
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 
+const logger = new Logger('claude/runClaude');
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun';
 
@@ -60,10 +61,10 @@ export async function runClaude(
   logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
 
   const workingDirectory = process.cwd();
-  const sessionTag = randomUUID();
+  const sessionTag = process.env.FREE_SESSION_TAG || randomUUID();
 
   // Log environment info at startup
-  logger.debugLargeJson('[START] Free process started', getEnvironmentInfo());
+  logger.debug('[START] Free process started');
   logger.debug(
     `[START] Options: startedBy=${options.startedBy}, startingMode=${options.startingMode}`
   );
@@ -99,9 +100,7 @@ export async function runClaude(
     sandboxEnabled ||
     Boolean(options.claudeArgs?.includes('--dangerously-skip-permissions'));
   if (!machineId) {
-    console.error(
-      `[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/kilingzhang/agentbridge/issues`
-    );
+    logger.error('[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it.');
     process.exit(1);
   }
   logger.debug(`Using machineId: ${machineId}`);
@@ -245,9 +244,9 @@ export async function runClaude(
   logger.debug(`[START] Generated hook settings file: ${hookSettingsPath}`);
 
   // Print log file path
-  const logPath = logger.logFilePath;
-  logger.infoDeveloper(`Session: ${response.id}`);
-  logger.infoDeveloper(`Logs: ${logPath}`);
+  const logPath = getCollector().getLogFilePath() ?? '';
+  logger.debug(`Session: ${response.id}`);
+  logger.debug(`Logs: ${logPath}`);
 
   // Set initial agent state
   session.updateAgentState(currentState => ({
@@ -258,7 +257,7 @@ export async function runClaude(
   // Start caffeinate to prevent sleep on macOS
   const caffeinateStarted = startCaffeinate();
   if (caffeinateStarted) {
-    logger.infoDeveloper('Sleep prevention enabled (macOS)');
+    logger.debug('Sleep prevention enabled (macOS)');
   }
 
   // Import MessageQueue2 and create message queue
@@ -399,7 +398,7 @@ export async function runClaude(
         specialCommand.originalMessage || message.content.text,
         enhancedMode
       );
-      logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+      logger.debug('[start] /compact command pushed to queue');
       return;
     }
 
@@ -418,7 +417,7 @@ export async function runClaude(
         specialCommand.originalMessage || message.content.text,
         enhancedMode
       );
-      logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+      logger.debug('[start] /compact command pushed to queue');
       return;
     }
 
@@ -433,7 +432,7 @@ export async function runClaude(
       disallowedTools: messageDisallowedTools,
     };
     messageQueue.push(message.content.text, enhancedMode);
-    logger.debugLargeJson('User message pushed to queue:', message);
+    logger.debug('User message pushed to queue');
   });
 
   // Setup signal handlers for graceful shutdown
@@ -526,8 +525,8 @@ export async function runClaude(
     },
     mcpServers: {
       free: {
-        type: 'http' as const,
-        url: freeServer.url,
+        command: 'node',
+        args: [resolve(join(projectPath(), 'dist', 'mcp-bridge.mjs')), '--url', freeServer.url],
       },
     },
     session,

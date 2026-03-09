@@ -8,9 +8,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { isBun } from '@/utils/runtime';
 
+const logger = new Logger('claude/sdk/utils');
 /**
  * Get the directory path of the current module
  */
@@ -188,7 +189,6 @@ export function getDefaultClaudeCodePath(): string {
 export function logDebug(message: string): void {
   if (process.env.DEBUG) {
     logger.debug(message);
-    console.log(message);
   }
 }
 

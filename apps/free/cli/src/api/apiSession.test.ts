@@ -38,12 +38,6 @@ vi.mock('@/configuration', () => ({
   },
 }));
 
-vi.mock('@/ui/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    debugLargeJson: vi.fn(),
-  },
-}));
 
 vi.mock('@/api/rpc/RpcHandlerManager', () => ({
   RpcHandlerManager: class {
@@ -318,11 +312,15 @@ describe('ApiSessionClient v3 messages API migration', () => {
       decodeBase64(payload.messages[0].content)
     );
 
-    expect(decrypted).toEqual({
+    // sendClaudeSessionMessage now maps through session protocol envelopes
+    expect(decrypted).toMatchObject({
       role: 'user',
       content: {
-        type: 'text',
-        text: 'hi there',
+        type: 'session',
+        data: {
+          role: 'user',
+          ev: { t: 'text', text: 'hi there' },
+        },
       },
       meta: {
         sentFrom: 'cli',

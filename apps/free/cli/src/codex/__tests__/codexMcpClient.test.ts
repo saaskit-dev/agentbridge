@@ -29,14 +29,6 @@ vi.mock('@/sandbox/manager', () => ({
   wrapForMcpTransport: mockWrapForMcpTransport,
 }));
 
-vi.mock('@/ui/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-  },
-}));
-
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
   Client: class MockClient {
     setNotificationHandler = vi.fn();
