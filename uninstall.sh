@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ============================================================================
 # Free CLI - Uninstaller
-# Usage: curl -fsSL https://raw.githubusercontent.com/kilingzhang/agentbridge/main/uninstall.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/uninstall.sh | bash
 # ============================================================================
 
 INSTALL_DIR="${FREE_INSTALL_DIR:-$HOME/.free/source}"

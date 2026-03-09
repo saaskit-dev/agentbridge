@@ -172,6 +172,9 @@ start_server() {
 
     log_info "启动 Server (端口 $SERVER_PORT)..."
 
+    # Dev 环境变量 — server 是独立进程，必须通过 env 传入
+    export FREE_HOME_DIR=~/.free-dev
+
     # 使用 standalone 模式（PGlite）
     pnpm --filter @free/server standalone serve 2>&1 | tee "$LOG_DIR/server.log" &
     SERVER_PID=$!
@@ -197,8 +200,10 @@ start_server() {
 start_daemon() {
     log_section "启动 Daemon"
 
-    # 设置服务器 URL
+    # Dev 环境变量 — daemon 是独立进程，必须通过 env 传入
+    export FREE_HOME_DIR=~/.free-dev
     export FREE_SERVER_URL="http://localhost:$SERVER_PORT"
+    export FREE_WEBAPP_URL="http://localhost:$WEB_PORT"
 
     log_info "启动 free daemon..."
     free daemon start 2>&1 | tee "$LOG_DIR/daemon.log" || true
@@ -208,9 +213,8 @@ start_daemon() {
     if free daemon status > /dev/null 2>&1; then
         log_success "Daemon 已启动"
 
-        # 显示 machine id (从 settings 文件读取)
-        if [ -f "$HOME/.free/settings.json" ]; then
-            MACHINE_ID=$(cat "$HOME/.free/settings.json" 2>/dev/null | grep -o '"machineId":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "")
+        if [ -f "$HOME/.free-dev/settings.json" ]; then
+            MACHINE_ID=$(cat "$HOME/.free-dev/settings.json" 2>/dev/null | grep -o '"machineId":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "")
             if [ -n "$MACHINE_ID" ]; then
                 log_info "Machine ID: $MACHINE_ID"
             fi
@@ -224,9 +228,6 @@ start_web() {
     log_section "启动 Web 应用"
 
     cd "$PROJECT_ROOT/apps/free/app"
-
-    # 设置环境变量
-    export EXPO_PUBLIC_FREE_SERVER_URL="http://localhost:$SERVER_PORT"
 
     log_info "启动 Expo (iOS/Android/Web)..."
 
