@@ -11,9 +11,10 @@ import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { configuration } from '@/configuration';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { trimIdent } from '@/utils/trimIdent';
 
+const logger = new Logger('daemon/mac/installUser');
 const PLIST_LABEL = 'com.free-cli.daemon';
 const PLIST_FILE = `${homedir()}/Library/LaunchAgents/${PLIST_LABEL}.plist`;
 

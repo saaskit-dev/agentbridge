@@ -58,7 +58,8 @@
  */
 
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('claude/utils/startHookServer');
 
 /**
  * Data received from Claude's SessionStart hook

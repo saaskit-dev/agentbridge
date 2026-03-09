@@ -9,7 +9,8 @@ import { writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('claude/utils/generateHookSettings');
 
 /**
  * Generate a temporary settings file with SessionStart hook configuration

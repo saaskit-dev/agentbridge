@@ -23,7 +23,8 @@ import {
   determineGeminiModel,
   getGeminiModelSource,
 } from '@/gemini/utils/config';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('agent/factories/gemini');
 
 /**
  * Options for creating a Gemini ACP backend

@@ -10,7 +10,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL } from '../constants';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('gemini/utils/config');
 
 /**
  * Result of reading Gemini local configuration

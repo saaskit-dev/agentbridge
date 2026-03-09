@@ -1,5 +1,5 @@
 import type { MessageBuffer } from './ink/messageBuffer';
-import { logger } from './logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import type {
   SDKMessage,
   SDKAssistantMessage,
@@ -7,6 +7,8 @@ import type {
   SDKSystemMessage,
   SDKUserMessage,
 } from '@/claude/sdk';
+
+const logger = new Logger('ui/messageFormatterInk');
 
 export type OnAssistantResultInkCallback = (
   result: SDKResultMessage,
@@ -21,7 +23,7 @@ export function formatClaudeMessageForInk(
   messageBuffer: MessageBuffer,
   onAssistantResult?: OnAssistantResultInkCallback
 ): void {
-  logger.debugLargeJson('[CLAUDE INK] Message from remote mode:', message);
+  logger.debug('[CLAUDE INK] Message from remote mode');
 
   switch (message.type) {
     case 'system': {
@@ -144,7 +146,7 @@ export function formatClaudeMessageForInk(
       } else if (resultMsg.subtype === 'error_during_execution') {
         messageBuffer.addMessage('❌ Error during execution', 'result');
         messageBuffer.addMessage(`Completed ${resultMsg.num_turns} turns before error`, 'status');
-        logger.debugLargeJson('[RESULT] Error during execution', resultMsg);
+        logger.debug('[RESULT] Error during execution');
       }
       break;
     }

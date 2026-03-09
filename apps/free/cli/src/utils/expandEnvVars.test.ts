@@ -3,16 +3,6 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-// Mock logger to avoid logger.warn/debug not being a function errors
-vi.mock('@/ui/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    warn: vi.fn(),
-    info: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
 import { expandEnvironmentVariables } from './expandEnvVars';
 
 describe('expandEnvironmentVariables', () => {

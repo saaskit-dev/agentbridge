@@ -1,5 +1,7 @@
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
-import { logger } from '@/lib';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('claude/registerKillSessionHandler');
 
 interface KillSessionRequest {
   // No parameters needed

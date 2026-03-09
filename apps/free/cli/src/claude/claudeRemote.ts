@@ -14,11 +14,13 @@ import {
   AbortError,
   SDKUserMessage,
 } from '@/claude/sdk';
-import { logger } from '@/lib';
+import { Logger } from '@agentbridge/core/telemetry';
 import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { projectPath } from '@/projectPath';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
+
+const logger = new Logger('claude/claudeRemote');
 
 export async function claudeRemote(opts: {
   // Fixed parameters
@@ -68,20 +70,16 @@ export async function claudeRemote(opts: {
           // If next arg doesn't start with dash and contains dashes, it's likely a UUID
           if (!nextArg.startsWith('-') && nextArg.includes('-')) {
             startFrom = nextArg;
-            logger.debug(`[claudeRemote] Found --resume with session ID: ${startFrom}`);
+            logger.debug('[claudeRemote] Found --resume with session ID', { sessionId: startFrom });
             break;
           } else {
             // Just --resume without UUID - SDK doesn't support this
-            logger.debug(
-              '[claudeRemote] Found --resume without session ID - not supported in remote mode'
-            );
+            logger.debug('[claudeRemote] Found --resume without session ID - not supported in remote mode');
             break;
           }
         } else {
           // --resume at end of args - SDK doesn't support this
-          logger.debug(
-            '[claudeRemote] Found --resume without session ID - not supported in remote mode'
-          );
+          logger.debug('[claudeRemote] Found --resume without session ID - not supported in remote mode');
           break;
         }
       }
@@ -162,7 +160,7 @@ export async function claudeRemote(opts: {
   const updateThinking = (newThinking: boolean) => {
     if (thinking !== newThinking) {
       thinking = newThinking;
-      logger.debug(`[claudeRemote] Thinking state changed to: ${thinking}`);
+      logger.debug('[claudeRemote] Thinking state changed', { thinking, sessionId: opts.sessionId });
       if (opts.onThinkingChange) {
         opts.onThinkingChange(thinking);
       }
@@ -187,10 +185,10 @@ export async function claudeRemote(opts: {
 
   updateThinking(true);
   try {
-    logger.debug(`[claudeRemote] Starting to iterate over response`);
+    logger.debug('[claudeRemote] Starting to iterate over response', { sessionId: opts.sessionId });
 
     for await (const message of response) {
-      logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
+      logger.debug('[claudeRemote] Message received', { type: message.type, sessionId: opts.sessionId });
 
       // Handle messages
       opts.onMessage(message);
@@ -205,12 +203,15 @@ export async function claudeRemote(opts: {
         // Session id is still in memory, wait until session file is written to disk
         // Start a watcher for to detect the session id
         if (systemInit.session_id) {
-          logger.debug(
-            `[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`
-          );
+          logger.debug('[claudeRemote] Waiting for session file to be written to disk', {
+            sessionId: systemInit.session_id,
+          });
           const projectDir = getProjectPath(opts.path);
           const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`));
-          logger.debug(`[claudeRemote] Session file found: ${systemInit.session_id} ${found}`);
+          logger.debug('[claudeRemote] Session file found', {
+            sessionId: systemInit.session_id,
+            found,
+          });
           opts.onSessionFound(systemInit.session_id);
         }
       }
@@ -218,7 +219,7 @@ export async function claudeRemote(opts: {
       // Handle result messages
       if (message.type === 'result') {
         updateThinking(false);
-        logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+        logger.debug('[claudeRemote] Result received, exiting claudeRemote', { sessionId: opts.sessionId });
 
         // Send completion messages
         if (isCompactCommand) {
@@ -248,7 +249,7 @@ export async function claudeRemote(opts: {
         if (msg.message.role === 'user' && Array.isArray(msg.message.content)) {
           for (const c of msg.message.content) {
             if (c.type === 'tool_result' && c.tool_use_id && opts.isAborted(c.tool_use_id)) {
-              logger.debug('[claudeRemote] Tool aborted, exiting claudeRemote');
+              logger.debug('[claudeRemote] Tool aborted, exiting claudeRemote', { sessionId: opts.sessionId });
               return;
             }
           }
@@ -257,7 +258,7 @@ export async function claudeRemote(opts: {
     }
   } catch (e) {
     if (e instanceof AbortError) {
-      logger.debug(`[claudeRemote] Aborted`);
+      logger.debug('[claudeRemote] Aborted', { sessionId: opts.sessionId });
       // Ignore
     } else {
       throw e;

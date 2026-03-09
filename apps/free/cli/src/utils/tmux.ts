@@ -21,7 +21,8 @@
 
 import { spawn, SpawnOptions } from 'child_process';
 import { promisify } from 'util';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/tmux');
 
 export enum TmuxControlState {
   /** Normal text processing mode */

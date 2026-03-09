@@ -11,7 +11,8 @@ import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { configuration } from '@/configuration';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('daemon/linux/installUser');
 
 const SERVICE_NAME = 'free-daemon';
 const SERVICE_FILE = `${homedir()}/.config/systemd/user/${SERVICE_NAME}.service`;

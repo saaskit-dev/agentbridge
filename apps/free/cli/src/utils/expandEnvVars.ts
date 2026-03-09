@@ -1,4 +1,5 @@
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/expandEnvVars');
 
 /**
  * Expands ${VAR} references in environment variable values.

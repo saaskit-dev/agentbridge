@@ -6,7 +6,8 @@
 import { Socket } from 'socket.io-client';
 import { RpcHandler, RpcHandlerMap, RpcRequest, RpcHandlerConfig } from './types';
 import { decodeBase64, encodeBase64, encrypt, decrypt } from '@/api/encryption';
-import { logger as defaultLogger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const defaultLogger = new Logger('api/rpc/RpcHandlerManager');
 
 export class RpcHandlerManager {
   private handlers: RpcHandlerMap = new Map();

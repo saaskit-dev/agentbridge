@@ -13,7 +13,9 @@ import {
   hasCapability as hasCapabilityUtil,
 } from '@agentbridge/core';
 import { configuration } from '@/configuration';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('api/serverCapabilities');
 
 /**
  * Server capabilities service

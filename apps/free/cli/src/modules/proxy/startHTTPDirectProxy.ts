@@ -1,6 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse, ClientRequest } from 'node:http';
 import httpProxy from 'http-proxy';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('modules/proxy/startHTTPDirectProxy');
 
 export interface HTTPProxyOptions {
   target: string;

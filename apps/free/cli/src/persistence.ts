@@ -11,7 +11,8 @@ import { FileHandle } from 'node:fs/promises';
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
 import { configuration } from '@/configuration';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('persistence');
 
 // AI backend profile schema - MUST match free app exactly
 // Using same Zod schema as GUI for runtime validation consistency
@@ -577,10 +578,7 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
     return JSON.parse(content) as DaemonLocallyPersistedState;
   } catch (error) {
     // State corrupted somehow :(
-    console.error(
-      `[PERSISTENCE] Daemon state file corrupted: ${configuration.daemonStateFile}`,
-      error
-    );
+    logger.error(`[PERSISTENCE] Daemon state file corrupted: ${configuration.daemonStateFile}`, { error: String(error) });
     return null;
   }
 }

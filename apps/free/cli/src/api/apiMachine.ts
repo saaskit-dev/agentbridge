@@ -11,11 +11,23 @@ import {
 } from '../modules/common/registerCommonHandlers';
 import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
-import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
+import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, WireTrace } from './types';
 import { configuration } from '@/configuration';
-import { logger } from '@/ui/logger';
+import { getProcessTraceContext } from '@/telemetry';
+import { injectTrace } from '@agentbridge/core/telemetry';
+import { Logger } from '@agentbridge/core/telemetry';
 import { backoff } from '@/utils/time';
 
+const logger = new Logger('api/apiMachine');
+
+/** Extract current process trace context as a WireTrace for socket emits. */
+function getWireTrace(): WireTrace | undefined {
+  const ctx = getProcessTraceContext();
+  if (!ctx) return undefined;
+  const obj: Record<string, unknown> = {};
+  injectTrace(ctx, obj);
+  return obj._trace as WireTrace | undefined;
+}
 interface ServerToDaemonEvents {
   update: (data: Update) => void;
   'rpc-request': (
@@ -30,13 +42,14 @@ interface ServerToDaemonEvents {
 }
 
 interface DaemonToServerEvents {
-  'machine-alive': (data: { machineId: string; time: number }) => void;
+  'machine-alive': (data: { machineId: string; time: number; _trace?: WireTrace }) => void;
 
   'machine-update-metadata': (
     data: {
       machineId: string;
       metadata: string; // Encrypted MachineMetadata
       expectedVersion: number;
+      _trace?: WireTrace;
     },
     cb: (
       answer:
@@ -61,6 +74,7 @@ interface DaemonToServerEvents {
       machineId: string;
       daemonState: string; // Encrypted DaemonState
       expectedVersion: number;
+      _trace?: WireTrace;
     },
     cb: (
       answer:
@@ -125,6 +139,7 @@ export class ApiMachineClient {
         agent,
         token,
         environmentVariables,
+        resumeClaudeSessionId,
       } = params || {};
       logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
 
@@ -140,6 +155,7 @@ export class ApiMachineClient {
         agent,
         token,
         environmentVariables,
+        resumeClaudeSessionId,
       });
 
       switch (result.type) {
@@ -206,6 +222,7 @@ export class ApiMachineClient {
           encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, updated)
         ),
         expectedVersion: this.machine.metadataVersion,
+        _trace: getWireTrace(),
       });
 
       if (answer.result === 'success') {
@@ -244,6 +261,7 @@ export class ApiMachineClient {
           encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, updated)
         ),
         expectedVersion: this.machine.daemonStateVersion,
+        _trace: getWireTrace(),
       });
 
       if (answer.result === 'success') {
@@ -316,7 +334,7 @@ export class ApiMachineClient {
     this.socket.on(
       'rpc-request',
       async (data: { method: string; params: string }, callback: (response: string) => void) => {
-        logger.debugLargeJson(`[API MACHINE] Received RPC request:`, data);
+        logger.debug('[API MACHINE] Received RPC request');
         callback(await this.rpcHandlerManager.handleRequest(data));
       }
     );
@@ -373,9 +391,9 @@ export class ApiMachineClient {
       };
       if (process.env.DEBUG) {
         // too verbose for production
-        logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
+        logger.debug('[API MACHINE] Emitting machine-alive');
       }
-      this.socket.emit('machine-alive', payload);
+      this.socket.emit('machine-alive', { ...payload, _trace: getWireTrace() });
     }, 20000);
     logger.debug('[API MACHINE] Keep-alive started (20s interval)');
   }

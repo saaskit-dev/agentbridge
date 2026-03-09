@@ -1,7 +1,8 @@
 import { watch } from 'fs/promises';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { delay } from '@/utils/time';
 
+const logger = new Logger('modules/watcher/startFileWatcher');
 export function startFileWatcher(file: string, onFileChange: (file: string) => void) {
   const abortController = new AbortController();
 

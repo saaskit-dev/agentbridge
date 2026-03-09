@@ -1,9 +1,10 @@
 import { claudeLocal, ExitCodeError } from './claudeLocal';
 import { Session } from './session';
 import { createSessionScanner } from './utils/sessionScanner';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
 import { Future } from '@/utils/future';
 
+const logger = new Logger('claude/claudeLocalLauncher');
 export type LauncherResult = { type: 'switch' } | { type: 'exit'; code: number };
 
 export async function claudeLocalLauncher(session: Session): Promise<LauncherResult> {

@@ -10,7 +10,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/BaseReasoningProcessor');
 
 /**
  * Tool call for reasoning section with a title.

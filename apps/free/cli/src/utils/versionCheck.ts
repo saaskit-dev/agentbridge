@@ -11,7 +11,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { projectPath } from '@/projectPath';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/versionCheck');
 
 /**
  * Get the currently installed CLI version from package.json

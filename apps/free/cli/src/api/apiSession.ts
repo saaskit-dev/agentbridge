@@ -18,7 +18,10 @@ import {
 } from './types';
 import { RawJSONLines } from '@/claude/types';
 import { configuration } from '@/configuration';
-import { logger } from '@/ui/logger';
+import { setCurrentTurnTrace, getProcessTraceContext } from '@/telemetry';
+import { continueTrace, resumeTrace, injectTrace } from '@agentbridge/core/telemetry';
+import type { WireTrace } from './types';
+import { Logger } from '@agentbridge/core/telemetry';
 import { AsyncLock } from '@/utils/lock';
 import { calculateCost } from '@/utils/pricing';
 import { InvalidateSync } from '@/utils/sync';
@@ -26,11 +29,22 @@ import { backoff, delay } from '@/utils/time';
 import type { SessionEnvelope } from '@/sessionProtocol/types';
 import type { SessionTurnEndStatus } from '@/sessionProtocol/types';
 import {
+
   closeClaudeTurnWithStatus,
   mapClaudeLogMessageToSessionEnvelopes,
   type ClaudeSessionProtocolState,
 } from '@/claude/utils/sessionProtocolMapper';
 
+const logger = new Logger('api/apiSession');
+
+/** Extract current process trace context as a WireTrace for socket emits. */
+function getWireTrace(): WireTrace | undefined {
+  const ctx = getProcessTraceContext();
+  if (!ctx) return undefined;
+  const obj: Record<string, unknown> = {};
+  injectTrace(ctx, obj);
+  return obj._trace as WireTrace | undefined;
+}
 /**
  * ACP (Agent Communication Protocol) message data types.
  * This is the unified format for all agent messages - CLI adapts each provider's format to ACP.
@@ -77,6 +91,8 @@ type V3SessionMessage = {
   seq: number;
   content: { t: 'encrypted'; c: string };
   localId: string | null;
+  /** RFC §19.3: traceId stored in DB for HTTP sync path trace correlation. */
+  traceId?: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -123,7 +139,7 @@ export class ApiSessionClient extends EventEmitter {
     activeSubagents: new Set<string>(),
   };
   private lastSeq = 0;
-  private pendingOutbox: Array<{ content: string; localId: string }> = [];
+  private pendingOutbox: Array<{ content: string; localId: string; _trace?: WireTrace }> = [];
   private readonly sendSync: InvalidateSync;
   private readonly receiveSync: InvalidateSync;
 
@@ -200,7 +216,7 @@ export class ApiSessionClient extends EventEmitter {
     // Server events
     this.socket.on('update', (data: Update) => {
       try {
-        logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', data);
+        logger.debug('[SOCKET] [UPDATE] Received update');
 
         if (!data.body) {
           logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!');
@@ -208,6 +224,21 @@ export class ApiSessionClient extends EventEmitter {
         }
 
         if (data.body.t === 'new-message') {
+          // Extract per-message trace context BEFORE any early returns.
+          // When lastSeq === 0, we fall back to fetchMessages() polling, but the
+          // currentTurnTrace module variable is already set so the polling path
+          // benefits from it. Node.js is single-threaded: no other socket event
+          // can overwrite currentTurnTrace between here and fetchMessages() running.
+          if (data._trace?.tid && data._trace?.sid) {
+            const wire = data._trace;
+            setCurrentTurnTrace(continueTrace({
+              traceId: wire.tid,
+              spanId: wire.sid,
+              sessionId: wire.ses,
+              machineId: wire.mid,
+            }));
+          }
+
           const messageSeq = data.body.message?.seq;
           if (this.lastSeq === 0) {
             this.receiveSync.invalidate();
@@ -226,7 +257,10 @@ export class ApiSessionClient extends EventEmitter {
             this.encryptionVariant,
             decodeBase64(data.body.message.content.c)
           );
-          logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body);
+          logger.debug('[SOCKET] [UPDATE] Processing message (fast path)', {
+            sessionId: this.sessionId,
+            seq: messageSeq,
+          });
           this.routeIncomingMessage(body);
           this.lastSeq = messageSeq;
         } else if (data.body.t === 'update-session') {
@@ -282,15 +316,22 @@ export class ApiSessionClient extends EventEmitter {
   }
 
   private authHeaders() {
+    const ctx = getProcessTraceContext();
     return {
       Authorization: `Bearer ${this.token}`,
       'Content-Type': 'application/json',
+      // RFC §7.2: carry trace context in HTTP headers so server can correlate logs
+      ...(ctx ? { 'X-Trace-Id': ctx.traceId, 'X-Span-Id': ctx.spanId } : {}),
     };
   }
 
   private routeIncomingMessage(message: unknown) {
     const userResult = UserMessageSchema.safeParse(message);
     if (userResult.success) {
+      logger.debug('[apiSession] routing user message to callback', {
+        sessionId: this.sessionId,
+        hasCallback: !!this.pendingMessageCallback,
+      });
       if (this.pendingMessageCallback) {
         this.pendingMessageCallback(userResult.data);
       } else {
@@ -304,17 +345,30 @@ export class ApiSessionClient extends EventEmitter {
   private async fetchMessages() {
     let afterSeq = this.lastSeq;
     while (true) {
-      const response = await axios.get<V3GetSessionMessagesResponse>(
-        `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-        {
-          params: {
-            after_seq: afterSeq,
-            limit: 100,
-          },
-          headers: this.authHeaders(),
-          timeout: 60000,
+      let response: Awaited<ReturnType<typeof axios.get<V3GetSessionMessagesResponse>>>;
+      try {
+        response = await axios.get<V3GetSessionMessagesResponse>(
+          `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+          {
+            params: {
+              after_seq: afterSeq,
+              limit: 100,
+            },
+            headers: this.authHeaders(),
+            timeout: 60000,
+          }
+        );
+      } catch (err: any) {
+        // Session deleted on the server — stop polling permanently, don't retry.
+        if (err?.response?.status === 404) {
+          logger.debug('[API] fetchMessages: session not found (404), stopping sync', {
+            sessionId: this.sessionId,
+          });
+          this.receiveSync.stop();
+          return;
         }
-      );
+        throw err;
+      }
 
       const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
       let maxSeq = afterSeq;
@@ -326,6 +380,11 @@ export class ApiSessionClient extends EventEmitter {
 
         if (message.content?.t !== 'encrypted') {
           continue;
+        }
+
+        // RFC §19.3: restore trace context from DB-stored traceId for HTTP sync path
+        if (message.traceId) {
+          setCurrentTurnTrace(resumeTrace(message.traceId));
         }
 
         try {
@@ -366,16 +425,35 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     const batch = this.pendingOutbox.slice();
-    const response = await axios.post<V3PostSessionMessagesResponse>(
-      `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-      {
-        messages: batch,
-      },
-      {
-        headers: this.authHeaders(),
-        timeout: 60000,
+    logger.debug('[apiSession] flushing outbox', { sessionId: this.sessionId, count: batch.length });
+
+    let response: Awaited<ReturnType<typeof axios.post<V3PostSessionMessagesResponse>>>;
+    try {
+      response = await axios.post<V3PostSessionMessagesResponse>(
+        `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+        {
+          messages: batch,
+        },
+        {
+          headers: this.authHeaders(),
+          timeout: 60000,
+        }
+      );
+    } catch (err: any) {
+      const status = err?.response?.status;
+      logger.error('[apiSession] outbox flush failed', {
+        sessionId: this.sessionId,
+        count: batch.length,
+        status,
+        error: String(err?.message ?? err),
+      });
+      // Session deleted on the server — stop sending permanently, don't retry.
+      if (status === 404) {
+        this.sendSync.stop();
+        return;
       }
-    );
+      throw err;
+    }
 
     this.pendingOutbox.splice(0, batch.length);
 
@@ -385,13 +463,23 @@ export class ApiSessionClient extends EventEmitter {
       this.lastSeq
     );
     this.lastSeq = maxSeq;
+    logger.debug('[apiSession] outbox flushed', { sessionId: this.sessionId, count: batch.length });
   }
 
   private enqueueMessage(content: unknown) {
     const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+    const trace = getWireTrace();
+    const localId = randomUUID();
     this.pendingOutbox.push({
       content: encrypted,
-      localId: randomUUID(),
+      localId,
+      ...(trace ? { _trace: trace } : {}),
+    });
+    logger.debug('[apiSession] message enqueued', {
+      sessionId: this.sessionId,
+      localId,
+      outboxSize: this.pendingOutbox.length,
+      traceId: trace?.tid,
     });
     this.sendSync.invalidate();
   }
@@ -433,6 +521,8 @@ export class ApiSessionClient extends EventEmitter {
     for (const envelope of mapped.envelopes) {
       this.sendSessionProtocolMessage(envelope);
     }
+    // Turn is complete — clear the per-message trace so idle logs don't inherit it.
+    setCurrentTurnTrace(undefined);
   }
 
   sendCodexMessage(body: any) {
@@ -535,6 +625,7 @@ export class ApiSessionClient extends EventEmitter {
       time: Date.now(),
       thinking,
       mode,
+      _trace: getWireTrace(),
     });
   }
 
@@ -542,7 +633,7 @@ export class ApiSessionClient extends EventEmitter {
    * Send session death message
    */
   sendSessionDeath() {
-    this.socket.emit('session-end', { sid: this.sessionId, time: Date.now() });
+    this.socket.emit('session-end', { sid: this.sessionId, time: Date.now(), _trace: getWireTrace() });
   }
 
   /**
@@ -575,8 +666,8 @@ export class ApiSessionClient extends EventEmitter {
         output: costs.output,
       },
     };
-    logger.debugLargeJson('[SOCKET] Sending usage data:', usageReport);
-    this.socket.emit('usage-report', usageReport);
+    logger.debug('[SOCKET] Sending usage data');
+    this.socket.emit('usage-report', { ...usageReport, _trace: getWireTrace() });
   }
 
   /**
@@ -591,6 +682,7 @@ export class ApiSessionClient extends EventEmitter {
           sid: this.sessionId,
           expectedVersion: this.metadataVersion,
           metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)),
+          _trace: getWireTrace(),
         });
         if (answer.result === 'success') {
           this.metadata = decrypt(
@@ -621,13 +713,14 @@ export class ApiSessionClient extends EventEmitter {
    * @param handler - Handler function that returns the updated agent state
    */
   updateAgentState(handler: (metadata: AgentState) => AgentState) {
-    logger.debugLargeJson('Updating agent state', this.agentState);
+    logger.debug('Updating agent state');
     this.agentStateLock.inLock(async () => {
       await backoff(async () => {
         const updated = handler(this.agentState || {});
         const answer = await this.socket.emitWithAck('update-state', {
           sid: this.sessionId,
           expectedVersion: this.agentStateVersion,
+          _trace: getWireTrace(),
           agentState: updated
             ? encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated))
             : null,
@@ -666,12 +759,16 @@ export class ApiSessionClient extends EventEmitter {
     if (!this.socket.connected) {
       return;
     }
+    const ctx = getProcessTraceContext();
+    const wireTrace: Record<string, unknown> = {};
+    if (ctx) injectTrace(ctx, wireTrace);
     this.socket.emit('streaming:text-delta', {
       type: 'text_delta',
       sessionId: this.sessionId,
       messageId,
       delta,
       timestamp: Date.now(),
+      _trace: wireTrace._trace as WireTrace | undefined,
     });
   }
 
@@ -683,12 +780,16 @@ export class ApiSessionClient extends EventEmitter {
     if (!this.socket.connected) {
       return;
     }
+    const ctx = getProcessTraceContext();
+    const wireTrace: Record<string, unknown> = {};
+    if (ctx) injectTrace(ctx, wireTrace);
     this.socket.emit('streaming:text-complete', {
       type: 'text_complete',
       sessionId: this.sessionId,
       messageId,
       fullText,
       timestamp: Date.now(),
+      _trace: wireTrace._trace as WireTrace | undefined,
     });
   }
 
@@ -700,12 +801,16 @@ export class ApiSessionClient extends EventEmitter {
     if (!this.socket.connected) {
       return;
     }
+    const ctx = getProcessTraceContext();
+    const wireTrace: Record<string, unknown> = {};
+    if (ctx) injectTrace(ctx, wireTrace);
     this.socket.emit('streaming:thinking-delta', {
       type: 'thinking_delta',
       sessionId: this.sessionId,
       messageId,
       delta,
       timestamp: Date.now(),
+      _trace: wireTrace._trace as WireTrace | undefined,
     });
   }
 
@@ -729,6 +834,7 @@ export class ApiSessionClient extends EventEmitter {
 
   async close() {
     logger.debug('[API] socket.close() called');
+    setCurrentTurnTrace(undefined);
     this.sendSync.stop();
     this.receiveSync.stop();
     this.socket.close();

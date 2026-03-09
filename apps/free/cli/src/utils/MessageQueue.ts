@@ -1,5 +1,6 @@
 import { SDKMessage, SDKUserMessage } from '@/claude/sdk';
-import { logger } from '@/ui/logger';
+import { Logger } from '@agentbridge/core/telemetry';
+const logger = new Logger('utils/MessageQueue');
 
 /**
  * An async iterable message queue that allows pushing messages and consuming them asynchronously
