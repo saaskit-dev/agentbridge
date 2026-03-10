@@ -13,41 +13,22 @@ const permissionModeOptions: {
   icon: string;
 }[] = [
   {
-    mode: 'yolo',
-    label: 'YOLO',
-    description: 'Skip all permissions automatically',
-    icon: 'rocket',
+    mode: 'read-only',
+    label: 'Read Only',
+    description: 'No file modifications allowed',
+    icon: 'eye',
   },
   {
-    mode: 'safe-yolo',
-    label: 'Safe YOLO',
-    description: 'Skip most permissions, ask for critical ones',
-    icon: 'shield',
-  },
-  {
-    mode: 'bypassPermissions',
-    label: 'Bypass Permissions',
-    description: 'Skip all permission checks',
-    icon: 'flash',
-  },
-  {
-    mode: 'acceptEdits',
+    mode: 'accept-edits',
     label: 'Accept Edits',
     description: 'Auto-approve file edits',
     icon: 'create',
   },
   {
-    mode: 'default',
-    label: 'Default',
-    description: 'Ask for permissions as needed',
-    icon: 'shield-checkmark',
-  },
-  { mode: 'plan', label: 'Plan', description: 'Plan before executing', icon: 'list' },
-  {
-    mode: 'read-only',
-    label: 'Read-only',
-    description: 'No file modifications allowed',
-    icon: 'eye',
+    mode: 'yolo',
+    label: 'YOLO',
+    description: 'Skip all permissions',
+    icon: 'flash',
   },
 ];
 

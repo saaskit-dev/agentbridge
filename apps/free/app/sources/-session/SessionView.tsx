@@ -222,7 +222,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
   // Get permission mode from session object, fall back to global default
   const globalDefaultPermissionMode = useSetting('defaultPermissionMode');
-  const permissionMode = session.permissionMode || globalDefaultPermissionMode || 'default';
+  const permissionMode = session.permissionMode || globalDefaultPermissionMode || 'accept-edits';
   // Get model mode from session object - for Gemini/OpenCode sessions use explicit model
   const isGeminiSession = session.metadata?.flavor === 'gemini';
   const isOpenCodeSession = session.metadata?.flavor === 'opencode';
@@ -254,16 +254,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
 
   // Function to update permission mode
   const updatePermissionMode = React.useCallback(
-    (
-      mode:
-        | 'default'
-        | 'acceptEdits'
-        | 'bypassPermissions'
-        | 'plan'
-        | 'read-only'
-        | 'safe-yolo'
-        | 'yolo'
-    ) => {
+    (mode: 'read-only' | 'accept-edits' | 'yolo') => {
       storage.getState().updateSessionPermissionMode(sessionId, mode);
     },
     [sessionId]

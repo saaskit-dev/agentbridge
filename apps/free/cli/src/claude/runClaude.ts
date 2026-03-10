@@ -99,7 +99,6 @@ export async function runClaude(
     sandboxEnabled
   );
   const dangerouslySkipPermissions =
-    initialPermissionMode === 'bypassPermissions' ||
     initialPermissionMode === 'yolo' ||
     sandboxEnabled ||
     Boolean(options.claudeArgs?.includes('--dangerously-skip-permissions'));
@@ -267,7 +266,7 @@ export async function runClaude(
   // Import MessageQueue2 and create message queue
   const messageQueue = new MessageQueue2<EnhancedMode>(mode =>
     hashObject({
-      isPlan: mode.permissionMode === 'plan',
+      isPlan: false, // plan mode removed in unified permission scheme
       model: mode.model,
       fallbackModel: mode.fallbackModel,
       customSystemPrompt: mode.customSystemPrompt,
@@ -390,7 +389,7 @@ export async function runClaude(
     if (specialCommand.type === 'compact') {
       logger.debug('[start] Detected /compact command');
       const enhancedMode: EnhancedMode = {
-        permissionMode: messagePermissionMode || 'default',
+        permissionMode: messagePermissionMode || 'accept-edits',
         model: messageModel,
         fallbackModel: messageFallbackModel,
         customSystemPrompt: messageCustomSystemPrompt,
@@ -409,7 +408,7 @@ export async function runClaude(
     if (specialCommand.type === 'clear') {
       logger.debug('[start] Detected /clear command');
       const enhancedMode: EnhancedMode = {
-        permissionMode: messagePermissionMode || 'default',
+        permissionMode: messagePermissionMode || 'accept-edits',
         model: messageModel,
         fallbackModel: messageFallbackModel,
         customSystemPrompt: messageCustomSystemPrompt,
@@ -427,7 +426,7 @@ export async function runClaude(
 
     // Push with resolved permission mode, model, system prompts, and tools
     const enhancedMode: EnhancedMode = {
-      permissionMode: messagePermissionMode || 'default',
+      permissionMode: messagePermissionMode || 'accept-edits',
       model: messageModel,
       fallbackModel: messageFallbackModel,
       customSystemPrompt: messageCustomSystemPrompt,

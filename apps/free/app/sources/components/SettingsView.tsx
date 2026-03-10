@@ -237,42 +237,6 @@ export const SettingsView = React.memo(function SettingsView() {
         </ItemGroup>
       )}
 
-      <ItemGroup title={t('settings.connectedAccounts')}>
-        <Item
-          title="Claude Code"
-          subtitle={
-            isAnthropicConnected ? t('settingsAccount.statusActive') : t('settings.connectAccount')
-          }
-          icon={
-            <Image
-              source={require('@/assets/images/icon-claude.png')}
-              style={{ width: 29, height: 29 }}
-              contentFit="contain"
-            />
-          }
-          onPress={isAnthropicConnected ? handleDisconnectAnthropic : connectAnthropic}
-          loading={connectingAnthropic || disconnectingAnthropic}
-          showChevron={false}
-        />
-        <Item
-          title={t('settings.github')}
-          subtitle={
-            isGitHubConnected
-              ? t('settings.githubConnected', { login: profile.github?.login! })
-              : t('settings.connectGithubAccount')
-          }
-          icon={
-            <Ionicons
-              name="logo-github"
-              size={29}
-              color={isGitHubConnected ? theme.colors.status.connected : theme.colors.textSecondary}
-            />
-          }
-          onPress={isGitHubConnected ? handleDisconnectGitHub : connectGitHub}
-          loading={connectingGitHub || disconnectingGitHub}
-          showChevron={false}
-        />
-      </ItemGroup>
 
       {/* Social */}
       {/* <ItemGroup title={t('settings.social')}>
@@ -379,6 +343,14 @@ export const SettingsView = React.memo(function SettingsView() {
             icon={<Ionicons name="construct-outline" size={29} color="#5856D6" />}
             onPress={() => router.push('/dev')}
           />
+          {devModeEnabled && !__DEV__ && (
+            <Item
+              title={t('settings.exitDeveloperMode')}
+              icon={<Ionicons name="exit-outline" size={29} color="#FF3B30" />}
+              showChevron={false}
+              onPress={() => setDevModeEnabled(false)}
+            />
+          )}
         </ItemGroup>
       )}
 

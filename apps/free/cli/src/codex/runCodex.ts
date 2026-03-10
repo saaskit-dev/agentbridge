@@ -226,7 +226,7 @@ export async function runCodex(opts: {
     }
 
     const enhancedMode: EnhancedMode = {
-      permissionMode: messagePermissionMode || 'default',
+      permissionMode: messagePermissionMode || 'accept-edits',
       model: messageModel,
     };
     messageQueue.push(message.content.text, enhancedMode);
