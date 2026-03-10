@@ -7,7 +7,7 @@
 
 import { Socket } from 'socket.io';
 import { eventRouter, ClientConnection } from '@/app/events/eventRouter';
-import { Logger, type WireTrace } from '@agentbridge/core/telemetry';
+import { Logger, type WireTrace } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/socket/streamingHandler');
 
 /**

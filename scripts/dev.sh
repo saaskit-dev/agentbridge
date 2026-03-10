@@ -115,7 +115,7 @@ cleanup_all() {
 build_core() {
     log_section "构建 Core 包"
 
-    log_info "构建 @agentbridge/core..."
+    log_info "构建 @saaskit-dev/agentbridge..."
     cd "$PROJECT_ROOT/packages/core"
     pnpm build 2>&1 | tee "$LOG_DIR/build-core.log"
 
@@ -137,7 +137,7 @@ link_cli() {
     cd "$PROJECT_ROOT/apps/free/cli"
 
     # 先移除旧的全局链接（如果存在）
-    npm unlink -g @free/cli 2>/dev/null || true
+    npm unlink -g @saaskit-dev/free 2>/dev/null || true
 
     # 创建新的全局链接
     npm link 2>&1 | tee "$LOG_DIR/link-cli.log"

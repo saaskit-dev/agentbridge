@@ -4,7 +4,7 @@ import { buildNewMessageUpdate, eventRouter } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
 import { allocateSessionSeqBatch, allocateUserSeq } from '@/storage/seq';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
-import { Logger, type WireTrace } from '@agentbridge/core/telemetry';
+import { Logger, type WireTrace } from '@saaskit-dev/agentbridge/telemetry';
 
 const log = new Logger('app/api/routes/v3Sessions');
 

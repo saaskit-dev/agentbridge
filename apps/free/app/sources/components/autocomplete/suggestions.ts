@@ -2,7 +2,7 @@ import * as React from 'react';
 import { CommandSuggestion, FileMentionSuggestion } from '@/components/AgentInputSuggestionView';
 import { searchCommands, CommandItem } from '@/sync/suggestionCommands';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/autocomplete/suggestions');
 
 export async function getCommandSuggestions(

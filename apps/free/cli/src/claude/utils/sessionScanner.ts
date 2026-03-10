@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { RawJSONLines, RawJSONLinesSchema } from '../types';
 import { getProjectPath } from './path';
 import { startFileWatcher } from '@/modules/watcher/startFileWatcher';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { InvalidateSync } from '@/utils/sync';
 
 const logger = new Logger('claude/utils/sessionScanner');

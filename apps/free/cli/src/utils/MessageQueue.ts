@@ -1,5 +1,5 @@
 import { SDKMessage, SDKUserMessage } from '@/claude/sdk';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('utils/MessageQueue');
 
 /**

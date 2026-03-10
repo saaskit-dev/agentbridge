@@ -13,7 +13,7 @@ import { PermissionResult } from '../sdk/types';
 import { Session } from '../session';
 import { getToolDescriptor } from './getToolDescriptor';
 import { getToolName } from './getToolName';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { delay } from '@/utils/time';
 
 const logger = new Logger('claude/utils/permissionHandler');

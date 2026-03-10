@@ -3,7 +3,7 @@
  * Provides real-time git repository status tracking using remote bash commands
  */
 
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { parseCurrentBranch } from './git-parsers/parseBranch';
 import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';

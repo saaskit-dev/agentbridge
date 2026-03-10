@@ -12,7 +12,7 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { trackAccountCreated } from '@/track';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/hooks/useConnectTerminal');
 
 interface UseConnectTerminalOptions {

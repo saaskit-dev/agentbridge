@@ -4,7 +4,7 @@ import { Profile, profileDefaults, profileParse } from './profile';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/persistence');
 

@@ -30,7 +30,7 @@ import {
 import { projectPath } from '@/projectPath';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { getEnvironmentInfo } from '@/ui/doctor';
-import { Logger, getCollector } from '@agentbridge/core/telemetry';
+import { Logger, getCollector } from '@saaskit-dev/agentbridge/telemetry';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
@@ -42,7 +42,7 @@ import {
 } from '@/utils/tmux';
 import { notifySessionToExit } from '@/utils/versionCheck';
 import { shutdownTelemetry } from '@/telemetry';
-import { createTrace } from '@agentbridge/core/telemetry';
+import { createTrace } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('daemon/run');
 // Prepare initial metadata

@@ -9,7 +9,7 @@ const config = getDefaultConfig(__dirname, {
   isCSSEnabled: true,
 });
 
-// Watch workspace packages so Metro can resolve @agentbridge/core
+// Watch workspace packages so Metro can resolve @saaskit-dev/agentbridge
 config.watchFolders = [workspaceRoot];
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
@@ -35,7 +35,7 @@ config.transformer.getTransformOptions = async () => ({
 
 // Fix packages that use Node ESM .js import convention (Metro can't resolve .js → .ts)
 // - @noble/hashes: all imports from that namespace
-// - @agentbridge/core relative imports: ONLY when originating from packages/core/src/
+// - @saaskit-dev/agentbridge relative imports: ONLY when originating from packages/core/src/
 //   (scoped to avoid accidentally affecting npm packages like react-textarea-autosize
 //    whose internal .js imports are real JS files, not TypeScript ESM)
 const agentbridgeCorePattern = path.resolve(workspaceRoot, 'packages/core/src');

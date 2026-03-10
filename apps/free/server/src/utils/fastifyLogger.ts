@@ -6,7 +6,7 @@
  * Fastify's raw Node.js IncomingMessage/ServerResponse objects.
  */
 
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const fastifyInner = new Logger('fastify');
 

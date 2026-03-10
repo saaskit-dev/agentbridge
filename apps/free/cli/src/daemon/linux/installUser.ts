@@ -11,7 +11,7 @@ import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { configuration } from '@/configuration';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/linux/installUser');
 
 const SERVICE_NAME = 'free-daemon';

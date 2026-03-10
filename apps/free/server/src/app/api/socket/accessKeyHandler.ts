@@ -1,7 +1,7 @@
 import { Socket } from 'socket.io';
 import { eventRouter } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/socket/accessKeyHandler');
 
 export function accessKeyHandler(userId: string, socket: Socket) {

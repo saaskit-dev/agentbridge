@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { type Fastify } from '../types';
 import { auth } from '@/app/auth/auth';
 import { db } from '@/storage/db';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/routes/authRoutes');
 
 export function authRoutes(app: Fastify) {

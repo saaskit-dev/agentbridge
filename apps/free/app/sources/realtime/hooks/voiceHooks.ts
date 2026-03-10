@@ -16,7 +16,7 @@ import {
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/voiceHooks');
 
 /**

@@ -9,7 +9,7 @@ import { writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('claude/utils/generateHookSettings');
 
 /**

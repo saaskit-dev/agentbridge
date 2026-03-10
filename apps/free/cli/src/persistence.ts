@@ -11,7 +11,7 @@ import { FileHandle } from 'node:fs/promises';
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
 import { configuration } from '@/configuration';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('persistence');
 
 // AI backend profile schema - MUST match free app exactly

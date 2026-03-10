@@ -1,7 +1,7 @@
 import type { EnhancedMode, JsRuntime } from './sessionTypes';
 import { ApiClient, ApiSessionClient } from '@/lib';
 import type { SandboxConfig } from '@/persistence';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 
 const logger = new Logger('claude/session');

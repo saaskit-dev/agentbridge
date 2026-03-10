@@ -1,6 +1,6 @@
 import { isCuid } from '@paralleldrive/cuid2';
 import * as z from 'zod';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
 
 const logger = new Logger('app/sync/typesRaw');

@@ -9,7 +9,7 @@
  * - Network errors silently dropped — telemetry must never block
  */
 
-import type { LogEntry, DeviceMetadata } from '@agentbridge/core/telemetry';
+import type { LogEntry, DeviceMetadata } from '@saaskit-dev/agentbridge/telemetry';
 
 interface RelayEntry {
   entry: LogEntry;

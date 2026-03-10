@@ -1,6 +1,6 @@
 import { Fastify } from '../types';
 import { auth } from '@/app/auth/auth';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/utils/enableAuthentication');
 
 export function enableAuthentication(app: Fastify) {

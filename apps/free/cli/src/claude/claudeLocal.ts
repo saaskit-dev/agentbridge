@@ -10,7 +10,7 @@ import { systemPrompt } from './utils/systemPrompt';
 import type { SandboxConfig } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import { initializeSandbox, wrapCommand } from '@/sandbox/manager';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('claude/claudeLocal');
 
 /**

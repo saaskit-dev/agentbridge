@@ -58,7 +58,7 @@
  */
 
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('claude/utils/startHookServer');
 
 /**

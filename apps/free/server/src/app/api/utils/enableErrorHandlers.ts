@@ -1,6 +1,6 @@
 import { FastifyError } from 'fastify';
 import { Fastify } from '../types';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/utils/enableErrorHandlers');
 
 export function enableErrorHandlers(app: Fastify) {

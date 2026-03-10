@@ -6,7 +6,7 @@
 import Fuse from 'fuse.js';
 import { sessionRipgrep } from './ops';
 import { AsyncLock } from '@/utils/lock';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/suggestionFile');
 

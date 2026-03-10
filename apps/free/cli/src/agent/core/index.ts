@@ -2,13 +2,13 @@
  * Core Agent Types and Interfaces
  *
  * Re-exports all core agent abstractions.
- * Types are now sourced from @agentbridge/core via ./fromCore
+ * Types are now sourced from @saaskit-dev/agentbridge via ./fromCore
  *
  * @module core
  */
 
 // ============================================================================
-// Core Types - Re-exported from @agentbridge/core via fromCore
+// Core Types - Re-exported from @saaskit-dev/agentbridge via fromCore
 // ============================================================================
 
 // Basic identifiers

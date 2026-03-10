@@ -19,7 +19,7 @@ import { searchUsersByUsername, sendFriendRequest } from '@/sync/apiFriends';
 import { UserProfile } from '@/sync/friendTypes';
 import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/friends/search');
 
 export default function SearchFriendsScreen() {

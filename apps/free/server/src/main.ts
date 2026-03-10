@@ -19,9 +19,9 @@ import {
   NewRelicBackend,
   setGlobalContextProvider,
   type LogSink,
-} from '@agentbridge/core/telemetry';
+} from '@saaskit-dev/agentbridge/telemetry';
 import { getCurrentTrace } from './utils/requestTrace';
-import { FileSink, cleanupOldLogs } from '@agentbridge/core/telemetry/node';
+import { FileSink, cleanupOldLogs } from '@saaskit-dev/agentbridge/telemetry/node';
 import { shutdownRelay } from '@/utils/telemetryRelay';
 import { awaitShutdown, onShutdown, triggerShutdown, isShuttingDown } from '@/utils/shutdown';
 

@@ -1,4 +1,4 @@
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const log = new Logger('utils/shutdown');
 

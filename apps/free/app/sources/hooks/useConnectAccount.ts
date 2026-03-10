@@ -8,7 +8,7 @@ import { encryptBox } from '@/encryption/libsodium';
 import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/hooks/useConnectAccount');
 
 interface UseConnectAccountOptions {

@@ -19,9 +19,9 @@ import {
 import { RawJSONLines } from '@/claude/types';
 import { configuration } from '@/configuration';
 import { setCurrentTurnTrace, getProcessTraceContext } from '@/telemetry';
-import { continueTrace, resumeTrace, injectTrace } from '@agentbridge/core/telemetry';
+import { continueTrace, resumeTrace, injectTrace } from '@saaskit-dev/agentbridge/telemetry';
 import type { WireTrace } from './types';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { AsyncLock } from '@/utils/lock';
 import { calculateCost } from '@/utils/pricing';
 import { InvalidateSync } from '@/utils/sync';

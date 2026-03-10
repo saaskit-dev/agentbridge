@@ -15,7 +15,7 @@ import { ApiClient } from '@/api/api';
 import { AgentState, Metadata } from '@/api/types';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { loop } from '@/claude/loop';
-import { Logger, getCollector } from '@agentbridge/core/telemetry';
+import { Logger, getCollector } from '@saaskit-dev/agentbridge/telemetry';
 import { Credentials, readSettings } from '@/persistence';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { hashObject } from '@/utils/deterministicJson';
