@@ -22,7 +22,7 @@ interface PermissionResponse {
   id: string;
   approved: boolean;
   reason?: string;
-  mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+  mode?: PermissionMode;
   allowTools?: string[];
   receivedAt?: number;
 }
@@ -42,7 +42,7 @@ export class PermissionHandler {
   private allowedTools = new Set<string>();
   private allowedBashLiterals = new Set<string>();
   private allowedBashPrefixes = new Set<string>();
-  private permissionMode: PermissionMode = 'default';
+  private permissionMode: PermissionMode = 'accept-edits';
   private onPermissionRequestCallback?: (toolCallId: string) => void;
 
   constructor(session: Session) {
@@ -88,14 +88,9 @@ export class PermissionHandler {
       if (response.approved) {
         logger.debug('Plan approved - injecting PLAN_FAKE_RESTART');
         // Inject the approval message at the beginning of the queue
-        if (
-          response.mode &&
-          ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode)
-        ) {
-          this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: response.mode });
-        } else {
-          this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: 'default' });
-        }
+            this.session.queue.unshift(PLAN_FAKE_RESTART, {
+          permissionMode: response.mode ?? 'accept-edits',
+        });
         pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
       } else {
         pending.resolve({ behavior: 'deny', message: response.reason || 'Plan rejected' });
@@ -150,11 +145,11 @@ export class PermissionHandler {
     // Handle special cases
     //
 
-    if (this.permissionMode === 'bypassPermissions') {
+    if (this.permissionMode === 'yolo') {
       return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
     }
 
-    if (this.permissionMode === 'acceptEdits' && descriptor.edit) {
+    if (this.permissionMode === 'accept-edits' && descriptor.edit) {
       return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
     }
 

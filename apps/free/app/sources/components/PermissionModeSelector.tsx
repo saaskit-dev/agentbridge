@@ -4,14 +4,7 @@ import { Text, Pressable, Platform } from 'react-native';
 import { hapticsLight } from './haptics';
 import { Typography } from '@/constants/Typography';
 
-export type PermissionMode =
-  | 'default'
-  | 'acceptEdits'
-  | 'bypassPermissions'
-  | 'plan'
-  | 'read-only'
-  | 'safe-yolo'
-  | 'yolo';
+export type PermissionMode = 'read-only' | 'accept-edits' | 'yolo';
 
 export type ModelMode =
   | 'default'
@@ -35,46 +28,25 @@ interface PermissionModeSelectorProps {
   disabled?: boolean;
 }
 
-const modeConfig = {
-  default: {
-    label: 'Default',
-    icon: 'shield-checkmark' as const,
-    description: 'Ask for permissions',
-  },
-  acceptEdits: {
-    label: 'Accept Edits',
-    icon: 'create' as const,
-    description: 'Auto-approve edits',
-  },
-  plan: {
-    label: 'Plan',
-    icon: 'list' as const,
-    description: 'Plan before executing',
-  },
-  bypassPermissions: {
-    label: 'Yolo',
-    icon: 'flash' as const,
-    description: 'Skip all permissions',
-  },
-  // Codex modes (not displayed in this component, but needed for type compatibility)
+const modeConfig: Record<PermissionMode, { label: string; icon: string; description: string }> = {
   'read-only': {
-    label: 'Read-only',
-    icon: 'eye' as const,
-    description: 'Read-only mode',
+    label: 'Read Only',
+    icon: 'eye',
+    description: 'No writes allowed',
   },
-  'safe-yolo': {
-    label: 'Safe YOLO',
-    icon: 'shield' as const,
-    description: 'Safe YOLO mode',
+  'accept-edits': {
+    label: 'Accept Edits',
+    icon: 'create',
+    description: 'Auto-approve file edits',
   },
   yolo: {
     label: 'YOLO',
-    icon: 'rocket' as const,
-    description: 'YOLO mode',
+    icon: 'flash',
+    description: 'Skip all permissions',
   },
 };
 
-const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+const modeOrder: PermissionMode[] = ['read-only', 'accept-edits', 'yolo'];
 
 export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
   mode,
