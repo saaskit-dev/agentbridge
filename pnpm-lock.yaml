@@ -74,9 +74,6 @@ importers:
 
   apps/free/app:
     dependencies:
-      '@agentbridge/core':
-        specifier: workspace:*
-        version: link:../../../packages/core
       '@config-plugins/react-native-webrtc':
         specifier: ^12.0.0
         version: 12.0.0(expo@54.0.33)
@@ -134,6 +131,9 @@ importers:
       '@revenuecat/purchases-js':
         specifier: ^1.11.1
         version: 1.26.1
+      '@saaskit-dev/agentbridge':
+        specifier: workspace:*
+        version: link:../../../packages/core
       '@shopify/flash-list':
         specifier: 2.0.2
         version: 2.0.2(@babel/runtime@7.28.6)(react-native@0.81.4)(react@19.1.0)
@@ -516,9 +516,6 @@ importers:
 
   apps/free/cli:
     dependencies:
-      '@agentbridge/core':
-        specifier: workspace:*
-        version: link:../../../packages/core
       '@agentclientprotocol/sdk':
         specifier: ^0.14.1
         version: 0.14.1(zod@3.25.76)
@@ -531,6 +528,9 @@ importers:
       '@paralleldrive/cuid2':
         specifier: ^2.2.2
         version: 2.3.1
+      '@saaskit-dev/agentbridge':
+        specifier: workspace:*
+        version: link:../../../packages/core
       '@stablelib/base64':
         specifier: ^2.0.1
         version: 2.0.1
@@ -661,9 +661,6 @@ importers:
 
   apps/free/server:
     dependencies:
-      '@agentbridge/core':
-        specifier: workspace:*
-        version: link:../../../packages/core
       '@date-fns/tz':
         specifier: ^1.2.0
         version: 1.4.1
@@ -682,6 +679,9 @@ importers:
       '@prisma/client':
         specifier: ^6.19.2
         version: 6.19.2(prisma@6.19.2)(typescript@5.9.3)
+      '@saaskit-dev/agentbridge':
+        specifier: workspace:*
+        version: link:../../../packages/core
       '@socket.io/postgres-adapter':
         specifier: ^0.5.0
         version: 0.5.0(socket.io-adapter@2.5.6)

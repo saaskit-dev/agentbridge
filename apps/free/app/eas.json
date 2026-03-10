@@ -1,11 +1,10 @@
 {
   "cli": {
     "version": ">= 14.2.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
-      "autoIncrement": true,
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
@@ -14,7 +13,6 @@
       }
     },
     "development-store": {
-      "autoIncrement": true,
       "developmentClient": true,
       "distribution": "store",
       "channel": "development",
@@ -23,7 +21,6 @@
       }
     },
     "preview": {
-      "autoIncrement": true,
       "distribution": "internal",
       "channel": "preview",
       "env": {
@@ -31,7 +28,6 @@
       }
     },
     "preview-store": {
-      "autoIncrement": true,
       "distribution": "store",
       "channel": "preview",
       "env": {
@@ -39,10 +35,20 @@
       }
     },
     "production": {
-      "autoIncrement": true,
       "channel": "production",
       "env": {
         "APP_ENV": "production"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6760193322"
+      },
+      "android": {
+        "track": "production",
+        "releaseStatus": "completed"
       }
     }
   }

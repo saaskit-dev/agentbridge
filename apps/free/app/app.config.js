@@ -1,3 +1,5 @@
+const { version } = require('./package.json');
+
 // 环境配置：
 //   development           → Free (dev),     .dev bundleId, 连 localhost
 //   development-preview   → Free (preview), .preview bundleId, 连生产 (内测分发)
@@ -29,7 +31,7 @@ export default {
   expo: {
     name,
     slug: 'free',
-    version: '0.0.1',
+    version,
     runtimeVersion: '18',
     orientation: 'default',
     icon: './sources/assets/images/icon.png',
@@ -43,6 +45,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: bundleId,
+      buildNumber: '8',
       config: {
         usesNonExemptEncryption: false,
       },
