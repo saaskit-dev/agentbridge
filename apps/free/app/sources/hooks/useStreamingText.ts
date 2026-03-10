@@ -16,23 +16,15 @@ import type {
 } from '@/sync/apiTypes';
 import { sync } from '@/sync/sync';
 import { Logger } from '@agentbridge/core/telemetry';
+import { applyTextDelta, applyTextComplete, STREAMING_INITIAL_STATE } from './streamingTextReducer';
+export {
+  applyTextDelta,
+  applyTextComplete,
+  STREAMING_INITIAL_STATE,
+  type StreamingTextState,
+} from './streamingTextReducer';
+import type { StreamingTextState } from './streamingTextReducer';
 const logger = new Logger('app/hooks/useStreamingText');
-
-/**
- * Streaming text state for a message
- */
-export interface StreamingTextState {
-  /** Message ID being streamed */
-  messageId: string | null;
-  /** Accumulated text from deltas */
-  pendingText: string;
-  /** Whether streaming is in progress */
-  isStreaming: boolean;
-  /** Whether streaming has completed */
-  isComplete: boolean;
-  /** Final text after completion */
-  finalText: string | null;
-}
 
 /**
  * Options for useStreamingText hook
@@ -80,13 +72,7 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
   // isMounted guard to prevent setState after unmount
   const isMountedRef = useRef(true);
 
-  const [state, setState] = useState<StreamingTextState>({
-    messageId: null,
-    pendingText: '',
-    isStreaming: false,
-    isComplete: false,
-    finalText: null,
-  });
+  const [state, setState] = useState<StreamingTextState>(STREAMING_INITIAL_STATE);
 
   // Use refs for callbacks to avoid re-subscribing
   const onTextDeltaRef = useRef(onTextDelta);
@@ -112,46 +98,14 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
       switch (update.type) {
         case 'text_delta': {
           const delta = update as ApiEphemeralTextDelta;
-          setState(prev => {
-            // If this is a new message, reset state
-            if (prev.messageId !== delta.messageId) {
-              return {
-                messageId: delta.messageId,
-                pendingText: delta.delta,
-                isStreaming: true,
-                isComplete: false,
-                finalText: null,
-              };
-            }
-            // Same message: accumulate and ensure streaming flags are correct.
-            // isComplete is reset here because OpenCode can emit status:idle
-            // mid-turn (during tool pauses), causing a premature text_complete.
-            // When new deltas then arrive, we must resume streaming mode.
-            return {
-              ...prev,
-              pendingText: prev.pendingText + delta.delta,
-              isStreaming: true,
-              isComplete: false,
-            };
-          });
+          setState(prev => applyTextDelta(prev, delta));
           onTextDeltaRef.current?.(delta.messageId, delta.delta);
           break;
         }
 
         case 'text_complete': {
           const complete = update as ApiEphemeralTextComplete;
-          // Always accept text_complete regardless of the previous messageId.
-          // The old guard `prev.messageId !== complete.messageId && prev.messageId !== null`
-          // was incorrect: it silently dropped text_complete when the previous turn's
-          // messageId was still set and this turn sent no deltas (non-streaming mode),
-          // leaving the App stuck displaying nothing.
-          setState(() => ({
-            messageId: complete.messageId,
-            pendingText: complete.fullText,
-            isStreaming: false,
-            isComplete: true,
-            finalText: complete.fullText,
-          }));
+          setState(() => applyTextComplete(complete));
           if (isMountedRef.current) {
             onTextCompleteRef.current?.(complete.messageId, complete.fullText);
           }
@@ -177,13 +131,7 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
 
   // Reset streaming state
   const reset = useCallback(() => {
-    setState({
-      messageId: null,
-      pendingText: '',
-      isStreaming: false,
-      isComplete: false,
-      finalText: null,
-    });
+    setState(STREAMING_INITIAL_STATE);
   }, []);
 
   // Manually append text (for testing or manual control)
