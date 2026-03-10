@@ -82,10 +82,12 @@ export default {
       favicon: './sources/assets/images/favicon.png',
     },
     plugins: [
-      require('./plugins/withVersionSync.js'),  // 自动同步版本到原生项目
-      require('./plugins/withPushNotificationEntitlements.js'),  // 自动配置推送 entitlements
+      require('./plugins/withVersionSync.js'), // 自动同步版本到原生项目
+      require('./plugins/withDevelopmentTeam.js'), // 自动写入 DEVELOPMENT_TEAM，防止 prebuild 后丢失
+      require('./plugins/withPushNotificationEntitlements.js'), // 自动配置推送 entitlements
       require('./plugins/withEinkCompatibility.js'),
       require('./plugins/withSourceBuildRN.js'),
+      require('./plugins/withFmtConsteval.js'),
       [
         'expo-router',
         {
