@@ -1886,12 +1886,12 @@ class Sync {
           }
 
           const isTaskComplete =
-            ((contentType === 'acp' || contentType === 'codex') &&
+            (contentType === 'acp' &&
               (dataType === 'task_complete' || dataType === 'turn_aborted')) ||
             (contentType === 'session' && sessionEventType === 'turn-end');
 
           const isTaskStarted =
-            ((contentType === 'acp' || contentType === 'codex') && dataType === 'task_started') ||
+            (contentType === 'acp' && dataType === 'task_started') ||
             (contentType === 'session' && sessionEventType === 'turn-start');
 
           if (isTaskComplete || isTaskStarted) {
@@ -1908,9 +1908,12 @@ class Sync {
                 ...session,
                 updatedAt: updateData.createdAt,
                 seq: updateData.seq,
-                // Update thinking state based on task lifecycle events
-                ...(isTaskComplete ? { thinking: false } : {}),
-                ...(isTaskStarted ? { thinking: true } : {}),
+                // Update thinking state based on task lifecycle events.
+                // Also record thinkingAt so flushActivityUpdates can detect
+                // stale keepAlive(thinking:true) updates that arrive after
+                // task_complete has already cleared thinking.
+                ...(isTaskComplete ? { thinking: false, thinkingAt: updateData.createdAt } : {}),
+                ...(isTaskStarted ? { thinking: true, thinkingAt: updateData.createdAt } : {}),
               },
             ]);
           } else {
@@ -2324,24 +2327,26 @@ class Sync {
     for (const [sessionId, update] of updates) {
       const session = storage.getState().sessions[sessionId];
       if (session) {
+        // Guard against stale keepAlive(thinking:true) updates.
+        //
+        // When task_started / task_complete fire in handleSessionUpdate they record
+        // thinkingAt = updateData.createdAt (server timestamp). Any keepAlive whose
+        // activeAt (CLI timestamp) is OLDER than that transition timestamp is stale
+        // and must not overwrite the authoritative thinking state set by the queue.
+        //
+        // This allows keepAlive to provide the fast "thinking started" signal on new
+        // turns (fresh activeAt > previous thinkingAt) while blocking the race-condition
+        // where a keepAlive(true) sent just before task_complete arrives late and resets
+        // thinking back to true (Bug 3). keepAlive interval is 2 s; NTP skew between
+        // CLI and server is typically < 100 ms, so the comparison is safe in practice.
+        const shouldUpdateThinking = update.activeAt > (session.thinkingAt ?? 0);
         sessions.push({
           ...session,
           active: update.active,
           activeAt: update.activeAt,
-          thinkingAt: update.activeAt,
-          // NOTE: `thinking` is intentionally NOT updated here.
-          //
-          // Race condition: keepAlive(thinking:true) activity updates are emitted every
-          // 2s during a turn. A stale activity update can arrive at the App AFTER
-          // task_complete has already set thinking:false via the UPDATE handler, which
-          // resets thinking back to true and leaves the UI stuck in "processing" state
-          // until the next keepAlive(false) activity propagates.
-          //
-          // `thinking` is managed exclusively by the ordered message queue:
-          //   task_started / turn-start  → thinking: true   (handleSessionUpdate)
-          //   task_complete / turn-end   → thinking: false  (handleSessionUpdate)
-          // These go through the server's message store and are delivered in-order,
-          // making them the single reliable source of truth for thinking state.
+          ...(shouldUpdateThinking
+            ? { thinking: update.thinking, thinkingAt: update.activeAt }
+            : {}),
         });
       }
     }
