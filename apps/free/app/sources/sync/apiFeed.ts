@@ -1,7 +1,7 @@
 import { FeedResponse, FeedResponseSchema, FeedItem } from './feedTypes';
 import { getServerUrl } from './serverConfig';
 import { AuthCredentials } from '@/auth/tokenStorage';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { backoff } from '@/utils/time';
 
 const logger = new Logger('app/sync/apiFeed');

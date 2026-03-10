@@ -2,7 +2,7 @@ import { getServerUrl } from './serverConfig';
 import { storage } from './storage';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { config } from '@/config';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/apiVoice');
 

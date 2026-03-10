@@ -4,7 +4,7 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as React from 'react';
 import { View, Text, FlatList, Pressable, ScrollView, Platform } from 'react-native';
-import type { LogEntry, Level } from '@agentbridge/core/telemetry';
+import type { LogEntry, Level } from '@saaskit-dev/agentbridge/telemetry';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';

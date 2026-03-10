@@ -9,7 +9,7 @@
 
 import { ApiSessionClient } from '@/api/apiSession';
 import { AgentState } from '@/api/types';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('utils/BasePermissionHandler');
 
 /**

@@ -13,7 +13,7 @@ import {
   PKCECodes,
   ClaudeAuthTokens,
 } from '@/utils/oauth';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/OAuthView');
 
 const styles = StyleSheet.create(theme => ({

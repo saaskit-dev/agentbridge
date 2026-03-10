@@ -8,7 +8,7 @@ import { VoiceBars } from './VoiceBars';
 import { Typography } from '@/constants/Typography';
 import { stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/VoiceAssistantStatusBar');
 
 interface VoiceAssistantStatusBarProps {

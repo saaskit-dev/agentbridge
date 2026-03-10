@@ -1,7 +1,7 @@
 import { Webhooks } from '@octokit/webhooks';
 import type { EmitterWebhookEvent } from '@octokit/webhooks';
 import { App } from 'octokit';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const log = new Logger('modules/github');
 

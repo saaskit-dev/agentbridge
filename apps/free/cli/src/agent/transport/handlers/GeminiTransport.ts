@@ -7,9 +7,9 @@
  * @module GeminiTransport
  */
 
-import { GeminiTransport as CoreGeminiTransport } from '@agentbridge/core';
-import type { ToolPattern, ToolNameContext } from '@agentbridge/core';
-import { Logger } from '@agentbridge/core/telemetry';
+import { GeminiTransport as CoreGeminiTransport } from '@saaskit-dev/agentbridge';
+import type { ToolPattern, ToolNameContext } from '@saaskit-dev/agentbridge';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('agent/transport/handlers/GeminiTransport');
 
 /**

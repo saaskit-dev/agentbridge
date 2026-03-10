@@ -5,7 +5,7 @@
 
 import { query } from './query';
 import type { SDKSystemMessage } from './types';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('claude/sdk/metadataExtractor');
 
 export interface SDKMetadata {

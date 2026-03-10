@@ -1,10 +1,10 @@
 /**
  * Default Transport Handler
  *
- * Re-exports from @agentbridge/core.
+ * Re-exports from @saaskit-dev/agentbridge.
  *
  * @module DefaultTransport
  */
 
 // Re-export from core
-export { DefaultTransport, defaultTransport } from '@agentbridge/core';
+export { DefaultTransport, defaultTransport } from '@saaskit-dev/agentbridge';

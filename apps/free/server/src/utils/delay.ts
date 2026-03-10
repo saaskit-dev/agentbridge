@@ -1,4 +1,4 @@
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 export async function delay(ms: number, signal?: AbortSignal): Promise<void> {
   if (!signal) {

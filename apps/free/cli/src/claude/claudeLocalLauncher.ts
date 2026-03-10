@@ -1,7 +1,7 @@
 import { claudeLocal, ExitCodeError } from './claudeLocal';
 import { Session } from './session';
 import { createSessionScanner } from './utils/sessionScanner';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { Future } from '@/utils/future';
 
 const logger = new Logger('claude/claudeLocalLauncher');

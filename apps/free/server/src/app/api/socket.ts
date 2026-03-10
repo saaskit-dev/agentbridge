@@ -21,7 +21,7 @@ import {
   ClientConnection,
   eventRouter,
 } from '@/app/events/eventRouter';
-import { Logger, continueTrace } from '@agentbridge/core/telemetry';
+import { Logger, continueTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { runWithTrace } from '@/utils/requestTrace';
 import { onShutdown } from '@/utils/shutdown';
 

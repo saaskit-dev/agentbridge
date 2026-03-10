@@ -27,7 +27,7 @@ import { telemetryRoutes } from './routes/telemetryRoutes';
 import { register } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
 import { isLocalStorage, getLocalFilesDir } from '@/storage/files';
-import { Logger, continueTrace, resumeTrace } from '@agentbridge/core/telemetry';
+import { Logger, continueTrace, resumeTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { createFastifyLogger } from '@/utils/fastifyLogger';
 import { runWithTrace } from '@/utils/requestTrace';
 import { onShutdown } from '@/utils/shutdown';

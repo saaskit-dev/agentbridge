@@ -30,7 +30,7 @@ import { ApiClient } from '@/api/api';
 import { decrypt, decodeBase64, encrypt, encodeBase64 } from '@/api/encryption';
 import { projectPath } from '@/projectPath';
 import type { Metadata, WireTrace } from '@/api/types';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('api/messageLifecycle.integration.test');
 

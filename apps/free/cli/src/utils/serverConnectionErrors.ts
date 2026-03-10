@@ -50,7 +50,7 @@
 
 import axios from 'axios';
 import chalk from 'chalk';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { exponentialBackoffDelay } from '@/utils/time';
 
 const logger = new Logger('utils/serverConnectionErrors');

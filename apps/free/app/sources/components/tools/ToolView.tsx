@@ -15,7 +15,7 @@ import { Metadata } from '@/sync/storageTypes';
 import { Message, ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
 import { parseToolUseError } from '@/utils/toolErrorParser';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/tools/ToolView');
 
 interface ToolViewProps {

@@ -1,5 +1,5 @@
 import { MessageQueue2 } from '@/utils/MessageQueue2';
-import { Logger, getCollector } from '@agentbridge/core/telemetry';
+import { Logger, getCollector } from '@saaskit-dev/agentbridge/telemetry';
 import { claudeLocalLauncher, LauncherResult } from './claudeLocalLauncher';
 import { claudeRemoteLauncher } from './claudeRemoteLauncher';
 import { ApiClient } from '@/lib';

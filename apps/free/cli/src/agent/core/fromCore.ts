@@ -1,5 +1,5 @@
 /**
- * fromCore.ts - Re-exports types from @agentbridge/core
+ * fromCore.ts - Re-exports types from @saaskit-dev/agentbridge
  *
  * This file provides a migration path from free's local types to the core package.
  * During migration, files can import from './fromCore' instead of local definitions.
@@ -9,12 +9,12 @@
  */
 
 // ============================================================================
-// Core Types - Re-exported from @agentbridge/core
+// Core Types - Re-exported from @saaskit-dev/agentbridge
 // ============================================================================
 
 // Basic identifiers - import for local use then re-export
-import type { SessionId as SessionIdType, ToolCallId as ToolCallIdType } from '@agentbridge/core';
-export type { SessionId, ToolCallId } from '@agentbridge/core';
+import type { SessionId as SessionIdType, ToolCallId as ToolCallIdType } from '@saaskit-dev/agentbridge';
+export type { SessionId, ToolCallId } from '@saaskit-dev/agentbridge';
 
 // Agent configuration types
 export type {
@@ -23,7 +23,7 @@ export type {
   McpServerConfig,
   AgentBackendConfig,
   AcpAgentConfig,
-} from '@agentbridge/core';
+} from '@saaskit-dev/agentbridge';
 
 // Agent backend interface
 export type {
@@ -32,7 +32,7 @@ export type {
   StartSessionResult,
   AgentMessageHandler,
   AgentBackendFactory,
-} from '@agentbridge/core';
+} from '@saaskit-dev/agentbridge';
 
 // Transport handler interface
 export type {
@@ -42,7 +42,7 @@ export type {
   ToolPattern,
   ToolNameContext,
   TransportHandlerFactory,
-} from '@agentbridge/core';
+} from '@saaskit-dev/agentbridge';
 
 // Type guards
 export {
@@ -54,7 +54,7 @@ export {
   isPermissionResponseMessage,
   isEventMessage,
   getMessageText,
-} from '@agentbridge/core';
+} from '@saaskit-dev/agentbridge';
 
 // Factory functions
 export {
@@ -62,15 +62,15 @@ export {
   createAgent,
   hasAgentFactory,
   listAgentFactories,
-} from '@agentbridge/core';
+} from '@saaskit-dev/agentbridge';
 export {
   registerTransportHandler,
   createTransportHandler,
   hasTransportHandler,
-} from '@agentbridge/core';
+} from '@saaskit-dev/agentbridge';
 
 // Transport implementations (base class only - GeminiTransport is free-specific)
-export { DefaultTransport, defaultTransport } from '@agentbridge/core';
+export { DefaultTransport, defaultTransport } from '@saaskit-dev/agentbridge';
 
 // ============================================================================
 // Free-specific Types - Kept locally until core has them
@@ -178,4 +178,4 @@ export interface PatchApplyEndMessage {
  * Backward compatibility: Alias IAgentBackend to AgentBackend
  * This allows existing code to continue using 'AgentBackend' type name
  */
-export type AgentBackend = import('@agentbridge/core').IAgentBackend;
+export type AgentBackend = import('@saaskit-dev/agentbridge').IAgentBackend;

@@ -84,16 +84,16 @@ fi
 # ── Install dependencies ────────────────────────────────────────────────────
 
 info "Installing dependencies..."
-pnpm install --frozen-lockfile --filter @agentbridge/core --filter @free/cli 2>/dev/null || \
-pnpm install --filter @agentbridge/core --filter @free/cli
+pnpm install --frozen-lockfile --filter @saaskit-dev/agentbridge --filter @saaskit-dev/free 2>/dev/null || \
+pnpm install --filter @saaskit-dev/agentbridge --filter @saaskit-dev/free
 
 # ── Build ────────────────────────────────────────────────────────────────────
 
-info "Building @agentbridge/core..."
-pnpm --filter @agentbridge/core run build
+info "Building @saaskit-dev/agentbridge..."
+pnpm --filter @saaskit-dev/agentbridge run build
 
-info "Building @free/cli..."
-pnpm --filter @free/cli run build
+info "Building @saaskit-dev/free..."
+pnpm --filter @saaskit-dev/free run build
 
 ok "Build complete"
 

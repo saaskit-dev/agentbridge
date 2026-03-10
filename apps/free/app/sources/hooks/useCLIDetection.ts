@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { machineBash } from '@/sync/ops';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/hooks/useCLIDetection');
 
 interface CLIAvailability {

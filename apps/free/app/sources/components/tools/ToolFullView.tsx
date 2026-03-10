@@ -8,7 +8,7 @@ import { useLocalSetting } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/tools/ToolFullView');
 
 interface ToolFullViewProps {

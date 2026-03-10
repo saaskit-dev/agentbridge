@@ -14,7 +14,7 @@ import { Typography } from '@/constants/Typography';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/restore/manual');
 
 const stylesheet = StyleSheet.create(theme => ({

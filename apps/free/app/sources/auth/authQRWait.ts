@@ -3,7 +3,7 @@ import { decodeBase64, encodeBase64 } from '../encryption/base64';
 import { QRAuthKeyPair } from './authQRStart';
 import { decryptBox } from '@/encryption/libsodium';
 import { getServerUrl } from '@/sync/serverConfig';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/auth/authQRWait');
 
 export interface AuthCredentials {

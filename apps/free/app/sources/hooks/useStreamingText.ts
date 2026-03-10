@@ -15,7 +15,7 @@ import type {
   ApiEphemeralUpdate,
 } from '@/sync/apiTypes';
 import { sync } from '@/sync/sync';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { applyTextDelta, applyTextComplete, STREAMING_INITIAL_STATE } from './streamingTextReducer';
 export {
   applyTextDelta,

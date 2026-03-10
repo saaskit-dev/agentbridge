@@ -13,7 +13,7 @@ import {
   AbortError,
   SDKUserMessage,
 } from '@/claude/sdk';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { projectPath } from '@/projectPath';

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { db } from '@/storage/db';
 import { delay } from '@/utils/delay';
 

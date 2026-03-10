@@ -27,7 +27,7 @@ export async function findAllFreeProcesses(): Promise<
         name.includes('free') ||
         (name === 'node' && (cmd.includes('free-cli') || cmd.includes('dist/cli.mjs'))) ||
         cmd.includes('cli.mjs') ||
-        cmd.includes('@free/cli') ||
+        cmd.includes('@saaskit-dev/free') ||
         (cmd.includes('tsx') && cmd.includes('src/index.ts') && cmd.includes('free-cli'));
 
       if (!isFree) continue;

@@ -29,7 +29,7 @@ import { syncRestore } from '@/sync/sync';
 import { loadLocalSettings } from '@/sync/persistence';
 // import * as SystemUI from 'expo-system-ui';
 import { AsyncLock } from '@/utils/lock';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/layout');
 
 // Initialize telemetry — in-memory ring buffer for diagnostics (Settings → Support)

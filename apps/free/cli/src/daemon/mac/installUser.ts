@@ -11,7 +11,7 @@ import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { configuration } from '@/configuration';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { trimIdent } from '@/utils/trimIdent';
 
 const logger = new Logger('daemon/mac/installUser');

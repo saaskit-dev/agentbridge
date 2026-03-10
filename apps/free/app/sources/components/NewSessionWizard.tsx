@@ -28,7 +28,7 @@ import {
 } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/NewSessionWizard');
 
 const stylesheet = StyleSheet.create(theme => ({

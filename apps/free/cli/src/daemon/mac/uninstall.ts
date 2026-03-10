@@ -10,7 +10,7 @@
 
 import { execSync } from 'child_process';
 import { existsSync, unlinkSync } from 'fs';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/mac/uninstall');
 
 const PLIST_LABEL = 'com.free-cli.daemon';

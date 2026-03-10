@@ -25,7 +25,7 @@ import type {
 } from '@/api/types';
 import { configuration } from '@/configuration';
 import { Credentials } from '@/persistence';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
 
 const logger = new Logger('api/api');

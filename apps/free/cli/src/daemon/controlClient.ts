@@ -9,7 +9,7 @@ import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { projectPath } from '@/projectPath';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/controlClient');
 
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {

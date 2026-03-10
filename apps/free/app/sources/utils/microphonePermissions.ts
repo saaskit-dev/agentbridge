@@ -1,6 +1,6 @@
 import { AudioModule } from 'expo-audio';
 import { Platform, Linking } from 'react-native';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/utils/microphonePermissions');
 export interface MicrophonePermissionResult {
   granted: boolean;

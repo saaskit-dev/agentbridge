@@ -12,7 +12,7 @@ import { useArtifact } from '@/sync/storage';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/artifacts/detail');
 
 const stylesheet = StyleSheet.create(theme => ({
