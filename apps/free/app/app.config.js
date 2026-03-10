@@ -10,17 +10,17 @@ const configs = {
   development: {
     name: 'Free (dev)',
     bundleId: 'app.saaskit.freecode.dev',
-    googleServicesFile: './firebase/GoogleService-Info.development.plist',
+    googleServicesFile: process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.development.plist',
   },
   'development-preview': {
     name: 'Free (preview)',
     bundleId: 'app.saaskit.freecode.preview',
-    googleServicesFile: './firebase/GoogleService-Info.preview.plist',
+    googleServicesFile: process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.preview.plist',
   },
   production: {
     name: 'Free',
     bundleId: 'app.saaskit.freecode',
-    googleServicesFile: './firebase/GoogleService-Info.production.plist',
+    googleServicesFile: process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.production.plist',
   },
 };
 
@@ -75,7 +75,7 @@ export default {
       blockedPermissions: ['android.permission.ACTIVITY_RECOGNITION'],
       edgeToEdgeEnabled: true,
       package: bundleId,
-      googleServicesFile: './firebase/google-services.json',
+      googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './firebase/google-services.json',
       intentFilters:
         variant === 'production'
           ? [
