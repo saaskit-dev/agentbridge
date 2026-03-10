@@ -1,15 +1,29 @@
+// 环境配置：
+//   development           → Free (dev),     .dev bundleId, 连 localhost
+//   development-preview   → Free (preview), .preview bundleId, 连生产 (内测分发)
+//   production            → Free,           无后缀 bundleId, 连生产
 const variant = process.env.APP_ENV || 'development';
-const name = {
-  development: 'Free (dev)',
-  preview: 'Free (preview)',
-  production: 'Free',
-}[variant];
-const bundleId = {
-  development: 'app.saaskit.freecode.dev',
-  preview: 'app.saaskit.freecode.preview',
-  production: 'app.saaskit.freecode',
-}[variant];
-const googleServicesFile = `./firebase/GoogleService-Info.${variant}.plist`;
+
+const configs = {
+  development: {
+    name: 'Free (dev)',
+    bundleId: 'app.saaskit.freecode.dev',
+    googleServicesFile: './firebase/GoogleService-Info.development.plist',
+  },
+  'development-preview': {
+    name: 'Free (preview)',
+    bundleId: 'app.saaskit.freecode.preview',
+    googleServicesFile: './firebase/GoogleService-Info.preview.plist',
+  },
+  production: {
+    name: 'Free',
+    bundleId: 'app.saaskit.freecode',
+    googleServicesFile: './firebase/GoogleService-Info.production.plist',
+  },
+};
+
+const config = configs[variant] || configs.development;
+const { name, bundleId, googleServicesFile } = config;
 
 export default {
   expo: {

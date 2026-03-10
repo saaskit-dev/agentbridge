@@ -430,10 +430,11 @@ export async function runOpenCode(opts: {
             // false ONCE in the finally block when the turn is complete.
             // This prevents UI status flickering between "working" and "online"
 
-            // Send streaming text complete if we have accumulated response content
-            if (currentResponseMessageId && currentResponseText) {
-              session.sendStreamingTextComplete(currentResponseMessageId, currentResponseText);
-            }
+            // NOTE: Don't send sendStreamingTextComplete here — OpenCode goes idle
+            // multiple times during tool-call turns (running→idle→running→idle), so
+            // calling it here would push PARTIAL text as "complete" on every pause.
+            // sendStreamingTextComplete is called ONCE in the finally block below,
+            // after waitForResponseComplete confirms the turn is truly done.
 
             // NOTE: Don't clear currentResponseMessageId/currentResponseText here.
             // The finally block handles cleanup after waitForResponseComplete resolves.
@@ -672,8 +673,8 @@ export async function runOpenCode(opts: {
         // Turn is complete (waitForResponseComplete resolved or error occurred)
         // Now safe to clean up streaming state
 
-        // Send accumulated response to mobile app ONLY when turn is complete
-        // This prevents message fragmentation from OpenCode's chunked responses
+        // Send accumulated response to mobile app ONLY when turn is complete.
+        // This prevents message fragmentation from OpenCode's chunked responses.
         if (currentResponseText.trim()) {
           logger.debug(
             `[OpenCode] Sending complete message to mobile (length: ${currentResponseText.length}): ${currentResponseText.substring(0, 100)}...`
@@ -682,6 +683,16 @@ export async function runOpenCode(opts: {
             type: 'message',
             message: currentResponseText,
           });
+
+          // Send streaming text complete ONCE here (not at every status:idle).
+          // Sent unconditionally (not gated on supportsTextDelta) so the App always
+          // receives the final text via the ephemeral channel regardless of whether
+          // real-time delta streaming was active. Without this, a capabilities
+          // detection failure (null capabilities → supportsTextDelta()=false) would
+          // leave useStreamingText with no text and the UI showing a blank message.
+          if (currentResponseMessageId) {
+            session.sendStreamingTextComplete(currentResponseMessageId, currentResponseText);
+          }
         }
 
         // Send task_complete to signal end of turn to the mobile app

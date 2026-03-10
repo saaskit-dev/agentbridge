@@ -11,7 +11,6 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { layout } from '@/components/layout';
-import { Switch } from '@/components/Switch';
 import { Typography } from '@/constants/Typography';
 import { useConnectAccount } from '@/hooks/useConnectAccount';
 import { useFreeAction } from '@/hooks/useFreeAction';
@@ -29,7 +28,6 @@ export default React.memo(() => {
   const router = useRouter();
   const [showSecret, setShowSecret] = useState(false);
   const [copiedRecently, setCopiedRecently] = useState(false);
-  const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
   const { connectAccount, isLoading: isConnecting } = useConnectAccount();
   const profile = useProfile();
 
@@ -312,33 +310,6 @@ export default React.memo(() => {
             </Pressable>
           </ItemGroup>
         )}
-
-        {/* Analytics Section */}
-        <ItemGroup
-          title={t('settingsAccount.privacy')}
-          footer={t('settingsAccount.privacyDescription')}
-        >
-          <Item
-            title={t('settingsAccount.analytics')}
-            subtitle={
-              analyticsOptOut
-                ? t('settingsAccount.analyticsDisabled')
-                : t('settingsAccount.analyticsEnabled')
-            }
-            rightElement={
-              <Switch
-                value={!analyticsOptOut}
-                onValueChange={value => {
-                  const optOut = !value;
-                  setAnalyticsOptOut(optOut);
-                }}
-                trackColor={{ false: '#767577', true: '#34C759' }}
-                thumbColor="#FFFFFF"
-              />
-            }
-            showChevron={false}
-          />
-        </ItemGroup>
 
         {/* Danger Zone */}
         <ItemGroup title={t('settingsAccount.dangerZone')}>
