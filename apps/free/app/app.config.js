@@ -47,6 +47,7 @@ export default {
         usesNonExemptEncryption: false,
       },
       infoPlist: {
+        LSApplicationCategoryType: 'public.app-category.developer-tools',
         NSMicrophoneUsageDescription:
           'Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.',
         NSLocalNetworkUsageDescription:
