@@ -6,7 +6,6 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import * as Fonts from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
-import { PostHogProvider } from 'posthog-react-native';
 import * as React from 'react';
 import { View, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -28,8 +27,6 @@ import { ModalProvider } from '@/modal';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { syncRestore } from '@/sync/sync';
 import { loadLocalSettings } from '@/sync/persistence';
-import { tracking } from '@/track/tracking';
-import { useTrackScreens } from '@/track/useTrackScreens';
 // import * as SystemUI from 'expo-system-ui';
 import { AsyncLock } from '@/utils/lock';
 import { Logger } from '@agentbridge/core/telemetry';
@@ -217,9 +214,6 @@ export default function RootLayout() {
     }
   }, [initState]);
 
-  // Track the screens
-  useTrackScreens();
-
   //
   // Not inited
   //
@@ -254,9 +248,6 @@ export default function RootLayout() {
       </KeyboardProvider>
     </SafeAreaProvider>
   );
-  if (tracking) {
-    providers = <PostHogProvider client={tracking}>{providers}</PostHogProvider>;
-  }
 
   return (
     <>

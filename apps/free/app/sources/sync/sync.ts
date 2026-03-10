@@ -14,14 +14,13 @@ import {
 } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
-import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
 import {
   trackPaywallPresented,
   trackPaywallPurchased,
-  trackPaywallCancelled,
   trackPaywallRestored,
+  trackPaywallCancelled,
   trackPaywallError,
 } from '@/track';
 import { getServerUrl } from './serverConfig';
@@ -237,16 +236,6 @@ class Sync {
   async #init() {
     // Subscribe to updates
     this.subscribeToUpdates();
-
-    // Sync initial PostHog opt-out state with stored settings
-    if (tracking) {
-      const currentSettings = storage.getState().settings;
-      if (currentSettings.analyticsOptOut) {
-        tracking.optOut();
-      } else {
-        tracking.optIn();
-      }
-    }
 
     // Invalidate sync
     logger.debug('🔄 #init: Invalidating all syncs');
@@ -578,16 +567,6 @@ class Sync {
     this.pendingSettings = { ...this.pendingSettings, ...delta };
     savePendingSettings(this.pendingSettings);
 
-    // Sync PostHog opt-out state if it was changed
-    if (tracking && 'analyticsOptOut' in delta) {
-      const currentSettings = storage.getState().settings;
-      if (currentSettings.analyticsOptOut) {
-        tracking.optOut();
-      } else {
-        tracking.optIn();
-      }
-    }
-
     // Invalidate settings sync
     this.settingsSync.invalidate();
   };
@@ -829,9 +808,16 @@ class Sync {
       );
 
       // Put it all together
+      // Preserve the current thinking state for existing sessions to avoid a
+      // seq-gap race: fetchSessions can be triggered while an agent is working
+      // (e.g. a missing seq forces a slow-path refetch), and hard-coding
+      // thinking:false here would clear a valid thinking:true state set by a
+      // task_started message. For new sessions (not yet in local storage) the
+      // thinking state defaults to false as before.
+      const existingSession = storage.getState().sessions[session.id];
       const processedSession = {
         ...session,
-        thinking: false,
+        thinking: existingSession?.thinking ?? false,
         thinkingAt: 0,
         metadata,
         agentState,
@@ -1415,11 +1401,6 @@ class Sync {
           // Update local storage with merged result at server's version
           storage.getState().applySettings(mergedSettings, data.currentVersion);
 
-          // Sync tracking state with merged settings
-          if (tracking) {
-            mergedSettings.analyticsOptOut ? tracking.optOut() : tracking.optIn();
-          }
-
           // Log and retry
           logger.debug('settings version-mismatch, retrying', {
             serverVersion: data.currentVersion,
@@ -1473,15 +1454,6 @@ class Sync {
 
     // Apply settings to storage
     storage.getState().applySettings(parsedSettings, data.settingsVersion);
-
-    // Sync PostHog opt-out state with settings
-    if (tracking) {
-      if (parsedSettings.analyticsOptOut) {
-        tracking.optOut();
-      } else {
-        tracking.optIn();
-      }
-    }
   };
 
   private fetchProfile = async () => {
@@ -2356,8 +2328,20 @@ class Sync {
           ...session,
           active: update.active,
           activeAt: update.activeAt,
-          thinking: update.thinking ?? false,
-          thinkingAt: update.activeAt, // Always use activeAt for consistency
+          thinkingAt: update.activeAt,
+          // NOTE: `thinking` is intentionally NOT updated here.
+          //
+          // Race condition: keepAlive(thinking:true) activity updates are emitted every
+          // 2s during a turn. A stale activity update can arrive at the App AFTER
+          // task_complete has already set thinking:false via the UPDATE handler, which
+          // resets thinking back to true and leaves the UI stuck in "processing" state
+          // until the next keepAlive(false) activity propagates.
+          //
+          // `thinking` is managed exclusively by the ordered message queue:
+          //   task_started / turn-start  → thinking: true   (handleSessionUpdate)
+          //   task_complete / turn-end   → thinking: false  (handleSessionUpdate)
+          // These go through the server's message store and are delivered in-order,
+          // making them the single reliable source of truth for thinking state.
         });
       }
     }
@@ -2498,9 +2482,6 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     throw new Error(`Invalid secret key length: ${secretKey.length}, expected 32`);
   }
   const encryption = await Encryption.create(secretKey);
-
-  // Initialize tracking
-  initializeTracking(encryption.anonID);
 
   // Initialize socket connection
   const API_ENDPOINT = getServerUrl();

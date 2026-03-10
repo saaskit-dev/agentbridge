@@ -123,10 +123,15 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
                 finalText: null,
               };
             }
-            // Otherwise, accumulate
+            // Same message: accumulate and ensure streaming flags are correct.
+            // isComplete is reset here because OpenCode can emit status:idle
+            // mid-turn (during tool pauses), causing a premature text_complete.
+            // When new deltas then arrive, we must resume streaming mode.
             return {
               ...prev,
               pendingText: prev.pendingText + delta.delta,
+              isStreaming: true,
+              isComplete: false,
             };
           });
           onTextDeltaRef.current?.(delta.messageId, delta.delta);
@@ -135,21 +140,21 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
 
         case 'text_complete': {
           const complete = update as ApiEphemeralTextComplete;
-          setState(prev => {
-            // Handle text_complete even if we didn't track this message
-            // (e.g. missed deltas, reconnection scenarios)
-            if (prev.messageId !== complete.messageId && prev.messageId !== null) {
-              return prev;
-            }
-            return {
-              messageId: complete.messageId,
-              pendingText: complete.fullText,
-              isStreaming: false,
-              isComplete: true,
-              finalText: complete.fullText,
-            };
-          });
-          onTextCompleteRef.current?.(complete.messageId, complete.fullText);
+          // Always accept text_complete regardless of the previous messageId.
+          // The old guard `prev.messageId !== complete.messageId && prev.messageId !== null`
+          // was incorrect: it silently dropped text_complete when the previous turn's
+          // messageId was still set and this turn sent no deltas (non-streaming mode),
+          // leaving the App stuck displaying nothing.
+          setState(() => ({
+            messageId: complete.messageId,
+            pendingText: complete.fullText,
+            isStreaming: false,
+            isComplete: true,
+            finalText: complete.fullText,
+          }));
+          if (isMountedRef.current) {
+            onTextCompleteRef.current?.(complete.messageId, complete.fullText);
+          }
           break;
         }
 
