@@ -3,7 +3,7 @@ import { Link } from 'expo-router';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { Pressable, ScrollView, View, Platform } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, NativeViewGestureHandler } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Text } from '../StyledText';
@@ -164,7 +164,7 @@ function RenderTextBlock(props: {
   last: boolean;
   selectable: boolean;
 }) {
-  return (
+  const content = (
     <Text
       selectable={props.selectable}
       style={[style.text, props.first && style.first, props.last && style.last]}
@@ -172,6 +172,11 @@ function RenderTextBlock(props: {
       <RenderSpans spans={props.spans} baseStyle={style.text} />
     </Text>
   );
+  // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
+  if (props.selectable && Platform.OS !== 'web') {
+    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
+  }
+  return content;
 }
 
 function RenderHeaderBlock(props: {
@@ -183,11 +188,16 @@ function RenderHeaderBlock(props: {
 }) {
   const s = (style as any)[`header${props.level}`];
   const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
-  return (
+  const content = (
     <Text selectable={props.selectable} style={headerStyle}>
       <RenderSpans spans={props.spans} baseStyle={headerStyle} />
     </Text>
   );
+  // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
+  if (props.selectable && Platform.OS !== 'web') {
+    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
+  }
+  return content;
 }
 
 function RenderListBlock(props: {
@@ -197,7 +207,7 @@ function RenderListBlock(props: {
   selectable: boolean;
 }) {
   const listStyle = [style.text, style.list];
-  return (
+  const content = (
     <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
       {props.items.map((item, index) => (
         <Text selectable={props.selectable} style={listStyle} key={index}>
@@ -206,6 +216,11 @@ function RenderListBlock(props: {
       ))}
     </View>
   );
+  // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
+  if (props.selectable && Platform.OS !== 'web') {
+    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
+  }
+  return content;
 }
 
 function RenderNumberedListBlock(props: {
@@ -215,7 +230,7 @@ function RenderNumberedListBlock(props: {
   selectable: boolean;
 }) {
   const listStyle = [style.text, style.list];
-  return (
+  const content = (
     <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
       {props.items.map((item, index) => (
         <Text selectable={props.selectable} style={listStyle} key={index}>
@@ -224,6 +239,11 @@ function RenderNumberedListBlock(props: {
       ))}
     </View>
   );
+  // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
+  if (props.selectable && Platform.OS !== 'web') {
+    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
+  }
+  return content;
 }
 
 function RenderCodeBlock(props: {
