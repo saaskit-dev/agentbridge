@@ -72,9 +72,8 @@ do_prebuild() {
         npx expo prebuild
     fi
     if [ -d "$APP_DIR/ios" ]; then
-        info "运行 pod install..."
-        cd "$APP_DIR/ios" && pod install
-        cd "$APP_DIR"
+        info "同步 iOS 依赖..."
+        cd "$APP_DIR" && npx pod-install ios
     fi
     mkdir -p "$APP_DIR/.expo"
     get_fingerprint > "$FINGERPRINT_FILE" 2>/dev/null || true
