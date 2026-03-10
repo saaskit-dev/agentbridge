@@ -292,7 +292,6 @@ export const SettingsSchema = z.object({
     .boolean()
     .describe('Whether to show line numbers in tool view diffs'),
   wrapLinesInDiffs: z.boolean().describe('Whether to wrap long lines in diff views'),
-  analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
   experiments: z.boolean().describe('Whether to enable experimental features'),
   useEnhancedSessionWizard: z
     .boolean()
@@ -402,7 +401,6 @@ export const settingsDefaults: Settings = {
   showLineNumbers: true,
   showLineNumbersInToolViews: true,
   wrapLinesInDiffs: true,
-  analyticsOptOut: true,
   experiments: true,
   useEnhancedSessionWizard: false,
   alwaysShowContextSize: true,
