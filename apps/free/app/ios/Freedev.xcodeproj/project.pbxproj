@@ -8,25 +8,27 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		370EC7DC26F4A08D770BB572 /* libPods-Freedev.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 1DE4BC67DD0181E0BA9AF82A /* libPods-Freedev.a */; };
+		1F59329075E04C77B8A44DF8 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = D38A547AF9C84524A4273576 /* GoogleService-Info.plist */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		A8B14F399AE132A431AAEC7F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = CC35F8B7C4B00A7786D564F4 /* PrivacyInfo.xcprivacy */; };
-		A8C333D1280AD4519BC697CF /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0184B8B9C530F56BC344A9E2 /* ExpoModulesProvider.swift */; };
+		5ADD7E2F4AF089693D998394 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 060D34BA40FD917EEDCE669A /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		CA34B01D3302A4932427B439 /* libPods-Freedev.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0E75993E53FFA1D7D8E18E4B /* libPods-Freedev.a */; };
+		D40FEA2AFDC46302BC4A9532 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 260420B22F6A71B14AEEFB80 /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		0184B8B9C530F56BC344A9E2 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Freedev/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		060D34BA40FD917EEDCE669A /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Freedev/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		0E75993E53FFA1D7D8E18E4B /* libPods-Freedev.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Freedev.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07F961A680F5B00A75B9A /* Freedev.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Freedev.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Freedev/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Freedev/Info.plist; sourceTree = "<group>"; };
-		1DE4BC67DD0181E0BA9AF82A /* libPods-Freedev.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Freedev.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		5F3A0649BBF6A65BF842A3C5 /* Pods-Freedev.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Freedev.release.xcconfig"; path = "Target Support Files/Pods-Freedev/Pods-Freedev.release.xcconfig"; sourceTree = "<group>"; };
+		260420B22F6A71B14AEEFB80 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Freedev/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		29EA95D8A148F80EBE66CE28 /* Pods-Freedev.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Freedev.release.xcconfig"; path = "Target Support Files/Pods-Freedev/Pods-Freedev.release.xcconfig"; sourceTree = "<group>"; };
+		3E84681ED6DF03871DE69F95 /* Pods-Freedev.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Freedev.debug.xcconfig"; path = "Target Support Files/Pods-Freedev/Pods-Freedev.debug.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Freedev/SplashScreen.storyboard; sourceTree = "<group>"; };
-		B84828D38CED1D151AEDC0A5 /* Pods-Freedev.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Freedev.debug.xcconfig"; path = "Target Support Files/Pods-Freedev/Pods-Freedev.debug.xcconfig"; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		CC35F8B7C4B00A7786D564F4 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Freedev/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		D38A547AF9C84524A4273576 /* GoogleService-Info.plist */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "Freedev/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Freedev/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* Freedev-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Freedev-Bridging-Header.h"; path = "Freedev/Freedev-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -37,7 +39,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				370EC7DC26F4A08D770BB572 /* libPods-Freedev.a in Frameworks */,
+				CA34B01D3302A4932427B439 /* libPods-Freedev.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,27 +55,27 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				CC35F8B7C4B00A7786D564F4 /* PrivacyInfo.xcprivacy */,
+				D38A547AF9C84524A4273576 /* GoogleService-Info.plist */,
+				260420B22F6A71B14AEEFB80 /* PrivacyInfo.xcprivacy */,
 			);
 			name = Freedev;
+			sourceTree = "<group>";
+		};
+		22B636280EEECDD556B225A6 /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				D8116F4AF906B4D2D343A5B8 /* Freedev */,
+			);
+			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				1DE4BC67DD0181E0BA9AF82A /* libPods-Freedev.a */,
+				0E75993E53FFA1D7D8E18E4B /* libPods-Freedev.a */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		316B58649C06114FB8972F28 /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				B84828D38CED1D151AEDC0A5 /* Pods-Freedev.debug.xcconfig */,
-				5F3A0649BBF6A65BF842A3C5 /* Pods-Freedev.release.xcconfig */,
-			);
-			path = Pods;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -90,8 +92,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				316B58649C06114FB8972F28 /* Pods */,
-				A432FD730EBD37AE5406D896 /* ExpoModulesProviders */,
+				99496EA563F66053583B0039 /* Pods */,
+				22B636280EEECDD556B225A6 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -106,12 +108,13 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		A432FD730EBD37AE5406D896 /* ExpoModulesProviders */ = {
+		99496EA563F66053583B0039 /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				F9C41779FD0849747BC7D922 /* Freedev */,
+				3E84681ED6DF03871DE69F95 /* Pods-Freedev.debug.xcconfig */,
+				29EA95D8A148F80EBE66CE28 /* Pods-Freedev.release.xcconfig */,
 			);
-			name = ExpoModulesProviders;
+			path = Pods;
 			sourceTree = "<group>";
 		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
@@ -123,10 +126,10 @@
 			path = Freedev/Supporting;
 			sourceTree = "<group>";
 		};
-		F9C41779FD0849747BC7D922 /* Freedev */ = {
+		D8116F4AF906B4D2D343A5B8 /* Freedev */ = {
 			isa = PBXGroup;
 			children = (
-				0184B8B9C530F56BC344A9E2 /* ExpoModulesProvider.swift */,
+				060D34BA40FD917EEDCE669A /* ExpoModulesProvider.swift */,
 			);
 			name = Freedev;
 			sourceTree = "<group>";
@@ -139,13 +142,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "Freedev" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				8A3BE58EFC5B1A71FC003902 /* [Expo] Configure project */,
+				E6D93917438019D741C50572 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				12C8D09D3BE477F9974A5735 /* [CP] Embed Pods Frameworks */,
+				84736FE5FFA6D9C963D8E131 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -166,7 +169,6 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1250;
-						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -196,7 +198,8 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				A8B14F399AE132A431AAEC7F /* PrivacyInfo.xcprivacy in Resources */,
+				1F59329075E04C77B8A44DF8 /* GoogleService-Info.plist in Resources */,
+				D40FEA2AFDC46302BC4A9532 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -240,34 +243,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		12C8D09D3BE477F9974A5735 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-Freedev/Pods-Freedev-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/RNAudioAPI/libavcodec.framework/libavcodec",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/RNAudioAPI/libavformat.framework/libavformat",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/RNAudioAPI/libavutil.framework/libavutil",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/RNAudioAPI/libswresample.framework/libswresample",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/WebRTC-SDK/WebRTC.framework/WebRTC",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libavcodec.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libavformat.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libavutil.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libswresample.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Freedev/Pods-Freedev-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
@@ -338,7 +313,35 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Freedev/Pods-Freedev-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		8A3BE58EFC5B1A71FC003902 /* [Expo] Configure project */ = {
+		84736FE5FFA6D9C963D8E131 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Freedev/Pods-Freedev-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/RNAudioAPI/libavcodec.framework/libavcodec",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/RNAudioAPI/libavformat.framework/libavformat",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/RNAudioAPI/libavutil.framework/libavutil",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/RNAudioAPI/libswresample.framework/libswresample",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/WebRTC-SDK/WebRTC.framework/WebRTC",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libavcodec.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libavformat.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libavutil.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libswresample.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Freedev/Pods-Freedev-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		E6D93917438019D741C50572 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -370,7 +373,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				A8C333D1280AD4519BC697CF /* ExpoModulesProvider.swift in Sources */,
+				5ADD7E2F4AF089693D998394 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -379,13 +382,11 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = B84828D38CED1D151AEDC0A5 /* Pods-Freedev.debug.xcconfig */;
+			baseConfigurationReference = 3E84681ED6DF03871DE69F95 /* Pods-Freedev.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Freedev/Freedev.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SD58V5WA54;
 				ENABLE_BITCODE = NO;
@@ -394,13 +395,12 @@
 					"FB_SONARKIT_ENABLED=1",
 				);
 				INFOPLIST_FILE = Freedev/Info.plist;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.1;
+				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -419,31 +419,28 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 5F3A0649BBF6A65BF842A3C5 /* Pods-Freedev.release.xcconfig */;
+			baseConfigurationReference = 29EA95D8A148F80EBE66CE28 /* Pods-Freedev.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Freedev/Freedev.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SD58V5WA54;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Freedev/Info.plist;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.0.1;
+				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = app.saaskit.freecode;
+				PRODUCT_BUNDLE_IDENTIFIER = app.saaskit.freecode.preview;
 				PRODUCT_NAME = Freedev;
 				SWIFT_OBJC_BRIDGING_HEADER = "Freedev/Freedev-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
