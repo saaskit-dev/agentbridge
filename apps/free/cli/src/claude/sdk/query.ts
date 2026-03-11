@@ -23,7 +23,7 @@ import {
   type PermissionResult,
   AbortError,
 } from './types';
-import { getDefaultClaudeCodePath, getCleanEnv, logDebug, streamToStdin } from './utils';
+import { getDefaultClaudeCodePath, logDebug, streamToStdin } from './utils';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('claude/sdk/query');
 
@@ -351,13 +351,12 @@ export function query(config: { prompt: QueryPrompt; options?: QueryOptions }): 
   const spawnArgs = isJsFile ? [...executableArgs, pathToClaudeCodeExecutable, ...args] : args;
 
   // Spawn Claude Code process
-  // Use clean env for global claude to avoid local node_modules/.bin taking precedence.
   // Always unset CLAUDECODE so nested invocations are not blocked by Claude's
   // "cannot launch inside another Claude Code session" guard.
-  const spawnEnv = { ...(isCommandOnly ? getCleanEnv() : process.env) };
+  const spawnEnv = { ...process.env };
   delete spawnEnv.CLAUDECODE;
   logDebug(
-    `Spawning Claude Code process: ${spawnCommand} ${spawnArgs.join(' ')} (using ${isCommandOnly ? 'clean' : 'normal'} env)`
+    `Spawning Claude Code process: ${spawnCommand} ${spawnArgs.join(' ')}`
   );
 
   const child = spawn(spawnCommand, spawnArgs, {

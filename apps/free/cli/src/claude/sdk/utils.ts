@@ -1,17 +1,23 @@
 /**
  * Utility functions for Claude Code SDK integration
  * Provides helper functions for path resolution and logging
+ *
+ * NOTE: getCleanEnv() was removed - it previously filtered local node_modules/.bin from PATH
+ * to avoid accidentally spawning a local claude instead of global. This was deemed unnecessary
+ * because: (1) findGlobalClaudePath() uses cwd: homedir() to detect global claude,
+ * and falls back to `which claude` for absolute path on Unix; (2) users typically
+ * don't run `free` from inside a project with node_modules/.bin/claude.
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
-import { isBun } from '@/utils/runtime';
 
 const logger = new Logger('claude/sdk/utils');
+
 /**
  * Get the directory path of the current module
  */
@@ -20,20 +26,17 @@ const __dirname = join(__filename, '..');
 
 /**
  * Get version of globally installed claude
- * Runs from home directory with clean PATH to avoid picking up local node_modules/.bin
  */
 function getGlobalClaudeVersion(): string | null {
   try {
-    const cleanEnv = getCleanEnv();
     const output = execSync('claude --version', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: homedir(),
-      env: cleanEnv,
     }).trim();
     // Output format: "2.0.54 (Claude Code)" or similar
     const match = output.match(/(\d+\.\d+\.\d+)/);
-    logger.debug(`[Claude SDK] Global claude --version output: ${output}`);
+    logger.debug('[Claude SDK] Global claude --version output:', { output });
     return match ? match[1] : null;
   } catch {
     return null;
@@ -41,66 +44,21 @@ function getGlobalClaudeVersion(): string | null {
 }
 
 /**
- * Create a clean environment without local node_modules/.bin in PATH
- * This ensures we find the global claude, not the local one
- * Also removes conflicting Bun environment variables when running in Bun
- */
-export function getCleanEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-  const cwd = process.cwd();
-  const pathSep = process.platform === 'win32' ? ';' : ':';
-  const pathKey = process.platform === 'win32' ? 'Path' : 'PATH';
-
-  // Also check for PATH on Windows (case can vary)
-  const actualPathKey = Object.keys(env).find(k => k.toLowerCase() === 'path') || pathKey;
-
-  if (env[actualPathKey]) {
-    // Remove any path that contains the current working directory (local node_modules/.bin)
-    const cleanPath = env[actualPathKey]!.split(pathSep)
-      .filter(p => {
-        const normalizedP = p.replace(/\\/g, '/').toLowerCase();
-        const normalizedCwd = cwd.replace(/\\/g, '/').toLowerCase();
-        return !normalizedP.startsWith(normalizedCwd);
-      })
-      .join(pathSep);
-    env[actualPathKey] = cleanPath;
-    logger.debug(`[Claude SDK] Cleaned PATH, removed local paths from: ${cwd}`);
-  }
-
-  // Remove Bun-specific environment variables that can interfere with Node.js processes
-  if (isBun()) {
-    Object.keys(env).forEach(key => {
-      if (key.startsWith('BUN_')) {
-        delete env[key];
-      }
-    });
-    logger.debug(
-      '[Claude SDK] Removed Bun-specific environment variables for Node.js compatibility'
-    );
-  }
-
-  return env;
-}
-
-/**
  * Try to find globally installed Claude CLI
  * Returns 'claude' if the command works globally (preferred method for reliability)
  * Falls back to which/where to get actual path on Unix systems
- * Runs from home directory with clean PATH to avoid picking up local node_modules/.bin
  */
 function findGlobalClaudePath(): string | null {
   const homeDir = homedir();
-  const cleanEnv = getCleanEnv();
 
-  // PRIMARY: Check if 'claude' command works directly from home dir with clean PATH
+  // PRIMARY: Check if 'claude' command works directly from home dir
   try {
     execSync('claude --version', {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: homeDir,
-      env: cleanEnv,
     });
-    logger.debug('[Claude SDK] Global claude command available (checked with clean PATH)');
+    logger.debug('[Claude SDK] Global claude command available');
     return 'claude';
   } catch {
     // claude command not available globally
@@ -113,10 +71,9 @@ function findGlobalClaudePath(): string | null {
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: homeDir,
-        env: cleanEnv,
       }).trim();
       if (result && existsSync(result)) {
-        logger.debug(`[Claude SDK] Found global claude path via which: ${result}`);
+        logger.debug('[Claude SDK] Found global claude path via which:', { result });
         return result;
       }
     } catch {
@@ -150,13 +107,13 @@ export function getDefaultClaudeCodePath(): string {
 
   // Allow explicit override via env var
   if (process.env.FREE_CLAUDE_PATH) {
-    logger.debug(`[Claude SDK] Using FREE_CLAUDE_PATH: ${process.env.FREE_CLAUDE_PATH}`);
+    logger.debug('[Claude SDK] Using FREE_CLAUDE_PATH:', { path: process.env.FREE_CLAUDE_PATH });
     return process.env.FREE_CLAUDE_PATH;
   }
 
   // Force bundled version if requested
   if (process.env.FREE_USE_BUNDLED_CLAUDE === '1') {
-    logger.debug(`[Claude SDK] Forced bundled version: ${nodeModulesPath}`);
+    logger.debug('[Claude SDK] Forced bundled version:', { path: nodeModulesPath });
     return nodeModulesPath;
   }
 
@@ -165,18 +122,18 @@ export function getDefaultClaudeCodePath(): string {
 
   // No global claude found - use bundled
   if (!globalPath) {
-    logger.debug(`[Claude SDK] No global claude found, using bundled: ${nodeModulesPath}`);
+    logger.debug('[Claude SDK] No global claude found, using bundled:', { path: nodeModulesPath });
     return nodeModulesPath;
   }
 
   // Compare versions and use the newer one
   const globalVersion = getGlobalClaudeVersion();
 
-  logger.debug(`[Claude SDK] Global version: ${globalVersion || 'unknown'}`);
+  logger.debug('[Claude SDK] Global version:', { version: globalVersion || 'unknown' });
 
   // If we can't determine versions, prefer global (user's choice to install it)
   if (!globalVersion) {
-    logger.debug(`[Claude SDK] Cannot compare versions, using global: ${globalPath}`);
+    logger.debug('[Claude SDK] Cannot compare versions, using global:', { path: globalPath });
     return globalPath;
   }
 
