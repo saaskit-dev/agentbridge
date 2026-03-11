@@ -90,15 +90,10 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
     // Daemon spawn diagnostics
     console.log(chalk.bold('🔧 Daemon Spawn Diagnostics'));
     const projectRoot = projectPath();
-    const wrapperPath = join(projectRoot, 'bin', 'free.mjs');
     const cliEntrypoint = join(projectRoot, 'dist', 'cli.mjs');
 
     console.log(`Project Root: ${chalk.blue(projectRoot)}`);
-    console.log(`Wrapper Script: ${chalk.blue(wrapperPath)}`);
     console.log(`CLI Entrypoint: ${chalk.blue(cliEntrypoint)}`);
-    console.log(
-      `Wrapper Exists: ${existsSync(wrapperPath) ? chalk.green('✓ Yes') : chalk.red('❌ No')}`
-    );
     console.log(
       `CLI Exists: ${existsSync(cliEntrypoint) ? chalk.green('✓ Yes') : chalk.red('❌ No')}`
     );
