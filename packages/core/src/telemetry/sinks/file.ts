@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { LogEntry } from '../types.js'
@@ -7,8 +7,8 @@ import type { LogSink } from './types.js'
 export interface FileSinkOptions {
   dir: string
   prefix: string
-  maxFileSize?: number
   maxFiles?: number
+  /** Sync mode for CLI/daemon (0), async mode for server (>0, flush interval ms) */
   bufferFlushMs?: number
 }
 
@@ -18,26 +18,26 @@ export class FileSink implements LogSink {
   private currentSize = 0
   private readonly dir: string
   private readonly prefix: string
-  private readonly maxFileSize: number
   private readonly maxFiles: number
   private readonly bufferFlushMs: number
   private writeBuffer: string[] = []
   private flushTimer: ReturnType<typeof setInterval> | null = null
   private flushInProgress = false
   private droppedCount = 0
-  private fileCounter = 0
 
   constructor(opts: FileSinkOptions) {
     this.dir = opts.dir
     this.prefix = opts.prefix
-    this.maxFileSize = opts.maxFileSize ?? 50 * 1024 * 1024
     this.maxFiles = opts.maxFiles ?? 10
     this.bufferFlushMs = opts.bufferFlushMs ?? 100
 
     try { mkdirSync(this.dir, { recursive: true }) } catch { /* may already exist */ }
 
-    this.filePath = this.createFilePath()
-    this.currentSize = 0
+    this.filePath = this.getCurrentHourFilePath()
+    this.currentSize = this.getExistingFileSize(this.filePath)
+
+    // Cleanup old files on init
+    this.cleanupOldFiles()
 
     if (this.bufferFlushMs > 0) {
       this.flushTimer = setInterval(() => this.flushBuffer(), this.bufferFlushMs)
@@ -82,7 +82,7 @@ export class FileSink implements LogSink {
 
   private writeSync(line: string): void {
     try {
-      this.checkRotation(line.length)
+      this.checkRotation()
       appendFileSync(this.filePath, line)
       this.currentSize += line.length
     } catch {
@@ -97,7 +97,7 @@ export class FileSink implements LogSink {
       const batch = this.writeBuffer.join('')
       this.writeBuffer = []
       try {
-        this.checkRotation(batch.length)
+        this.checkRotation()
         await appendFile(this.filePath, batch)
         this.currentSize += batch.length
       } catch {
@@ -108,11 +108,12 @@ export class FileSink implements LogSink {
     }
   }
 
-  private checkRotation(incomingSize: number): void {
-    if (this.currentSize + incomingSize <= this.maxFileSize) return
+  private checkRotation(): void {
+    const newPath = this.getCurrentHourFilePath()
+    if (newPath === this.filePath) return
 
-    // Rotate: create new file
-    this.filePath = this.createFilePath()
+    // Hour changed - rotate to new file
+    this.filePath = newPath
     this.currentSize = 0
 
     // Cleanup old files
@@ -124,8 +125,6 @@ export class FileSink implements LogSink {
       const files = readdirSync(this.dir)
         .filter(f => f.startsWith(this.prefix) && f.endsWith('.jsonl'))
         .map(f => {
-          // Guard each statSync: file may be concurrently deleted by another process.
-          // Without this, a single failed stat aborts the entire cleanup.
           try {
             const path = join(this.dir, f)
             return { name: f, path, mtime: statSync(path).mtimeMs }
@@ -142,16 +141,18 @@ export class FileSink implements LogSink {
     } catch { /* cleanup is non-critical */ }
   }
 
-  private createFilePath(): string {
+  private getCurrentHourFilePath(): string {
     const now = new Date()
-    const ts = now.toISOString()
-      .replace(/[:.]/g, '-')
-      .replace('T', '-')
-      .replace('Z', '')
-    const pid = typeof process !== 'undefined' ? process.pid : 0
-    // Counter ensures unique filename even when two rotations happen within the same millisecond
-    const counter = this.fileCounter++
-    const suffix = counter === 0 ? '' : `-${counter}`
-    return join(this.dir, `${this.prefix}-${ts}-${pid}${suffix}.jsonl`)
+    const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}`
+    return join(this.dir, `${this.prefix}-${ts}.jsonl`)
+  }
+
+  private getExistingFileSize(path: string): number {
+    try {
+      if (existsSync(path)) {
+        return statSync(path).size
+      }
+    } catch { /* ignore */ }
+    return 0
   }
 }
