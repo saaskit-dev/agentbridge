@@ -5,7 +5,7 @@ import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { clearPersistence } from '@/sync/persistence';
 import { syncCreate } from '@/sync/sync';
 import { trackLogout } from '@/track';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/auth/AuthContext');
 
 interface AuthContextType {

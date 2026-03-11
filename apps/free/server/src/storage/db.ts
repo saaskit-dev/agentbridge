@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('server/storage/db');
 import { PGlite } from '@electric-sql/pglite';

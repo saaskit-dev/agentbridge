@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { Encryption } from './encryption/encryption';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { getSessionTrace } from './appTraceStore';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/sync/apiSocket');
 
 //

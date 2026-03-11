@@ -11,7 +11,7 @@ import { DecryptedArtifact } from '@/sync/artifactTypes';
 import { useArtifacts } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/artifacts');
 // Date formatting
 

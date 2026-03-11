@@ -19,7 +19,7 @@ import {
   MemorySink,
   RemoteSink,
   ServerRelayBackend,
-} from '@agentbridge/core/telemetry';
+} from '@saaskit-dev/agentbridge/telemetry';
 import { getServerUrl } from '@/sync/serverConfig';
 
 // AsyncStorage is not available on web — use lazy require to avoid module load crash

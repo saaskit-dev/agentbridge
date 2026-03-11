@@ -16,7 +16,7 @@ import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { initialMachineMetadata } from '@/daemon/run';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { Credentials, readSettings } from '@/persistence';
-import { Logger, getCollector } from '@agentbridge/core/telemetry';
+import { Logger, getCollector } from '@saaskit-dev/agentbridge/telemetry';
 import { configuration } from '@/configuration';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';

@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { TrackedSession } from './types';
 import { Metadata } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/controlServer');
 
 export function startDaemonControlServer({

@@ -1,5 +1,5 @@
 {
-  "name": "@agentbridge/core",
+  "name": "@saaskit-dev/agentbridge",
   "version": "0.0.1",
   "description": "AgentBridge SDK core package - types, interfaces, and implementations",
   "author": "saaskit-dev",

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Fastify } from '../types';
 import { db } from '@/storage/db';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/routes/accessKeysRoutes');
 
 export function accessKeysRoutes(app: Fastify) {

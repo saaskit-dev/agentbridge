@@ -10,7 +10,7 @@ import {
 } from '@/daemon/controlClient';
 import { readCredentials, clearCredentials, clearMachineId, readSettings } from '@/persistence';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 
 const logger = new Logger('commands/auth');

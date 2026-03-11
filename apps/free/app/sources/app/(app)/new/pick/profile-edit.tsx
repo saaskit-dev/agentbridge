@@ -10,7 +10,7 @@ import { layout } from '@/components/layout';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { AIBackendProfile } from '@/sync/settings';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/new/pick/profile-edit');
 
 export default function ProfileEditScreen() {

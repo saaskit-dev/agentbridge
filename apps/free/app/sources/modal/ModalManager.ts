@@ -1,7 +1,7 @@
 import { Platform, Alert } from 'react-native';
 import { AlertButton, ModalConfig, CustomModalConfig, IModal } from './types';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/modal/ModalManager');
 
 class ModalManagerClass implements IModal {

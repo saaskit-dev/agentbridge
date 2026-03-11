@@ -7,7 +7,7 @@ import { githubDisconnect } from '@/app/github/githubDisconnect';
 import { Context } from '@/context';
 import { decryptString, encryptString } from '@/modules/encrypt';
 import { db } from '@/storage/db';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/routes/connectRoutes');
 
 export function connectRoutes(app: Fastify) {

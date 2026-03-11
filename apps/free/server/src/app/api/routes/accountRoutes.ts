@@ -5,7 +5,7 @@ import { db } from '@/storage/db';
 import { getPublicUrl } from '@/storage/files';
 import { allocateUserSeq } from '@/storage/seq';
 import { AccountProfile } from '@/types';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
 const log = new Logger('app/api/routes/accountRoutes');

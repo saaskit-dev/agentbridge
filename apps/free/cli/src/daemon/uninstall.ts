@@ -1,5 +1,5 @@
 import { uninstall as uninstallMac } from './mac/uninstall';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/uninstall');
 
 export async function uninstall(): Promise<void> {

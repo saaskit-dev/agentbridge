@@ -133,7 +133,7 @@ fi
 if [[ "$SKIP_BUILD" == "false" ]]; then
     section "构建 Core + CLI"
 
-    info "构建 @agentbridge/core..."
+    info "构建 @saaskit-dev/agentbridge..."
     cd "$PROJECT_ROOT/packages/core"
     pnpm build > "$LOG_DIR/build-core.log" 2>&1
     ok "Core 构建完成"

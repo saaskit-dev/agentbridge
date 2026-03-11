@@ -11,8 +11,8 @@ import { activityCache } from '@/app/presence/sessionCache';
 import { db } from '@/storage/db';
 import { allocateSessionSeq, allocateUserSeq } from '@/storage/seq';
 import { AsyncLock } from '@/utils/lock';
-import { Logger } from '@agentbridge/core/telemetry';
-import type { WireTrace } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import type { WireTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
 function extractWireTrace(data: any): WireTrace | undefined {

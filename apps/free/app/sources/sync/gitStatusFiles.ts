@@ -3,7 +3,7 @@
  * Provides detailed git status with file-level changes and line statistics
  */
 
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { parseNumStat, createDiffStatsMap } from './git-parsers/parseDiff';
 import { parseStatusSummaryV2, getCurrentBranchV2 } from './git-parsers/parseStatusV2';
 import { sessionBash } from './ops';

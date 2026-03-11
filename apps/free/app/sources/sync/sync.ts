@@ -25,7 +25,7 @@ import {
 } from '@/track';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
-import { Logger, continueTrace, type TraceContext } from '@agentbridge/core/telemetry';
+import { Logger, continueTrace, type TraceContext } from '@saaskit-dev/agentbridge/telemetry';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';

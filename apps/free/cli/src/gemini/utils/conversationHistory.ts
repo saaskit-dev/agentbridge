@@ -6,7 +6,7 @@
  * without losing conversation context.
  */
 
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('gemini/utils/conversationHistory');
 
 export interface ConversationMessage {

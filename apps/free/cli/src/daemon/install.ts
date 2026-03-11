@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/install');
 
 // Platform-specific imports

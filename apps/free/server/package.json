@@ -37,7 +37,7 @@
     "deploy": "./deploy.sh"
   },
   "dependencies": {
-    "@agentbridge/core": "workspace:*",
+    "@saaskit-dev/agentbridge": "workspace:*",
     "@date-fns/tz": "^1.2.0",
     "@electric-sql/pglite": "^0.3.15",
     "@fastify/bearer-auth": "^10.1.1",

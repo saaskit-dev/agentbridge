@@ -6,7 +6,7 @@
  */
 
 import { ApiSessionClient } from '@/api/apiSession';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import {
 
   BasePermissionHandler,

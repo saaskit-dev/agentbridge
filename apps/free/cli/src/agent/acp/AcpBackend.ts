@@ -50,7 +50,7 @@ import {
   handlePlanUpdate,
   handleThinkingUpdate,
 } from './sessionUpdateHandlers';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { delay } from '@/utils/time';
 
 const logger = new Logger('agent/acp/AcpBackend');

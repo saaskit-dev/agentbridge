@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { type Fastify } from '../types';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/routes/voiceRoutes');
 
 export function voiceRoutes(app: Fastify) {

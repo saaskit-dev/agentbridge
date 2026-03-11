@@ -13,7 +13,7 @@ import { RawJSONLines } from '@/claude/types';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { RemoteModeDisplay } from '@/ui/ink/RemoteModeDisplay';
 import type { PermissionMode } from '@/api/types';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { formatClaudeMessageForInk } from '@/ui/messageFormatterInk';
 import { Future } from '@/utils/future';
 

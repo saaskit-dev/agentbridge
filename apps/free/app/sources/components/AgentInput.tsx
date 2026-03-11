@@ -37,7 +37,7 @@ import { useSetting } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { Theme } from '@/theme';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/AgentInput');
 
 interface AgentInputProps {

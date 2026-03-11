@@ -11,9 +11,9 @@ import {
   type ServerCapabilities,
   DEFAULT_CAPABILITIES,
   hasCapability as hasCapabilityUtil,
-} from '@agentbridge/core';
+} from '@saaskit-dev/agentbridge';
 import { configuration } from '@/configuration';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('api/serverCapabilities');
 

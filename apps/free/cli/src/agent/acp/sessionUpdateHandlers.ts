@@ -10,7 +10,7 @@
 
 import type { AgentMessage } from '../core';
 import type { TransportHandler } from '../transport';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('agent/acp/sessionUpdateHandlers');
 
 /**

@@ -12,7 +12,7 @@ import {
   trackReviewStoreShown,
   trackReviewRetryScheduled,
 } from '@/track';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/utils/requestReview');
 
 const localStorage = new MMKV();

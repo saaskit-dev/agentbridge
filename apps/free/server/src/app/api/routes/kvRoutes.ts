@@ -4,7 +4,7 @@ import { kvBulkGet } from '@/app/kv/kvBulkGet';
 import { kvGet } from '@/app/kv/kvGet';
 import { kvList } from '@/app/kv/kvList';
 import { kvMutate } from '@/app/kv/kvMutate';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/routes/kvRoutes');
 
 export function kvRoutes(app: Fastify) {

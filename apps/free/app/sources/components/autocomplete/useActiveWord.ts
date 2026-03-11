@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { findActiveWord } from './findActiveWord';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/autocomplete/useActiveWord');
 
 export function useActiveWord(

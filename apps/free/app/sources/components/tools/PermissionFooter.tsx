@@ -12,7 +12,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/tools/PermissionFooter');
 
 interface PermissionFooterProps {

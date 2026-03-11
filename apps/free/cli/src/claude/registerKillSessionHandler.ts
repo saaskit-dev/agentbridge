@@ -1,5 +1,5 @@
 import { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('claude/registerKillSessionHandler');
 

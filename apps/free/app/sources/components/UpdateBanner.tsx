@@ -9,7 +9,7 @@ import { useChangelog } from '@/hooks/useChangelog';
 import { useNativeUpdate } from '@/hooks/useNativeUpdate';
 import { useUpdates } from '@/hooks/useUpdates';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/UpdateBanner');
 
 export const UpdateBanner = React.memo(() => {

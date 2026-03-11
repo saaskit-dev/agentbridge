@@ -1,5 +1,5 @@
 import * as privacyKit from 'privacy-kit';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/auth/auth');
 
 interface TokenCacheEntry {

@@ -23,7 +23,7 @@ import {
   determineGeminiModel,
   getGeminiModelSource,
 } from '@/gemini/utils/config';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('agent/factories/gemini');
 
 /**

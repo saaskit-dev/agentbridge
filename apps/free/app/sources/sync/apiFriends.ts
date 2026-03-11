@@ -10,7 +10,7 @@ import {
 import { getServerUrl } from './serverConfig';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/apiFriends');
 

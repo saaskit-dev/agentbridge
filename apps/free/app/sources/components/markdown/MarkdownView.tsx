@@ -14,7 +14,7 @@ import { Modal } from '@/modal';
 import { storeTempText } from '@/sync/persistence';
 import { useLocalSetting } from '@/sync/storage';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/markdown/MarkdownView');
 
 // Option type for callback

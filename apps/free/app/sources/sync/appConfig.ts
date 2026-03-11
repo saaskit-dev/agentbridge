@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { requireOptionalNativeModule } from 'expo-modules-core';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/appConfig');
 

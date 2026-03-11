@@ -24,7 +24,7 @@ import {
   AbortError,
 } from './types';
 import { getDefaultClaudeCodePath, getCleanEnv, logDebug, streamToStdin } from './utils';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('claude/sdk/query');
 
 /**

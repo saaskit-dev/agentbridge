@@ -16,7 +16,7 @@ import { getUserProfile, sendFriendRequest, removeFriend } from '@/sync/apiFrien
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
 import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/user/profile');
 
 export default function UserProfileScreen() {

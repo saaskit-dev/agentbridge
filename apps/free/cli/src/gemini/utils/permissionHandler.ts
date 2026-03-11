@@ -7,7 +7,7 @@
 
 import { ApiSessionClient } from '@/api/apiSession';
 import type { PermissionMode } from '@/api/types';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import {
   BasePermissionHandler,
   PermissionResult,

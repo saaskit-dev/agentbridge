@@ -5,7 +5,7 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import { configuration } from '@/configuration';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('utils/caffeinate');
 
 let caffeinateProcess: ChildProcess | null = null;

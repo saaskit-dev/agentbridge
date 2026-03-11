@@ -5,7 +5,7 @@
  * Ensures consistent profile data across both systems with proper conflict resolution.
  */
 
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { apiSocket } from './apiSocket';
 import {
   AIBackendProfile,

@@ -2,7 +2,7 @@ import { Socket } from 'socket.io';
 import { buildUsageEphemeral, eventRouter } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
 import { AsyncLock } from '@/utils/lock';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/socket/usageHandler');
 
 export function usageHandler(userId: string, socket: Socket) {

@@ -9,7 +9,7 @@
 
 import { EventEmitter } from 'node:events';
 import { serverCapabilities } from '@/api/serverCapabilities';
-import { Logger, type WireTrace } from '@agentbridge/core/telemetry';
+import { Logger, type WireTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { getProcessTraceContext } from '@/telemetry';
 const logger = new Logger('daemon/streamingMessageHandler');
 

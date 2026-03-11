@@ -19,8 +19,8 @@ import {
   continueTrace,
   setGlobalContextProvider,
   type TraceContext,
-} from '@agentbridge/core/telemetry';
-import { FileSink, cleanupOldLogs } from '@agentbridge/core/telemetry/node';
+} from '@saaskit-dev/agentbridge/telemetry';
+import { FileSink, cleanupOldLogs } from '@saaskit-dev/agentbridge/telemetry/node';
 
 let initialized = false;
 /** Inherited from parent daemon process (stays constant for the lifetime of the cli process). */

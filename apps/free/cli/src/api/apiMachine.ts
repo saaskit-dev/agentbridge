@@ -14,8 +14,8 @@ import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, WireTrace } from './types';
 import { configuration } from '@/configuration';
 import { getProcessTraceContext } from '@/telemetry';
-import { injectTrace } from '@agentbridge/core/telemetry';
-import { Logger } from '@agentbridge/core/telemetry';
+import { injectTrace } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { backoff } from '@/utils/time';
 
 const logger = new Logger('api/apiMachine');

@@ -60,7 +60,7 @@ import { MultiTextInput } from '@/components/MultiTextInput';
 import { StatusDot } from '@/components/StatusDot';
 import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/new');
 
 // Simple temporary state for passing selections back from picker screens

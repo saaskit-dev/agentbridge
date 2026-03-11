@@ -4,7 +4,7 @@ import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { trackPermissionResponse } from '@/track';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/realtimeClientTools');
 
 /**

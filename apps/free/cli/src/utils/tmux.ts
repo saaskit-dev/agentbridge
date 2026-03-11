@@ -21,7 +21,7 @@
 
 import { spawn, SpawnOptions } from 'child_process';
 import { promisify } from 'util';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('utils/tmux');
 
 export enum TmuxControlState {

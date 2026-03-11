@@ -1,5 +1,5 @@
 import { Socket } from 'socket.io';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/socket/pingHandler');
 
 export function pingHandler(socket: Socket) {

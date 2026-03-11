@@ -2,8 +2,8 @@ import { Socket } from 'socket.io';
 import { GitHubProfile } from '@/app/api/types';
 import { getPublicUrl } from '@/storage/files';
 import { AccountProfile } from '@/types';
-import { Logger } from '@agentbridge/core/telemetry';
-import type { WireTrace } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import type { WireTrace } from '@saaskit-dev/agentbridge/telemetry';
 
 const log = new Logger('app/events/eventRouter');
 // === CONNECTION TYPES ===

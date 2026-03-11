@@ -5,7 +5,7 @@ import { render } from 'ink';
 import React from 'react';
 import tweetnacl from 'tweetnacl';
 import { AuthSelector, AuthMethod } from './ink/AuthSelector';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { displayQRCode } from './qrcode';
 import { decodeBase64, encodeBase64, encodeBase64Url } from '@/api/encryption';
 import { generateWebAuthUrl } from '@/api/webAuth';
