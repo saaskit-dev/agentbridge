@@ -25,7 +25,7 @@
 		344D8ED3C93239D7A0A66119 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Freedev/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		41D886479864438FB16A4AEF /* GoogleService-Info.plist */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "Freedev/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		6928FB1286C1D05AFE65225E /* Pods-Freedev.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Freedev.release.xcconfig"; path = "Target Support Files/Pods-Freedev/Pods-Freedev.release.xcconfig"; sourceTree = "<group>"; };
-		8E41BD1BD96897D864A8CF2E /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = Freedev/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		8E41BD1BD96897D864A8CF2E /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Freedev/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Freedev/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		D87B01468BC9347F575B5928 /* libPods-Freedev.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Freedev.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -131,7 +131,6 @@
 				0BF5C80D8B7710E4802FA168 /* Pods-Freedev.debug.xcconfig */,
 				6928FB1286C1D05AFE65225E /* Pods-Freedev.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -388,6 +387,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Freedev/Freedev.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SD58V5WA54;
@@ -397,6 +397,7 @@
 					"FB_SONARKIT_ENABLED=1",
 				);
 				INFOPLIST_FILE = Freedev/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -411,6 +412,7 @@
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRODUCT_BUNDLE_IDENTIFIER = app.saaskit.freecode.dev;
 				PRODUCT_NAME = Freedev;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OBJC_BRIDGING_HEADER = "Freedev/Freedev-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -431,6 +433,7 @@
 				DEVELOPMENT_TEAM = SD58V5WA54;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Freedev/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -443,7 +446,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = app.saaskit.freecode.preview;
+				PRODUCT_BUNDLE_IDENTIFIER = app.saaskit.freecode;
 				PRODUCT_NAME = Freedev;
 				SWIFT_OBJC_BRIDGING_HEADER = "Freedev/Freedev-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
