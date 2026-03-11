@@ -74,6 +74,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
           case 'switch':
             mode = 'remote';
             opts.onModeChange?.(mode);
+            logger.info('[CLI] Mode switched', { mode, sessionId });
             break;
           case 'exit':
             return result.code;
@@ -91,6 +92,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
           case 'switch':
             mode = 'local';
             opts.onModeChange?.(mode);
+            logger.info('[CLI] Mode switched', { mode, sessionId });
             break;
           default:
             const _: never = reason satisfies never;

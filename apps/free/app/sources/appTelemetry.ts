@@ -7,8 +7,12 @@
  * Persistence: entries are flushed to AsyncStorage every 5s and on background,
  * so diagnostics survive iOS/Android app kills.
  *
- * RemoteSink: ON by default (RFC §21.2), sends warn/error entries to the server
- * relay which forwards to New Relic. Auth token is set lazily after login.
+ * RemoteSink: ON by default (RFC §21.2), sends all log levels (debug/info/warn/error)
+ * to the server relay which forwards to New Relic. Auth token is set lazily after login.
+ * deviceId uses sync.anonID (user-level anonymous identifier) for cross-device tracking.
+ *
+ * TraceContext: All logs automatically include traceId/sessionId when a session is active,
+ * via setGlobalContextProvider() which reads from appTraceStore.
  */
 
 import { AppState, Platform } from 'react-native';
@@ -19,8 +23,13 @@ import {
   MemorySink,
   RemoteSink,
   ServerRelayBackend,
+  setGlobalContextProvider,
+  type TraceContext,
 } from '@saaskit-dev/agentbridge/telemetry';
 import { getServerUrl } from '@/sync/serverConfig';
+import { sync } from '@/sync/sync';
+import { getSessionTrace, wireTraceToContext } from '@/sync/appTraceStore';
+import { getCurrentRealtimeSessionId } from '@/realtime/realtimeSessionState';
 
 // AsyncStorage is not available on web — use lazy require to avoid module load crash
 // On native (iOS/Android), entries are flushed every 5s and on background app kill
@@ -80,10 +89,22 @@ export function setAnalyticsEnabled(enabled: boolean, authToken?: string): void 
 }
 
 export function initAppTelemetry(): void {
+  // Set up global trace context provider for Logger
+  // This allows all logs to automatically include traceId/sessionId when available
+  setGlobalContextProvider((): TraceContext | undefined => {
+    const sessionId = getCurrentRealtimeSessionId();
+    if (!sessionId) return undefined;
+    const wireTrace = getSessionTrace(sessionId);
+    if (!wireTrace) return undefined;
+    return wireTraceToContext(wireTrace);
+  });
+
   if (!isCollectorReady()) {
     const serverUrl = getServerUrl();
     const appVersion = Constants.expoConfig?.version ?? '0.0.0';
-    const deviceId = Platform.OS + '-app';
+    // deviceId is lazily resolved from sync.anonID (user-level anonymous identifier)
+    // Falls back to platform-app if sync not initialized yet
+    const getDeviceId = () => sync.anonID || Platform.OS + '-app';
 
     initTelemetry({
       layer: 'app',
@@ -91,12 +112,14 @@ export function initAppTelemetry(): void {
         appMemorySink,
         // RemoteSink ON by default (RFC §21.2) — user can opt-out in Settings → Privacy
         // Auth token is lazy: before login entries stay buffered, after login they upload
+        // minLevel: 'debug' sends all levels to server for comprehensive diagnostics
         new RemoteSink({
           backend: new ServerRelayBackend({
             serverUrl,
             authToken: () => _telemetryAuthToken,
           }),
-          metadata: { deviceId, appVersion, layer: 'app' },
+          minLevel: 'info', // debug logs stay local, only info/warn/error go remote
+          metadata: { deviceId: getDeviceId(), appVersion, layer: 'app' },
         }),
       ],
       minLevel: 'debug',

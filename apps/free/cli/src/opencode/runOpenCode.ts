@@ -159,6 +159,12 @@ export async function runOpenCode(opts: {
 
   // Report to daemon if it exists
   if (response) {
+    logger.info('[CLI] Session started', {
+      sessionId: response.id,
+      machineId,
+      flavor: 'opencode',
+      directory: process.cwd(),
+    });
     try {
       await notifyDaemonSessionStarted(response.id, metadata);
     } catch (error) {
@@ -193,6 +199,11 @@ export async function runOpenCode(opts: {
     mode.hash = hashObject({ permissionMode: mode.permissionMode });
 
     messageQueue.push(message.content.text, mode);
+    logger.info('[CLI] Message received', {
+      sessionId: session.sessionId,
+      permissionMode: mode.permissionMode,
+      flavor: 'opencode',
+    });
   });
 
   let thinking = false;
@@ -346,6 +357,7 @@ export async function runOpenCode(opts: {
   //
 
   const freeServer = await startFreeServer(session);
+  logger.info('[CLI] MCP server started', { url: freeServer.url, flavor: 'opencode' });
   const mcpServers: Record<string, { command: string; args: string[] }> = {
     free: {
       command: join(projectPath(), 'bin', 'free-mcp.mjs'),
@@ -729,8 +741,9 @@ export async function runOpenCode(opts: {
       session.sendSessionDeath();
       await session.flush();
       await session.close();
+      logger.info('[CLI] Session closed', { sessionId: session.sessionId, flavor: 'opencode' });
     } catch (e) {
-      logger.debug('[opencode]: Error while closing session', e);
+      logger.error('[CLI] Session close failed', { error: String(e) });
     }
 
     if (opencodeBackend) {
