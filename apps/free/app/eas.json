@@ -13,6 +13,15 @@
         "APP_ENV": "development"
       }
     },
+    "development-preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "autoIncrement": true,
+      "prebuildCommand": "APP_ENV=development-preview expo prebuild --clean",
+      "env": {
+        "APP_ENV": "development-preview"
+      }
+    },
     "production": {
       "channel": "production",
       "environment": "production",

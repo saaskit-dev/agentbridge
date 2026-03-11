@@ -20,7 +20,7 @@
     "web": "expo start --web",
     "test": "vitest",
     "prebuild": "expo prebuild --clean",
-    "ota": "npx eas-cli@latest workflow:run ota.yaml",
+    "ota": "npx eas-cli@latest update --branch production --platform all --non-interactive",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package && (setup-skia-web public || true)",
     "generate-theme": "tsx sources/theme.gen.ts",
