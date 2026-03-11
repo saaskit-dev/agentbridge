@@ -36,7 +36,6 @@
 import { spawn, SpawnOptions, type ChildProcess } from 'child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { isBun } from './runtime';
 import { projectPath } from '@/projectPath';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('utils/spawnFreeCLI');
@@ -79,6 +78,8 @@ export function spawnFreeCLI(args: string[], options: SpawnOptions = {}): ChildP
     throw new Error(errorMessage);
   }
 
-  const runtime = isBun() ? 'bun' : 'node';
+  // Use absolute path to the current runtime to avoid PATH issues in daemon processes
+  // process.execPath gives us the absolute path to the node/bun binary running this process
+  const runtime = process.execPath;
   return spawn(runtime, nodeArgs, options);
 }
