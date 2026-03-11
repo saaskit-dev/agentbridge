@@ -309,6 +309,17 @@ export class ApiClient {
       if (axios.isAxiosError(error) && error.response?.status) {
         const status = error.response.status;
 
+        // Handle 401 - authentication token expired or invalid
+        if (status === 401) {
+          console.log(chalk.red('❌ Authentication failed (401 Unauthorized)'));
+          console.log(chalk.yellow('   → Your login session has expired or is invalid'));
+          console.log(chalk.yellow('   → Please re-authenticate by running:'));
+          console.log(chalk.cyan('     free login'));
+          console.log(chalk.yellow('   → Or if you want to reset everything:'));
+          console.log(chalk.cyan('     free doctor clean && free login'));
+          return createMinimalMachine();
+        }
+
         if (status === 403 || status === 409) {
           // Re-auth conflict: machine registered to old account, re-association not allowed
           console.log(
