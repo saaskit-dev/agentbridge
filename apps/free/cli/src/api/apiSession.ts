@@ -190,7 +190,7 @@ export class ApiSessionClient extends EventEmitter {
     //
 
     this.socket.on('connect', () => {
-      logger.debug('Socket connected successfully');
+      logger.info('[CLI] Session connected', { sessionId: this.sessionId });
       this.rpcHandlerManager.onSocketConnect(this.socket);
       this.receiveSync.invalidate();
     });
@@ -204,12 +204,12 @@ export class ApiSessionClient extends EventEmitter {
     );
 
     this.socket.on('disconnect', reason => {
-      logger.debug('[API] Socket disconnected:', reason);
+      logger.info('[CLI] Session disconnected', { sessionId: this.sessionId, reason });
       this.rpcHandlerManager.onSocketDisconnect();
     });
 
     this.socket.on('connect_error', error => {
-      logger.debug('[API] Socket connection error:', error);
+      logger.error('[CLI] Session connect failed', { sessionId: this.sessionId, error: error.message });
       this.rpcHandlerManager.onSocketDisconnect();
     });
 
@@ -395,10 +395,10 @@ export class ApiSessionClient extends EventEmitter {
           );
           this.routeIncomingMessage(body);
         } catch (error) {
-          logger.debug('[API] Failed to decrypt fetched message', {
+          logger.error('[CLI] Message decrypt failed', {
             sessionId: this.sessionId,
             seq: message.seq,
-            error,
+            error: String(error),
           });
         }
       }

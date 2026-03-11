@@ -19,6 +19,7 @@ import type {
 } from '../../interfaces/agent';
 import type { ITransportHandler, StderrContext, ToolNameContext } from '../../interfaces/transport';
 import type { AcpAgentConfig, AcpPermissionHandler } from '../../types/agent';
+import { Logger } from '../../telemetry/index.js';
 import {
   type SessionUpdate,
   type HandlerContext,
@@ -197,19 +198,7 @@ type ExtendedSessionNotification = SessionNotification & {
 /**
  * Simple logger interface (can be replaced with actual logger)
  */
-interface Logger {
-  debug(message: string, ...args: unknown[]): void;
-  warn(message: string, ...args: unknown[]): void;
-}
-
-const logger: Logger = {
-  debug(_message: string, ..._args: unknown[]): void {
-    // No-op by default, can be overridden
-  },
-  warn(_message: string, ..._args: unknown[]): void {
-    // No-op by default, can be overridden
-  },
-};
+const logger = new Logger('agent/acp');
 
 /**
  * Delay helper
@@ -457,13 +446,13 @@ export class AcpBackend implements IAgentBackend {
       });
 
       this.process.on('error', err => {
-        logger.debug(`[AcpBackend] Process error:`, err);
+        logger.error('[ACP] Process error', { agent: this.transport.agentName, error: err.message });
         this.emit({ type: 'status', status: 'error', detail: err.message });
       });
 
       this.process.on('exit', (code, signal) => {
         if (!this.disposed && code !== 0 && code !== null) {
-          logger.debug(`[AcpBackend] Process exited with code ${code}, signal ${signal}`);
+          logger.error('[ACP] Process exit', { agent: this.transport.agentName, code, signal: signal || 'none' });
           this.emit({ type: 'status', status: 'stopped', detail: `Exit code: ${code}` });
         }
       });
@@ -818,14 +807,14 @@ export class AcpBackend implements IAgentBackend {
       // Send initial prompt if provided
       if (initialPrompt) {
         this.sendPrompt(sessionId, initialPrompt).catch(error => {
-          logger.debug('[AcpBackend] Error sending initial prompt:', error);
+          logger.error('[ACP] Initial prompt send failed', { agent: this.transport.agentName, error: String(error) });
           this.emit({ type: 'status', status: 'error', detail: String(error) });
         });
       }
 
       return { sessionId };
     } catch (error) {
-      logger.debug('[AcpBackend] Error starting session:', error);
+      logger.error('[ACP] Session start failed', { agent: this.transport.agentName, error: String(error) });
       this.emit({
         type: 'status',
         status: 'error',
@@ -903,7 +892,7 @@ export class AcpBackend implements IAgentBackend {
 
       return { sessionId };
     } catch (error) {
-      logger.debug('[AcpBackend] Error loading session:', error);
+      logger.error('[ACP] Session load failed', { agent: this.transport.agentName, error: String(error) });
       this.emit({
         type: 'status',
         status: 'error',
@@ -1076,7 +1065,7 @@ export class AcpBackend implements IAgentBackend {
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
       // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
     } catch (error) {
-      logger.debug('[AcpBackend] Error sending prompt:', error);
+      logger.error('[ACP] Prompt send failed', { agent: this.transport.agentName, error: String(error) });
       this.waitingForResponse = false;
 
       // Extract error details for better error handling

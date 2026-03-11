@@ -207,7 +207,7 @@ export async function startDaemon(): Promise<void> {
 
     // Ensure auth and machine registration BEFORE anything else
     const { credentials, machineId } = await authAndSetupMachineIfNeeded();
-    logger.debug('[DAEMON RUN] Auth and machine setup complete');
+    logger.info('[DAEMON] Auth completed', { machineId });
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
@@ -275,7 +275,7 @@ export async function startDaemon(): Promise<void> {
           pid,
         };
         pidToTrackedSession.set(pid, trackedSession);
-        logger.debug(`[DAEMON RUN] Registered externally-started session ${sessionId}`);
+        logger.info('[DAEMON] Session registered (external)', { sessionId, pid, startedBy: 'terminal' });
       }
     };
 
@@ -327,7 +327,7 @@ export async function startDaemon(): Promise<void> {
             errorMessage += `System error: ${mkdirError.message || mkdirError}. Please verify the path is valid and you have the necessary permissions.`;
           }
 
-          logger.debug(`[DAEMON RUN] Directory creation failed: ${errorMessage}`);
+          logger.error('[DAEMON] Session spawn failed - directory creation', { directory, error: errorMessage });
           return {
             type: 'error',
             errorMessage,
@@ -576,9 +576,7 @@ export async function startDaemon(): Promise<void> {
               // Set timeout for webhook (same as regular flow)
               const timeout = setTimeout(() => {
                 pidToAwaiter.delete(tmuxResult.pid!);
-                logger.debug(
-                  `[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
-                );
+                logger.error('[DAEMON] Session webhook timeout', { pid: tmuxResult.pid, mode: 'tmux' });
                 resolve({
                   type: 'error',
                   errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`,
@@ -709,7 +707,7 @@ export async function startDaemon(): Promise<void> {
             // Set timeout for webhook
             const timeout = setTimeout(() => {
               pidToAwaiter.delete(freeProcess.pid!);
-              logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${freeProcess.pid}`);
+              logger.error('[DAEMON] Session webhook timeout', { pid: freeProcess.pid, mode: 'regular' });
               resolve({
                 type: 'error',
                 errorMessage: `Session webhook timeout for PID ${freeProcess.pid}`,
@@ -745,7 +743,7 @@ export async function startDaemon(): Promise<void> {
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.debug('[DAEMON RUN] Failed to spawn session:', error);
+        logger.error('[DAEMON] Session spawn failed', { error: errorMessage, directory });
         return {
           type: 'error',
           errorMessage: `Failed to spawn session: ${errorMessage}`,
@@ -1038,7 +1036,7 @@ export async function startDaemon(): Promise<void> {
     const shutdownRequest = await resolvesWhenShutdownRequested;
     await cleanupAndShutdown(shutdownRequest.source, shutdownRequest.errorMessage);
   } catch (error) {
-    logger.debug('[DAEMON RUN][FATAL] Failed somewhere unexpectedly - exiting with code 1', error);
+    logger.error('[DAEMON] Fatal error', { error: error instanceof Error ? error.message : String(error) });
     process.exit(1);
   }
 }

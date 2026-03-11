@@ -171,6 +171,12 @@ export async function runCodex(opts: {
 
   // Always report to daemon if it exists (skip if offline)
   if (response) {
+    logger.info('[CLI] Session started', {
+      sessionId: response.id,
+      machineId,
+      flavor: 'codex',
+      directory: process.cwd(),
+    });
     try {
       logger.debug(`[START] Reporting session ${response.id} to daemon`);
       const result = await notifyDaemonSessionStarted(response.id, metadata);
@@ -230,6 +236,12 @@ export async function runCodex(opts: {
       model: messageModel,
     };
     messageQueue.push(message.content.text, enhancedMode);
+    logger.info('[CLI] Message received', {
+      sessionId: session.sessionId,
+      permissionMode: enhancedMode.permissionMode,
+      model: messageModel || 'default',
+      flavor: 'codex',
+    });
   });
   let thinking = false;
   let currentTurnId: string | null = null;
@@ -585,6 +597,7 @@ export async function runCodex(opts: {
 
   // Start Free MCP server (HTTP) and prepare STDIO bridge config for Codex
   const freeServer = await startFreeServer(session);
+  logger.info('[CLI] MCP server started', { url: freeServer.url, flavor: 'codex' });
   const bridgeCommand = join(projectPath(), 'bin', 'free-mcp.mjs');
   const mcpServers = {
     free: {
@@ -798,16 +811,12 @@ export async function runCodex(opts: {
     }
 
     try {
-      logger.debug('[codex]: sendSessionDeath');
       session.sendSessionDeath();
-      logger.debug('[codex]: flush begin');
       await session.flush();
-      logger.debug('[codex]: flush done');
-      logger.debug('[codex]: session.close begin');
       await session.close();
-      logger.debug('[codex]: session.close done');
+      logger.info('[CLI] Session closed', { sessionId: session.sessionId, flavor: 'codex' });
     } catch (e) {
-      logger.debug('[codex]: Error while closing session', e);
+      logger.error('[CLI] Session close failed', { error: String(e) });
     }
     logger.debug('[codex]: client.forceCloseSession begin');
     await client.forceCloseSession();
