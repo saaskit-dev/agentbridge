@@ -372,6 +372,8 @@ export const SettingsSchema = z.object({
     .describe(
       'Tracks which CLI installation warnings user has dismissed (per-machine or globally)'
     ),
+  // Analytics/telemetry opt-out (synced across devices)
+  analyticsEnabled: z.boolean().describe('Allow sharing anonymous usage data (synced with CLI)'),
 });
 
 //
@@ -428,6 +430,8 @@ export const settingsDefaults: Settings = {
   favoriteMachines: [],
   // Dismissed CLI warnings (empty by default)
   dismissedCLIWarnings: { perMachine: {}, global: {} },
+  // Analytics enabled by default
+  analyticsEnabled: true,
 };
 Object.freeze(settingsDefaults);
 

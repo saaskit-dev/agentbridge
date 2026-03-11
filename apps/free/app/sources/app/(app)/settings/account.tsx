@@ -19,7 +19,7 @@ import { Modal } from '@/modal';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
-import { useLocalSettingMutable, useProfile } from '@/sync/storage';
+import { useSettingMutable, useProfile } from '@/sync/storage';
 import { setAnalyticsEnabled } from '@/appTelemetry';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { t } from '@/text';
@@ -31,7 +31,7 @@ export default React.memo(() => {
   const router = useRouter();
   const [showSecret, setShowSecret] = useState(false);
   const [copiedRecently, setCopiedRecently] = useState(false);
-  const [analyticsEnabled, setAnalyticsEnabledSetting] = useLocalSettingMutable('analyticsEnabled');
+  const [analyticsEnabled, setAnalyticsEnabledSetting] = useSettingMutable('analyticsEnabled');
   const { connectAccount, isLoading: isConnecting } = useConnectAccount();
   const profile = useProfile();
 

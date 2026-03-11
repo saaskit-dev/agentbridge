@@ -216,7 +216,7 @@ export const CURRENT_PROFILE_VERSION = '1.0.0';
 // Settings schema version: Integer for overall Settings structure compatibility
 // Incremented when Settings structure changes (e.g., adding profiles array was v1→v2)
 // Used for migration logic in readSettings()
-export const SUPPORTED_SCHEMA_VERSION = 2;
+export const SUPPORTED_SCHEMA_VERSION = 3;
 
 // Profile version validation
 export function validateProfileVersion(profile: AIBackendProfile): boolean {
@@ -252,6 +252,8 @@ interface Settings {
   sandboxConfig?: SandboxConfig;
   // CLI-local environment variable cache (not synced)
   localEnvironmentVariables: Record<string, Record<string, string>>; // profileId -> env vars
+  // Analytics/telemetry opt-out (default: true = enabled)
+  analyticsEnabled?: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -260,6 +262,7 @@ const defaultSettings: Settings = {
   profiles: [],
   sandboxConfig: undefined,
   localEnvironmentVariables: {},
+  analyticsEnabled: true,
 };
 
 /**
@@ -283,8 +286,18 @@ function migrateSettings(raw: any, fromVersion: number): any {
     migrated.schemaVersion = 2;
   }
 
+  // Migration from v2 to v3 (added analyticsEnabled)
+  if (fromVersion < 3) {
+    // Default to analytics enabled
+    if (migrated.analyticsEnabled === undefined) {
+      migrated.analyticsEnabled = true;
+    }
+    // Update schema version
+    migrated.schemaVersion = 3;
+  }
+
   // Future migrations go here:
-  // if (fromVersion < 3) { ... }
+  // if (fromVersion < 4) { ... }
 
   return migrated;
 }
@@ -796,4 +809,26 @@ export async function getEnvironmentVariable(
   }
 
   return undefined;
+}
+
+//
+// Analytics Settings
+//
+
+/**
+ * Check if analytics/telemetry is enabled (default: true)
+ */
+export async function isAnalyticsEnabled(): Promise<boolean> {
+  const settings = await readSettings();
+  return settings.analyticsEnabled ?? true;
+}
+
+/**
+ * Set analytics/telemetry enabled state
+ */
+export async function setAnalyticsEnabled(enabled: boolean): Promise<void> {
+  await updateSettings(settings => ({
+    ...settings,
+    analyticsEnabled: enabled,
+  }));
 }

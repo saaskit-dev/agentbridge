@@ -504,4 +504,41 @@ export class ApiClient {
       return null;
     }
   }
+
+  /**
+   * Get account settings from server (for syncing analyticsEnabled etc.)
+   * Returns the settings object if successful, null otherwise
+   */
+  async getAccountSettings(): Promise<{ settings: string | null; settingsVersion: number } | null> {
+    try {
+      const response = await axios.get(`${configuration.serverUrl}/v1/account/settings`, {
+        headers: {
+          Authorization: `Bearer ${this.credential.token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      });
+
+      if (response.status !== 200) {
+        logger.debug(`[API] Account settings returned status ${response.status}`);
+        return null;
+      }
+
+      return {
+        settings: response.data.settings,
+        settingsVersion: response.data.settingsVersion,
+      };
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        logger.debug('[API] Unauthorized when fetching account settings');
+        return null;
+      }
+      if (error.response?.status === 404) {
+        logger.debug('[API] Account settings not found');
+        return null;
+      }
+      logger.debug(`[API] [ERROR] Failed to get account settings:`, error);
+      return null;
+    }
+  }
 }

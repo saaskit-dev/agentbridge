@@ -20,6 +20,7 @@ import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient';
 import { handleAuthCommand } from './commands/auth';
 import { handleConnectCommand } from './commands/connect';
 import { handleSandboxCommand } from './commands/sandbox';
+import { handleAnalyticsCommand } from './commands/analytics';
 import { spawnFreeCLI } from './utils/spawnFreeCLI';
 import { claudeCliPath } from './claude/claudeLocal';
 import {
@@ -101,6 +102,17 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
   } else if (subcommand === 'sandbox') {
     try {
       await handleSandboxCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
+      if (process.env.DEBUG) {
+        console.error(error);
+      }
+      process.exit(1);
+    }
+    return;
+  } else if (subcommand === 'analytics') {
+    try {
+      await handleAnalyticsCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
       if (process.env.DEBUG) {
@@ -816,6 +828,7 @@ ${chalk.bold('Usage:')}
   free gemini            Start Gemini mode (ACP)
   free connect           Connect AI vendor API keys
   free sandbox           Configure and manage OS-level sandboxing
+  free analytics         Manage analytics/telemetry settings
   free notify            Send push notification
   free daemon            Manage background service that allows
                             to spawn new sessions away from your computer

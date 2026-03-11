@@ -26,7 +26,7 @@ import sodium from '@/encryption/libsodium.lib';
 import { ModalProvider } from '@/modal';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { syncRestore } from '@/sync/sync';
-import { loadLocalSettings } from '@/sync/persistence';
+import { loadSettings } from '@/sync/persistence';
 // import * as SystemUI from 'expo-system-ui';
 import { AsyncLock } from '@/utils/lock';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
@@ -192,9 +192,9 @@ export default function RootLayout() {
         const credentials = await TokenStorage.getCredentials();
         logger.debug('credentials', credentials);
         // Wire RemoteSink auth token so telemetry can upload after login (RFC §21.2)
-        // Respect the user's analytics opt-in preference (RFC §8.1)
-        const localSettings = loadLocalSettings();
-        setAnalyticsEnabled(localSettings.analyticsEnabled !== false, credentials?.token);
+        // Respect the user's analytics opt-in preference from synced Settings (RFC §8.1)
+        const { settings } = loadSettings();
+        setAnalyticsEnabled(settings.analyticsEnabled !== false, credentials?.token);
         if (credentials) {
           await syncRestore(credentials);
         }

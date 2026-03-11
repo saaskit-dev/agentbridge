@@ -22,6 +22,7 @@ import {
   acquireDaemonLock,
   releaseDaemonLock,
   readSettings,
+  updateSettings,
   getActiveProfile,
   getEnvironmentVariables,
   validateProfileForAgent,
@@ -871,6 +872,50 @@ export async function startDaemon(): Promise<void> {
     apiMachine.connect();
     logger.info('[DAEMON] Machine connecting to server', { machineId, serverUrl: configuration.serverUrl });
 
+    // Fallback sync: poll account settings every 5 minutes as backup for header sync
+    // Primary sync is via X-Analytics-Enabled header on all API responses
+    // This is just a safety net in case header sync fails for any reason
+    const FALLBACK_SYNC_INTERVAL_MS = 5 * 60_000; // 5 minutes
+    let fallbackSyncRunning = false;
+    const fallbackSyncAccountSettings = async () => {
+      if (fallbackSyncRunning) return;
+      fallbackSyncRunning = true;
+
+      try {
+        const accountSettings = await api.getAccountSettings();
+        if (accountSettings?.settings) {
+          try {
+            const serverSettings = JSON.parse(accountSettings.settings);
+            if (typeof serverSettings.analyticsEnabled === 'boolean') {
+              const localSettings = await readSettings();
+              if (localSettings.analyticsEnabled !== serverSettings.analyticsEnabled) {
+                logger.info('[DAEMON] Fallback sync: updating analyticsEnabled', {
+                  local: localSettings.analyticsEnabled,
+                  server: serverSettings.analyticsEnabled,
+                });
+                await updateSettings(s => ({
+                  ...s,
+                  analyticsEnabled: serverSettings.analyticsEnabled,
+                }));
+              }
+            }
+          } catch {
+            logger.debug('[DAEMON] Failed to parse account settings in fallback sync');
+          }
+        }
+      } catch (error) {
+        logger.debug('[DAEMON] Fallback sync failed:', error);
+      } finally {
+        fallbackSyncRunning = false;
+      }
+    };
+
+    // Initial sync on startup
+    await fallbackSyncAccountSettings();
+
+    // Setup periodic fallback sync
+    const fallbackSyncInterval = setInterval(fallbackSyncAccountSettings, FALLBACK_SYNC_INTERVAL_MS);
+
     // Every 60 seconds:
     // 1. Prune stale sessions
     // 2. Check if daemon needs update
@@ -1026,6 +1071,12 @@ export async function startDaemon(): Promise<void> {
       if (awaiterCleanupInterval) {
         clearInterval(awaiterCleanupInterval);
         logger.debug('[DAEMON RUN] Awaiter cleanup interval cleared');
+      }
+
+      // Clear fallback sync interval
+      if (fallbackSyncInterval) {
+        clearInterval(fallbackSyncInterval);
+        logger.debug('[DAEMON RUN] Fallback sync interval cleared');
       }
 
       // Update daemon state before shutting down
