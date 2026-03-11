@@ -95,7 +95,7 @@ export async function installUserAgent(): Promise<void> {
                 <key>EnvironmentVariables</key>
                 <dict>
                     <key>PATH</key>
-                    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+                    <string>${process.env.PATH}</string>
                 </dict>
             </dict>
             </plist>
