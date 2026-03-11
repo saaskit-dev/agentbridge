@@ -19,22 +19,30 @@ Control Claude Code, Codex, Gemini, and OpenCode from anywhere. Monitor progress
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Free Platform                             │
-│                                                                  │
-│  ┌─────────────┐     ┌─────────────┐     ┌─────────────────┐    │
-│  │  Mobile App │ ←→  │   Server    │ ←→  │   CLI / Daemon  │    │
-│  │  (React     │     │  (Fastify)  │     │   (Node.js)     │    │
-│  │   Native)   │     │             │     │                 │    │
-│  └─────────────┘     └─────────────┘     └────────┬────────┘    │
-│                                                   │              │
-│                                          ┌───────┴───────┐      │
-│                                          │  AI Agents    │      │
-│                                          │ Claude, Codex │      │
-│                                          │ Gemini, etc.  │      │
-│                                          └───────────────┘      │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Client["📱 Client"]
+        App["Mobile App<br/>(React Native)"]
+    end
+
+    subgraph Cloud["☁️ Cloud"]
+        Server["Server<br/>(Fastify)"]
+    end
+
+    subgraph Local["💻 Local Machine"]
+        CLI["CLI / Daemon<br/>(Node.js)"]
+        Claude["Claude Code"]
+        Codex["Codex"]
+        Gemini["Gemini CLI"]
+        OpenCode["OpenCode"]
+    end
+
+    App <-->|"E2E Encrypted"| Server
+    Server <-->|"WebSocket"| CLI
+    CLI --> Claude
+    CLI --> Codex
+    CLI --> Gemini
+    CLI --> OpenCode
 ```
 
 ## Project Structure
@@ -262,6 +270,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
+- [Happy](https://github.com/slopus/happy) for design inspiration
 - [Anthropic](https://anthropic.com) for Claude Code
 - [OpenAI](https://openai.com) for Codex
 - [Google](https://ai.google.dev) for Gemini CLI
