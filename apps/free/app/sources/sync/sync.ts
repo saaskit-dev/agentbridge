@@ -2353,7 +2353,7 @@ class Sync {
     const validatedUpdate = ApiEphemeralUpdateSchema.safeParse(update);
     if (!validatedUpdate.success) {
       logger.debug('Invalid ephemeral update received:', validatedUpdate.error);
-      logger.error('Invalid ephemeral update received:', update);
+      logger.error('Invalid ephemeral update received:', undefined, { update });
       return;
     } else {
       // logger.debug('Ephemeral update received:', update);
