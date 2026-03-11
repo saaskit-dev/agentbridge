@@ -184,6 +184,7 @@ export async function runClaude(
   }
 
   logger.debug(`Session created: ${response.id}`);
+  logger.info('[CLI] Session started', { sessionId: response.id, machineId, directory: workingDirectory });
 
   // Always report to daemon if it exists
   try {
@@ -219,7 +220,7 @@ export async function runClaude(
 
   // Start Free MCP server
   const freeServer = await startFreeServer(session);
-  logger.debug(`[START] Free MCP server started at ${freeServer.url}`);
+  logger.info('[CLI] MCP server started', { url: freeServer.url });
 
   // Variable to track current session instance (updated via onSessionReady callback)
   // Used by hook server to notify Session when Claude changes session ID
@@ -240,7 +241,7 @@ export async function runClaude(
       }
     },
   });
-  logger.debug(`[START] Hook server started on port ${hookServer.port}`);
+  logger.info('[CLI] Hook server started', { port: hookServer.port });
 
   // Generate hook settings file for Claude
   const hookSettingsPath = generateHookSettingsFile(hookServer.port);
@@ -435,7 +436,11 @@ export async function runClaude(
       disallowedTools: messageDisallowedTools,
     };
     messageQueue.push(message.content.text, enhancedMode);
-    logger.debug('User message pushed to queue');
+    logger.info('[CLI] Message received', {
+      sessionId: response.id,
+      model: messageModel || 'default',
+      permissionMode: messagePermissionMode || 'accept-edits',
+    });
   });
 
   // Setup signal handlers for graceful shutdown
@@ -552,8 +557,8 @@ export async function runClaude(
   await session.flush();
 
   // Close session
-  logger.debug('Closing session...');
   await session.close();
+  logger.info('[CLI] Session closed', { sessionId: response.id });
 
   // Stop caffeinate before exiting
   stopCaffeinate();
