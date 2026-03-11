@@ -193,6 +193,12 @@ export async function runGemini(opts: {
 
   // Report to daemon (only if we have a real session)
   if (response) {
+    logger.info('[CLI] Session started', {
+      sessionId: response.id,
+      machineId,
+      flavor: 'gemini',
+      directory: process.cwd(),
+    });
     try {
       logger.debug(`[START] Reporting session ${response.id} to daemon`);
       const result = await notifyDaemonSessionStarted(response.id, metadata);
@@ -300,6 +306,12 @@ export async function runGemini(opts: {
       originalUserMessage, // Store original message separately
     };
     messageQueue.push(fullPrompt, mode);
+    logger.info('[CLI] Message received', {
+      sessionId: session.sessionId,
+      permissionMode: mode.permissionMode,
+      model: messageModel || 'default',
+      flavor: 'gemini',
+    });
 
     // Record user message in conversation history for context preservation
     conversationHistory.addUserMessage(originalUserMessage);
@@ -537,6 +549,7 @@ export async function runGemini(opts: {
   //
 
   const freeServer = await startFreeServer(session);
+  logger.info('[CLI] MCP server started', { url: freeServer.url, flavor: 'gemini' });
   const bridgeCommand = join(projectPath(), 'bin', 'free-mcp.mjs');
   const mcpServers = {
     free: {
@@ -1499,8 +1512,9 @@ export async function runGemini(opts: {
       session.sendSessionDeath();
       await session.flush();
       await session.close();
+      logger.info('[CLI] Session closed', { sessionId: session.sessionId, flavor: 'gemini' });
     } catch (e) {
-      logger.debug('[gemini]: Error while closing session', e);
+      logger.error('[CLI] Session close failed', { error: String(e) });
     }
 
     if (geminiBackend) {

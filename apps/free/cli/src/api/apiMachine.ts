@@ -304,7 +304,7 @@ export class ApiMachineClient {
     });
 
     this.socket.on('connect', () => {
-      logger.debug('[API MACHINE] Connected to server');
+      logger.info('[DAEMON] Machine connected', { machineId: this.machine.id });
 
       // Update daemon state to running
       // We need to override previous state because the daemon (this process)
@@ -374,7 +374,7 @@ export class ApiMachineClient {
     });
 
     this.socket.on('connect_error', error => {
-      logger.debug(`[API MACHINE] Connection error: ${error.message}`);
+      logger.error('[DAEMON] Machine connect failed', { machineId: this.machine.id, error: error.message });
     });
 
     this.socket.io.on('error', (error: any) => {
