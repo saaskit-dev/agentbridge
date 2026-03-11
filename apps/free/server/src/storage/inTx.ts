@@ -33,7 +33,7 @@ export async function inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
           callback();
         } catch (e) {
           // Ignore errors in callbacks because they are used mostly for notifications
-          logger.error('afterTx callback error:', { error: String(e) });
+          logger.error('afterTx callback error:', undefined, { error: String(e) });
         }
       }
       return result.result;

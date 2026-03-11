@@ -434,7 +434,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             name: typeof e === 'object' && e !== null ? e.constructor?.name : 'Unknown',
             message: String(e),
           }
-      logger.error('[remote]: launch error with details', {
+      logger.error('[remote]: launch error with details', undefined, {
         error: errorDetails,
         originalError: e
       });

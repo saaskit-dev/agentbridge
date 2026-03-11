@@ -34,7 +34,7 @@ export async function authQRStart(keypair: QRAuthKeyPair): Promise<boolean> {
     return true;
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      logger.error('[AUTH] Axios error:', {
+      logger.error('[AUTH] Axios error:', undefined, {
         message: error.message,
         code: error.code,
         status: error.response?.status,

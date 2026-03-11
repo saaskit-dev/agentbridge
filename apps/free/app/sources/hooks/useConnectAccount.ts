@@ -43,7 +43,7 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
         ]);
         return true;
       } catch (e) {
-        logger.error('Failed to link device', { error: e });
+        logger.error('Failed to link device', undefined, { error: String(e) });
         Modal.alert(t('common.error'), t('modals.failedToLinkDevice'), [{ text: t('common.ok') }]);
         options?.onError?.(e);
         return false;
