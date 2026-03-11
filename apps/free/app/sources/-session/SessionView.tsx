@@ -33,7 +33,6 @@ import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { tracking, trackMessageSent } from '@/track';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import {
@@ -290,17 +289,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       try {
         const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
         await startRealtimeSession(sessionId, initialPrompt);
-        tracking?.capture('voice_session_started', { sessionId });
       } catch (error) {
         logger.error('Failed to start realtime session:', error);
         Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
-        tracking?.capture('voice_session_error', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
       }
     } else if (realtimeStatus === 'connected') {
       await stopRealtimeSession();
-      tracking?.capture('voice_session_stopped');
 
       // Notify voice assistant about voice session stop
       voiceHooks.onVoiceStopped();
@@ -363,7 +357,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
           setMessage('');
           clearDraft();
           sync.sendMessage(sessionId, message);
-          trackMessageSent();
         }
       }}
       onMicPress={micButtonState.onMicPress}

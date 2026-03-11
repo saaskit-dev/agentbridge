@@ -18,7 +18,6 @@ import { Modal } from '@/modal';
 import { searchUsersByUsername, sendFriendRequest } from '@/sync/apiFriends';
 import { UserProfile } from '@/sync/friendTypes';
 import { t } from '@/text';
-import { trackFriendsConnect } from '@/track';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/friends/search');
 
@@ -50,7 +49,6 @@ export default function SearchFriendsScreen() {
         const updatedProfile = await sendFriendRequest(credentials, user.id);
 
         if (updatedProfile) {
-          trackFriendsConnect();
           logger.debug(t('friends.requestSent'));
         } else {
           await Modal.alert(t('friends.bothMustHaveGithub'));

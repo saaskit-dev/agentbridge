@@ -21,7 +21,6 @@ import {
   useRealtimeStatus,
 } from '@/sync/storage';
 import { t } from '@/text';
-import { trackFriendsSearch, trackFriendsProfileView } from '@/track';
 import { Typography } from '@/constants/Typography';
 import { useIsTablet } from '@/utils/responsive';
 
@@ -89,7 +88,6 @@ function HeaderRightTablet() {
   return (
     <Pressable
       onPress={() => {
-        trackFriendsSearch();
         router.push('/friends/search');
       }}
       hitSlop={15}
@@ -219,7 +217,6 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                   key={friend.id}
                   user={friend}
                   onPress={() => {
-                    trackFriendsProfileView();
                     router.push(`/user/${friend.id}`);
                   }}
                 />
@@ -236,7 +233,6 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                   key={friend.id}
                   user={friend}
                   onPress={() => {
-                    trackFriendsProfileView();
                     router.push(`/user/${friend.id}`);
                   }}
                 />
@@ -253,7 +249,6 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                   key={friend.id}
                   user={friend}
                   onPress={() => {
-                    trackFriendsProfileView();
                     router.push(`/user/${friend.id}`);
                   }}
                 />

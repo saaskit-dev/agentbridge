@@ -12,7 +12,6 @@ import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
 import { encodeBase64 } from '@/encryption/base64';
 import { t } from '@/text';
-import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { useIsLandscape } from '@/utils/responsive';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/index');
@@ -42,7 +41,6 @@ function NotAuthenticated() {
       const token = await authGetToken(secret);
       if (token && secret) {
         await auth.login(token, encodeBase64(secret, 'base64url'));
-        trackAccountCreated();
       }
     } catch (error) {
       logger.error('Error creating account', error);
@@ -62,7 +60,6 @@ function NotAuthenticated() {
             <RoundButton
               title={t('welcome.loginWithMobileApp')}
               onPress={() => {
-                trackAccountRestored();
                 router.push('/restore');
               }}
             />
@@ -86,7 +83,6 @@ function NotAuthenticated() {
               size="normal"
               title={t('welcome.linkOrRestoreAccount')}
               onPress={() => {
-                trackAccountRestored();
                 router.push('/restore');
               }}
               display="inverted"
@@ -114,7 +110,6 @@ function NotAuthenticated() {
                 <RoundButton
                   title={t('welcome.loginWithMobileApp')}
                   onPress={() => {
-                    trackAccountRestored();
                     router.push('/restore');
                   }}
                 />
@@ -138,7 +133,6 @@ function NotAuthenticated() {
                   size="normal"
                   title={t('welcome.linkOrRestoreAccount')}
                   onPress={() => {
-                    trackAccountRestored();
                     router.push('/restore');
                   }}
                   display="inverted"

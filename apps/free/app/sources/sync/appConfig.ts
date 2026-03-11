@@ -5,7 +5,6 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/sync/appConfig');
 
 export interface AppConfig {
-  postHogKey?: string;
   revenueCatAppleKey?: string;
   revenueCatGoogleKey?: string;
   revenueCatStripeKey?: string;
@@ -90,13 +89,6 @@ export function loadAppConfig(): AppConfig {
   ) {
     logger.debug('[loadAppConfig] Override revenueCatStripeKey from EXPO_PUBLIC_REVENUE_CAT_STRIPE');
     config.revenueCatStripeKey = process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE;
-  }
-  if (
-    process.env.EXPO_PUBLIC_POSTHOG_KEY &&
-    config.postHogKey !== process.env.EXPO_PUBLIC_POSTHOG_KEY
-  ) {
-    logger.debug('[loadAppConfig] Override postHogKey from EXPO_PUBLIC_POSTHOG_KEY');
-    config.postHogKey = process.env.EXPO_PUBLIC_POSTHOG_KEY;
   }
   if (
     process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID_DEV &&
