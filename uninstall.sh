@@ -83,29 +83,40 @@ if [ -f "$DAEMON_LOCK" ]; then
     ok "Removed daemon lock"
 fi
 
-# ── Step 6: Ask about authentication data ───────────────────────────────────
+# ── Step 6: Handle authentication data ───────────────────────────────────
 
 AUTH_DIR="$FREE_HOME"
 if [ -d "$AUTH_DIR" ] && [ -f "$AUTH_DIR/access.key" ]; then
-    echo ""
-    echo -e "${YELLOW}Authentication data found at $AUTH_DIR${NC}"
-    echo -e "${YELLOW}This includes your login credentials and encryption keys.${NC}"
-    echo ""
-    echo "  [1] Remove everything (complete uninstall)"
-    echo "  [2] Keep authentication data (you can re-install later without re-login)"
-    echo ""
-    read -p "Choose [1/2] (default: 2): " -r response
-    case "$response" in
-        1)
-            rm -rf "$AUTH_DIR"
-            ok "Removed all data: $AUTH_DIR"
-            removed=1
-            ;;
-        *)
-            info "Keeping authentication data at $AUTH_DIR"
-            info "To remove manually: rm -rf $AUTH_DIR"
-            ;;
-    esac
+    # Check if running interactively (TTY available)
+    if [ -t 0 ]; then
+        # Interactive mode - ask user
+        echo ""
+        echo -e "${YELLOW}Authentication data found at $AUTH_DIR${NC}"
+        echo -e "${YELLOW}This includes your login credentials and encryption keys.${NC}"
+        echo ""
+        echo "  [1] Remove everything (complete uninstall)"
+        echo "  [2] Keep authentication data (you can re-install later without re-login)"
+        echo ""
+        read -p "Choose [1/2] (default: 2): " -r response
+        case "$response" in
+            1)
+                rm -rf "$AUTH_DIR"
+                ok "Removed all data: $AUTH_DIR"
+                removed=1
+                ;;
+            *)
+                info "Keeping authentication data at $AUTH_DIR"
+                info "To remove manually: rm -rf $AUTH_DIR"
+                ;;
+        esac
+    else
+        # Non-interactive mode (piped input) - remove everything by default
+        echo ""
+        info "Non-interactive mode - removing all data"
+        rm -rf "$AUTH_DIR"
+        ok "Removed all data: $AUTH_DIR"
+        removed=1
+    fi
 fi
 
 # ── Step 7: Clean up empty parent dir ───────────────────────────────────────
