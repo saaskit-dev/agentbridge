@@ -13,33 +13,6 @@
         "APP_ENV": "development"
       }
     },
-    "development-store": {
-      "developmentClient": true,
-      "distribution": "store",
-      "channel": "development",
-      "autoIncrement": true,
-      "env": {
-        "APP_ENV": "development"
-      }
-    },
-    "preview": {
-      "distribution": "internal",
-      "channel": "preview",
-      "environment": "preview",
-      "autoIncrement": true,
-      "env": {
-        "APP_ENV": "development-preview"
-      }
-    },
-    "preview-store": {
-      "distribution": "store",
-      "channel": "preview",
-      "environment": "preview",
-      "autoIncrement": true,
-      "env": {
-        "APP_ENV": "development-preview"
-      }
-    },
     "production": {
       "channel": "production",
       "environment": "production",
