@@ -8,7 +8,7 @@ export const LocalSettingsSchema = z.object({
   // Developer settings (device-specific)
   debugMode: z.boolean().describe('Enable debug logging'),
   devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
-  analyticsEnabled: z.boolean().describe('Allow sharing anonymous usage data (RFC §8.1)'),
+  // Note: analyticsEnabled moved to sync'd Settings for cross-device sync with CLI
   commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
   themePreference: z
     .enum(['light', 'dark', 'adaptive'])
@@ -38,7 +38,6 @@ export type LocalSettings = z.infer<typeof LocalSettingsSchema>;
 export const localSettingsDefaults: LocalSettings = {
   debugMode: false,
   devModeEnabled: false,
-  analyticsEnabled: true,
   commandPaletteEnabled: false,
   themePreference: 'adaptive',
   markdownCopyV2: false,

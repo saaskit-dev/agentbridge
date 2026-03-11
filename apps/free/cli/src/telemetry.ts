@@ -6,6 +6,8 @@
  * - RemoteSink + ServerRelayBackend: sends batched logs to our server,
  *   which relays them to New Relic. Auth token is resolved lazily —
  *   entries buffer until the user authenticates.
+ * - Analytics can be disabled by user via `free analytics off` command
+ * - Analytics sync via X-Analytics-Enabled header from server responses
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -21,6 +23,9 @@ import {
   type TraceContext,
 } from '@saaskit-dev/agentbridge/telemetry';
 import { FileSink, cleanupOldLogs } from '@saaskit-dev/agentbridge/telemetry/node';
+import { isAnalyticsEnabledSync } from '@/api/analyticsHeaderSync';
+// Install axios interceptor to sync analyticsEnabled from server responses
+import '@/api/analyticsHeaderSync';
 
 let initialized = false;
 /** Inherited from parent daemon process (stays constant for the lifetime of the cli process). */
@@ -118,8 +123,17 @@ function getMachineId(): string {
   return `${process.platform}-${process.pid}`;
 }
 
+/**
+ * Read auth token for telemetry upload.
+ * Returns undefined if:
+ * - User is not logged in (no credentials file)
+ * - User has opted out of analytics (analyticsEnabled=false)
+ */
 function readAuthToken(): string | undefined {
   try {
+    // Check if user has opted out of analytics (synced from server via header)
+    if (!isAnalyticsEnabledSync()) return undefined;
+
     if (!existsSync(configuration.privateKeyFile)) return undefined;
     const data = JSON.parse(readFileSync(configuration.privateKeyFile, 'utf8'));
     return data.token;

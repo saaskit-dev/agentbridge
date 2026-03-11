@@ -7,6 +7,7 @@ import { allocateUserSeq } from '@/storage/seq';
 import { AccountProfile } from '@/types';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
+import { updateAnalyticsEnabledCache } from '../utils/analyticsSettingsCache';
 
 const log = new Logger('app/api/routes/accountRoutes');
 export function accountRoutes(app: Fastify) {
@@ -160,6 +161,19 @@ export function accountRoutes(app: Fastify) {
             updatedAt: new Date(),
           },
         });
+
+        // Update analytics cache if settings contain analyticsEnabled
+        if (count > 0 && settings) {
+          try {
+            const parsedSettings = JSON.parse(settings);
+            if (typeof parsedSettings.analyticsEnabled === 'boolean') {
+              updateAnalyticsEnabledCache(userId, parsedSettings.analyticsEnabled);
+              log.debug(`Updated analytics cache for user ${userId}: ${parsedSettings.analyticsEnabled}`);
+            }
+          } catch {
+            // Invalid JSON, ignore
+          }
+        }
 
         if (count === 0) {
           // Re-fetch to get current version

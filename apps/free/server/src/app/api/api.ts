@@ -18,6 +18,7 @@ import { voiceRoutes } from './routes/voiceRoutes';
 import { enableAuthentication } from './utils/enableAuthentication';
 import { enableErrorHandlers } from './utils/enableErrorHandlers';
 import { enableMonitoring } from './utils/enableMonitoring';
+import { getAnalyticsEnabled } from './utils/analyticsSettingsCache';
 import { userRoutes } from './routes/userRoutes';
 import { feedRoutes } from './routes/feedRoutes';
 import { kvRoutes } from './routes/kvRoutes';
@@ -81,6 +82,21 @@ export async function startApi() {
       runWithTrace(ctx, done);
     } else {
       done();
+    }
+  });
+
+  // Add X-Analytics-Enabled header to all authenticated responses
+  // This allows CLI to sync analytics setting without extra polling
+  app.addHook('onResponse', async (request, reply) => {
+    const userId = (request as any).userId;
+    if (userId) {
+      try {
+        const analyticsEnabled = await getAnalyticsEnabled(userId);
+        reply.header('X-Analytics-Enabled', analyticsEnabled ? 'true' : 'false');
+      } catch (error) {
+        // Don't fail the request if this fails
+        log.debug('Failed to add X-Analytics-Enabled header', error);
+      }
     }
   });
 
