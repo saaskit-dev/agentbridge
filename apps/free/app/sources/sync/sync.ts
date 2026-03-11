@@ -16,13 +16,6 @@ import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
-import {
-  trackPaywallPresented,
-  trackPaywallPurchased,
-  trackPaywallRestored,
-  trackPaywallCancelled,
-  trackPaywallError,
-} from '@/track';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { Logger, continueTrace, type TraceContext } from '@saaskit-dev/agentbridge/telemetry';
@@ -86,8 +79,9 @@ type V3PostSessionMessagesResponse = {
  * Minimal wire trace — mirrors packages/core WireTrace without adding a Node.js dependency.
  * Must stay in sync with packages/core/src/telemetry/types.ts WireTrace.
  * App generates tid/sid/ses; machineId (mid) is added by the daemon layer if needed.
+ * pid (parentSpanId) is set when continuing a trace from server.
  */
-type WireTrace = { tid: string; sid: string; ses?: string; mid?: string };
+type WireTrace = { tid: string; sid: string; pid?: string; ses?: string; mid?: string };
 
 function makeWireTrace(sessionId: string): WireTrace {
   const traceId = randomUUID();
@@ -645,12 +639,8 @@ class Sync {
       }
       if (!this.revenueCatInitialized) {
         const error = 'RevenueCat not initialized';
-        trackPaywallError(error);
         return { success: false, error };
       }
-
-      // Track paywall presentation
-      trackPaywallPresented();
 
       // Present the paywall
       const result = await RevenueCat.presentPaywall();
@@ -658,30 +648,24 @@ class Sync {
       // Handle the result
       switch (result) {
         case PaywallResult.PURCHASED:
-          trackPaywallPurchased();
           // Refresh customer info after purchase
           await this.syncPurchases();
           return { success: true, purchased: true };
         case PaywallResult.RESTORED:
-          trackPaywallRestored();
           // Refresh customer info after restore
           await this.syncPurchases();
           return { success: true, purchased: true };
         case PaywallResult.CANCELLED:
-          trackPaywallCancelled();
           return { success: true, purchased: false };
         case PaywallResult.NOT_PRESENTED:
-          // Don't track error for NOT_PRESENTED as it's a platform limitation
           return { success: false, error: 'Paywall not available on this platform' };
         case PaywallResult.ERROR:
         default:
           const errorMsg = 'Failed to present paywall';
-          trackPaywallError(errorMsg);
           return { success: false, error: errorMsg };
       }
     } catch (error: any) {
       const errorMessage = error.message || 'Failed to present paywall';
-      trackPaywallError(errorMessage);
       return { success: false, error: errorMessage };
     }
   };
@@ -1822,7 +1806,14 @@ class Sync {
       const wt = rawWireTrace as { tid: string; sid: string; ses?: string; mid?: string };
       traceCtx = continueTrace({ traceId: wt.tid, spanId: wt.sid, sessionId: wt.ses, machineId: wt.mid });
       // RFC §7.1: keep session trace fresh so subsequent RPC calls carry the correct trace
-      if (wt.ses) setSessionTrace(wt.ses, { tid: traceCtx.traceId, sid: traceCtx.spanId, ses: traceCtx.sessionId });
+      // Include all fields: tid, sid, pid (parentSpanId), ses (sessionId), mid (machineId)
+      if (wt.ses) setSessionTrace(wt.ses, {
+        tid: traceCtx.traceId,
+        sid: traceCtx.spanId,
+        pid: traceCtx.parentSpanId,
+        ses: traceCtx.sessionId,
+        mid: traceCtx.machineId,
+      });
     }
     const log = traceCtx ? logger.withContext(traceCtx) : logger;
 

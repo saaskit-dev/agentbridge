@@ -4,7 +4,6 @@ import { View, TextInput, Text, TouchableOpacity } from 'react-native';
 import { RoundButton } from './RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { t } from '@/text';
-import { trackConnectAttempt } from '@/track';
 
 export const ConnectButton = React.memo(() => {
   const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
@@ -12,13 +11,11 @@ export const ConnectButton = React.memo(() => {
   const [showManualEntry, setShowManualEntry] = React.useState(false);
 
   const handleConnect = async () => {
-    trackConnectAttempt();
     connectTerminal();
   };
 
   const handleManualConnect = async () => {
     if (manualUrl.trim()) {
-      trackConnectAttempt();
       connectWithUrl(manualUrl.trim());
       setManualUrl('');
     }

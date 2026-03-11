@@ -19,7 +19,6 @@ import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListView
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { useFriendRequests, useSocketStatus, useRealtimeStatus } from '@/sync/storage';
 import { t } from '@/text';
-import { trackFriendsSearch } from '@/track';
 import { useIsTablet } from '@/utils/responsive';
 
 interface MainViewProps {
@@ -187,7 +186,6 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     return (
       <Pressable
         onPress={() => {
-          trackFriendsSearch();
           router.push('/friends/search');
         }}
         hitSlop={15}

@@ -11,7 +11,6 @@ import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { trackAccountCreated } from '@/track';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/hooks/useConnectTerminal');
 
@@ -42,7 +41,6 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
           throw new Error('Failed to get token');
         }
         await auth.login(token, encodeBase64(secret, 'base64url'));
-        trackAccountCreated();
 
         // Now connect terminal
         const tail = url.slice('free://terminal?'.length);
