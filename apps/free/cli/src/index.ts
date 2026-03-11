@@ -25,11 +25,15 @@ import { claudeCliPath } from './claude/claudeLocal';
 import {
   checkIfDaemonRunningAndCleanupStaleState,
   isDaemonRunningCurrentlyInstalledFreeVersion,
-  stopDaemon,
 } from './daemon/controlClient';
 import { killRunawayFreeProcesses } from './daemon/doctor';
 import { install } from './daemon/install';
 import { startDaemon } from './daemon/run';
+import {
+  startDaemonService,
+  stopDaemonService,
+  isDaemonServiceInstalled,
+} from './daemon/serviceControl';
 import { readCredentials, readSettings } from './persistence';
 import { authAndSetupMachineIfNeeded } from './ui/auth';
 import { getLatestDaemonLog } from './utils/daemonLogs';
@@ -481,36 +485,34 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
       }
       return;
     } else if (daemonSubcommand === 'start') {
-      // Spawn detached daemon process
-      const child = spawnFreeCLI(['daemon', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env,
-      });
-      child.unref();
-
-      // Wait for daemon to write state file (up to 5 seconds)
-      let started = false;
-      for (let i = 0; i < 50; i++) {
-        if ((await checkIfDaemonRunningAndCleanupStaleState()).status === 'running') {
-          started = true;
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
+      // Check if daemon service is installed
+      if (!(await isDaemonServiceInstalled())) {
+        console.log(
+          chalk.yellow('Daemon service not installed. Run "free daemon install" first.')
+        );
+        process.exit(1);
       }
 
-      if (started) {
-        console.log('Daemon started successfully');
+      const result = await startDaemonService();
+      if (result.success) {
+        console.log(chalk.green('✓ ') + result.message);
       } else {
-        console.error('Failed to start daemon');
+        console.log(chalk.red('✗ ') + result.message);
         process.exit(1);
       }
       process.exit(0);
     } else if (daemonSubcommand === 'start-sync') {
+      // Internal command - runs daemon directly (used by LaunchAgent/systemd)
       await startDaemon();
       process.exit(0);
     } else if (daemonSubcommand === 'stop') {
-      await stopDaemon();
+      const result = await stopDaemonService();
+      if (result.success) {
+        console.log(chalk.green('✓ ') + result.message);
+      } else {
+        console.log(chalk.red('✗ ') + result.message);
+        process.exit(1);
+      }
       process.exit(0);
     } else if (daemonSubcommand === 'status') {
       // Show daemon-specific doctor output

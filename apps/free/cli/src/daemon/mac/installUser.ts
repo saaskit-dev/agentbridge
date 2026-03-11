@@ -15,7 +15,7 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { trimIdent } from '@/utils/trimIdent';
 
 const logger = new Logger('daemon/mac/installUser');
-const PLIST_LABEL = 'com.free-cli.daemon';
+const PLIST_LABEL = 'app.saaskit.free.daemon';
 const PLIST_FILE = `${homedir()}/Library/LaunchAgents/${PLIST_LABEL}.plist`;
 
 export async function installUserAgent(): Promise<void> {
@@ -118,7 +118,7 @@ export async function installUserAgent(): Promise<void> {
     logger.info(`Logs: ${logDir}/`);
     logger.info('');
     logger.info('Commands:');
-    logger.info('  View status: launchctl list | grep free-cli');
+    logger.info('  View status: launchctl list | grep saaskit');
     logger.info('  Stop: launchctl unload ' + PLIST_FILE);
     logger.info('  Start: launchctl load ' + PLIST_FILE);
   } catch (error) {

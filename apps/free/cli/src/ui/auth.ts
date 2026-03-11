@@ -255,6 +255,21 @@ export function decryptWithEphemeralKey(
  * Ensure authentication and machine setup
  * This replaces the onboarding flow and ensures everything is ready
  */
+/**
+ * Check if we're in a non-interactive environment where auth UI cannot be displayed
+ */
+export function isHeadlessEnvironment(): boolean {
+  return !process.stdout.isTTY || !!process.env.CI || !!process.env.HEADLESS;
+}
+
+/**
+ * Check if credentials exist without starting auth flow
+ */
+export async function hasCredentials(): Promise<boolean> {
+  const credentials = await readCredentials();
+  return credentials !== null;
+}
+
 export async function authAndSetupMachineIfNeeded(): Promise<{
   credentials: Credentials;
   machineId: string;

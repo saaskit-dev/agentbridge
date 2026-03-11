@@ -28,7 +28,7 @@ import {
   getProfileEnvironmentVariables,
 } from '@/persistence';
 import { projectPath } from '@/projectPath';
-import { authAndSetupMachineIfNeeded } from '@/ui/auth';
+import { authAndSetupMachineIfNeeded, hasCredentials, isHeadlessEnvironment } from '@/ui/auth';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { Logger, getCollector } from '@saaskit-dev/agentbridge/telemetry';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
@@ -208,6 +208,21 @@ export async function startDaemon(): Promise<void> {
     const caffeinateStarted = startCaffeinate();
     if (caffeinateStarted) {
       logger.debug('[DAEMON RUN] Sleep prevention enabled');
+    }
+
+    // Check if we need to authenticate before trying (headless environment cannot show auth UI)
+    // Instead of exiting, we wait for credentials to appear (user runs `free auth login`)
+    while (!(await hasCredentials())) {
+      if (isHeadlessEnvironment()) {
+        logger.info(
+          '[DAEMON RUN] No credentials found. Waiting for authentication... (run "free auth login" in a terminal)'
+        );
+        // Wait 30 seconds before checking again
+        await new Promise(resolve => setTimeout(resolve, 30_000));
+      } else {
+        // Interactive environment - can show auth UI
+        break;
+      }
     }
 
     // Ensure auth and machine registration BEFORE anything else
@@ -1041,7 +1056,23 @@ export async function startDaemon(): Promise<void> {
     const shutdownRequest = await resolvesWhenShutdownRequested;
     await cleanupAndShutdown(shutdownRequest.source, shutdownRequest.errorMessage);
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error('[DAEMON] Fatal error', error);
+
+    // Release lock if we hold it
+    if (daemonLockHandle) {
+      await releaseDaemonLock(daemonLockHandle);
+    }
+
+    // Clean up daemon state file if it exists
+    await cleanupDaemonState();
+
+    // Show user-friendly message for auth errors
+    if (errorMessage.includes('No credentials found')) {
+      console.log('\n' + errorMessage);
+      console.log('\nThe daemon service will retry automatically after you authenticate.\n');
+    }
+
     process.exit(1);
   }
 }
