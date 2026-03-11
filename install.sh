@@ -74,6 +74,14 @@ if [ -d "$INSTALL_DIR/.git" ]; then
     git fetch origin "$BRANCH" --depth 1
     git checkout "$BRANCH"
     git reset --hard "origin/$BRANCH"
+elif [ -d "$INSTALL_DIR" ]; then
+    # Directory exists but isn't a git repo - backup and re-clone
+    warn "Directory $INSTALL_DIR exists but is not a git repository"
+    BACKUP_DIR="$INSTALL_DIR.backup.$(date +%Y%m%d%H%M%S)"
+    info "Backing up to $BACKUP_DIR and re-cloning..."
+    mv "$INSTALL_DIR" "$BACKUP_DIR"
+    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
 else
     info "Cloning repository to $INSTALL_DIR ..."
     mkdir -p "$(dirname "$INSTALL_DIR")"
