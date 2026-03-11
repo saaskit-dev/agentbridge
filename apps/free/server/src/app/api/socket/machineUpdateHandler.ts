@@ -28,7 +28,7 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
       if (t > Date.now()) {
         t = Date.now();
       }
-      if (t < Date.now() - 1000 * 60 * 10) {
+      if (t < Date.now() - 1000 * 60 * 3) {
         return;
       }
 

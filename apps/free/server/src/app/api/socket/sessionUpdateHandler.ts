@@ -203,7 +203,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       if (t > Date.now()) {
         t = Date.now();
       }
-      if (t < Date.now() - 1000 * 60 * 10) {
+      if (t < Date.now() - 1000 * 60 * 3) {
         return;
       }
 
@@ -307,8 +307,8 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       if (t > Date.now()) {
         t = Date.now();
       }
-      if (t < Date.now() - 1000 * 60 * 10) {
-        // Ignore if time is in the past 10 minutes
+      if (t < Date.now() - 1000 * 60 * 3) {
+        // Ignore if time is in the past 3 minutes
         return;
       }
 

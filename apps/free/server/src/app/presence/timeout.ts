@@ -16,7 +16,7 @@ export function startTimeout() {
         where: {
           active: true,
           lastActiveAt: {
-            lte: new Date(Date.now() - 1000 * 60 * 10), // 10 minutes
+            lte: new Date(Date.now() - 1000 * 60 * 3), // 3 minutes
           },
         },
       });
@@ -45,7 +45,7 @@ export function startTimeout() {
         where: {
           active: true,
           lastActiveAt: {
-            lte: new Date(Date.now() - 1000 * 60 * 10), // 10 minutes
+            lte: new Date(Date.now() - 1000 * 60 * 3), // 3 minutes
           },
         },
       });
