@@ -17,6 +17,7 @@
       "channel": "production",
       "environment": "production",
       "autoIncrement": true,
+      "prebuildCommand": "expo prebuild --clean",
       "env": {
         "APP_ENV": "production"
       }
@@ -29,6 +30,7 @@
       "channel": "production",
       "environment": "production",
       "autoIncrement": true,
+      "prebuildCommand": "expo prebuild --clean",
       "env": {
         "APP_ENV": "production"
       }

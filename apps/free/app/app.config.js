@@ -113,6 +113,7 @@ export default {
     plugins: [
       require('./plugins/withVersionSync.js'), // 自动同步版本到原生项目
       require('./plugins/withDevelopmentTeam.js'), // 自动写入 DEVELOPMENT_TEAM，防止 prebuild 后丢失
+      require('./plugins/withDevReleaseBundleId.js'), // Debug→.dev / Release→.preview (仅 APP_ENV=development)
       require('./plugins/withPushNotificationEntitlements.js'), // 自动配置推送 entitlements
       require('./plugins/withEinkCompatibility.js'),
       require('./plugins/withSourceBuildRN.js'),
