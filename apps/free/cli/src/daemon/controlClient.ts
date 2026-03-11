@@ -3,7 +3,7 @@
  * Used by CLI commands to interact with running daemon
  */
 
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
@@ -11,6 +11,25 @@ import { clearDaemonState, readDaemonState } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/controlClient');
+
+/**
+ * Read the PID from the daemon lock file
+ * This is useful when the daemon is still starting (waiting for credentials)
+ * and hasn't written daemon.state.json yet
+ */
+function readDaemonLockPid(): number | null {
+  try {
+    const lockFile = configuration.daemonLockFile;
+    if (!existsSync(lockFile)) {
+      return null;
+    }
+    const content = readFileSync(lockFile, 'utf-8').trim();
+    const pid = parseInt(content, 10);
+    return isNaN(pid) ? null : pid;
+  } catch {
+    return null;
+  }
+}
 
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
@@ -173,20 +192,32 @@ export async function cleanupDaemonState(): Promise<void> {
 
 export async function stopDaemon() {
   try {
-    const state = await readDaemonState();
-    if (!state) {
-      logger.debug('No daemon state found');
+    // First try to get PID from daemon state file
+    let state = await readDaemonState();
+    let pid = state?.pid;
+
+    // If no state file, check the lock file for PID
+    if (!pid) {
+      const lockPid = await readDaemonLockPid();
+      if (lockPid) {
+        pid = lockPid;
+        logger.debug(`Found daemon PID ${pid} from lock file`);
+      }
+    }
+
+    if (!pid) {
+      logger.debug('No daemon running (no state or lock file found)');
       return;
     }
 
-    logger.debug(`Stopping daemon with PID ${state.pid}`);
+    logger.debug(`Stopping daemon with PID ${pid}`);
 
     // Try HTTP graceful stop
     try {
       await stopDaemonHttp();
 
       // Wait for daemon to die
-      await waitForProcessDeath(state.pid, 8000);
+      await waitForProcessDeath(pid, 8000);
       logger.debug('Daemon stopped gracefully via HTTP');
       return;
     } catch (error) {
@@ -195,7 +226,7 @@ export async function stopDaemon() {
 
     // Force kill
     try {
-      process.kill(state.pid, 'SIGKILL');
+      process.kill(pid, 'SIGKILL');
       logger.debug('Force killed daemon');
     } catch (error) {
       logger.debug('Daemon already dead');
