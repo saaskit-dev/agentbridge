@@ -374,7 +374,7 @@ export class ApiMachineClient {
     });
 
     this.socket.on('connect_error', error => {
-      logger.error('[DAEMON] Machine connect failed', { machineId: this.machine.id, error: error.message });
+      logger.error('[DAEMON] Machine connect failed', undefined, { machineId: this.machine.id, error: error.message });
     });
 
     this.socket.io.on('error', (error: any) => {

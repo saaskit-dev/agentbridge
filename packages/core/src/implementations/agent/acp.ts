@@ -446,13 +446,13 @@ export class AcpBackend implements IAgentBackend {
       });
 
       this.process.on('error', err => {
-        logger.error('[ACP] Process error', { agent: this.transport.agentName, error: err.message });
+        logger.error('[ACP] Process error', err, { agent: this.transport.agentName });
         this.emit({ type: 'status', status: 'error', detail: err.message });
       });
 
       this.process.on('exit', (code, signal) => {
         if (!this.disposed && code !== 0 && code !== null) {
-          logger.error('[ACP] Process exit', { agent: this.transport.agentName, code, signal: signal || 'none' });
+          logger.error('[ACP] Process exit', undefined, { agent: this.transport.agentName, code, signal: signal || 'none' });
           this.emit({ type: 'status', status: 'stopped', detail: `Exit code: ${code}` });
         }
       });
@@ -807,14 +807,14 @@ export class AcpBackend implements IAgentBackend {
       // Send initial prompt if provided
       if (initialPrompt) {
         this.sendPrompt(sessionId, initialPrompt).catch(error => {
-          logger.error('[ACP] Initial prompt send failed', { agent: this.transport.agentName, error: String(error) });
+          logger.error('[ACP] Initial prompt send failed', undefined, { agent: this.transport.agentName, error: String(error) });
           this.emit({ type: 'status', status: 'error', detail: String(error) });
         });
       }
 
       return { sessionId };
     } catch (error) {
-      logger.error('[ACP] Session start failed', { agent: this.transport.agentName, error: String(error) });
+      logger.error('[ACP] Session start failed', error instanceof Error ? error : undefined, { agent: this.transport.agentName, error: String(error) });
       this.emit({
         type: 'status',
         status: 'error',
@@ -892,7 +892,7 @@ export class AcpBackend implements IAgentBackend {
 
       return { sessionId };
     } catch (error) {
-      logger.error('[ACP] Session load failed', { agent: this.transport.agentName, error: String(error) });
+      logger.error('[ACP] Session load failed', error instanceof Error ? error : undefined, { agent: this.transport.agentName, error: String(error) });
       this.emit({
         type: 'status',
         status: 'error',
@@ -1065,7 +1065,7 @@ export class AcpBackend implements IAgentBackend {
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
       // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
     } catch (error) {
-      logger.error('[ACP] Prompt send failed', { agent: this.transport.agentName, error: String(error) });
+      logger.error('[ACP] Prompt send failed', error instanceof Error ? error : undefined, { agent: this.transport.agentName, error: String(error) });
       this.waitingForResponse = false;
 
       // Extract error details for better error handling
