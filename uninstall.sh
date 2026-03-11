@@ -39,7 +39,6 @@ if [ -f "$BIN_DIR/free" ]; then
     if "$BIN_DIR/free" daemon uninstall 2>/dev/null; then
         ok "Daemon service uninstalled"
     else
-        # daemon uninstall might need sudo on some systems, or might not be installed
         warn "Could not uninstall daemon service (may need sudo or not installed)"
     fi
 fi
@@ -71,11 +70,17 @@ if [ -d "$LOG_DIR" ]; then
     removed=1
 fi
 
-# ── Step 5: Clean up empty parent dir ───────────────────────────────────────
+# ── Step 5: Remove daemon state files ─────────────────────────────────────────
 
-if [ -d "$FREE_HOME" ] && [ -z "$(ls -A "$FREE_HOME" 2>/dev/null)" ]; then
-    rmdir "$FREE_HOME"
-    ok "Removed empty $FREE_HOME"
+DAEMON_STATE="$FREE_HOME/daemon.state.json"
+DAEMON_LOCK="$FREE_HOME/daemon.state.json.lock"
+if [ -f "$DAEMON_STATE" ]; then
+    rm "$DAEMON_STATE"
+    ok "Removed daemon state"
+fi
+if [ -f "$DAEMON_LOCK" ]; then
+    rm "$DAEMON_LOCK"
+    ok "Removed daemon lock"
 fi
 
 # ── Step 6: Ask about authentication data ───────────────────────────────────
@@ -86,18 +91,28 @@ if [ -d "$AUTH_DIR" ] && [ -f "$AUTH_DIR/access.key" ]; then
     echo -e "${YELLOW}Authentication data found at $AUTH_DIR${NC}"
     echo -e "${YELLOW}This includes your login credentials and encryption keys.${NC}"
     echo ""
-    read -p "Remove authentication data? [y/N] " -r response
+    echo "  [1] Remove everything (complete uninstall)"
+    echo "  [2] Keep authentication data (you can re-install later without re-login)"
+    echo ""
+    read -p "Choose [1/2] (default: 2): " -r response
     case "$response" in
-        [yY][eE][sS])
+        1)
             rm -rf "$AUTH_DIR"
-            ok "Removed authentication data: $AUTH_DIR"
+            ok "Removed all data: $AUTH_DIR"
             removed=1
             ;;
         *)
             info "Keeping authentication data at $AUTH_DIR"
-            info "You can remove it manually later: rm -rf $AUTH_DIR"
+            info "To remove manually: rm -rf $AUTH_DIR"
             ;;
     esac
+fi
+
+# ── Step 7: Clean up empty parent dir ───────────────────────────────────────
+
+if [ -d "$FREE_HOME" ] && [ -z "$(ls -A "$FREE_HOME" 2>/dev/null)" ]; then
+    rmdir "$FREE_HOME"
+    ok "Removed empty $FREE_HOME"
 fi
 
 # ── Done ─────────────────────────────────────────────────────────────────────
