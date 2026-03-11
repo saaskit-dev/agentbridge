@@ -52,16 +52,19 @@ export class Sanitizer {
     if (depth >= MAX_DEPTH) return { _: '[DEEP_OBJECT]' }
 
     const result: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(obj)) {
+    for (const [key, nestedValue] of Object.entries(obj)) {
+      // Skip keys with empty string values to avoid over-redaction
+      if (nestedValue === '' || nestedValue === null || nestedValue === undefined) {
+        continue
+      }
       if (this.isSensitiveKey(key)) {
         result[key] = REDACTED
         continue
       }
-      result[key] = this.redactValue(value, depth)
+      result[key] = this.redactValue(nestedValue, depth)
     }
     return result
   }
-
   private redactValue(value: unknown, depth: number): unknown {
     if (value === null || value === undefined) return value
     if (typeof value === 'string') return this.truncateString(value)
@@ -70,7 +73,6 @@ export class Sanitizer {
     if (value instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(value))) {
       return `[BINARY ${(value as Uint8Array).byteLength}]`
     }
-
     if (Array.isArray(value)) {
       const truncated = value.slice(0, MAX_ARRAY_ELEMENTS).map(v => this.redactValue(v, depth + 1))
       if (value.length > MAX_ARRAY_ELEMENTS) {
@@ -78,29 +80,29 @@ export class Sanitizer {
       }
       return truncated
     }
-
     if (typeof value === 'object') {
       return this.redactObject(value as Record<string, unknown>, depth + 1)
     }
-
     return String(value)
   }
-
   private isSensitiveKey(key: string): boolean {
     const lower = key.toLowerCase()
     for (const sensitive of this.sensitiveKeys) {
       // Single-character keys (e.g. 'c' for encrypted payload field) must match exactly,
+      // Multi-character keys use includes() for partial match
       // otherwise any key containing that letter would be over-redacted (RFC §6.1).
-      if (sensitive.length === 1 ? lower === sensitive : lower.includes(sensitive)) return true
+      if (sensitive.length === 1) {
+        if (lower === sensitive) return true
+      } else {
+        if (lower.includes(sensitive)) return true
+      }
     }
     return false
   }
-
   private truncateString(str: string): string {
     if (str.length <= this.maxStringLength) return str
     return str.slice(0, this.maxStringLength) + '...[truncated]'
   }
-
   private redactString(str: string): string {
     // RFC §6.2: Redact key=value / key: value patterns in error messages where
     // the key name is a known sensitive term (e.g. "token=abc123" → "token=[REDACTED]").
