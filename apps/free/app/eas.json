@@ -3,9 +3,6 @@
     "version": ">= 14.2.0",
     "appVersionSource": "local"
   },
-  "hooks": {
-    "pre_install": "./scripts/eas-build-pre-install.sh"
-  },
   "build": {
     "development": {
       "developmentClient": true,
@@ -27,6 +24,7 @@
       "distribution": "internal",
       "channel": "preview",
       "environment": "preview",
+      "prebuildCommand": "npx expo prebuild --no-install",
       "env": {
         "APP_ENV": "development-preview"
       }
@@ -35,6 +33,7 @@
       "distribution": "store",
       "channel": "preview",
       "environment": "preview",
+      "prebuildCommand": "npx expo prebuild --no-install",
       "env": {
         "APP_ENV": "development-preview"
       }
@@ -42,6 +41,7 @@
     "production": {
       "channel": "production",
       "environment": "production",
+      "prebuildCommand": "npx expo prebuild --no-install",
       "env": {
         "APP_ENV": "production"
       }
@@ -53,6 +53,7 @@
       },
       "channel": "production",
       "environment": "production",
+      "prebuildCommand": "npx expo prebuild --no-install",
       "env": {
         "APP_ENV": "production"
       }
