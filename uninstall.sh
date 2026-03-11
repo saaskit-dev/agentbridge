@@ -8,14 +8,16 @@ set -euo pipefail
 
 INSTALL_DIR="${FREE_INSTALL_DIR:-$HOME/.free/source}"
 BIN_DIR="${FREE_BIN_DIR:-$HOME/.local/bin}"
+FREE_HOME="${FREE_HOME:-$HOME/.free}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-info()  { echo -e "  $*"; }
+info()  { echo -e "${CYAN}[info]${NC} $*"; }
 ok()    { echo -e "${GREEN}[ok]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[warn]${NC} $*"; }
 
@@ -25,7 +27,25 @@ echo ""
 
 removed=0
 
-# Remove binaries
+# ── Step 1: Stop and uninstall daemon service ───────────────────────────────
+
+if [ -f "$BIN_DIR/free" ]; then
+    info "Stopping daemon service..."
+    if "$BIN_DIR/free" daemon stop 2>/dev/null; then
+        ok "Daemon stopped"
+    fi
+
+    info "Uninstalling daemon service..."
+    if "$BIN_DIR/free" daemon uninstall 2>/dev/null; then
+        ok "Daemon service uninstalled"
+    else
+        # daemon uninstall might need sudo on some systems, or might not be installed
+        warn "Could not uninstall daemon service (may need sudo or not installed)"
+    fi
+fi
+
+# ── Step 2: Remove binaries ───────────────────────────────────────────────────
+
 for bin in free free-mcp; do
     if [ -f "$BIN_DIR/$bin" ]; then
         rm "$BIN_DIR/$bin"
@@ -34,19 +54,53 @@ for bin in free free-mcp; do
     fi
 done
 
-# Remove source
+# ── Step 3: Remove source code ────────────────────────────────────────────────
+
 if [ -d "$INSTALL_DIR" ]; then
     rm -rf "$INSTALL_DIR"
     ok "Removed $INSTALL_DIR"
     removed=1
 fi
 
-# Clean up empty parent dir
-FREE_HOME="${INSTALL_DIR%/source}"
+# ── Step 4: Remove logs ───────────────────────────────────────────────────────
+
+LOG_DIR="$FREE_HOME/logs"
+if [ -d "$LOG_DIR" ]; then
+    rm -rf "$LOG_DIR"
+    ok "Removed logs: $LOG_DIR"
+    removed=1
+fi
+
+# ── Step 5: Clean up empty parent dir ───────────────────────────────────────
+
 if [ -d "$FREE_HOME" ] && [ -z "$(ls -A "$FREE_HOME" 2>/dev/null)" ]; then
     rmdir "$FREE_HOME"
     ok "Removed empty $FREE_HOME"
 fi
+
+# ── Step 6: Ask about authentication data ───────────────────────────────────
+
+AUTH_DIR="$FREE_HOME"
+if [ -d "$AUTH_DIR" ] && [ -f "$AUTH_DIR/access.key" ]; then
+    echo ""
+    echo -e "${YELLOW}Authentication data found at $AUTH_DIR${NC}"
+    echo -e "${YELLOW}This includes your login credentials and encryption keys.${NC}"
+    echo ""
+    read -p "Remove authentication data? [y/N] " -r response
+    case "$response" in
+        [yY][eE][sS])
+            rm -rf "$AUTH_DIR"
+            ok "Removed authentication data: $AUTH_DIR"
+            removed=1
+            ;;
+        *)
+            info "Keeping authentication data at $AUTH_DIR"
+            info "You can remove it manually later: rm -rf $AUTH_DIR"
+            ;;
+    esac
+fi
+
+# ── Done ─────────────────────────────────────────────────────────────────────
 
 if [ "$removed" -eq 0 ]; then
     warn "Nothing to uninstall — Free CLI was not found."
