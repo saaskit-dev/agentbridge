@@ -1,0 +1,9 @@
+# EAS Build ignore file
+# Excluding ios/ forces EAS to run expo prebuild (CNG mode),
+# which correctly sets the bundle ID from app.config.js and
+# copies GOOGLE_SERVICES_PLIST / GOOGLE_SERVICES_JSON from
+# EAS file secrets via the googleServicesFile plugin.
+ios/
+
+# firebase/ contains local dev secrets — never upload
+firebase/
