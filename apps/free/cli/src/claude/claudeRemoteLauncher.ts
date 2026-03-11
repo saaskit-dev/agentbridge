@@ -422,7 +422,22 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
           session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
         }
       } catch (e) {
-        logger.debug('[remote]: launch error', { error: String(e) });
+        // Log full error details
+      const errorDetails = e instanceof Error
+        ? {
+            name: e.name,
+            message: e.message,
+            stack: e.stack,
+            code: (e as any).code
+          }
+        : {
+            name: typeof e === 'object' && e !== null ? e.constructor?.name : 'Unknown',
+            message: String(e),
+          }
+      logger.error('[remote]: launch error with details', {
+        error: errorDetails,
+        originalError: e
+      });
         if (!exitReason) {
           session.client.closeClaudeSessionTurn('failed');
           session.client.sendSessionEvent({
