@@ -224,7 +224,7 @@ class RevenueCatWeb implements RevenueCatInterface {
         .map(pkg => {
           const product = pkg.webBillingProduct;
           if (!product) {
-            logger.error('Package has no product:', pkg);
+            logger.error('Package has no product:', undefined, { pkg });
             return null;
           }
           return {
