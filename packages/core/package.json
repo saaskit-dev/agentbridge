@@ -75,6 +75,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
+    "rotating-file-stream": "^3.2.9",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {

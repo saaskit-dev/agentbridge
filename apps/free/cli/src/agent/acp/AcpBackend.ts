@@ -42,6 +42,8 @@ import {
   type HandlerContext,
   DEFAULT_IDLE_TIMEOUT_MS,
   DEFAULT_TOOL_CALL_TIMEOUT_MS,
+  DEFAULT_RESPONSE_TIMEOUT_MS,
+  TOOL_CALL_ACTIVE_TIMEOUT_MS,
   handleAgentMessageChunk,
   handleAgentThoughtChunk,
   handleToolCallUpdate,
@@ -837,9 +839,9 @@ export class AcpBackend implements AgentBackend {
           this.idleTimeout = null;
         }, ms);
       },
+      resetResponseCompleteTimeout: () => this.resetResponseCompleteTimeout(),
     };
   }
-
   private handleSessionUpdate(params: SessionNotification): void {
     const notification = params as ExtendedSessionNotification;
     const update = notification.update;
@@ -928,6 +930,10 @@ export class AcpBackend implements AgentBackend {
   private idleResolver: (() => void) | null = null;
   private waitingForResponse = false;
 
+  // Dynamic response complete timeout (activity-based reset)
+  private responseCompleteTimeout: NodeJS.Timeout | null = null;
+  private responseCompleteRejecter: ((error: Error) => void) | null = null;
+
   async sendPrompt(sessionId: SessionId, prompt: string): Promise<void> {
     // Check if prompt contains change_title instruction (via optional callback)
     const promptHasChangeTitle = this.options.hasChangeTitleInstruction?.(prompt) ?? false;
@@ -1008,23 +1014,97 @@ export class AcpBackend implements AgentBackend {
   }
 
   /**
-   * Wait for the response to complete (idle status after all chunks received)
-   * Call this after sendPrompt to wait for Gemini to finish responding
+   * Get appropriate timeout based on current activity state
    */
-  async waitForResponseComplete(timeoutMs: number = 120000): Promise<void> {
+  private getResponseCompleteTimeoutMs(): number {
+    if (this.activeToolCalls.size > 0) {
+      return TOOL_CALL_ACTIVE_TIMEOUT_MS; // 20 minutes when tool calls are active
+    }
+    return DEFAULT_RESPONSE_TIMEOUT_MS; // 10 minutes default
+  }
+
+  /**
+   * Reset the response complete timeout (called on activity)
+   */
+  private resetResponseCompleteTimeout(): void {
+    if (!this.waitingForResponse) {
+      return; // Not waiting, nothing to reset
+    }
+
+    // Clear existing timeout
+    if (this.responseCompleteTimeout) {
+      clearTimeout(this.responseCompleteTimeout);
+    }
+
+    const timeoutMs = this.getResponseCompleteTimeoutMs();
+    this.responseCompleteTimeout = setTimeout(async () => {
+      this.responseCompleteTimeout = null;
+      const rejecter = this.responseCompleteRejecter;
+      this.responseCompleteRejecter = null;
+      this.idleResolver = null;
+      this.waitingForResponse = false;
+      const timeoutMin = Math.round(timeoutMs / 60000);
+      
+      // Cancel the current LLM turn on timeout
+      await this.cancelCurrentTurn();
+      
+      if (rejecter) {
+        rejecter(
+          new Error(
+            `Response timed out after ${timeoutMin} minutes. ` +
+            `The LLM may still be running. You can continue sending messages.`
+          )
+        );
+      }
+    }, timeoutMs);
+  }
+
+  /**
+   * Helper to cancel current LLM turn on timeout
+   */
+  private async cancelCurrentTurn(): Promise<void> {
+    if (!this.acpSessionId || !this.connection) {
+      return;
+    }
+    
+    try {
+      await this.connection.cancel({ sessionId: this.acpSessionId });
+      this.emit({ type: 'status', status: 'stopped', detail: 'Response timed out after inactivity' });
+    } catch (error) {
+      logger.debug('[AcpBackend] Error cancelling turn on timeout:', error);
+    }
+  }
+
+  /**
+   * Wait for the response to complete (idle status after all chunks received)
+   * Call this after sendPrompt to wait for the agent to finish responding
+   *
+   * Timeout is dynamic and activity-based:
+   * - 10 minutes default (reset on each activity)
+   * - 20 minutes when tool calls are active
+   *
+   * On timeout, the current LLM turn is cancelled automatically.
+   * The session remains active and users can continue sending messages.
+   */
+  async waitForResponseComplete(_timeoutMs?: number): Promise<void> {
     if (!this.waitingForResponse) {
       return; // Already completed or no prompt sent
     }
 
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.idleResolver = null;
-        this.waitingForResponse = false;
-        reject(new Error('Timeout waiting for response to complete'));
-      }, timeoutMs);
+      // Store rejecter for timeout callback
+      this.responseCompleteRejecter = reject;
+
+      // Set initial timeout
+      this.resetResponseCompleteTimeout();
 
       this.idleResolver = () => {
-        clearTimeout(timeout);
+        // Clear timeout on success
+        if (this.responseCompleteTimeout) {
+          clearTimeout(this.responseCompleteTimeout);
+          this.responseCompleteTimeout = null;
+        }
+        this.responseCompleteRejecter = null;
         this.idleResolver = null;
         this.waitingForResponse = false;
         resolve();
@@ -1036,6 +1116,12 @@ export class AcpBackend implements AgentBackend {
    * Helper to emit idle status and resolve any waiting promises
    */
   private emitIdleStatus(): void {
+    // Clear response complete timeout
+    if (this.responseCompleteTimeout) {
+      clearTimeout(this.responseCompleteTimeout);
+      this.responseCompleteTimeout = null;
+    }
+
     this.emit({ type: 'status', status: 'idle' });
     // Resolve any waiting promises
     if (this.idleResolver) {

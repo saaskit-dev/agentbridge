@@ -25,6 +25,14 @@ export const DEFAULT_IDLE_TIMEOUT_MS = 500;
 export const DEFAULT_TOOL_CALL_TIMEOUT_MS = 120_000;
 
 /**
+ * Response complete timeout constants (dynamic, activity-based reset)
+ * - DEFAULT_RESPONSE_TIMEOUT_MS: Default timeout (10 minutes)
+ * - TOOL_CALL_ACTIVE_TIMEOUT_MS: When tool calls are executing (20 minutes)
+ */
+export const DEFAULT_RESPONSE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+export const TOOL_CALL_ACTIVE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+
+/**
  * Extended session update structure with all possible fields
  */
 export interface SessionUpdate {
@@ -75,6 +83,8 @@ export interface HandlerContext {
   clearIdleTimeout: () => void;
   /** Set idle timeout helper */
   setIdleTimeout: (callback: () => void, ms: number) => void;
+  /** Reset response complete timeout based on current activity state */
+  resetResponseCompleteTimeout: () => void;
 }
 
 /**
@@ -186,6 +196,9 @@ export function handleAgentMessageChunk(update: SessionUpdate, ctx: HandlerConte
 
     // Reset idle timeout - more chunks are coming
     ctx.clearIdleTimeout();
+
+    // Reset response complete timeout on activity
+    ctx.resetResponseCompleteTimeout();
 
     // Set timeout to emit 'idle' after a short delay when no more chunks arrive
     const idleTimeoutMs = ctx.transport.getIdleTimeout?.() ?? DEFAULT_IDLE_TIMEOUT_MS;
@@ -305,6 +318,9 @@ export function startToolCall(
   // Clear idle timeout - tool call is starting
   ctx.clearIdleTimeout();
 
+  // Reset response complete timeout (tool call started = active)
+  ctx.resetResponseCompleteTimeout();
+
   // Emit running status
   ctx.emit({ type: 'status', status: 'running' });
 
@@ -369,6 +385,9 @@ export function completeToolCall(
     ctx.clearIdleTimeout();
     logger.debug('[AcpBackend] All tool calls completed, emitting idle status');
     ctx.emitIdleStatus();
+  } else {
+    // Still have active tool calls - reset timeout to use longer timeout
+    ctx.resetResponseCompleteTimeout();
   }
 }
 
@@ -460,6 +479,9 @@ export function failToolCall(
     ctx.clearIdleTimeout();
     logger.debug('[AcpBackend] All tool calls completed/failed, emitting idle status');
     ctx.emitIdleStatus();
+  } else {
+    // Still have active tool calls - reset timeout to use longer timeout
+    ctx.resetResponseCompleteTimeout();
   }
 }
 
