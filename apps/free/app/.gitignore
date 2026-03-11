@@ -5,11 +5,11 @@
 expo-env.d.ts
 # @end expo-cli
 
-# Firebase config files — injected at build time via EAS secrets, do not commit
-ios/Freedev/GoogleService-Info.plist
+# Firebase config files — real configs injected at build time via EAS secrets
+# ios/Freedev/GoogleService-Info.plist is committed as a placeholder (dummy values);
+# the real file is injected by eas-build-pre-install.sh on EAS servers.
 android/app/google-services.json
 google-services.json
-GoogleService-Info*.plist
 firebase/GoogleService-Info*.plist
 firebase/google-services.json
 # 环境变量（含敏感 key，不提交）
