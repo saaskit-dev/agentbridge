@@ -9,16 +9,16 @@ Core SDK for AgentBridge — Type definitions, interface contracts, and cross-pl
 
 **Interfaces define contracts, implementations provide capabilities, factory patterns enable dependency inversion.**
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      @agentbridge/core                           │
-│                                                                  │
-│  ┌──────────────┐   ┌────────────────┐   ┌──────────────────┐   │
-│  │    types/    │ → │  interfaces/   │ ← │ implementations/ │   │
-│  │  Pure Types  │   │   Contracts    │   │ Platform-Specific│   │
-│  └──────────────┘   └────────────────┘   └──────────────────┘   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Core["@agentbridge/core"]
+        Types["types/<br/>Pure Types"]
+        Interfaces["interfaces/<br/>Contracts"]
+        Implementations["implementations/<br/>Platform-Specific"]
+    end
+
+    Types --> Interfaces
+    Implementations --> Interfaces
 ```
 
 ## Installation
