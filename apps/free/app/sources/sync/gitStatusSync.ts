@@ -146,7 +146,7 @@ export class GitStatusSync {
       });
 
       if (!statusResult || !statusResult.success) {
-        logger.error('Failed to get git status:', statusResult?.error || 'No response');
+        logger.error('Failed to get git status:', undefined, { error: statusResult?.error || 'No response' });
         return;
       }
 
