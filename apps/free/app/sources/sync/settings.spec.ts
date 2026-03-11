@@ -106,7 +106,6 @@ describe('settings', () => {
         showLineNumbers: true,
         showLineNumbersInToolViews: false,
         wrapLinesInDiffs: false,
-        analyticsOptOut: false,
         inferenceOpenAIKey: null,
         experiments: false,
         useEnhancedSessionWizard: false,
@@ -141,7 +140,6 @@ describe('settings', () => {
         showLineNumbers: true,
         showLineNumbersInToolViews: false,
         wrapLinesInDiffs: false,
-        analyticsOptOut: false,
         inferenceOpenAIKey: null,
         experiments: false,
         useEnhancedSessionWizard: false,
@@ -176,7 +174,6 @@ describe('settings', () => {
         showLineNumbers: true,
         showLineNumbersInToolViews: false,
         wrapLinesInDiffs: false,
-        analyticsOptOut: false,
         inferenceOpenAIKey: null,
         experiments: false,
         useEnhancedSessionWizard: false,
@@ -213,7 +210,6 @@ describe('settings', () => {
         showLineNumbers: true,
         showLineNumbersInToolViews: false,
         wrapLinesInDiffs: false,
-        analyticsOptOut: false,
         inferenceOpenAIKey: null,
         experiments: false,
         useEnhancedSessionWizard: false,
@@ -255,7 +251,6 @@ describe('settings', () => {
         showLineNumbers: true,
         showLineNumbersInToolViews: false,
         wrapLinesInDiffs: false,
-        analyticsOptOut: false,
         inferenceOpenAIKey: null,
         experiments: false,
         useEnhancedSessionWizard: false,
@@ -306,7 +301,6 @@ describe('settings', () => {
         showLineNumbers: true,
         showLineNumbersInToolViews: false,
         wrapLinesInDiffs: false,
-        analyticsOptOut: false,
         inferenceOpenAIKey: null,
         experiments: false,
         useEnhancedSessionWizard: false,
@@ -369,7 +363,6 @@ describe('settings', () => {
         showLineNumbers: true,
         showLineNumbersInToolViews: false,
         wrapLinesInDiffs: false,
-        analyticsOptOut: false,
         inferenceOpenAIKey: null,
         experiments: false,
         alwaysShowContextSize: false,
@@ -824,13 +817,11 @@ describe('settings', () => {
         viewInline: false,
         experiments: false,
         useEnhancedSessionWizard: false,
-        analyticsOptOut: false,
       });
 
       const pendingChanges: Partial<Settings> = {
         viewInline: true,
         useEnhancedSessionWizard: true,
-        analyticsOptOut: true,
       };
 
       const merged = applySettings(serverSettings, pendingChanges);
@@ -838,7 +829,6 @@ describe('settings', () => {
       // All pending changes applied
       expect(merged.viewInline).toBe(true);
       expect(merged.useEnhancedSessionWizard).toBe(true);
-      expect(merged.analyticsOptOut).toBe(true);
       // Un-changed field from server
       expect(merged.experiments).toBe(false);
     });
