@@ -500,7 +500,7 @@ export async function startDaemon(): Promise<void> {
           const tmux = getTmuxUtilities(tmuxSessionName);
 
           // Construct command for the CLI
-          const cliPath = join(projectPath(), 'dist', 'index.mjs');
+          const cliPath = join(projectPath(), 'dist', 'cli.mjs');
           // Determine agent command - support claude, codex, gemini, and opencode
           const agent =
             options.agent === 'gemini'
