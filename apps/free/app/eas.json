@@ -24,7 +24,7 @@
       "distribution": "internal",
       "channel": "preview",
       "environment": "preview",
-      "prebuildCommand": "bash scripts/eas-firebase-inject.sh",
+
       "env": {
         "APP_ENV": "development-preview"
       }
@@ -33,7 +33,7 @@
       "distribution": "store",
       "channel": "preview",
       "environment": "preview",
-      "prebuildCommand": "bash scripts/eas-firebase-inject.sh",
+
       "env": {
         "APP_ENV": "development-preview"
       }
@@ -41,7 +41,7 @@
     "production": {
       "channel": "production",
       "environment": "production",
-      "prebuildCommand": "bash scripts/eas-firebase-inject.sh",
+
       "env": {
         "APP_ENV": "production"
       }
@@ -53,7 +53,7 @@
       },
       "channel": "production",
       "environment": "production",
-      "prebuildCommand": "bash scripts/eas-firebase-inject.sh",
+
       "env": {
         "APP_ENV": "production"
       }
