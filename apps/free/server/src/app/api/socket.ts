@@ -18,12 +18,14 @@ import { Fastify } from './types';
 import { auth } from '@/app/auth/auth';
 import {
   buildMachineActivityEphemeral,
+  buildSessionActivityEphemeral,
   ClientConnection,
   eventRouter,
 } from '@/app/events/eventRouter';
 import { Logger, continueTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { runWithTrace } from '@/utils/requestTrace';
 import { onShutdown } from '@/utils/shutdown';
+import { db } from '@/storage/db';
 
 const log = new Logger('app/api/socket');
 export async function startSocket(app: Fastify) {
@@ -148,7 +150,7 @@ export async function startSocket(app: Fastify) {
       });
     }
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       websocketEventsCounter.inc({ event_type: 'disconnect' });
 
       // Cleanup connections
@@ -157,16 +159,61 @@ export async function startSocket(app: Fastify) {
 
       log.info(`User disconnected: ${userId}`);
 
-      // Broadcast daemon offline status
+      // Broadcast daemon offline status and update database
       if (connection.connectionType === 'machine-scoped') {
+        const now = Date.now();
+        // Update database
+        try {
+          await db.machine.update({
+            where: {
+              accountId_id: {
+                accountId: userId,
+                id: connection.machineId,
+              },
+            },
+            data: { active: false, lastActiveAt: new Date(now) },
+          });
+        } catch (error) {
+          log.error(`Error updating machine active status: ${error}`);
+        }
+        // Broadcast ephemeral event
         const machineActivity = buildMachineActivityEphemeral(
           connection.machineId,
           false,
-          Date.now()
+          now
         );
         eventRouter.emitEphemeral({
           userId,
           payload: machineActivity,
+          recipientFilter: { type: 'user-scoped-only' },
+        });
+      }
+
+      // Broadcast session offline status and update database
+      if (connection.connectionType === 'session-scoped') {
+        const now = Date.now();
+        // Update database
+        try {
+          await db.session.update({
+            where: {
+              id: connection.sessionId,
+              accountId: userId,
+            },
+            data: { active: false, lastActiveAt: new Date(now) },
+          });
+        } catch (error) {
+          log.error(`Error updating session active status: ${error}`);
+        }
+        // Broadcast ephemeral event
+        const sessionActivity = buildSessionActivityEphemeral(
+          connection.sessionId,
+          false,
+          now,
+          false
+        );
+        eventRouter.emitEphemeral({
+          userId,
+          payload: sessionActivity,
           recipientFilter: { type: 'user-scoped-only' },
         });
       }
