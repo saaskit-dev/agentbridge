@@ -140,6 +140,15 @@ if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     echo ""
 fi
 
+# ── Install daemon as background service ────────────────────────────────────
+
+info "Installing daemon as background service..."
+if "$BIN_DIR/free" daemon install 2>/dev/null; then
+    ok "Daemon installed and started"
+else
+    warn "Could not auto-install daemon service. Run 'free daemon install' manually after restarting your shell."
+fi
+
 # ── Done ─────────────────────────────────────────────────────────────────────
 
 echo ""

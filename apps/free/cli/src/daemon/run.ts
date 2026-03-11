@@ -184,14 +184,19 @@ export async function startDaemon(): Promise<void> {
   } else {
     logger.debug('[DAEMON RUN] Daemon version matches, keeping existing daemon');
     console.log('Daemon already running with matching version');
-    process.exit(0);
+    // When started as a supervised service (start-sync), exit with code 1 so
+    // LaunchAgent/systemd KeepAlive keeps retrying. This ensures that if the
+    // existing daemon (started manually) eventually stops, the service manager
+    // will start a supervised instance automatically.
+    // When started manually by the user (start), exit 0 — no error to report.
+    process.exit(configuration.isDaemonProcess ? 1 : 0);
   }
 
   // Acquire exclusive lock (proves daemon is running)
   const daemonLockHandle = await acquireDaemonLock(5, 200);
   if (!daemonLockHandle) {
     logger.debug('[DAEMON RUN] Daemon lock file already held, another daemon is running');
-    process.exit(0);
+    process.exit(configuration.isDaemonProcess ? 1 : 0);
   }
 
   // At this point we should be safe to startup the daemon:
