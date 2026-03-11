@@ -5,7 +5,9 @@
  * No imports from sync or apiSocket — pure data store.
  */
 
-type AppWireTrace = { tid: string; sid: string; ses?: string; mid?: string };
+import type { TraceContext } from '@saaskit-dev/agentbridge/telemetry';
+
+export type AppWireTrace = { tid: string; sid: string; pid?: string; ses?: string; mid?: string };
 
 const _sessionTraces = new Map<string, AppWireTrace>();
 
@@ -25,4 +27,18 @@ export function getSessionTrace(sessionId: string): AppWireTrace | undefined {
 /** Remove trace when a session is closed. */
 export function clearSessionTrace(sessionId: string): void {
   _sessionTraces.delete(sessionId);
+}
+
+/**
+ * Convert AppWireTrace to TraceContext for Logger.
+ * Used by appTelemetry's global context provider.
+ */
+export function wireTraceToContext(trace: AppWireTrace): TraceContext {
+  return {
+    traceId: trace.tid,
+    spanId: trace.sid,
+    parentSpanId: trace.pid,
+    sessionId: trace.ses,
+    machineId: trace.mid,
+  };
 }

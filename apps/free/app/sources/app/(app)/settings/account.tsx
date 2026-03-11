@@ -11,6 +11,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { layout } from '@/components/layout';
+import { Switch } from '@/components/Switch';
 import { Typography } from '@/constants/Typography';
 import { useConnectAccount } from '@/hooks/useConnectAccount';
 import { useFreeAction } from '@/hooks/useFreeAction';
@@ -18,7 +19,9 @@ import { Modal } from '@/modal';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl } from '@/sync/profile';
-import { useSettingMutable, useProfile } from '@/sync/storage';
+import { useLocalSettingMutable, useProfile } from '@/sync/storage';
+import { setAnalyticsEnabled } from '@/appTelemetry';
+import { TokenStorage } from '@/auth/tokenStorage';
 import { t } from '@/text';
 import { sync } from '@/sync/sync';
 
@@ -28,6 +31,7 @@ export default React.memo(() => {
   const router = useRouter();
   const [showSecret, setShowSecret] = useState(false);
   const [copiedRecently, setCopiedRecently] = useState(false);
+  const [analyticsEnabled, setAnalyticsEnabledSetting] = useLocalSettingMutable('analyticsEnabled');
   const { connectAccount, isLoading: isConnecting } = useConnectAccount();
   const profile = useProfile();
 
@@ -310,6 +314,32 @@ export default React.memo(() => {
             </Pressable>
           </ItemGroup>
         )}
+
+        {/* Privacy - Analytics (RemoteSink) */}
+        <ItemGroup
+          title={t('settingsAccount.privacy')}
+          footer={t('settingsAccount.privacyDescription')}
+        >
+          <Item
+            title={t('settingsAccount.analytics')}
+            subtitle={
+              analyticsEnabled
+                ? t('settingsAccount.analyticsEnabled')
+                : t('settingsAccount.analyticsDisabled')
+            }
+            rightElement={
+              <Switch
+                value={analyticsEnabled ?? true}
+                onValueChange={async (enabled: boolean) => {
+                  setAnalyticsEnabledSetting(enabled);
+                  const credentials = await TokenStorage.getCredentials();
+                  setAnalyticsEnabled(enabled, credentials?.token);
+                }}
+              />
+            }
+            showChevron={false}
+          />
+        </ItemGroup>
 
         {/* Danger Zone */}
         <ItemGroup title={t('settingsAccount.dangerZone')}>
