@@ -446,7 +446,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = app.saaskit.freecode;
+				PRODUCT_BUNDLE_IDENTIFIER = app.saaskit.freecode.preview;
 				PRODUCT_NAME = Freedev;
 				SWIFT_OBJC_BRIDGING_HEADER = "Freedev/Freedev-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
