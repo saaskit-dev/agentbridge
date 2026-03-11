@@ -81,10 +81,10 @@ export async function installUserAgent(): Promise<void> {
                 <integer>5</integer>
 
                 <key>StandardErrorPath</key>
-                <string>${logDir}/daemon.err</string>
+                <string>${logDir}/daemon-stderr.log</string>
 
                 <key>StandardOutPath</key>
-                <string>${logDir}/daemon.out</string>
+                <string>${logDir}/daemon-stdout.log</string>
 
                 <key>WorkingDirectory</key>
                 <string>${homedir()}</string>

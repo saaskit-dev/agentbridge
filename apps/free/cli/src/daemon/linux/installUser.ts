@@ -48,8 +48,8 @@ Restart=always
 RestartSec=5
 
 # Logging
-StandardOutput=append:${logDir}/daemon.out
-StandardError=append:${logDir}/daemon.err
+StandardOutput=append:${logDir}/daemon-stdout.log
+StandardError=append:${logDir}/daemon-stderr.log
 
 # Environment
 Environment="PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"

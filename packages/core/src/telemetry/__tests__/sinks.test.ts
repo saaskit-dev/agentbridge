@@ -312,41 +312,52 @@ describe('FileSink', () => {
     await sink.close()
   })
 
-  it('rotates to a new file when maxFileSize is exceeded (sync mode, RFC §5.3)', () => {
-    // maxFileSize of 200 bytes — each entry is ~100 bytes
-    const sink = new FileSink({ dir: testDir, prefix: 'rotate', bufferFlushMs: 0, maxFileSize: 200 })
+  it('uses hourly filename format', () => {
+    const sink = new FileSink({ dir: testDir, prefix: 'hourly', bufferFlushMs: 0 })
+    const path = sink.getFilePath()
+    // Filename should be like: hourly-2026-03-11-09.jsonl
+    expect(path).toMatch(/hourly-\d{4}-\d{2}-\d{2}-\d{2}\.jsonl$/)
+  })
 
-    sink.write(makeEntry({ message: 'entry-1' }))
-    sink.write(makeEntry({ message: 'entry-2' }))
-    sink.write(makeEntry({ message: 'entry-3' })) // should trigger rotation
+  it('appends to existing file from current hour', async () => {
+    const sink1 = new FileSink({ dir: testDir, prefix: 'append', bufferFlushMs: 0 })
+    sink1.write(makeEntry({ message: 'first' }))
+    await sink1.close()
 
-    const files = readdirSync(testDir).filter(f => f.startsWith('rotate') && f.endsWith('.jsonl'))
-    // After rotation, at least 2 files should exist
-    expect(files.length).toBeGreaterThanOrEqual(2)
+    // Simulate new process starting - should append to same file
+    const sink2 = new FileSink({ dir: testDir, prefix: 'append', bufferFlushMs: 0 })
+    sink2.write(makeEntry({ message: 'second' }))
+    await sink2.close()
 
-    // Total content across all files should have all 3 entries
-    const allContent = files.map(f => readFileSync(join(testDir, f), 'utf-8')).join('')
-    const lines = allContent.trim().split('\n').filter(Boolean)
-    expect(lines).toHaveLength(3)
+    const files = readdirSync(testDir).filter(f => f.startsWith('append') && f.endsWith('.jsonl'))
+    expect(files).toHaveLength(1)
+
+    const content = readFileSync(join(testDir, files[0]), 'utf-8')
+    const lines = content.trim().split('\n').filter(Boolean)
+    expect(lines).toHaveLength(2)
+    expect(JSON.parse(lines[0]).message).toBe('first')
+    expect(JSON.parse(lines[1]).message).toBe('second')
   })
 
   it('deletes oldest files when maxFiles is exceeded (RFC §5.3)', () => {
-    // maxFiles: 2, write enough to trigger 3 rotations
+    // Pre-create log files with different hours
+    const prefixes = ['maxfiles-2026-01-01-00', 'maxfiles-2026-01-01-01', 'maxfiles-2026-01-01-02',
+                      'maxfiles-2026-01-01-03', 'maxfiles-2026-01-01-04']
+    for (const p of prefixes) {
+      writeFileSync(join(testDir, `${p}.jsonl`), 'test\n')
+    }
+
+    // Create sink with maxFiles=2 - should trigger cleanup
     const sink = new FileSink({
       dir: testDir,
       prefix: 'maxfiles',
       bufferFlushMs: 0,
-      maxFileSize: 10, // very small to force rotation on every write
       maxFiles: 2,
     })
-
-    // Each write will exceed 10 bytes and trigger rotation
-    for (let i = 0; i < 5; i++) {
-      sink.write(makeEntry({ message: `msg-${i}` }))
-    }
+    sink.write(makeEntry({ message: 'new-entry' }))
 
     const files = readdirSync(testDir).filter(f => f.startsWith('maxfiles') && f.endsWith('.jsonl'))
-    // Should never exceed maxFiles + 1 (the current active file)
+    // Should keep at most maxFiles + 1 (including current hour's file)
     expect(files.length).toBeLessThanOrEqual(3)
   })
 
