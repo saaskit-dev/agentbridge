@@ -33,6 +33,43 @@ export class Logger {
       })
     }
   }
+  /**
+   * Convert any value to a readable string for error logging.
+   * Never returns [object Object] - always produces readable output.
+   */
+  private static errorToString(err: unknown): string {
+    if (err instanceof Error) {
+      return err.message
+    }
+    if (typeof err === 'string') {
+      return err
+    }
+    if (typeof err === 'number' || typeof err === 'boolean') {
+      return String(err)
+    }
+    if (err === null) {
+      return 'null'
+    }
+    if (err === undefined) {
+      return 'undefined'
+    }
+    // For objects, try JSON.stringify for readable output
+    try {
+      return JSON.stringify(err)
+    } catch {
+      // If JSON.stringify fails (circular ref, etc), fall back to Object.prototype.toString
+      return Object.prototype.toString.call(err)
+    }
+  }
+  /**
+   * Normalize error parameter to Error object or undefined.
+   * Ensures error.message is always readable, never [object Object].
+   */
+  private static normalizeError(err: unknown): Error | undefined {
+    if (err === undefined || err === null) return undefined
+    if (err instanceof Error) return err
+    return new Error(Logger.errorToString(err))
+  }
   debug(message: string, data?: unknown): void {
     this.emit('debug', message, undefined, data)
   }
@@ -43,8 +80,7 @@ export class Logger {
     this.emit('warn', message, undefined, data)
   }
   error(message: string, err?: Error | unknown, data?: unknown): void {
-    const errObj = err instanceof Error ? err : err !== undefined ? new Error(String(err)) : undefined
-    this.emit('error', message, errObj, data)
+    this.emit('error', message, Logger.normalizeError(err), data)
   }
   withContext(ctx: TraceContext): ScopedLogger {
     return {
@@ -52,8 +88,7 @@ export class Logger {
       info: (message, data) => this.emit('info', message, undefined, data, ctx),
       warn: (message, data) => this.emit('warn', message, undefined, data, ctx),
       error: (message, err, data) => {
-        const errObj = err instanceof Error ? err : err !== undefined ? new Error(String(err)) : undefined
-        this.emit('error', message, errObj, data, ctx)
+        this.emit('error', message, Logger.normalizeError(err), data, ctx)
       },
       context: ctx,
     }
