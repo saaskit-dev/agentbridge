@@ -43,7 +43,7 @@ import {
   useSessionStatus,
 } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/session/SessionView');
 
 export const SessionView = React.memo((props: { id: string }) => {

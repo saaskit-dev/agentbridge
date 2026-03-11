@@ -1,7 +1,7 @@
 import { IncomingMessage, Server, ServerResponse } from 'http';
 import { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
-import type { TraceContext } from '@agentbridge/core/telemetry';
+import type { TraceContext } from '@saaskit-dev/agentbridge/telemetry';
 
 export interface GitHubProfile {
   id: number;

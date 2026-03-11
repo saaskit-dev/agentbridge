@@ -10,7 +10,7 @@
  * the traceId without any code changes in business logic.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { TraceContext } from '@agentbridge/core/telemetry';
+import type { TraceContext } from '@saaskit-dev/agentbridge/telemetry';
 
 const storage = new AsyncLocalStorage<TraceContext>();
 

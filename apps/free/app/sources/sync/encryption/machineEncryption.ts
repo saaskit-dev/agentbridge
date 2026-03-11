@@ -1,4 +1,4 @@
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { MachineMetadata, MachineMetadataSchema } from '../storageTypes';
 
 const logger = new Logger('app/sync/encryption/machine');

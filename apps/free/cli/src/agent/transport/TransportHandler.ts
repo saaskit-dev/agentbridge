@@ -1,7 +1,7 @@
 /**
  * TransportHandler Interface
  *
- * Re-exports from @agentbridge/core with backward-compatible alias.
+ * Re-exports from @saaskit-dev/agentbridge with backward-compatible alias.
  *
  * @module TransportHandler
  */
@@ -14,18 +14,18 @@ export type {
   StderrResult,
   ToolNameContext,
   TransportHandlerFactory,
-} from '@agentbridge/core';
+} from '@saaskit-dev/agentbridge';
 
 export {
   registerTransportHandler,
   createTransportHandler,
   hasTransportHandler,
-} from '@agentbridge/core';
+} from '@saaskit-dev/agentbridge';
 
 // Backward-compatible alias
-import type { ITransportHandler } from '@agentbridge/core';
+import type { ITransportHandler } from '@saaskit-dev/agentbridge';
 
 /**
- * @deprecated Use ITransportHandler from @agentbridge/core
+ * @deprecated Use ITransportHandler from @saaskit-dev/agentbridge
  */
 export type TransportHandler = ITransportHandler;

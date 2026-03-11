@@ -1,7 +1,7 @@
 import fastify from 'fastify';
 import { register } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/monitoring/metrics');
 
 export async function createMetricsServer() {

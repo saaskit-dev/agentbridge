@@ -1,7 +1,7 @@
 import { Fastify } from '../types';
 import { httpRequestsCounter, httpRequestDurationHistogram } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
-import { Logger, continueTrace } from '@agentbridge/core/telemetry';
+import { Logger, continueTrace } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/utils/enableMonitoring');
 
 export function enableMonitoring(app: Fastify) {

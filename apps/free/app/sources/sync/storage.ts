@@ -1,6 +1,6 @@
 import React from 'react';
 import { create } from 'zustand';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { useShallow } from 'zustand/react/shallow';
 import { DecryptedArtifact } from './artifactTypes';
 import { FeedItem } from './feedTypes';

@@ -2,7 +2,7 @@ import { readdirSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { claudeCheckSession } from './claudeCheckSession';
 import { getProjectPath } from './path';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('claude/utils/claudeFindLastSession');
 
 /**

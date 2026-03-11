@@ -116,7 +116,7 @@ import { MessageMeta } from '../typesMessageMeta';
 import { AgentEvent, NormalizedMessage, UsageData } from '../typesRaw';
 import { parseMessageAsEvent } from './messageToEvent';
 import { createTracer, traceMessages, TracerState } from './reducerTracer';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/reducer');
 

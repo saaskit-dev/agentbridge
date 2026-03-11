@@ -11,7 +11,7 @@ import { Text } from '@/components/StyledText';
 import { getUsageForPeriod, calculateTotals, UsageDataPoint } from '@/sync/apiUsage';
 import { t } from '@/text';
 import { FreeError } from '@/utils/errors';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/usage/UsagePanel');
 
 type TimePeriod = 'today' | '7days' | '30days';

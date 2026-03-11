@@ -14,7 +14,7 @@ import { encodeBase64 } from '@/encryption/base64';
 import { t } from '@/text';
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { useIsLandscape } from '@/utils/responsive';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/index');
 
 export default function Home() {

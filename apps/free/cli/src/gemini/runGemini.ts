@@ -51,7 +51,7 @@ import {
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { Credentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
-import { Logger, getCollector } from '@agentbridge/core/telemetry';
+import { Logger, getCollector } from '@saaskit-dev/agentbridge/telemetry';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { hashObject } from '@/utils/deterministicJson';
 import { MessageQueue2 } from '@/utils/MessageQueue2';

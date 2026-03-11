@@ -1,5 +1,5 @@
 import open from 'open';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('utils/browser');
 
 /**

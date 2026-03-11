@@ -1,6 +1,6 @@
 import { sessionCacheCounter, databaseUpdatesSkippedCounter } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/presence/sessionCache');
 
 interface SessionCacheEntry {

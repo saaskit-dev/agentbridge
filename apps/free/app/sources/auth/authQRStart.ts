@@ -3,7 +3,7 @@ import { getRandomBytes } from 'expo-crypto';
 import { encodeBase64 } from '../encryption/base64';
 import sodium from '@/encryption/libsodium.lib';
 import { getServerUrl } from '@/sync/serverConfig';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/auth/authQRStart');
 
 export interface QRAuthKeyPair {

@@ -1,7 +1,7 @@
 import { Socket } from 'socket.io';
 import { eventRouter } from '@/app/events/eventRouter';
-import { Logger } from '@agentbridge/core/telemetry';
-import type { WireTrace } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import type { WireTrace } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/socket/rpcHandler');
 
 function extractWireTrace(data: any): WireTrace | undefined {

@@ -1,5 +1,5 @@
 import { watch } from 'fs/promises';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { delay } from '@/utils/time';
 
 const logger = new Logger('modules/watcher/startFileWatcher');

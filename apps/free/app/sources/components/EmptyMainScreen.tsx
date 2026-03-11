@@ -95,7 +95,7 @@ export function EmptyMainScreen() {
       {/* Terminal-style code block */}
       <Text style={styles.title}>{t('components.emptyMainScreen.readyToCode')}</Text>
       <View style={styles.terminalBlock}>
-        <Text style={[styles.terminalText, styles.terminalTextFirst]}>$ npm i -g @free/cli</Text>
+        <Text style={[styles.terminalText, styles.terminalTextFirst]}>$ npm i -g @saaskit-dev/free</Text>
         <Text style={styles.terminalText}>$ free</Text>
       </View>
 

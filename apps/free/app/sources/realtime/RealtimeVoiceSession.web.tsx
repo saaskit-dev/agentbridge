@@ -5,7 +5,7 @@ import { registerVoiceSession } from './RealtimeSession';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import { storage } from '@/sync/storage';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/RealtimeVoiceSession');
 
 // Static reference to the conversation hook instance

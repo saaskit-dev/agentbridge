@@ -7,7 +7,7 @@ import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('modules/common/registerCommonHandlers');
 
 const execAsync = promisify(exec);

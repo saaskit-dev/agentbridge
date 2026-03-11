@@ -4,7 +4,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { WebView } from 'react-native-webview';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/markdown/MermaidRenderer');
 
 // Style for Web platform

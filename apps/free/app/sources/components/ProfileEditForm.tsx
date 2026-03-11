@@ -22,7 +22,7 @@ import { useEnvironmentVariables, extractEnvVarReferences } from '@/hooks/useEnv
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
 import { AIBackendProfile } from '@/sync/settings';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/ProfileEditForm');
 
 export interface ProfileEditFormProps {

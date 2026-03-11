@@ -1,7 +1,7 @@
 import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/hooks/useUpdates');
 
 export function useUpdates() {

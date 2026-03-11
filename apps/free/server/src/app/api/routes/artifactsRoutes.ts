@@ -9,7 +9,7 @@ import {
 } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
 const log = new Logger('app/api/routes/artifactsRoutes');

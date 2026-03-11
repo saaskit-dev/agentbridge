@@ -60,11 +60,11 @@ export interface CreateAcpBackendOptions {
  *
  * ```typescript
  * // Prefer this:
- * import { createGeminiBackend } from '@agentbridge/core';
+ * import { createGeminiBackend } from '@saaskit-dev/agentbridge';
  * const backend = createGeminiBackend({ cwd: '/path/to/project' });
  *
  * // Over this:
- * import { createAcpBackend } from '@agentbridge/core';
+ * import { createAcpBackend } from '@saaskit-dev/agentbridge';
  * const backend = createAcpBackend({
  *   agentName: 'gemini',
  *   cwd: '/path/to/project',

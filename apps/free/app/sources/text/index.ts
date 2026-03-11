@@ -16,7 +16,7 @@ import { ru } from './translations/ru';
 import { zhHans } from './translations/zh-Hans';
 import { zhHant } from './translations/zh-Hant';
 import { loadSettings } from '@/sync/persistence';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/text');
 
 /**

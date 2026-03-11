@@ -1,4 +1,4 @@
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import * as Random from 'expo-crypto';
 import { ArtifactHeader, ArtifactBody } from '../artifactTypes';
 

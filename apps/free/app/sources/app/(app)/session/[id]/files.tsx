@@ -15,7 +15,7 @@ import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStat
 import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
-import { Logger } from '@agentbridge/core/telemetry';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/session/files');
 
 export default function FilesScreen() {
