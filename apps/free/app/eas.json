@@ -23,6 +23,7 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
+      "environment": "preview",
       "env": {
         "APP_ENV": "development-preview"
       }
@@ -30,12 +31,14 @@
     "preview-store": {
       "distribution": "store",
       "channel": "preview",
+      "environment": "preview",
       "env": {
         "APP_ENV": "development-preview"
       }
     },
     "production": {
       "channel": "production",
+      "environment": "production",
       "env": {
         "APP_ENV": "production"
       }
@@ -46,6 +49,7 @@
         "buildType": "apk"
       },
       "channel": "production",
+      "environment": "production",
       "env": {
         "APP_ENV": "production"
       }
