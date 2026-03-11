@@ -3,9 +3,6 @@
     "version": ">= 14.2.0",
     "appVersionSource": "local"
   },
-  "hooks": {
-    "pre_install": "./scripts/eas-build-pre-install.sh"
-  },
   "build": {
     "development": {
       "developmentClient": true,
