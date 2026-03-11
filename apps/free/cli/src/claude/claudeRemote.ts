@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import type { EnhancedMode, JsRuntime } from './sessionTypes';
 import { PermissionResult } from './sdk/types';
 import { claudeCheckSession } from './utils/claudeCheckSession';
@@ -16,7 +16,6 @@ import {
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
-import { projectPath } from '@/projectPath';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 
 const logger = new Logger('claude/claudeRemote');
@@ -148,9 +147,6 @@ export async function claudeRemote(opts: {
       opts.canCallTool(toolName, input, mode, options),
     executable: opts.jsRuntime ?? 'node',
     abort: opts.signal,
-    pathToClaudeCodeExecutable: (() => {
-      return resolve(join(projectPath(), 'scripts', 'claude_remote_launcher.cjs'));
-    })(),
     settingsPath: opts.hookSettingsPath,
   };
 
