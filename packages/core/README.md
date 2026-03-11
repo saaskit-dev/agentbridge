@@ -1,90 +1,69 @@
 # @agentbridge/core
 
-AgentBridge SDK 核心包 — 类型定义、接口契约、具体实现的统一入口。
+[![npm version](https://img.shields.io/npm/v/@agentbridge/core.svg)](https://www.npmjs.com/package/@agentbridge/core)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 架构思想
+Core SDK for AgentBridge — Type definitions, interface contracts, and cross-platform implementations for building AI agent control systems.
 
-**interfaces 定义契约，实现提供能力，通过工厂模式实现依赖倒置。**
+## Architecture Philosophy
+
+**Interfaces define contracts, implementations provide capabilities, factory patterns enable dependency inversion.**
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    packages/core                             │
-│                                                              │
-│  ┌──────────┐   ┌────────────┐   ┌──────────────────────┐   │
-│  │  types   │ → │ interfaces │ ← │ implementations      │   │
-│  │ 纯类型    │   │ 接口+工厂   │   │ 平台具体实现          │   │
-│  └──────────┘   └────────────┘   └──────────────────────┘   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      @agentbridge/core                           │
+│                                                                  │
+│  ┌──────────────┐   ┌────────────────┐   ┌──────────────────┐   │
+│  │    types/    │ → │  interfaces/   │ ← │ implementations/ │   │
+│  │  Pure Types  │   │   Contracts    │   │ Platform-Specific│   │
+│  └──────────────┘   └────────────────┘   └──────────────────┘   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
----
+## Installation
 
-## 平台差异分析（基于 free 实际代码）
+```bash
+npm install @agentbridge/core
+# or
+pnpm add @agentbridge/core
+```
 
-| 能力              |       CLI (Node)        |    Server (Node)    |  Server (Edge)  |     App (RN)     |
-| ----------------- | :---------------------: | :-----------------: | :-------------: | :--------------: |
-| **Crypto**        | tweetnacl + AES-256-GCM | privacy-kit/KeyTree |   Web Crypto    |    libsodium     |
-| **Storage**       |   fs (JSON + 文件锁)    | Prisma + PostgreSQL |       KV        |       MMKV       |
-| **SecureStorage** |        加密文件         |          -          |    KV (加密)    | Expo SecureStore |
-| **Http**          |          axios          |        axios        |      fetch      |      axios       |
-| **WebSocket**     |    socket.io-client     |  socket.io server   | Durable Objects | socket.io-client |
-| **Process**       |    spawn + node-pty     |          -          |       ❌        |        ❌        |
-| **AgentBackend**  |           ✅            |         ❌          |       ❌        |        ❌        |
+## Platform Support
 
----
+| Capability | CLI (Node.js) | Server (Node.js) | Server (Edge) | App (React Native) |
+|------------|:-------------:|:----------------:|:-------------:|:------------------:|
+| **Crypto** | tweetnacl + AES-256-GCM | privacy-kit/KeyTree | Web Crypto | libsodium |
+| **Storage** | fs (JSON + file locks) | Prisma + PostgreSQL | KV | MMKV |
+| **SecureStorage** | Encrypted files | - | KV (encrypted) | Expo SecureStore |
+| **Http** | axios | axios | fetch | axios |
+| **WebSocket** | socket.io-client | socket.io server | Durable Objects | socket.io-client |
+| **Process** | spawn + node-pty | - | ❌ | ❌ |
+| **AgentBackend** | ✅ | ❌ | ❌ | ❌ |
 
-## 核心接口（基于实际代码）
+## Core Interfaces
 
-### 1. AgentBackend
+### AgentBackend
 
-统一不同 AI agent 后端的接口：
+Unified interface for different AI agent backends:
 
 ```typescript
+import { AgentBackend, AgentMessage } from '@agentbridge/core';
+
 type SessionId = string;
 type ToolCallId = string;
 
-// Agent 消息类型
+// Agent message types
 type AgentMessage =
   | { type: 'model-output'; textDelta?: string; fullText?: string }
-  | {
-      type: 'status';
-      status: 'starting' | 'running' | 'idle' | 'stopped' | 'error';
-      detail?: string;
-    }
+  | { type: 'status'; status: 'starting' | 'running' | 'idle' | 'stopped' | 'error'; detail?: string }
   | { type: 'tool-call'; toolName: string; args: Record<string, unknown>; callId: ToolCallId }
   | { type: 'tool-result'; toolName: string; result: unknown; callId: ToolCallId }
   | { type: 'permission-request'; id: string; reason: string; payload: unknown }
   | { type: 'permission-response'; id: string; approved: boolean }
   | { type: 'fs-edit'; description: string; diff?: string; path?: string }
   | { type: 'terminal-output'; data: string }
-  | { type: 'event'; name: string; payload: unknown }
-  | { type: 'token-count'; [key: string]: unknown }
-  | { type: 'exec-approval-request'; call_id: string; [key: string]: unknown }
-  | {
-      type: 'patch-apply-begin';
-      call_id: string;
-      auto_approved?: boolean;
-      changes: Record<string, unknown>;
-    }
-  | {
-      type: 'patch-apply-end';
-      call_id: string;
-      stdout?: string;
-      stderr?: string;
-      success: boolean;
-    };
-
-type AgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'claude-acp' | 'codex-acp';
-type AgentTransport = 'native-claude' | 'mcp-codex' | 'acp';
-
-interface AgentBackendConfig {
-  cwd: string;
-  agentName: AgentId;
-  transport: AgentTransport;
-  env?: Record<string, string>;
-  mcpServers?: Record<string, McpServerConfig>;
-}
+  | { type: 'event'; name: string; payload: unknown };
 
 interface AgentBackend {
   startSession(initialPrompt?: string): Promise<{ sessionId: SessionId }>;
@@ -98,96 +77,75 @@ interface AgentBackend {
 }
 ```
 
-### 2. TransportHandler（ACP 协议特有）
+### TransportHandler
 
-处理不同 agent 的特定行为：
+Handle agent-specific behaviors for the ACP protocol:
 
 ```typescript
 interface TransportHandler {
   readonly agentName: string;
 
-  // 超时配置
-  getInitTimeout(): number; // Gemini: 120s, Codex: 30s, Claude: 10s
-  getIdleTimeout?(): number; // 空闲检测 (默认 500ms)
+  // Timeout configuration
+  getInitTimeout(): number;  // Gemini: 120s, Codex: 30s, Claude: 10s
+  getIdleTimeout?(): number;
   getToolCallTimeout?(toolCallId: string, toolKind?: string): number;
 
-  // 输出处理
+  // Output processing
   filterStdoutLine?(line: string): string | null;
   handleStderr?(text: string, context: StderrContext): StderrResult;
 
-  // 工具识别
+  // Tool identification
   getToolPatterns(): ToolPattern[];
   isInvestigationTool?(toolCallId: string, toolKind?: string): boolean;
   extractToolNameFromId?(toolCallId: string): string | null;
-  determineToolName?(toolName: string, toolCallId: string, input: Record<string, unknown>): string;
 }
 ```
 
-### 3. ICrypto（加密）
+### ICrypto
 
-实际使用两套加密模式：legacy (tweetnacl) + dataKey (AES-256-GCM)
+Encryption interfaces supporting both legacy (tweetnacl) and modern (AES-256-GCM) modes:
 
 ```typescript
 interface EncryptedData {
   ciphertext: Uint8Array;
-  nonce: Uint8Array; // 12 bytes for GCM, 24 bytes for secretbox
-  tag?: Uint8Array; // 16 bytes auth tag for GCM
+  nonce: Uint8Array;  // 12 bytes for GCM, 24 bytes for secretbox
+  tag?: Uint8Array;   // 16 bytes auth tag for GCM
 }
 
 interface ICrypto {
   getRandomBytes(size: number): Uint8Array;
 
-  // === Legacy 模式 (tweetnacl) ===
-  // XSalsa20-Poly1305 (secretbox)
+  // Legacy mode (tweetnacl)
   secretbox(plaintext: Uint8Array, nonce: Uint8Array, key: Uint8Array): Uint8Array;
   secretboxOpen(ciphertext: Uint8Array, nonce: Uint8Array, key: Uint8Array): Uint8Array | null;
-
-  // X25519 + XSalsa20-Poly1305 (box)
   boxKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array };
-  box(
-    plaintext: Uint8Array,
-    nonce: Uint8Array,
-    peerPublicKey: Uint8Array,
-    secretKey: Uint8Array
-  ): Uint8Array;
-  boxOpen(
-    ciphertext: Uint8Array,
-    nonce: Uint8Array,
-    peerPublicKey: Uint8Array,
-    secretKey: Uint8Array
-  ): Uint8Array | null;
+  box(plaintext: Uint8Array, nonce: Uint8Array, peerPublicKey: Uint8Array, secretKey: Uint8Array): Uint8Array;
+  boxOpen(ciphertext: Uint8Array, nonce: Uint8Array, peerPublicKey: Uint8Array, secretKey: Uint8Array): Uint8Array | null;
   boxSeal(plaintext: Uint8Array, peerPublicKey: Uint8Array): Uint8Array;
-  boxSealOpen(
-    ciphertext: Uint8Array,
-    publicKey: Uint8Array,
-    secretKey: Uint8Array
-  ): Uint8Array | null;
+  boxSealOpen(ciphertext: Uint8Array, publicKey: Uint8Array, secretKey: Uint8Array): Uint8Array | null;
 
-  // === DataKey 模式 (AES-256-GCM) ===
+  // DataKey mode (AES-256-GCM)
   encryptAesGcm(plaintext: Uint8Array, key: Uint8Array): EncryptedData;
   decryptAesGcm(encrypted: EncryptedData, key: Uint8Array): Uint8Array | null;
 
-  // Ed25519 签名
+  // Ed25519 signatures
   signKeyPairFromSeed(seed: Uint8Array): { publicKey: Uint8Array; secretKey: Uint8Array };
   signDetached(message: Uint8Array, secretKey: Uint8Array): Uint8Array;
   verifyDetached(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean;
 
-  // 认证挑战
-  authChallenge(secret: Uint8Array): {
-    challenge: Uint8Array;
-    publicKey: Uint8Array;
-    signature: Uint8Array;
-  };
+  // Auth challenge
+  authChallenge(secret: Uint8Array): { challenge: Uint8Array; publicKey: Uint8Array; signature: Uint8Array };
 }
 ```
 
-**实现**：
-
+**Implementations:**
 - `crypto-node` — Node.js crypto (AES-256-GCM) + tweetnacl
-- `crypto-rn` — libsodium-wrappers
+- `crypto-rn` — libsodium-wrappers for React Native
 - `crypto-edge` — Web Crypto API
 
-### 4. IStorage（键值存储）
+### IStorage
+
+Key-value storage interface:
 
 ```typescript
 interface IStorage {
@@ -199,13 +157,14 @@ interface IStorage {
 }
 ```
 
-**实现**：
-
-- `storage-fs` — Node.js 文件系统 (带文件锁，原子更新)
+**Implementations:**
+- `storage-fs` — Node.js filesystem with file locks
 - `storage-mmkv` — React Native MMKV
-- `storage-kv` — Cloudflare KV (Edge)
+- `storage-kv` — Cloudflare KV
 
-### 5. ISecureStorage（加密存储）
+### ISecureStorage
+
+Encrypted storage interface:
 
 ```typescript
 interface ISecureStorage {
@@ -215,13 +174,14 @@ interface ISecureStorage {
 }
 ```
 
-**实现**：
-
-- `secure-storage-fs` — 加密文件存储 (CLI)
+**Implementations:**
+- `secure-storage-fs` — Encrypted file storage (CLI)
 - `secure-storage-expo` — Expo SecureStore (App)
-- `secure-storage-kv` — 加密 KV (Edge)
+- `secure-storage-kv` — Encrypted KV (Edge)
 
-### 6. IHttpClient
+### IHttpClient
+
+HTTP client abstraction:
 
 ```typescript
 interface IHttpClient {
@@ -232,9 +192,11 @@ interface IHttpClient {
 }
 ```
 
-**实现**：`http-axios`, `http-fetch`
+**Implementations:** `http-axios`, `http-fetch`
 
-### 7. IWebSocketClient
+### IWebSocketClient
+
+WebSocket client interface:
 
 ```typescript
 interface IWebSocketClient {
@@ -247,9 +209,11 @@ interface IWebSocketClient {
 }
 ```
 
-**实现**：`ws-socketio-client`, `ws-native`
+**Implementations:** `ws-socketio-client`, `ws-native`
 
-### 8. IWebSocketServer
+### IWebSocketServer
+
+WebSocket server interface:
 
 ```typescript
 interface ISocket {
@@ -266,9 +230,11 @@ interface IWebSocketServer {
 }
 ```
 
-**实现**：`ws-server-socketio`, `ws-server-durable`
+**Implementations:** `ws-server-socketio`, `ws-server-durable`
 
-### 9. IProcess（进程管理）
+### IProcess
+
+Process management (CLI only):
 
 ```typescript
 interface IProcess {
@@ -281,137 +247,111 @@ interface IProcess {
 }
 
 interface IProcessManager {
-  spawn(
-    command: string,
-    args: string[],
-    options?: { cwd?: string; env?: Record<string, string> }
-  ): IProcess;
+  spawn(command: string, args: string[], options?: { cwd?: string; env?: Record<string, string> }): IProcess;
   exec(command: string): Promise<{ stdout: string; stderr: string; code: number }>;
 }
 ```
 
-**实现**：`process-node`, `process-pty`
+**Implementations:** `process-node`, `process-pty`
 
-**注意**：仅 CLI 可用
+## Communication Protocol
 
----
-
-## 通信协议
-
-### WebSocket 事件
+### WebSocket Events
 
 ```typescript
-// === 持久事件 (Persistent) ===
+// Persistent events
 type UpdateEvent =
   | { type: 'new-message'; sessionId: string; message: Message }
-  | {
-      type: 'new-session';
-      sessionId: string;
-      metadata: SessionMetadata;
-      dataEncryptionKey: Uint8Array;
-    }
+  | { type: 'new-session'; sessionId: string; metadata: SessionMetadata; dataEncryptionKey: Uint8Array }
   | { type: 'update-session'; sessionId: string; metadata?: Partial<SessionMetadata> }
   | { type: 'new-machine'; machineId: string; metadata: MachineMetadata }
   | { type: 'update-machine'; machineId: string; metadata?: Partial<MachineMetadata> }
   | { type: 'delete-session'; sessionId: string }
   | { type: 'kv-batch-update'; changes: Array<{ key: string; value: unknown; version: number }> };
 
-// === 临时事件 (Ephemeral) ===
+// Ephemeral events
 type EphemeralEvent =
   | { type: 'activity'; id: string; active: boolean; thinking?: boolean }
   | { type: 'usage'; id: string; tokens: number; cost: number }
   | { type: 'machine-status'; machineId: string; online: boolean };
 ```
 
-### RPC 机制
+### RPC Mechanism
 
 ```typescript
-// 注册 RPC 处理器
+// Register RPC handler
 socket.emit('rpc-register', { method: 'permission-response' });
 
-// 调用 RPC
+// Call RPC
 const result = await socket.emitWithAck('rpc-call', {
   method: 'permission-response',
   params: { requestId: 'xxx', approved: true },
 });
 ```
 
----
+## Telemetry
 
-## 目录结构
+Unified logging system with trace correlation:
+
+```typescript
+import { Logger, initTelemetry, FileSink, RemoteSink } from '@agentbridge/core/telemetry';
+
+const logger = new Logger('my-component');
+
+logger.debug('Debug message', { key: 'value' });  // Local only
+logger.info('Info message', { key: 'value' });    // Sent to remote
+logger.error('Error message', new Error('details'), { context: 'data' });
+```
+
+## Directory Structure
 
 ```
 packages/core/
-├── types/
-│   ├── session.ts
-│   ├── message.ts
-│   ├── machine.ts
-│   ├── agent.ts
-│   └── index.ts
-│
-├── interfaces/
-│   ├── agent.ts          # AgentBackend + AgentMessage
-│   ├── transport.ts      # TransportHandler (ACP)
-│   ├── crypto.ts
-│   ├── storage.ts
-│   ├── http.ts
-│   ├── websocket.ts
-│   ├── process.ts
-│   ├── events.ts         # WebSocket 事件类型
-│   └── index.ts
-│
-├── implementations/
-│   ├── agent/
-│   │   ├── acp.ts        # ACP 协议后端 (Gemini, Codex-ACP)
-│   │   ├── claude.ts     # Claude Code 原生
+├── src/
+│   ├── types/
+│   │   ├── session.ts
+│   │   ├── message.ts
+│   │   ├── machine.ts
+│   │   ├── agent.ts
 │   │   └── index.ts
 │   │
-│   ├── crypto/
-│   │   ├── node.ts       # AES-256-GCM + tweetnacl
-│   │   ├── rn.ts         # libsodium
-│   │   ├── edge.ts       # Web Crypto
+│   ├── interfaces/
+│   │   ├── agent.ts          # AgentBackend + AgentMessage
+│   │   ├── transport.ts      # TransportHandler (ACP)
+│   │   ├── crypto.ts
+│   │   ├── storage.ts
+│   │   ├── http.ts
+│   │   ├── websocket.ts
+│   │   ├── process.ts
+│   │   ├── events.ts
 │   │   └── index.ts
 │   │
-│   ├── storage/
-│   │   ├── fs.ts         # Node.js 文件系统 + 文件锁
-│   │   ├── mmkv.ts       # React Native
-│   │   ├── kv.ts         # Cloudflare KV
+│   ├── implementations/
+│   │   ├── agent/
+│   │   │   ├── acp.ts        # ACP protocol backend
+│   │   │   └── index.ts
+│   │   ├── crypto/
+│   │   ├── storage/
+│   │   ├── secure-storage/
+│   │   ├── http/
+│   │   ├── websocket/
+│   │   ├── process/
 │   │   └── index.ts
 │   │
-│   ├── secure-storage/
-│   │   ├── fs.ts
-│   │   ├── expo.ts
-│   │   ├── kv.ts
-│   │   └── index.ts
+│   ├── telemetry/            # Unified logging system
+│   │   ├── logger.ts
+│   │   ├── collector.ts
+│   │   ├── context.ts
+│   │   └── sinks/
 │   │
-│   ├── http/
-│   │   ├── axios.ts
-│   │   ├── fetch.ts
-│   │   └── index.ts
-│   │
-│   ├── websocket/
-│   │   ├── socketio-client.ts
-│   │   ├── socketio-server.ts
-│   │   ├── durable.ts    # Cloudflare Durable Objects
-│   │   └── index.ts
-│   │
-│   ├── process/
-│   │   ├── node.ts
-│   │   ├── pty.ts
-│   │   └── index.ts
-│   │
-│   └── index.ts
-│
-├── utils/
-│   ├── encoding.ts       # base64, hex
-│   └── index.ts
+│   └── utils/
+│       ├── encoding.ts
+│       └── index.ts
 │
 ├── package.json
 └── tsconfig.json
 ```
 
----
+## License
 
-## 参考
-
-- `apps/free` — 实际使用场景
+MIT
