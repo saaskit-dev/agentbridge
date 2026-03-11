@@ -3,7 +3,11 @@ const { version } = require('./package.json');
 // 环境配置：
 //   development           → Free (dev),     .dev bundleId, 连 localhost
 //   development-preview   → Free (preview), .preview bundleId, 连生产 (内测分发)
-//   production            → Free,           无后缀 bundleId, 连生产
+//   production            → Free,           .preview bundleId, 连生产 (App Store)
+//
+// NOTE: production 使用 app.saaskit.freecode.preview 是因为 App Store Connect 和
+// EAS credentials 均以此 bundle ID 注册。如需改为 app.saaskit.freecode，需先
+// 重新配置 App Store Connect 和 EAS credentials。
 const variant = process.env.APP_ENV || 'development';
 
 const configs = {
@@ -19,7 +23,7 @@ const configs = {
   },
   production: {
     name: 'Free',
-    bundleId: 'app.saaskit.freecode',
+    bundleId: 'app.saaskit.freecode.preview',
     googleServicesFile: process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.production.plist',
   },
 };
