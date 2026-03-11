@@ -6,7 +6,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useEntitlement } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { trackPaywallButtonClicked } from '@/track';
 import { Modal } from '@/modal';
 import { Text } from '@/components/StyledText';
 import { config } from '@/config';
@@ -53,7 +52,6 @@ export default function SupportScreen() {
 
   const handlePurchase = async () => {
     if (isPurchasing) return;
-    trackPaywallButtonClicked();
     setIsPurchasing(true);
     try {
       const result = await sync.purchaseProduct(selectedTier.id);

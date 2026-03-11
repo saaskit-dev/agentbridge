@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { clearPersistence } from '@/sync/persistence';
 import { syncCreate } from '@/sync/sync';
-import { trackLogout } from '@/track';
+import { setAnalyticsEnabled } from '@/appTelemetry';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/auth/AuthContext');
 
@@ -37,6 +37,8 @@ export function AuthProvider({
     const success = await TokenStorage.setCredentials(newCredentials);
     if (success) {
       await syncCreate(newCredentials);
+      // Enable RemoteSink telemetry after login
+      setAnalyticsEnabled(true, token);
       setCredentials(newCredentials);
       setIsAuthenticated(true);
     } else {
@@ -45,7 +47,8 @@ export function AuthProvider({
   };
 
   const logout = async () => {
-    trackLogout();
+    // Disable RemoteSink telemetry on logout
+    setAnalyticsEnabled(false);
     clearPersistence();
     await TokenStorage.removeCredentials();
 

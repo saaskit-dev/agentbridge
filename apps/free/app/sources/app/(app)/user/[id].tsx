@@ -15,7 +15,6 @@ import { Modal } from '@/modal';
 import { getUserProfile, sendFriendRequest, removeFriend } from '@/sync/apiFriends';
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
 import { t } from '@/text';
-import { trackFriendsConnect } from '@/track';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/user/profile');
 
@@ -58,7 +57,6 @@ export default function UserProfileScreen() {
 
     const updatedProfile = await sendFriendRequest(credentials, userProfile.id);
     if (updatedProfile) {
-      trackFriendsConnect();
       setUserProfile(updatedProfile);
     } else {
       Modal.alert(t('friends.bothMustHaveGithub'));
