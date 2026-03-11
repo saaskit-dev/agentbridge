@@ -743,7 +743,7 @@ export async function runOpenCode(opts: {
       await session.close();
       logger.info('[CLI] Session closed', { sessionId: session.sessionId, flavor: 'opencode' });
     } catch (e) {
-      logger.error('[CLI] Session close failed', { error: String(e) });
+      logger.error('[CLI] Session close failed', undefined, { error: String(e) });
     }
 
     if (opencodeBackend) {

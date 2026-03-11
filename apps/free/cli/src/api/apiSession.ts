@@ -209,7 +209,7 @@ export class ApiSessionClient extends EventEmitter {
     });
 
     this.socket.on('connect_error', error => {
-      logger.error('[CLI] Session connect failed', { sessionId: this.sessionId, error: error.message });
+      logger.error('[CLI] Session connect failed', undefined, { sessionId: this.sessionId, error: error.message });
       this.rpcHandlerManager.onSocketDisconnect();
     });
 
@@ -395,7 +395,7 @@ export class ApiSessionClient extends EventEmitter {
           );
           this.routeIncomingMessage(body);
         } catch (error) {
-          logger.error('[CLI] Message decrypt failed', {
+          logger.error('[CLI] Message decrypt failed', undefined, {
             sessionId: this.sessionId,
             seq: message.seq,
             error: String(error),
@@ -441,7 +441,7 @@ export class ApiSessionClient extends EventEmitter {
       );
     } catch (err: any) {
       const status = err?.response?.status;
-      logger.error('[apiSession] outbox flush failed', {
+      logger.error('[apiSession] outbox flush failed', undefined, {
         sessionId: this.sessionId,
         count: batch.length,
         status,
