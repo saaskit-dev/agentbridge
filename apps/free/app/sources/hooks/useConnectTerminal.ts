@@ -60,7 +60,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
         ]);
         return true;
       } catch (e) {
-        logger.error('Failed to connect terminal', { error: e });
+        logger.error('Failed to connect terminal', undefined, { error: String(e) });
         Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [
           { text: t('common.ok') },
         ]);
@@ -108,7 +108,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
         ]);
         return true;
       } catch (e) {
-        logger.error('Failed to connect terminal', { error: e });
+        logger.error('Failed to connect terminal', undefined, { error: String(e) });
         Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [
           { text: t('common.ok') },
         ]);
