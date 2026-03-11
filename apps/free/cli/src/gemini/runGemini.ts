@@ -1255,7 +1255,7 @@ export async function runGemini(opts: {
             // Wait for Gemini to finish responding (all chunks received + final idle)
             // This ensures we don't send task_complete until response is truly done
             if (geminiBackend.waitForResponseComplete) {
-              await geminiBackend.waitForResponseComplete(120000);
+              await geminiBackend.waitForResponseComplete?.();
               logger.debug('[gemini] Response complete');
             }
 

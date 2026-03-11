@@ -21,6 +21,8 @@ export {
 export {
   DEFAULT_IDLE_TIMEOUT_MS,
   DEFAULT_TOOL_CALL_TIMEOUT_MS,
+  DEFAULT_RESPONSE_TIMEOUT_MS,
+  TOOL_CALL_ACTIVE_TIMEOUT_MS,
   formatDuration,
   formatDurationMinutes,
   parseArgsFromContent,
