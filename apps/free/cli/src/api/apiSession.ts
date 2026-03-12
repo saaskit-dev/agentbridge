@@ -424,6 +424,15 @@ export class ApiSessionClient extends EventEmitter {
       return;
     }
 
+    // Skip flush if socket is disconnected - wait for reconnection
+    if (!this.socket.connected) {
+      logger.debug('[apiSession] skipping outbox flush - socket disconnected', {
+        sessionId: this.sessionId,
+        count: this.pendingOutbox.length,
+      });
+      return;
+    }
+
     const batch = this.pendingOutbox.slice();
     logger.debug('[apiSession] flushing outbox', { sessionId: this.sessionId, count: batch.length });
 
@@ -439,17 +448,25 @@ export class ApiSessionClient extends EventEmitter {
           timeout: 60000,
         }
       );
-    } catch (err: any) {
-      const status = err?.response?.status;
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const errorMessage = err instanceof Error ? err.message : String(err);
       logger.error('[apiSession] outbox flush failed', undefined, {
         sessionId: this.sessionId,
         count: batch.length,
         status,
-        error: String(err?.message ?? err),
+        error: errorMessage,
       });
       // Session deleted on the server — stop sending permanently, don't retry.
       if (status === 404) {
         this.sendSync.stop();
+        return;
+      }
+      // Don't retry if socket disconnected after we started
+      if (!this.socket.connected) {
+        logger.debug('[apiSession] socket disconnected during flush, stopping retry', {
+          sessionId: this.sessionId,
+        });
         return;
       }
       throw err;

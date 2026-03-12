@@ -1,17 +1,15 @@
+import Constants from 'expo-constants';
 import { MMKV } from 'react-native-mmkv';
 
 // Separate MMKV instance for server config that persists across logouts
 const serverConfigStorage = new MMKV({ id: 'server-config' });
 
 const SERVER_KEY = 'custom-server-url';
-const DEFAULT_SERVER_URL = 'https://free-server.saaskit.app';
+const DEFAULT_SERVER_URL =
+  Constants.expoConfig?.extra?.app?.serverUrl || 'https://free-server.saaskit.app';
 
 export function getServerUrl(): string {
-  return (
-    serverConfigStorage.getString(SERVER_KEY) ||
-    process.env.EXPO_PUBLIC_FREE_SERVER_URL ||
-    DEFAULT_SERVER_URL
-  );
+  return serverConfigStorage.getString(SERVER_KEY) || DEFAULT_SERVER_URL;
 }
 
 export function setServerUrl(url: string | null): void {

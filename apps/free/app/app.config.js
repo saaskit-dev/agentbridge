@@ -1,35 +1,43 @@
 const { version } = require('./package.json');
 
-// 环境配置：
-//   development           → Free (dev),     .dev bundleId, 连 localhost
-//   development-preview   → Free (preview), .preview bundleId, 连生产 (内测分发)
-//   production            → Free,           .preview bundleId, 连生产 (App Store)
+// 两个环境，三个签名变体：
 //
-// NOTE: production 使用 app.saaskit.freecode.preview 是因为 App Store Connect 和
-// EAS credentials 均以此 bundle ID 注册。如需改为 app.saaskit.freecode，需先
-// 重新配置 App Store Connect 和 EAS credentials。
+//   Dev 环境 (本地开发):
+//     development           → Free (dev),     .dev bundleId,      debug 签名, 连 localhost
+//     development-preview   → Free (preview), .preview bundleId,  release 签名, 连生产服务器
+//
+//   Prod 环境 (线上用户):
+//     production            → Free,           app.saaskit.freecode,  App Store / Google Play
 const variant = process.env.APP_ENV || 'development';
+
+const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
 
 const configs = {
   development: {
     name: 'Free (dev)',
     bundleId: 'app.saaskit.freecode.dev',
-    googleServicesFile: process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.development.plist',
+    serverUrl: process.env.EXPO_PUBLIC_FREE_SERVER_URL || 'http://localhost:3000',
+    googleServicesFile:
+      process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.development.plist',
   },
   'development-preview': {
     name: 'Free (preview)',
     bundleId: 'app.saaskit.freecode.preview',
-    googleServicesFile: process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.preview.plist',
+    serverUrl: PRODUCTION_SERVER_URL,
+    googleServicesFile:
+      process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.preview.plist',
   },
   production: {
     name: 'Free',
-    bundleId: 'app.saaskit.freecode.preview',
-    googleServicesFile: process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.production.plist',
+    bundleId: 'app.saaskit.freecode',
+    serverUrl: PRODUCTION_SERVER_URL,
+    googleServicesFile:
+      process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.production.plist',
   },
 };
 
 const config = configs[variant] || configs.development;
-const { name, bundleId, googleServicesFile } = config;
+const { name, bundleId, serverUrl, googleServicesFile } = config;
 
 export default {
   expo: {
@@ -206,6 +214,7 @@ export default {
         projectId: '79f0465e-eaa6-47f9-91e0-09e5a5661790',
       },
       app: {
+        serverUrl,
         postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
         revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,
         revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
