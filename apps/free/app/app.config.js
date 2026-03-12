@@ -1,13 +1,10 @@
 const { version } = require('./package.json');
 
-// 两个环境，三个签名变体：
+// 三个变体：
 //
-//   Dev 环境 (本地开发):
-//     development           → Free (dev),     .dev bundleId,      debug 签名, 连 localhost
-//     development-preview   → Free (preview), .preview bundleId,  release 签名, 连生产服务器
-//
-//   Prod 环境 (线上用户):
-//     production            → Free,           app.saaskit.freecode,  App Store / Google Play
+//   development        本地开发   .dev bundleId      debug 签名    连 localhost
+//   development-preview 内测分发  .preview bundleId  release 签名  连生产服务器  (EAS internal)
+//   production         线上用户   app.saaskit.freecode             App Store / Google Play
 const variant = process.env.APP_ENV || 'development';
 
 const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
@@ -69,7 +66,7 @@ export default {
         NSBonjourServices: ['_http._tcp', '_https._tcp'],
       },
       googleServicesFile,
-      associatedDomains: variant === 'production' ? ['applinks:free-server.saaskit.app'] : [],
+      associatedDomains: variant !== 'development' ? ['applinks:free-server.saaskit.app'] : [],
     },
     android: {
       adaptiveIcon: {
@@ -88,7 +85,7 @@ export default {
       package: bundleId,
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './firebase/google-services.json',
       intentFilters:
-        variant === 'production'
+        variant !== 'development'
           ? [
               {
                 action: 'VIEW',

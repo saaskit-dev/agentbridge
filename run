@@ -329,7 +329,7 @@ cmd_ota() {
         "")
             info "OTA 热更新 → 全平台生产环境"
             confirm "确认推送 OTA 到全平台生产环境?"
-            pnpm ota
+            npx eas-cli@latest update --branch production --platform all --non-interactive
             ;;
         *)
             die "未知平台: $platform (可用: ios, android)"
