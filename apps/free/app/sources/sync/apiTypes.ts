@@ -10,7 +10,6 @@ import { GitHubProfileSchema, ImageRefSchema } from './profile';
 export const ApiMessageSchema = z.object({
   id: z.string(),
   seq: z.number(),
-  localId: z.string().nullish(),
   content: z.object({
     t: z.literal('encrypted'),
     c: z.string(), // Base64 encoded encrypted content
@@ -56,6 +55,12 @@ export const ApiUpdateSessionStateSchema = z.object({
     .object({
       version: z.number(),
       value: z.string(),
+    })
+    .nullish(),
+  capabilities: z
+    .object({
+      version: z.number(),
+      value: z.string().nullable(),
     })
     .nullish(),
 });

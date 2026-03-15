@@ -74,14 +74,20 @@ class AuthModule {
     return token;
   }
 
+  private static readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
   async verifyToken(token: string): Promise<{ userId: string; extras?: any } | null> {
-    // Check cache first
+    // Check cache first (with TTL)
     const cached = this.tokenCache.get(token);
     if (cached) {
-      return {
-        userId: cached.userId,
-        extras: cached.extras,
-      };
+      if (Date.now() - cached.cachedAt < AuthModule.CACHE_TTL_MS) {
+        return {
+          userId: cached.userId,
+          extras: cached.extras,
+        };
+      }
+      // Cache entry expired, remove it
+      this.tokenCache.delete(token);
     }
 
     // Cache miss - verify token
@@ -175,12 +181,18 @@ class AuthModule {
     }
   }
 
-  // Cleanup old entries (optional - can be called periodically)
+  // Cleanup expired entries — call periodically to bound memory usage
   cleanup(): void {
-    // Note: Since tokens are cached "forever" as requested,
-    // we don't do automatic cleanup. This method exists if needed later.
+    const now = Date.now();
+    let evicted = 0;
+    for (const [token, entry] of this.tokenCache.entries()) {
+      if (now - entry.cachedAt > AuthModule.CACHE_TTL_MS) {
+        this.tokenCache.delete(token);
+        evicted++;
+      }
+    }
     const stats = this.getCacheStats();
-    log.info(`Token cache size: ${stats.size} entries`);
+    log.info(`Token cache cleanup: evicted ${evicted}, remaining ${stats.size} entries`);
   }
 }
 

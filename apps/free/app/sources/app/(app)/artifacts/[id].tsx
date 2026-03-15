@@ -12,7 +12,7 @@ import { useArtifact } from '@/sync/storage';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/artifacts/detail');
 
 const stylesheet = StyleSheet.create(theme => ({
@@ -107,7 +107,7 @@ export default function ArtifactDetailScreen() {
         }
       } catch (err) {
         if (!cancelled) {
-          logger.error('Failed to load artifact:', err);
+          logger.error('Failed to load artifact:', toError(err));
           setError(t('artifacts.error'));
         }
       } finally {
@@ -152,7 +152,7 @@ export default function ArtifactDetailScreen() {
       // Navigate back
       router.back();
     } catch (err) {
-      logger.error('Failed to delete artifact:', err);
+      logger.error('Failed to delete artifact:', toError(err));
       Modal.alert(t('common.error'), 'Failed to delete artifact');
     } finally {
       setIsDeleting(false);

@@ -13,8 +13,8 @@ type MessageRecord = {
   id: string;
   sessionId: string;
   seq: number;
-  localId: string | null;
   content: unknown;
+  traceId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -48,19 +48,19 @@ const { state, emitUpdateMock, dbMock, resetState, seedSession, seedMessage } = 
   };
 
   const seedMessage = (input: {
+    id?: string;
     sessionId: string;
     seq: number;
-    localId: string | null;
     content: unknown;
   }) => {
     const createdAt = new Date(state.nowMs);
     state.nowMs += 1;
     const msg: MessageRecord = {
-      id: `seed-${state.nextMessageId}`,
+      id: input.id ?? `seed-${state.nextMessageId}`,
       sessionId: input.sessionId,
       seq: input.seq,
-      localId: input.localId,
       content: input.content,
+      traceId: null,
       createdAt,
       updatedAt: createdAt,
     };
@@ -122,9 +122,9 @@ const { state, emitUpdateMock, dbMock, resetState, seedSession, seedMessage } = 
     if (typeof args?.where?.seq?.gt === 'number') {
       rows = rows.filter(message => message.seq > args.where.seq.gt);
     }
-    if (Array.isArray(args?.where?.localId?.in)) {
-      const localIds = new Set(args.where.localId.in);
-      rows = rows.filter(message => localIds.has(message.localId));
+    if (Array.isArray(args?.where?.id?.in)) {
+      const ids = new Set(args.where.id.in);
+      rows = rows.filter(message => ids.has(message.id));
     }
     if (args?.orderBy?.seq === 'asc') {
       rows.sort((a, b) => a.seq - b.seq);
@@ -143,11 +143,11 @@ const { state, emitUpdateMock, dbMock, resetState, seedSession, seedMessage } = 
     const createdAt = new Date(state.nowMs);
     state.nowMs += 1;
     const row: MessageRecord = {
-      id: `msg-${state.nextMessageId}`,
+      id: args?.data?.id ?? `msg-${state.nextMessageId}`,
       sessionId: args?.data?.sessionId,
       seq: args?.data?.seq,
-      localId: args?.data?.localId ?? null,
       content: args?.data?.content,
+      traceId: args?.data?.traceId ?? null,
       createdAt,
       updatedAt: createdAt,
     };
@@ -207,6 +207,7 @@ vi.mock('@/utils/randomKeyNaked', () => ({
 vi.mock('@/app/events/eventRouter', () => ({
   eventRouter: {
     emitUpdate: emitUpdateMock,
+    findConnectionBySocketId: vi.fn(() => undefined),
   },
   buildNewMessageUpdate: vi.fn(
     (message: unknown, sessionId: string, updateSeq: number, updateId: string) => ({
@@ -262,13 +263,11 @@ describe('v3SessionRoutes', () => {
     seedMessage({
       sessionId: 'session-1',
       seq: 2,
-      localId: 'l2',
       content: { t: 'encrypted', c: 'b' },
     });
     seedMessage({
       sessionId: 'session-1',
       seq: 1,
-      localId: 'l1',
       content: { t: 'encrypted', c: 'a' },
     });
 
@@ -291,7 +290,6 @@ describe('v3SessionRoutes', () => {
       seedMessage({
         sessionId: 'session-1',
         seq,
-        localId: `l${seq}`,
         content: { t: 'encrypted', c: String(seq) },
       });
     }
@@ -330,7 +328,6 @@ describe('v3SessionRoutes', () => {
     seedMessage({
       sessionId: 'session-1',
       seq: 1,
-      localId: 'l1',
       content: { t: 'encrypted', c: 'a' },
     });
 
@@ -388,7 +385,7 @@ describe('v3SessionRoutes', () => {
       url: '/v3/sessions/session-1/messages',
       headers: { 'x-user-id': 'user-1' },
       payload: {
-        messages: [{ localId: 'l1', content: 'enc-content-1' }],
+        messages: [{ id: 'msg-1', content: 'enc-content-1' }],
       },
     });
 
@@ -396,7 +393,7 @@ describe('v3SessionRoutes', () => {
     const body = response.json();
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0].seq).toBe(1);
-    expect(body.messages[0].localId).toBe('l1');
+    expect(body.messages[0].id).toBe('msg-1');
 
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0].content).toEqual({ t: 'encrypted', c: 'enc-content-1' });
@@ -413,9 +410,9 @@ describe('v3SessionRoutes', () => {
       headers: { 'x-user-id': 'user-1' },
       payload: {
         messages: [
-          { localId: 'l1', content: 'enc-1' },
-          { localId: 'l2', content: 'enc-2' },
-          { localId: 'l3', content: 'enc-3' },
+          { id: 'id-1', content: 'enc-1' },
+          { id: 'id-2', content: 'enc-2' },
+          { id: 'id-3', content: 'enc-3' },
         ],
       },
     });
@@ -426,12 +423,12 @@ describe('v3SessionRoutes', () => {
     expect(emitUpdateMock).toHaveBeenCalledTimes(3);
   });
 
-  it('deduplicates by localId and returns mixed existing/new messages sorted by seq', async () => {
+  it('deduplicates by id and returns mixed existing/new messages sorted by seq', async () => {
     seedSession({ id: 'session-1', accountId: 'user-1', seq: 1 });
     seedMessage({
+      id: 'existing-id',
       sessionId: 'session-1',
       seq: 1,
-      localId: 'existing',
       content: { t: 'encrypted', c: 'old' },
     });
 
@@ -442,15 +439,15 @@ describe('v3SessionRoutes', () => {
       headers: { 'x-user-id': 'user-1' },
       payload: {
         messages: [
-          { localId: 'new-1', content: 'new-content' },
-          { localId: 'existing', content: 'ignored' },
+          { id: 'new-id', content: 'new-content' },
+          { id: 'existing-id', content: 'ignored' },
         ],
       },
     });
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.messages.map((message: any) => message.localId)).toEqual(['existing', 'new-1']);
+    expect(body.messages.map((message: any) => message.id)).toEqual(['existing-id', 'new-id']);
     expect(body.messages.map((message: any) => message.seq)).toEqual([1, 2]);
     expect(state.messages).toHaveLength(2);
     expect(emitUpdateMock).toHaveBeenCalledTimes(1);
@@ -474,7 +471,7 @@ describe('v3SessionRoutes', () => {
       headers: { 'x-user-id': 'owner-user' },
       payload: {
         messages: Array.from({ length: 101 }, (_, index) => ({
-          localId: `l-${index}`,
+          id: `id-${index}`,
           content: `enc-${index}`,
         })),
       },
@@ -485,7 +482,7 @@ describe('v3SessionRoutes', () => {
       method: 'POST',
       url: '/v3/sessions/session-1/messages',
       payload: {
-        messages: [{ localId: 'l1', content: 'enc-1' }],
+        messages: [{ id: 'id-1', content: 'enc-1' }],
       },
     });
     expect(unauthorized.statusCode).toBe(401);
@@ -495,7 +492,7 @@ describe('v3SessionRoutes', () => {
       url: '/v3/sessions/session-1/messages',
       headers: { 'x-user-id': 'another-user' },
       payload: {
-        messages: [{ localId: 'l1', content: 'enc-1' }],
+        messages: [{ id: 'id-1', content: 'enc-1' }],
       },
     });
     expect(wrongOwner.statusCode).toBe(404);

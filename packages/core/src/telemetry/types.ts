@@ -7,6 +7,7 @@ export interface TraceContext {
   readonly parentSpanId?: string
   readonly sessionId?: string
   readonly machineId?: string
+  readonly userId?: string
 }
 
 export interface LogEntry {
@@ -19,6 +20,7 @@ export interface LogEntry {
   parentSpanId?: string
   sessionId?: string
   machineId?: string
+  userId?: string
   message: string
   data?: Record<string, unknown>
   error?: {

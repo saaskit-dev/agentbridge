@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { SessionCapabilities } from './sessionCapabilities';
 
 //
 // Agent states
@@ -17,7 +18,9 @@ export const MetadataSchema = z.object({
     })
     .optional(),
   machineId: z.string().optional(),
-  claudeSessionId: z.string().optional(), // Claude Code session ID
+  agentSessionId: z.string().optional(), // Agent backend's internal session ID
+  /** @deprecated Use agentSessionId. Kept for backward compat with existing encrypted metadata. */
+  claudeSessionId: z.string().optional(),
   tools: z.array(z.string()).optional(),
   slashCommands: z.array(z.string()).optional(),
   homeDir: z.string().optional(), // User's home directory on the machine
@@ -73,6 +76,8 @@ export interface Session {
   metadataVersion: number;
   agentState: AgentState | null;
   agentStateVersion: number;
+  capabilities: SessionCapabilities | null;
+  capabilitiesVersion: number;
   thinking: boolean;
   thinkingAt: number;
   presence: 'online' | number; // "online" when active, timestamp when last seen
@@ -84,7 +89,9 @@ export interface Session {
   }>;
   draft?: string | null; // Local draft message, not synced to server
   permissionMode?: 'read-only' | 'accept-edits' | 'yolo' | null; // Local permission mode, not synced to server
-  modelMode?: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | null; // Local model mode, not synced to server
+  desiredAgentMode?: string | null; // Local desired ACP mode, persisted for replay/display
+  modelMode?: string | null; // Local desired model selection, persisted for replay/display
+  desiredConfigOptions?: Record<string, string> | null; // Local desired config selections, persisted for replay/display
   // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
   // We store it directly on Session to ensure it's available immediately on load.
   // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.
@@ -101,7 +108,6 @@ export interface Session {
 export interface DecryptedMessage {
   id: string;
   seq: number | null;
-  localId: string | null;
   content: any;
   createdAt: number;
   traceId?: string; // RFC §19.3: preserved from server for cross-layer trace correlation

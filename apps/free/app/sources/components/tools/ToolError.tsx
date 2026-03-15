@@ -3,10 +3,22 @@ import { Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 
-export function ToolError(props: { message: string }) {
+export function resultToString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value !== null) {
+    if ('error' in value && typeof (value as Record<string, unknown>).error === 'string') {
+      return (value as Record<string, unknown>).error as string;
+    }
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+export function ToolError(props: { message: unknown }) {
   const { theme } = useUnistyles();
-  const { isToolUseError, errorMessage } = parseToolUseError(props.message);
-  const displayMessage = isToolUseError && errorMessage ? errorMessage : props.message;
+  const msg = resultToString(props.message);
+  const { isToolUseError, errorMessage } = parseToolUseError(msg);
+  const displayMessage = isToolUseError && errorMessage ? errorMessage : msg;
 
   return (
     <View style={[styles.errorContainer, isToolUseError && styles.toolUseErrorContainer]}>

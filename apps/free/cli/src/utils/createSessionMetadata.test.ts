@@ -25,7 +25,7 @@ describe('createSessionMetadata', () => {
     const { metadata } = createSessionMetadata({
       flavor: 'codex',
       machineId: 'machine-1',
-      startedBy: 'terminal',
+      startedBy: 'cli',
       sandbox,
     });
 

@@ -95,7 +95,7 @@ class FileSearchCache {
       const response = await sessionRipgrep(sessionId, ['--files', '--follow'], undefined);
 
       if (!response.success || !response.stdout) {
-        logger.error('FileSearchCache: Failed to fetch files', response.error);
+        logger.error('FileSearchCache: Failed to fetch files', response.error ? new Error(response.error) : undefined);
         logger.debug(JSON.stringify(response));
         return;
       }

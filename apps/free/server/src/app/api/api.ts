@@ -44,8 +44,20 @@ export async function startApi() {
     bodyLimit: 1024 * 1024 * 100, // 100MB
   });
   app.register(import('@fastify/cors'), {
-    origin: '*',
-    allowedHeaders: '*',
+    origin: process.env.APP_ENV === 'development'
+      ? true
+      : [
+          'https://free.saaskit.app',
+          'https://free-server.saaskit.app',
+          'https://app.happy.engineering',
+        ],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Trace-Id',
+      'X-Span-Id',
+      'X-Socket-Id',
+    ],
     methods: ['GET', 'POST', 'DELETE'],
   });
   app.get('/', function (request, reply) {

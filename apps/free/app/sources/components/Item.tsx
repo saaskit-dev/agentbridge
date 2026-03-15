@@ -15,7 +15,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/Item');
 
 export interface ItemProps {
@@ -166,7 +166,7 @@ export const Item = React.memo<ItemProps>(props => {
       await Clipboard.setStringAsync(textToCopy);
       Modal.alert(t('common.copied'), t('items.copiedToClipboard', { label: title }));
     } catch (error) {
-      logger.error('Failed to copy:', error);
+      logger.error('Failed to copy:', toError(error));
     }
   }, [copy, isWeb, title, subtitle, detail]);
 

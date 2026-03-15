@@ -6,7 +6,9 @@
     "paths": {
       "@/*": ["./sources/*"],
       "hello-world": ["../../hello-world"],
-      "@saaskit-dev/agentbridge": ["../../../packages/core/src/index.ts"],
+      "@saaskit-dev/agentbridge/common": ["../../../packages/core/src/common.ts"],
+      "@saaskit-dev/agentbridge": ["../../../packages/core/src/common.ts"],
+      "@saaskit-dev/agentbridge/encryption": ["../../../packages/core/src/encryption/index.ts"],
       "@saaskit-dev/agentbridge/telemetry": ["../../../packages/core/src/telemetry/index.ts"],
       "@saaskit-dev/agentbridge/telemetry/node": ["../../../packages/core/src/telemetry/node.ts"]
     },

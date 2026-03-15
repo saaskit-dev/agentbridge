@@ -19,12 +19,14 @@ function generateSpanId(): string {
 export function createTrace(opts?: {
   sessionId?: string
   machineId?: string
+  userId?: string
 }): TraceContext {
   return {
     traceId: generateTraceId(),
     spanId: generateSpanId(),
     sessionId: opts?.sessionId,
     machineId: opts?.machineId,
+    userId: opts?.userId,
   }
 }
 
@@ -33,6 +35,7 @@ export function continueTrace(upstream: {
   spanId: string
   sessionId?: string
   machineId?: string
+  userId?: string
 }): TraceContext {
   return {
     traceId: upstream.traceId,
@@ -40,6 +43,7 @@ export function continueTrace(upstream: {
     parentSpanId: upstream.spanId,
     sessionId: upstream.sessionId,
     machineId: upstream.machineId,
+    userId: upstream.userId,
   }
 }
 

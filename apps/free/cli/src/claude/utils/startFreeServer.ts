@@ -11,6 +11,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import { ApiSessionClient } from '@/api/apiSession';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('claude/utils/startFreeServer');
 
 export async function startFreeServer(client: ApiSessionClient) {
@@ -27,7 +28,7 @@ export async function startFreeServer(client: ApiSessionClient) {
 
       return { success: true };
     } catch (error) {
-      return { success: false, error: String(error) };
+      return { success: false, error: safeStringify(error) };
     }
   };
 

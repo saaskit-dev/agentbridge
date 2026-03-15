@@ -11,6 +11,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { config } from '@/config';
 import { Typography } from '@/constants/Typography';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { Modal } from '@/modal';
 
 interface JsonViewerProps {
@@ -102,7 +103,7 @@ export default function ExpoConstantsScreen() {
       try {
         parsedExponentManifest = JSON.parse(rawExponentManifest);
       } catch (e) {
-        parsedExponentManifest = { parseError: e instanceof Error ? e.message : String(e) };
+        parsedExponentManifest = { parseError: safeStringify(e) };
       }
     } else {
       parsedExponentManifest = rawExponentManifest;
@@ -121,7 +122,7 @@ export default function ExpoConstantsScreen() {
       try {
         parsedUpdatesManifest = JSON.parse(ExpoUpdates.manifestString);
       } catch (e) {
-        parsedUpdatesManifest = { parseError: e instanceof Error ? e.message : String(e) };
+        parsedUpdatesManifest = { parseError: safeStringify(e) };
       }
     }
   }
@@ -134,7 +135,7 @@ export default function ExpoConstantsScreen() {
     try {
       parsedDevLauncherManifest = JSON.parse(rawDevLauncherManifest);
     } catch (e) {
-      parsedDevLauncherManifest = { parseError: e instanceof Error ? e.message : String(e) };
+      parsedDevLauncherManifest = { parseError: safeStringify(e) };
     }
   }
 

@@ -11,7 +11,6 @@ describe('Phase 0 permission skipping issue', () => {
     const toolMessages: NormalizedMessage[] = [
       {
         id: 'msg1',
-        localId: null,
         createdAt: 1000,
         role: 'agent',
         isSidechain: false,
@@ -29,7 +28,6 @@ describe('Phase 0 permission skipping issue', () => {
       },
       {
         id: 'msg2',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: false,
@@ -47,7 +45,6 @@ describe('Phase 0 permission skipping issue', () => {
       },
       {
         id: 'msg3',
-        localId: null,
         createdAt: 3000,
         role: 'agent',
         isSidechain: false,
@@ -161,7 +158,6 @@ describe('Phase 0 permission skipping issue', () => {
     const toolMessages: NormalizedMessage[] = [
       {
         id: 'msg1',
-        localId: null,
         createdAt: 1000,
         role: 'agent',
         isSidechain: false,

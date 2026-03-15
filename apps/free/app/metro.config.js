@@ -9,6 +9,9 @@ const config = getDefaultConfig(__dirname, {
   isCSSEnabled: true,
 });
 
+// Monorepo: explicitly set projectRoot so Metro doesn't infer the workspace root
+config.projectRoot = projectRoot;
+
 // Watch workspace packages so Metro can resolve @saaskit-dev/agentbridge
 config.watchFolders = [workspaceRoot];
 config.resolver.nodeModulesPaths = [

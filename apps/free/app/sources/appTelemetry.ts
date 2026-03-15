@@ -9,7 +9,7 @@
  *
  * RemoteSink: ON by default (RFC §21.2), sends all log levels (debug/info/warn/error)
  * to the server relay which forwards to New Relic. Auth token is set lazily after login.
- * deviceId uses sync.anonID (user-level anonymous identifier) for cross-device tracking.
+ * deviceId uses sync.anonId (user-level anonymous identifier) for cross-device tracking.
  *
  * TraceContext: All logs automatically include traceId/sessionId when a session is active,
  * via setGlobalContextProvider() which reads from appTraceStore.
@@ -26,6 +26,7 @@ import {
   setGlobalContextProvider,
   type TraceContext,
 } from '@saaskit-dev/agentbridge/telemetry';
+import { config } from '@/config';
 import { getServerUrl } from '@/sync/serverConfig';
 import { sync } from '@/sync/sync';
 import { getSessionTrace, wireTraceToContext } from '@/sync/appTraceStore';
@@ -102,9 +103,9 @@ export function initAppTelemetry(): void {
   if (!isCollectorReady()) {
     const serverUrl = getServerUrl();
     const appVersion = Constants.expoConfig?.version ?? '0.0.0';
-    // deviceId is lazily resolved from sync.anonID (user-level anonymous identifier)
+    // deviceId is lazily resolved from sync.anonId (user-level anonymous identifier)
     // Falls back to platform-app if sync not initialized yet
-    const getDeviceId = () => sync.anonID || Platform.OS + '-app';
+    const getDeviceId = () => sync.anonId || Platform.OS + '-app';
 
     initTelemetry({
       layer: 'app',
@@ -112,18 +113,18 @@ export function initAppTelemetry(): void {
         appMemorySink,
         // RemoteSink ON by default (RFC §21.2) — user can opt-out in Settings → Privacy
         // Auth token is lazy: before login entries stay buffered, after login they upload
-        // minLevel: 'debug' sends all levels to server for comprehensive diagnostics
+        // minLevel: 'debug' — all levels sent to server for comprehensive diagnostics
         new RemoteSink({
           backend: new ServerRelayBackend({
             serverUrl,
             authToken: () => _telemetryAuthToken,
           }),
-          minLevel: 'info', // debug logs stay local, only info/warn/error go remote
+          minLevel: 'debug',
           metadata: { deviceId: getDeviceId(), appVersion, layer: 'app' },
         }),
       ],
       minLevel: 'debug',
-      sanitize: process.env.DEBUG ? false : true,
+      sanitize: !config.isDev,
     });
   }
 }

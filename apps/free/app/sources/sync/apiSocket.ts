@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { Encryption } from './encryption/encryption';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { getSessionTrace } from './appTraceStore';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/sync/apiSocket');
 
 //
@@ -123,16 +123,52 @@ class ApiSocket {
       throw new Error(`Session encryption not found for ${sessionId}`);
     }
 
-    const result = await this.socket!.emitWithAck('rpc-call', {
+    const request = {
       method: `${sessionId}:${method}`,
       params: await sessionEncryption.encryptRaw(params),
       _trace: getSessionTrace(sessionId),
-    });
+    };
 
-    if (result.ok) {
-      return (await sessionEncryption.decryptRaw(result.result)) as R;
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await this.socket!.emitWithAck('rpc-call', request);
+
+      if (result.ok) {
+        const decrypted = (await sessionEncryption.decryptRaw(result.result)) as
+          | R
+          | { error?: string };
+        if (
+          decrypted &&
+          typeof decrypted === 'object' &&
+          'error' in decrypted &&
+          typeof decrypted.error === 'string'
+        ) {
+          throw new Error(decrypted.error);
+        }
+        return decrypted as R;
+      }
+
+      const errorMessage =
+        typeof result.error === 'string' && result.error.length > 0
+          ? result.error
+          : 'RPC call failed';
+      lastError = new Error(errorMessage);
+
+      // Freshly created sessions can briefly race session-scoped RPC registration.
+      if (errorMessage === 'RPC method not available' && attempt < 2) {
+        logger.warn('[apiSocket] sessionRPC target not ready, retrying', {
+          sessionId,
+          method,
+          attempt: attempt + 1,
+        });
+        await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+        continue;
+      }
+
+      throw lastError;
     }
-    throw new Error('RPC call failed');
+
+    throw lastError ?? new Error('RPC call failed');
   }
 
   /**
@@ -151,9 +187,24 @@ class ApiSocket {
     });
 
     if (result.ok) {
-      return (await machineEncryption.decryptRaw(result.result)) as R;
+      const decrypted = (await machineEncryption.decryptRaw(result.result)) as
+        | R
+        | { error?: string };
+      if (
+        decrypted &&
+        typeof decrypted === 'object' &&
+        'error' in decrypted &&
+        typeof decrypted.error === 'string'
+      ) {
+        throw new Error(decrypted.error);
+      }
+      return decrypted as R;
     }
-    throw new Error('RPC call failed');
+    throw new Error(
+      typeof result.error === 'string' && result.error.length > 0
+        ? result.error
+        : 'RPC call failed'
+    );
   }
 
   send(event: string, data: any) {
@@ -229,8 +280,7 @@ class ApiSocket {
 
     // Connection events
     this.socket.on('connect', () => {
-      // logger.debug('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
-      // logger.debug('🔌 SyncSocket: Socket ID:', this.socket?.id);
+      logger.info('[SyncSocket] Connected', { recovered: this.socket?.recovered, socketId: this.socket?.id });
       this.updateStatus('connected');
       if (!this.socket?.recovered) {
         this.reconnectedListeners.forEach(listener => listener());
@@ -238,18 +288,18 @@ class ApiSocket {
     });
 
     this.socket.on('disconnect', reason => {
-      // logger.debug('🔌 SyncSocket: Disconnected', reason);
+      logger.info('[SyncSocket] Disconnected', { reason });
       this.updateStatus('disconnected');
     });
 
     // Error events
     this.socket.on('connect_error', error => {
-      // logger.error('🔌 SyncSocket: Connection error', error);
+      logger.error('[SyncSocket] Connection error', toError(error));
       this.updateStatus('error');
     });
 
     this.socket.on('error', error => {
-      // logger.error('🔌 SyncSocket: Error', error);
+      logger.error('[SyncSocket] Error', toError(error));
       this.updateStatus('error');
     });
 

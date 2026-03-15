@@ -31,10 +31,22 @@ const log = new Logger('app/api/socket');
 export async function startSocket(app: Fastify) {
   const io = new Server(app.server, {
     cors: {
-      origin: '*',
+      origin: process.env.APP_ENV === 'development'
+        ? true
+        : [
+            'https://free.saaskit.app',
+            'https://free-server.saaskit.app',
+            'https://app.happy.engineering',
+          ],
       methods: ['GET', 'POST', 'OPTIONS'],
       credentials: true,
-      allowedHeaders: ['*'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Trace-Id',
+        'X-Span-Id',
+        'X-Socket-Id',
+      ],
     },
     transports: ['websocket', 'polling'],
     pingTimeout: 45000,
@@ -148,6 +160,7 @@ export async function startSocket(app: Fastify) {
         payload: machineActivity,
         recipientFilter: { type: 'user-scoped-only' },
       });
+      log.debug('[connect] machine online broadcast', { userId, machineId: machineId });
     }
 
     socket.on('disconnect', async () => {
@@ -173,6 +186,7 @@ export async function startSocket(app: Fastify) {
             },
             data: { active: false, lastActiveAt: new Date(now) },
           });
+          log.debug('[disconnect] machine marked inactive', { userId, machineId: connection.machineId });
         } catch (error) {
           log.error(`Error updating machine active status: ${error}`);
         }
@@ -201,6 +215,7 @@ export async function startSocket(app: Fastify) {
             },
             data: { active: false, lastActiveAt: new Date(now) },
           });
+          log.debug('[disconnect] session marked inactive', { userId, sessionId: connection.sessionId });
         } catch (error) {
           log.error(`Error updating session active status: ${error}`);
         }

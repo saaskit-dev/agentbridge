@@ -6,7 +6,7 @@ import { Modal } from '@/modal';
 import { storage as syncStorage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/utils/requestReview');
 
 const localStorage = new MMKV();
@@ -100,7 +100,7 @@ export function requestReview() {
       // Mark when we last showed the store review
       localStorage.set(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN, new Date().toISOString());
     } catch (error) {
-      logger.error('Error requesting review:', error);
+      logger.error('Error requesting review:', toError(error));
     }
   });
 }

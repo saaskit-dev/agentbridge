@@ -15,7 +15,7 @@ describe('Session Resume Integration', () => {
       const acpSessionId = 'test-acp-session-123';
       const currentMetadata = {
         lifecycleState: 'active',
-        startedBy: 'terminal',
+        startedBy: 'cli',
       };
 
       const updatedMetadata = {

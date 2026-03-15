@@ -18,7 +18,14 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import {
+  sessionAbort,
+  sessionRunCommand,
+  sessionSetConfig,
+  sessionSetMode,
+  sessionSetModel,
+} from '@/sync/ops';
+import { resolveCommandInput } from '@/sync/suggestionCommands';
 import { useAuth } from '@/auth/AuthContext';
 import {
   storage,
@@ -30,6 +37,12 @@ import {
   useSetting,
 } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
+import {
+  getConfigOptionByCategory,
+  getCurrentDiscoveredModeId,
+  getDefaultDiscoveredModelId,
+  getDisplayCapabilities,
+} from '@/sync/sessionCapabilities';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
@@ -42,7 +55,7 @@ import {
   useSessionStatus,
 } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/session/SessionView');
 
 export const SessionView = React.memo((props: { id: string }) => {
@@ -211,6 +224,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const [message, setMessage] = React.useState('');
   const realtimeStatus = useRealtimeStatus();
   const { messages, isLoaded } = useSessionMessages(sessionId);
+  const [isSettingsBusy, setIsSettingsBusy] = React.useState(false);
+  const [pendingCapabilityChange, setPendingCapabilityChange] = React.useState<{
+    kind: 'model' | 'mode';
+    target: string;
+  } | null>(null);
   const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
 
   // Check if CLI version is outdated and not already acknowledged
@@ -222,12 +240,99 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   // Get permission mode from session object, fall back to global default
   const globalDefaultPermissionMode = useSetting('defaultPermissionMode');
   const permissionMode = session.permissionMode || globalDefaultPermissionMode || 'accept-edits';
-  // Get model mode from session object - for Gemini/OpenCode sessions use explicit model
-  const isGeminiSession = session.metadata?.flavor === 'gemini';
-  const isOpenCodeSession = session.metadata?.flavor === 'opencode';
-  const modelMode =
+  const desiredModelMode =
     session.modelMode ||
-    (isGeminiSession ? 'gemini-2.5-pro' : isOpenCodeSession ? 'default' : 'default');
+    (session.metadata?.flavor === 'gemini'
+      ? 'gemini-2.5-pro'
+      : session.metadata?.flavor === 'opencode'
+        ? 'default'
+        : 'default');
+  const confirmedModelId = session.capabilities?.models?.current ?? null;
+  const desiredAgentMode = session.desiredAgentMode ?? null;
+  const currentAgentMode = getCurrentDiscoveredModeId(session.capabilities);
+  const displayCapabilities = React.useMemo(() => {
+    return getDisplayCapabilities({
+      capabilities: session.capabilities,
+      desiredConfigOptions: session.desiredConfigOptions,
+    });
+  }, [session.capabilities, session.desiredConfigOptions]);
+  const modelConfigOption = React.useMemo(
+    () => getConfigOptionByCategory(session.capabilities, 'model'),
+    [session.capabilities]
+  );
+  const desiredModelSelection =
+    (modelConfigOption ? session.desiredConfigOptions?.[modelConfigOption.id] : null) ??
+    session.modelMode ??
+    desiredModelMode;
+  const actualModelLabel = React.useMemo(() => {
+    if (!confirmedModelId) {
+      return null;
+    }
+    return (
+      session.capabilities?.models?.available?.find(model => model.id === confirmedModelId)?.name ??
+      confirmedModelId
+    );
+  }, [confirmedModelId, session.capabilities?.models?.available]);
+  const pendingCapabilityLabel = React.useMemo(() => {
+    const getModeLabel = (modeId: string) =>
+      displayCapabilities?.modes?.available?.find(mode => mode.id === modeId)?.name ?? modeId;
+    const getModelLabel = (modelId: string) =>
+      displayCapabilities?.models?.available?.find(model => model.id === modelId)?.name ?? modelId;
+
+    if (pendingCapabilityChange?.kind === 'mode') {
+      return `Switching to ${getModeLabel(pendingCapabilityChange.target)}...`;
+    }
+
+    if (pendingCapabilityChange?.kind === 'model') {
+      return `Switching to ${getModelLabel(pendingCapabilityChange.target)}...`;
+    }
+
+    if (desiredAgentMode && currentAgentMode && desiredAgentMode !== currentAgentMode) {
+      return `Switching to ${getModeLabel(desiredAgentMode)}...`;
+    }
+
+    if (
+      desiredModelSelection &&
+      confirmedModelId &&
+      desiredModelSelection !== confirmedModelId
+    ) {
+      return `Switching to ${getModelLabel(desiredModelSelection)}...`;
+    }
+
+    if (
+      desiredModelSelection &&
+      !confirmedModelId &&
+      displayCapabilities?.models?.available?.length
+    ) {
+      const desiredModelExists = displayCapabilities.models.available.some(
+        model => model.id === desiredModelSelection
+      );
+      if (desiredModelExists) {
+        return `Switching to ${getModelLabel(desiredModelSelection)}...`;
+      }
+    }
+
+    if (desiredAgentMode && !currentAgentMode && displayCapabilities?.modes?.available?.length) {
+      const desiredModeExists = displayCapabilities.modes.available.some(
+        mode => mode.id === desiredAgentMode
+      );
+      if (desiredModeExists) {
+        return `Switching to ${getModeLabel(desiredAgentMode)}...`;
+      }
+    }
+
+    return null;
+  }, [
+    confirmedModelId,
+    currentAgentMode,
+    desiredAgentMode,
+    desiredModelSelection,
+    displayCapabilities?.models?.available,
+    displayCapabilities?.modes?.available,
+    pendingCapabilityChange,
+  ]);
+  const lastModelCorrectionRef = React.useRef<string | null>(null);
+  const [footerNotice, setFooterNotice] = React.useState<string | null>(null);
   const sessionStatus = useSessionStatus(session);
   const sessionUsage = useSessionUsage(sessionId);
   const alwaysShowContextSize = useSetting('alwaysShowContextSize');
@@ -235,6 +340,106 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
   const { credentials } = useAuth();
   const devUserId = devModeEnabled && credentials ? decodeJwtSub(credentials.token) : null;
+
+  React.useEffect(() => {
+    const availableModels = session.capabilities?.models?.available ?? [];
+    if (!desiredModelSelection || availableModels.length === 0) {
+      return;
+    }
+
+    const isCurrentModelValid = availableModels.some(model => model.id === desiredModelSelection);
+    if (isCurrentModelValid) {
+      return;
+    }
+
+    const fallbackModelId = getDefaultDiscoveredModelId(session.capabilities);
+    if (!fallbackModelId) {
+      return;
+    }
+
+    const correctionKey = `${sessionId}:${desiredModelSelection}:${fallbackModelId}`;
+    if (lastModelCorrectionRef.current === correctionKey) {
+      return;
+    }
+    lastModelCorrectionRef.current = correctionKey;
+
+    if (modelConfigOption) {
+      storage
+        .getState()
+        .updateSessionDesiredConfigOption(sessionId, modelConfigOption.id, fallbackModelId);
+    } else {
+      storage.getState().updateSessionModelMode(sessionId, fallbackModelId);
+    }
+    sync.applySettings({ lastUsedModelMode: fallbackModelId });
+    setFooterNotice(
+      `Model list changed. Switched to the default model '${fallbackModelId}'.`
+    );
+  }, [desiredModelSelection, modelConfigOption, session.capabilities, sessionId]);
+
+  // Track whether the initial requested mode has been confirmed by the backend.
+  // Only after confirmation, agent-driven mode changes (e.g. ExitPlanMode) sync back.
+  const initialModeConfirmedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!currentAgentMode || !desiredAgentMode) return;
+    if (currentAgentMode === desiredAgentMode) {
+      initialModeConfirmedRef.current = true;
+      return;
+    }
+    // Don't sync during initial capability discovery (mode settling)
+    if (!initialModeConfirmedRef.current) return;
+    // Don't sync if the user initiated this change
+    if (pendingCapabilityChange?.kind === 'mode') return;
+    // Agent changed mode (e.g. ExitPlanMode) — sync desiredAgentMode to match
+    storage.getState().updateSessionDesiredAgentMode(sessionId, currentAgentMode);
+  }, [currentAgentMode, desiredAgentMode, pendingCapabilityChange, sessionId]);
+
+  React.useEffect(() => {
+    if (!pendingCapabilityChange) {
+      return;
+    }
+
+    if (
+      pendingCapabilityChange.kind === 'model' &&
+      session.capabilities?.models?.current === pendingCapabilityChange.target
+    ) {
+      setPendingCapabilityChange(null);
+      setIsSettingsBusy(false);
+      return;
+    }
+
+    if (
+      pendingCapabilityChange.kind === 'mode' &&
+      currentAgentMode === pendingCapabilityChange.target
+    ) {
+      setPendingCapabilityChange(null);
+      setIsSettingsBusy(false);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      setPendingCapabilityChange(current => {
+        if (
+          !current ||
+          current.kind !== pendingCapabilityChange.kind ||
+          current.target !== pendingCapabilityChange.target
+        ) {
+          return current;
+        }
+        return null;
+      });
+      setIsSettingsBusy(false);
+      Modal.alert(
+        t('common.error'),
+        pendingCapabilityChange.kind === 'model'
+          ? 'Model change could not be confirmed.'
+          : 'Mode change could not be confirmed.'
+      );
+    }, 8000);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [currentAgentMode, pendingCapabilityChange, session.capabilities, sessionId]);
 
   // Use draft hook for auto-saving message drafts
   const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -261,10 +466,74 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
 
   // Function to update model mode (for Gemini sessions)
   const updateModelMode = React.useCallback(
-    (mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
-      storage.getState().updateSessionModelMode(sessionId, mode);
+    async (mode: string | null) => {
+      if (!mode || confirmedModelId === mode) return;
+      try {
+        setIsSettingsBusy(true);
+        setPendingCapabilityChange({ kind: 'model', target: mode });
+        if (modelConfigOption) {
+          await sessionSetConfig(sessionId, modelConfigOption.id, mode);
+          storage.getState().updateSessionDesiredConfigOption(sessionId, modelConfigOption.id, mode);
+        } else {
+          await sessionSetModel(sessionId, mode);
+          storage.getState().updateSessionModelMode(sessionId, mode);
+        }
+        sync.applySettings({ lastUsedModelMode: mode });
+      } catch (error) {
+        logger.error('Failed to switch model', toError(error), { sessionId, mode });
+        setPendingCapabilityChange(null);
+        setIsSettingsBusy(false);
+        Modal.alert(t('common.error'), 'Failed to switch model');
+      }
     },
-    [sessionId]
+    [confirmedModelId, modelConfigOption, sessionId]
+  );
+
+  const updateAgentMode = React.useCallback(
+    async (modeId: string) => {
+      if (!displayCapabilities?.modes || currentAgentMode === modeId) return;
+      try {
+        setIsSettingsBusy(true);
+        setPendingCapabilityChange({ kind: 'mode', target: modeId });
+        await sessionSetMode(sessionId, modeId);
+        storage.getState().updateSessionDesiredAgentMode(sessionId, modeId);
+      } catch (error) {
+        logger.error('Failed to switch agent mode', toError(error), { sessionId, modeId });
+        setPendingCapabilityChange(null);
+        setIsSettingsBusy(false);
+        Modal.alert(t('common.error'), 'Failed to switch mode');
+      }
+    },
+    [currentAgentMode, displayCapabilities?.modes, sessionId]
+  );
+
+  const updateConfigOption = React.useCallback(
+    async (optionId: string, value: string) => {
+      if (!session.capabilities?.configOptions) return;
+      const previousCapabilities = session.capabilities;
+      try {
+        setIsSettingsBusy(true);
+        storage.getState().updateSessionCapabilities(sessionId, {
+          ...session.capabilities,
+          configOptions: session.capabilities.configOptions.map(option =>
+            option.id === optionId ? { ...option, currentValue: value } : option
+          ),
+        });
+        await sessionSetConfig(sessionId, optionId, value);
+        storage.getState().updateSessionDesiredConfigOption(sessionId, optionId, value);
+      } catch (error) {
+        logger.error('Failed to update config option', toError(error), {
+          sessionId,
+          optionId,
+          value,
+        });
+        storage.getState().updateSessionCapabilities(sessionId, previousCapabilities ?? null);
+        Modal.alert(t('common.error'), 'Failed to update setting');
+      } finally {
+        setIsSettingsBusy(false);
+      }
+    },
+    [sessionId, session.capabilities]
   );
 
   // Memoize header-dependent styles to prevent re-renders
@@ -290,7 +559,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
         const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
         await startRealtimeSession(sessionId, initialPrompt);
       } catch (error) {
-        logger.error('Failed to start realtime session:', error);
+        logger.error('Failed to start realtime session:', toError(error));
         Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
       }
     } else if (realtimeStatus === 'connected') {
@@ -317,11 +586,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
 
     // Initialize git status sync for this session
     gitStatusSync.getSync(sessionId);
-  }, [sessionId, realtimeStatus]);
+  }, [sessionId]);
 
   const content = (
-    <>
-      <Deferred>{messages.length > 0 && <ChatList session={session} />}</Deferred>
+      <>
+      <Deferred>{messages.length > 0 && <ChatList session={session} footerNotice={footerNotice} />}</Deferred>
     </>
   );
   const placeholder =
@@ -343,8 +612,25 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       sessionId={sessionId}
       permissionMode={permissionMode}
       onPermissionModeChange={updatePermissionMode}
-      modelMode={modelMode as any}
+      modelMode={(confirmedModelId ?? undefined) as any}
       onModelModeChange={updateModelMode as any}
+      capabilities={displayCapabilities}
+      actualModelLabel={actualModelLabel}
+      pendingCapabilityLabel={pendingCapabilityLabel}
+      onAgentModeChange={updateAgentMode}
+      onConfigOptionChange={updateConfigOption}
+      isSettingsBusy={isSettingsBusy}
+      onRunCommand={commandId => {
+        setIsSettingsBusy(true);
+        void sessionRunCommand(sessionId, commandId)
+          .catch(error => {
+            logger.error('Failed to run command', toError(error), { sessionId, commandId });
+            Modal.alert(t('common.error'), 'Failed to run command');
+          })
+          .finally(() => {
+            setIsSettingsBusy(false);
+          });
+      }}
       metadata={session.metadata}
       connectionStatus={{
         text: sessionStatus.statusText,
@@ -354,9 +640,28 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       }}
       onSend={() => {
         if (message.trim()) {
+          const trimmedMessage = message.trim();
           setMessage('');
           clearDraft();
-          sync.sendMessage(sessionId, message);
+          const command = resolveCommandInput(sessionId, trimmedMessage);
+          if (command?.commandId && trimmedMessage === `/${command.command}`) {
+            setFooterNotice(null);
+            setIsSettingsBusy(true);
+            void sessionRunCommand(sessionId, command.commandId)
+              .catch(error => {
+                logger.error('Failed to run slash command', toError(error), {
+                  sessionId,
+                  commandId: command.commandId,
+                });
+                Modal.alert(t('common.error'), 'Failed to run command');
+              })
+              .finally(() => {
+                setIsSettingsBusy(false);
+              });
+            return;
+          }
+          setFooterNotice(null);
+          sync.sendMessage(sessionId, trimmedMessage);
         }
       }}
       onMicPress={micButtonState.onMicPress}

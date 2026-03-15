@@ -1,4 +1,5 @@
 import { encodeBase64, decodeBase64 } from '@/encryption/base64';
+import { toError } from '@saaskit-dev/agentbridge/telemetry';
 
 /**
  * Converts a 32-byte secret key to a user-readable format similar to 1Password
@@ -121,13 +122,12 @@ export function parseBackupSecretKey(formattedKey: string): string {
     return encodeBase64(bytes, 'base64url');
   } catch (error) {
     // Re-throw specific error messages
-    if (error instanceof Error) {
-      if (
-        error.message.includes('Invalid key length') ||
-        error.message.includes('No valid characters found')
-      ) {
-        throw error;
-      }
+    const err = toError(error);
+    if (
+      err.message.includes('Invalid key length') ||
+      err.message.includes('No valid characters found')
+    ) {
+      throw err;
     }
     throw new Error('Invalid secret key format');
   }

@@ -6,6 +6,9 @@
 import { apiSocket } from './apiSocket';
 import { getSessionTrace } from './appTraceStore';
 import type { MachineMetadata } from './storageTypes';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+const logger = new Logger('app/sync/ops');
 
 // Callback for getting machine encryption, registered by sync.ts to avoid circular dependency
 let _getMachineEncryption: ((machineId: string) => any) | null = null;
@@ -145,17 +148,9 @@ export interface SpawnSessionOptions {
   directory: string;
   approvedNewDirectoryCreation?: boolean;
   token?: string;
-  agent?: 'codex' | 'claude' | 'gemini' | 'opencode';
-  // Accepts any environment variables - daemon will pass them to the agent process
-  // Common variables include:
-  // - ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL
-  // - OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL, OPENAI_API_TIMEOUT_MS
-  // - AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_DEPLOYMENT_NAME
-  // - TOGETHER_API_KEY, TOGETHER_MODEL
-  // - TMUX_SESSION_NAME, TMUX_TMPDIR, TMUX_UPDATE_ENVIRONMENT
-  // - API_TIMEOUT_MS, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
-  // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
-  environmentVariables?: Record<string, string>;
+  agent?: string;
+  model?: string;
+  mode?: string;
 }
 
 // Exported session operation functions
@@ -172,8 +167,11 @@ export async function machineSpawnNewSession(
     approvedNewDirectoryCreation = false,
     token,
     agent,
-    environmentVariables,
+    model,
+    mode,
   } = options;
+
+  logger.info('[ops] machineSpawnNewSession', { machineId, directory, agent, model, mode });
 
   try {
     const result = await apiSocket.machineRPC<
@@ -183,8 +181,9 @@ export async function machineSpawnNewSession(
         directory: string;
         approvedNewDirectoryCreation?: boolean;
         token?: string;
-        agent?: 'codex' | 'claude' | 'gemini' | 'opencode';
-        environmentVariables?: Record<string, string>;
+        agent?: string;
+        model?: string;
+        mode?: string;
       }
     >(machineId, 'spawn-free-session', {
       type: 'spawn-in-directory',
@@ -192,15 +191,41 @@ export async function machineSpawnNewSession(
       approvedNewDirectoryCreation,
       token,
       agent,
-      environmentVariables,
+      model,
+      mode,
+    });
+    logger.info('[ops] machineSpawnNewSession result', {
+      machineId,
+      directory,
+      agent,
+      model,
+      mode,
+      type: result.type,
+      sessionId: result.type === 'success' ? result.sessionId : undefined,
     });
     return result;
   } catch (error) {
     // Handle RPC errors
+    logger.error('[ops] machineSpawnNewSession failed', toError(error), { machineId, directory });
     return {
       type: 'error',
-      errorMessage: error instanceof Error ? error.message : 'Failed to spawn session',
+      errorMessage: safeStringify(error),
     };
+  }
+}
+
+export async function machineListSupportedAgents(machineId: string): Promise<string[]> {
+  logger.info('[ops] machineListSupportedAgents', { machineId });
+  try {
+    const result = await apiSocket.machineRPC<{ agents: string[] }, {}>(
+      machineId,
+      'list-supported-agents',
+      {}
+    );
+    return Array.isArray(result.agents) ? result.agents : [];
+  } catch (error) {
+    logger.error('[ops] machineListSupportedAgents failed', toError(error), { machineId });
+    return [];
   }
 }
 
@@ -208,6 +233,7 @@ export async function machineSpawnNewSession(
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
+  logger.info('[ops] machineStopDaemon', { machineId });
   const result = await apiSocket.machineRPC<{ message: string }, {}>(machineId, 'stop-daemon', {});
   return result;
 }
@@ -243,7 +269,7 @@ export async function machineBash(
     return {
       success: false,
       stdout: '',
-      stderr: error instanceof Error ? error.message : 'Unknown error',
+      stderr: safeStringify(error),
       exitCode: -1,
     };
   }
@@ -294,14 +320,17 @@ export async function machineUpdateMetadata(
         result.metadata!
       )) as MachineMetadata;
 
-      // Merge our changes with the latest metadata
-      // Preserve the displayName we're trying to set, but use latest values for other fields
-      currentMetadata = {
-        ...latestMetadata,
-        displayName: metadata.displayName, // Keep our intended displayName change
-      };
+      // Merge: start from latest server state, then overlay all fields
+      // the caller explicitly provided (non-undefined) to preserve user intent
+      currentMetadata = { ...latestMetadata };
+      for (const key of Object.keys(metadata) as Array<keyof typeof metadata>) {
+        if (metadata[key] !== undefined) {
+          (currentMetadata as any)[key] = metadata[key];
+        }
+      }
 
       retryCount++;
+      logger.debug('[ops] machineUpdateMetadata version conflict, retrying', { machineId, retryCount, currentVersion });
 
       // If we've exhausted retries, throw error
       if (retryCount >= maxRetries) {
@@ -321,9 +350,34 @@ export async function machineUpdateMetadata(
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
+  logger.info('[ops] sessionAbort', { sessionId });
   await apiSocket.sessionRPC(sessionId, 'abort', {
     reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`,
   });
+}
+
+export async function sessionSetModel(sessionId: string, modelId: string): Promise<void> {
+  logger.info('[ops] sessionSetModel', { sessionId, modelId });
+  await apiSocket.sessionRPC(sessionId, 'set-model', { modelId });
+}
+
+export async function sessionSetMode(sessionId: string, modeId: string): Promise<void> {
+  logger.info('[ops] sessionSetMode', { sessionId, modeId });
+  await apiSocket.sessionRPC(sessionId, 'set-mode', { modeId });
+}
+
+export async function sessionSetConfig(
+  sessionId: string,
+  optionId: string,
+  value: string
+): Promise<void> {
+  logger.info('[ops] sessionSetConfig', { sessionId, optionId, value });
+  await apiSocket.sessionRPC(sessionId, 'set-config', { optionId, value });
+}
+
+export async function sessionRunCommand(sessionId: string, commandId: string): Promise<void> {
+  logger.info('[ops] sessionRunCommand', { sessionId, commandId });
+  await apiSocket.sessionRPC(sessionId, 'run-command', { commandId });
 }
 
 /**
@@ -336,6 +390,7 @@ export async function sessionAllow(
   allowedTools?: string[],
   decision?: 'approved' | 'approved_for_session'
 ): Promise<void> {
+  logger.debug('[ops] sessionAllow', { sessionId, id, decision });
   const request: SessionPermissionRequest = {
     id,
     approved: true,
@@ -356,6 +411,7 @@ export async function sessionDeny(
   allowedTools?: string[],
   decision?: 'denied' | 'abort'
 ): Promise<void> {
+  logger.debug('[ops] sessionDeny', { sessionId, id, decision });
   const request: SessionPermissionRequest = {
     id,
     approved: false,
@@ -370,12 +426,14 @@ export async function sessionDeny(
  * Request mode change for a session
  */
 export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): Promise<boolean> {
+  logger.info('[ops] sessionSwitch', { sessionId, to });
   const request: SessionModeChangeRequest = { to };
   const response = await apiSocket.sessionRPC<boolean, SessionModeChangeRequest>(
     sessionId,
     'switch',
     request
   );
+  logger.info('[ops] sessionSwitch result', { sessionId, to, success: response });
   return response;
 }
 
@@ -386,6 +444,7 @@ export async function sessionBash(
   sessionId: string,
   request: SessionBashRequest
 ): Promise<SessionBashResponse> {
+  logger.debug('[ops] sessionBash', { sessionId, command: request.command, cwd: request.cwd });
   try {
     const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(
       sessionId,
@@ -407,9 +466,9 @@ export async function sessionBash(
     return {
       success: false,
       stdout: '',
-      stderr: error instanceof Error ? error.message : 'Unknown error',
+      stderr: safeStringify(error),
       exitCode: -1,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: safeStringify(error),
     };
   }
 }
@@ -435,7 +494,7 @@ export async function sessionReadFile(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: safeStringify(error),
     };
   }
 }
@@ -463,7 +522,7 @@ export async function sessionWriteFile(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: safeStringify(error),
     };
   }
 }
@@ -488,7 +547,7 @@ export async function sessionListDirectory(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: safeStringify(error),
     };
   }
 }
@@ -514,7 +573,7 @@ export async function sessionGetDirectoryTree(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: safeStringify(error),
     };
   }
 }
@@ -541,7 +600,7 @@ export async function sessionRipgrep(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: safeStringify(error),
     };
   }
 }
@@ -550,6 +609,7 @@ export async function sessionRipgrep(
  * Kill the session process immediately
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
+  logger.info('[ops] sessionKill', { sessionId });
   try {
     const response = await apiSocket.sessionRPC<SessionKillResponse, {}>(
       sessionId,
@@ -563,7 +623,7 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
   } catch (error) {
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: safeStringify(error),
     };
   }
 }
@@ -576,6 +636,7 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
 export async function sessionDelete(
   sessionId: string
 ): Promise<{ success: boolean; message?: string }> {
+  logger.info('[ops] sessionDelete', { sessionId });
   try {
     const response = await apiSocket.request(`/v1/sessions/${sessionId}`, {
       method: 'DELETE',
@@ -583,6 +644,7 @@ export async function sessionDelete(
 
     if (response.ok) {
       const result = await response.json();
+      logger.info('[ops] sessionDelete success', { sessionId });
       return { success: true };
     } else {
       const error = await response.text();
@@ -592,9 +654,10 @@ export async function sessionDelete(
       };
     }
   } catch (error) {
+    logger.error('[ops] sessionDelete failed', toError(error), { sessionId });
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: safeStringify(error),
     };
   }
 }

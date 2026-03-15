@@ -6,6 +6,7 @@
 
 import chalk from 'chalk';
 import { isAnalyticsEnabled, setAnalyticsEnabled } from '@/api/analyticsHeaderSync';
+import { configuration } from '@/configuration';
 
 export async function handleAnalyticsCommand(args: string[]): Promise<void> {
   const subcommand = args[0];
@@ -93,5 +94,5 @@ async function handleAnalyticsStatus(): Promise<void> {
   }
 
   console.log(chalk.gray('\n  Note: Local log files are always written for debugging purposes.'));
-  console.log(chalk.gray(`  Log location: ~/.free/logs/`));
+  console.log(chalk.gray(`  Log location: ${configuration.logsDir}`));
 }

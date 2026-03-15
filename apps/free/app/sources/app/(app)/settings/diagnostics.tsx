@@ -10,6 +10,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Text } from '@/components/StyledText';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 
@@ -74,7 +75,7 @@ export default function DiagnosticsScreen() {
         Modal.alert(t('diagnostics.exported'), `Saved to: ${file.uri}`);
       }
     } catch (err: unknown) {
-      Modal.alert(t('diagnostics.exportFailed'), err instanceof Error ? err.message : String(err));
+      Modal.alert(t('diagnostics.exportFailed'), safeStringify(err));
     } finally {
       setIsSharing(false);
     }

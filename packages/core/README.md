@@ -1,151 +1,113 @@
-# @agentbridge/core
+# @saaskit-dev/agentbridge
 
-[![npm version](https://img.shields.io/npm/v/@agentbridge/core.svg)](https://www.npmjs.com/package/@agentbridge/core)
+[![npm version](https://img.shields.io/npm/v/@saaskit-dev/agentbridge.svg)](https://www.npmjs.com/package/@saaskit-dev/agentbridge)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Core SDK for AgentBridge — Type definitions, interface contracts, and cross-platform implementations for building AI agent control systems.
-
-## Architecture Philosophy
-
-**Interfaces define contracts, implementations provide capabilities, factory patterns enable dependency inversion.**
-
-```mermaid
-flowchart LR
-    subgraph Core["@agentbridge/core"]
-        Types["types/<br/>Pure Types"]
-        Interfaces["interfaces/<br/>Contracts"]
-        Implementations["implementations/<br/>Platform-Specific"]
-    end
-
-    Types --> Interfaces
-    Implementations --> Interfaces
-```
+Core SDK for AgentBridge — Type definitions, interface contracts, encryption primitives, telemetry, and cross-platform implementations for building AI agent control systems.
 
 ## Installation
 
 ```bash
-npm install @agentbridge/core
+npm install @saaskit-dev/agentbridge
 # or
-pnpm add @agentbridge/core
+pnpm add @saaskit-dev/agentbridge
 ```
 
-## Platform Support
+## Entry Points
 
-| Capability | CLI (Node.js) | Server (Node.js) | Server (Edge) | App (React Native) |
-|------------|:-------------:|:----------------:|:-------------:|:------------------:|
-| **Crypto** | tweetnacl + AES-256-GCM | privacy-kit/KeyTree | Web Crypto | libsodium |
-| **Storage** | fs (JSON + file locks) | Prisma + PostgreSQL | KV | MMKV |
-| **SecureStorage** | Encrypted files | - | KV (encrypted) | Expo SecureStore |
-| **Http** | axios | axios | fetch | axios |
-| **WebSocket** | socket.io-client | socket.io server | Durable Objects | socket.io-client |
-| **Process** | spawn + node-pty | - | ❌ | ❌ |
-| **AgentBackend** | ✅ | ❌ | ❌ | ❌ |
+| Import Path | Description | Environment |
+|---|---|---|
+| `@saaskit-dev/agentbridge` | Full SDK — all types, interfaces, implementations, encryption, utils | Node.js (CLI / Server) |
+| `@saaskit-dev/agentbridge/common` | Platform-agnostic subset — no `node:*` imports | React Native / Browser |
+| `@saaskit-dev/agentbridge/types` | Pure type definitions only | Any |
+| `@saaskit-dev/agentbridge/interfaces` | Interface contracts + factory registries | Any |
+| `@saaskit-dev/agentbridge/encryption` | Encryption primitives (tweetnacl-based) | Any |
+| `@saaskit-dev/agentbridge/telemetry` | Logging, tracing, sinks (platform-agnostic) | Any |
+| `@saaskit-dev/agentbridge/telemetry/node` | Node.js-specific telemetry (FileSink, log cleanup) | Node.js |
+
+> **React Native / Browser apps** should import from `/common` instead of the root entry point to avoid pulling in Node.js-specific code.
+
+## Architecture
+
+**Interfaces define contracts, implementations provide capabilities, factory patterns enable dependency inversion.**
+
+```
+types/           Pure type definitions (session, message, machine, agent, capabilities)
+interfaces/      Abstract contracts (ICrypto, IStorage, IHttpClient, IWebSocketClient, IAgentBackend, ...)
+implementations/ Platform-specific implementations (Node.js crypto, fs storage, axios, socket.io, ...)
+encryption/      End-to-end encryption (SecretBox, Box, AES-256-GCM, wire encoding)
+telemetry/       Structured logging with trace correlation and pluggable sinks
+utils/           Encoding, async primitives, tmux, caffeinate, etc.
+```
 
 ## Core Interfaces
 
-### AgentBackend
+### IAgentBackend
 
-Unified interface for different AI agent backends:
+Unified interface for different AI agent backends (Claude, Gemini, Codex, OpenCode):
 
 ```typescript
-import { AgentBackend, AgentMessage } from '@agentbridge/core';
+import type { IAgentBackend, AgentMessage } from '@saaskit-dev/agentbridge';
 
-type SessionId = string;
-type ToolCallId = string;
+// AgentMessage is a discriminated union:
+//   'model-output' | 'status' | 'tool-call' | 'tool-result'
+//   'permission-request' | 'permission-response' | 'fs-edit'
+//   'terminal-output' | 'event'
 
-// Agent message types
-type AgentMessage =
-  | { type: 'model-output'; textDelta?: string; fullText?: string }
-  | { type: 'status'; status: 'starting' | 'running' | 'idle' | 'stopped' | 'error'; detail?: string }
-  | { type: 'tool-call'; toolName: string; args: Record<string, unknown>; callId: ToolCallId }
-  | { type: 'tool-result'; toolName: string; result: unknown; callId: ToolCallId }
-  | { type: 'permission-request'; id: string; reason: string; payload: unknown }
-  | { type: 'permission-response'; id: string; approved: boolean }
-  | { type: 'fs-edit'; description: string; diff?: string; path?: string }
-  | { type: 'terminal-output'; data: string }
-  | { type: 'event'; name: string; payload: unknown };
-
-interface AgentBackend {
-  startSession(initialPrompt?: string): Promise<{ sessionId: SessionId }>;
-  sendPrompt(sessionId: SessionId, prompt: string): Promise<void>;
-  cancel(sessionId: SessionId): Promise<void>;
+interface IAgentBackend {
+  startSession(initialPrompt?: string): Promise<{ sessionId: string }>;
+  sendPrompt(sessionId: string, prompt: string): Promise<void>;
+  cancel(sessionId: string): Promise<void>;
   onMessage(handler: (msg: AgentMessage) => void): void;
-  offMessage?(handler: (msg: AgentMessage) => void): void;
   respondToPermission?(requestId: string, approved: boolean): Promise<void>;
   waitForResponseComplete?(timeoutMs?: number): Promise<void>;
   dispose(): Promise<void>;
 }
 ```
 
-### TransportHandler
+**Implementations:** `AcpBackend` (generic ACP protocol), `ClaudeBackend`, and factory functions `createGeminiBackend()`, `createCodexBackend()`, `createClaudeAcpBackend()`, `createOpenCodeBackend()`.
 
-Handle agent-specific behaviors for the ACP protocol:
+### ITransportHandler
+
+Agent-specific behaviors for the ACP protocol (timeouts, output filtering, tool identification):
 
 ```typescript
-interface TransportHandler {
+interface ITransportHandler {
   readonly agentName: string;
-
-  // Timeout configuration
-  getInitTimeout(): number;  // Gemini: 120s, Codex: 30s, Claude: 10s
+  getInitTimeout(): number;
   getIdleTimeout?(): number;
   getToolCallTimeout?(toolCallId: string, toolKind?: string): number;
-
-  // Output processing
   filterStdoutLine?(line: string): string | null;
   handleStderr?(text: string, context: StderrContext): StderrResult;
-
-  // Tool identification
   getToolPatterns(): ToolPattern[];
-  isInvestigationTool?(toolCallId: string, toolKind?: string): boolean;
-  extractToolNameFromId?(toolCallId: string): string | null;
 }
 ```
+
+**Implementations:** `ClaudeAcpTransport`, `GeminiTransport`, `CodexTransport`, `OpenCodeTransport`, `DefaultTransport`.
 
 ### ICrypto
 
-Encryption interfaces supporting both legacy (tweetnacl) and modern (AES-256-GCM) modes:
+Encryption interface supporting both legacy (tweetnacl secretbox/box) and modern (AES-256-GCM) modes, plus Ed25519 signatures:
 
 ```typescript
-interface EncryptedData {
-  ciphertext: Uint8Array;
-  nonce: Uint8Array;  // 12 bytes for GCM, 24 bytes for secretbox
-  tag?: Uint8Array;   // 16 bytes auth tag for GCM
-}
-
 interface ICrypto {
   getRandomBytes(size: number): Uint8Array;
-
-  // Legacy mode (tweetnacl)
+  // Legacy: tweetnacl secretbox / box / boxSeal
   secretbox(plaintext: Uint8Array, nonce: Uint8Array, key: Uint8Array): Uint8Array;
   secretboxOpen(ciphertext: Uint8Array, nonce: Uint8Array, key: Uint8Array): Uint8Array | null;
   boxKeyPair(): { publicKey: Uint8Array; secretKey: Uint8Array };
-  box(plaintext: Uint8Array, nonce: Uint8Array, peerPublicKey: Uint8Array, secretKey: Uint8Array): Uint8Array;
-  boxOpen(ciphertext: Uint8Array, nonce: Uint8Array, peerPublicKey: Uint8Array, secretKey: Uint8Array): Uint8Array | null;
-  boxSeal(plaintext: Uint8Array, peerPublicKey: Uint8Array): Uint8Array;
-  boxSealOpen(ciphertext: Uint8Array, publicKey: Uint8Array, secretKey: Uint8Array): Uint8Array | null;
-
-  // DataKey mode (AES-256-GCM)
+  // Modern: AES-256-GCM
   encryptAesGcm(plaintext: Uint8Array, key: Uint8Array): EncryptedData;
   decryptAesGcm(encrypted: EncryptedData, key: Uint8Array): Uint8Array | null;
-
   // Ed25519 signatures
-  signKeyPairFromSeed(seed: Uint8Array): { publicKey: Uint8Array; secretKey: Uint8Array };
   signDetached(message: Uint8Array, secretKey: Uint8Array): Uint8Array;
   verifyDetached(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean;
-
-  // Auth challenge
-  authChallenge(secret: Uint8Array): { challenge: Uint8Array; publicKey: Uint8Array; signature: Uint8Array };
 }
 ```
 
-**Implementations:**
-- `crypto-node` — Node.js crypto (AES-256-GCM) + tweetnacl
-- `crypto-rn` — libsodium-wrappers for React Native
-- `crypto-edge` — Web Crypto API
+**Implementation:** `NodeCrypto` (Node.js `crypto` + tweetnacl).
 
-### IStorage
-
-Key-value storage interface:
+### IStorage / ISecureStorage
 
 ```typescript
 interface IStorage {
@@ -157,200 +119,92 @@ interface IStorage {
 }
 ```
 
-**Implementations:**
-- `storage-fs` — Node.js filesystem with file locks
-- `storage-mmkv` — React Native MMKV
-- `storage-kv` — Cloudflare KV
+**Implementations:** `FsStorage` (filesystem), `EncryptedFsStorage` (encrypted filesystem).
 
-### ISecureStorage
+### IHttpClient / IWebSocketClient / IWebSocketServer
 
-Encrypted storage interface:
+HTTP, WebSocket client, and WebSocket server abstractions with factory registration.
 
-```typescript
-interface ISecureStorage {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<void>;
-  deleteItem(key: string): Promise<void>;
-}
-```
+**Implementations:** `AxiosHttpClient`, `SocketIoClient`, `SocketIoServer`.
 
-**Implementations:**
-- `secure-storage-fs` — Encrypted file storage (CLI)
-- `secure-storage-expo` — Expo SecureStore (App)
-- `secure-storage-kv` — Encrypted KV (Edge)
+### IProcessManager
 
-### IHttpClient
-
-HTTP client abstraction:
+Process spawning (CLI only):
 
 ```typescript
-interface IHttpClient {
-  get<T>(url: string, config?: RequestConfig): Promise<T>;
-  post<T>(url: string, body?: unknown, config?: RequestConfig): Promise<T>;
-  put<T>(url: string, body?: unknown, config?: RequestConfig): Promise<T>;
-  delete<T>(url: string, config?: RequestConfig): Promise<T>;
-}
-```
-
-**Implementations:** `http-axios`, `http-fetch`
-
-### IWebSocketClient
-
-WebSocket client interface:
-
-```typescript
-interface IWebSocketClient {
-  connect(url: string, options?: { auth?: Record<string, string> }): Promise<void>;
-  disconnect(): void;
-  emit(event: string, data: unknown): void;
-  on(event: string, handler: (data: unknown) => void): void;
-  off(event: string, handler?: (data: unknown) => void): void;
-  emitWithAck?(event: string, data: unknown, timeout?: number): Promise<unknown>;
-}
-```
-
-**Implementations:** `ws-socketio-client`, `ws-native`
-
-### IWebSocketServer
-
-WebSocket server interface:
-
-```typescript
-interface ISocket {
-  id: string;
-  emit(event: string, data: unknown): void;
-  on(event: string, handler: (data: unknown) => void): void;
-  timeout(ms: number): { emitWithAck(event: string, data: unknown): Promise<unknown> };
-}
-
-interface IWebSocketServer {
-  attach(httpServer: unknown): void;
-  onConnection(handler: (socket: ISocket) => void): void;
-  to(room: string): { emit(event: string, data: unknown): void };
-}
-```
-
-**Implementations:** `ws-server-socketio`, `ws-server-durable`
-
-### IProcess
-
-Process management (CLI only):
-
-```typescript
-interface IProcess {
-  pid: number;
-  kill(signal?: string): void;
-  wait(): Promise<{ code: number }>;
-  stdout: AsyncIterable<string>;
-  stderr: AsyncIterable<string>;
-  stdin: { write(data: string): void };
-}
-
 interface IProcessManager {
-  spawn(command: string, args: string[], options?: { cwd?: string; env?: Record<string, string> }): IProcess;
-  exec(command: string): Promise<{ stdout: string; stderr: string; code: number }>;
+  spawn(command: string, args: string[], options?: SpawnOptions): IProcess;
+  exec(command: string): Promise<ExecResult>;
 }
 ```
 
-**Implementations:** `process-node`, `process-pty`
+**Implementation:** `NodeProcessManager` / `NodeProcess`.
 
-## Communication Protocol
+## Encryption
 
-### WebSocket Events
-
-```typescript
-// Persistent events
-type UpdateEvent =
-  | { type: 'new-message'; sessionId: string; message: Message }
-  | { type: 'new-session'; sessionId: string; metadata: SessionMetadata; dataEncryptionKey: Uint8Array }
-  | { type: 'update-session'; sessionId: string; metadata?: Partial<SessionMetadata> }
-  | { type: 'new-machine'; machineId: string; metadata: MachineMetadata }
-  | { type: 'update-machine'; machineId: string; metadata?: Partial<MachineMetadata> }
-  | { type: 'delete-session'; sessionId: string }
-  | { type: 'kv-batch-update'; changes: Array<{ key: string; value: unknown; version: number }> };
-
-// Ephemeral events
-type EphemeralEvent =
-  | { type: 'activity'; id: string; active: boolean; thinking?: boolean }
-  | { type: 'usage'; id: string; tokens: number; cost: number }
-  | { type: 'machine-status'; machineId: string; online: boolean };
-```
-
-### RPC Mechanism
+High-level encryption utilities for end-to-end encrypted sessions:
 
 ```typescript
-// Register RPC handler
-socket.emit('rpc-register', { method: 'permission-response' });
+import { SessionEncryption, MachineEncryption, EncryptionCache } from '@saaskit-dev/agentbridge';
+// or from '@saaskit-dev/agentbridge/encryption'
 
-// Call RPC
-const result = await socket.emitWithAck('rpc-call', {
-  method: 'permission-response',
-  params: { requestId: 'xxx', approved: true },
-});
+// Wire encoding: encrypt → base64 for transport
+import { wireEncode, wireDecode } from '@saaskit-dev/agentbridge';
 ```
+
+- `SecretBoxEncryption` — symmetric (tweetnacl secretbox)
+- `BoxEncryption` — asymmetric (tweetnacl box)
+- `AES256Encryption` — symmetric (AES-256-GCM)
+- `SessionEncryption` / `MachineEncryption` — domain-specific wrappers
+- `EncryptionCache` — caches decrypted results
 
 ## Telemetry
 
-Unified logging system with trace correlation:
+Structured logging with automatic trace correlation across App → Server → CLI → Agent:
 
 ```typescript
-import { Logger, initTelemetry, FileSink, RemoteSink } from '@agentbridge/core/telemetry';
+import { Logger, initTelemetry } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('my-component');
-
-logger.debug('Debug message', { key: 'value' });  // Local only
-logger.info('Info message', { key: 'value' });    // Sent to remote
-logger.error('Error message', new Error('details'), { context: 'data' });
+logger.debug('message', { key: 'value' });
+logger.info('info message');
+logger.error('failed', new Error('details'));
 ```
 
-## Directory Structure
+**Sinks:** `ConsoleSink`, `MemorySink`, `RemoteSink` (platform-agnostic), `FileSink` (Node.js via `/telemetry/node`).
 
+**Remote backends:** `AxiomBackend`, `NewRelicBackend`, `ServerRelayBackend`.
+
+## Utils
+
+| Utility | Description |
+|---|---|
+| `encodeBase64` / `decodeBase64` / `encodeHex` / `decodeHex` | Binary encoding |
+| `hmacSha512` / `deriveKey` / `deriveSecretKeyTreeRoot` | Key derivation (Node.js) |
+| `AsyncLock` | Async mutex |
+| `ModeAwareMessageQueue` / `AsyncIterableQueue` / `PushableAsyncIterable` | Async message passing |
+| `atomicFileWrite` / `atomicWriteJson` | Safe file writes (Node.js) |
+| `deterministicStringify` / `hashObject` / `deepEqual` | JSON utilities (Node.js) |
+| `safeStringify` / `toError` | Safe serialization |
+| `expandEnvVars` | Environment variable expansion |
+| `startCaffeinate` / `stopCaffeinate` | Prevent macOS sleep (Node.js) |
+| Tmux utilities | Session/pane management (Node.js) |
+
+## Factory Pattern
+
+All interfaces use a register/create factory pattern for dependency inversion:
+
+```typescript
+import { registerCryptoFactory, createCrypto, NodeCrypto } from '@saaskit-dev/agentbridge';
+
+// Register once at app startup
+registerCryptoFactory(() => new NodeCrypto());
+
+// Use anywhere
+const crypto = createCrypto();
 ```
-packages/core/
-├── src/
-│   ├── types/
-│   │   ├── session.ts
-│   │   ├── message.ts
-│   │   ├── machine.ts
-│   │   ├── agent.ts
-│   │   └── index.ts
-│   │
-│   ├── interfaces/
-│   │   ├── agent.ts          # AgentBackend + AgentMessage
-│   │   ├── transport.ts      # TransportHandler (ACP)
-│   │   ├── crypto.ts
-│   │   ├── storage.ts
-│   │   ├── http.ts
-│   │   ├── websocket.ts
-│   │   ├── process.ts
-│   │   ├── events.ts
-│   │   └── index.ts
-│   │
-│   ├── implementations/
-│   │   ├── agent/
-│   │   │   ├── acp.ts        # ACP protocol backend
-│   │   │   └── index.ts
-│   │   ├── crypto/
-│   │   ├── storage/
-│   │   ├── secure-storage/
-│   │   ├── http/
-│   │   ├── websocket/
-│   │   ├── process/
-│   │   └── index.ts
-│   │
-│   ├── telemetry/            # Unified logging system
-│   │   ├── logger.ts
-│   │   ├── collector.ts
-│   │   ├── context.ts
-│   │   └── sinks/
-│   │
-│   └── utils/
-│       ├── encoding.ts
-│       └── index.ts
-│
-├── package.json
-└── tsconfig.json
-```
+
+Same pattern for `Storage`, `SecureStorage`, `HttpClient`, `WebSocketClient`, `WebSocketServer`, `ProcessManager`, `AgentBackend`, `TransportHandler`.
 
 ## License
 

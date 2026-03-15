@@ -9,6 +9,7 @@ import {
 import { websocketEventsCounter } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
@@ -66,7 +67,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
           },
         });
       } catch (error) {
-        log.error(`Error in artifact-read: ${error}`);
+        log.error('Error in artifact-read', undefined, { userId, artifactId: data?.artifactId, error: safeStringify(error) });
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }
@@ -272,7 +273,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
 
         callback(response);
       } catch (error) {
-        log.error(`Error in artifact-update: ${error}`);
+        log.error('Error in artifact-update', undefined, { userId, artifactId: data?.artifactId, error: safeStringify(error) });
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }
@@ -310,24 +311,13 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
           return;
         }
 
-        // Check if artifact already exists
-        const existingArtifact = await db.artifact.findUnique({
-          where: { id },
+        // Check if artifact already exists for this account (scoped query prevents cross-account probing)
+        const existingArtifact = await db.artifact.findFirst({
+          where: { id, accountId: userId },
         });
 
         if (existingArtifact) {
-          // If exists for another account, return error
-          if (existingArtifact.accountId !== userId) {
-            if (callback) {
-              callback({
-                result: 'error',
-                message: 'Artifact with this ID already exists for another account',
-              });
-            }
-            return;
-          }
-
-          // If exists for same account, return existing (idempotent)
+          // Exists for same account — return existing (idempotent)
           callback({
             result: 'success',
             artifact: {
@@ -382,7 +372,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
           },
         });
       } catch (error) {
-        log.error(`Error in artifact-create: ${error}`);
+        log.error('Error in artifact-create', undefined, { userId, error: safeStringify(error) });
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }
@@ -427,9 +417,9 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
           return;
         }
 
-        // Delete artifact
-        await db.artifact.delete({
-          where: { id: artifactId },
+        // Delete artifact (deleteMany with accountId prevents cross-account deletes)
+        await db.artifact.deleteMany({
+          where: { id: artifactId, accountId: userId },
         });
 
         // Emit delete-artifact event
@@ -444,7 +434,7 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         // Send success response
         callback({ result: 'success' });
       } catch (error) {
-        log.error(`Error in artifact-delete: ${error}`);
+        log.error('Error in artifact-delete', undefined, { userId, artifactId: data?.artifactId, error: safeStringify(error) });
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }

@@ -3,7 +3,7 @@ import { getCurrentRealtimeSessionId } from './RealtimeSession';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/realtimeClientTools');
 
 /**
@@ -83,7 +83,7 @@ export const realtimeClientTools = {
       }
       return "done [DO NOT say anything else, simply say 'done']";
     } catch (error) {
-      logger.error('❌ Failed to process permission:', error);
+      logger.error('❌ Failed to process permission:', toError(error));
       return `error (failed to ${decision} permission)`;
     }
   },

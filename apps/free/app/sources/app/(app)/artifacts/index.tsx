@@ -11,7 +11,7 @@ import { DecryptedArtifact } from '@/sync/artifactTypes';
 import { useArtifacts } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/artifacts');
 // Date formatting
 
@@ -149,7 +149,7 @@ export default function ArtifactsScreen() {
         await sync.fetchArtifactsList();
         logger.debug('📱 ArtifactsScreen: fetchArtifactsList completed');
       } catch (error) {
-        logger.error('📱 ArtifactsScreen: Failed to fetch artifacts:', error);
+        logger.error('📱 ArtifactsScreen: Failed to fetch artifacts:', toError(error));
       } finally {
         if (!cancelled) {
           setIsLoading(false);

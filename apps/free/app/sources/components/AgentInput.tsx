@@ -23,21 +23,28 @@ import { hapticsLight, hapticsError } from './haptics';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
-import { PermissionMode, ModelMode } from './PermissionModeSelector';
+import type { ModelMode } from './PermissionModeSelector';
 import { Typography } from '@/constants/Typography';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
-import { getBuiltInProfile } from '@/sync/profileUtils';
 import {
-  AIBackendProfile,
-  getProfileEnvironmentVariables,
-  validateProfileForAgent,
-} from '@/sync/settings';
+  getAgentDescription,
+  getAgentDisplayName,
+  isExperimentalAgent,
+  normalizeAgentFlavor,
+  type AppAgentFlavor,
+} from '@/sync/agentFlavor';
 import { useSetting } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
+import {
+  getVisibleConfigOptions,
+  PermissionMode,
+  SessionCapabilities,
+  usesDiscoveredCapabilitiesOnly,
+} from '@/sync/sessionCapabilities';
 import { t } from '@/text';
 import { Theme } from '@/theme';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/AgentInput');
 
 interface AgentInputProps {
@@ -53,6 +60,13 @@ interface AgentInputProps {
   onPermissionModeChange?: (mode: PermissionMode) => void;
   modelMode?: ModelMode;
   onModelModeChange?: (mode: ModelMode) => void;
+  capabilities?: SessionCapabilities | null;
+  actualModelLabel?: string | null;
+  pendingCapabilityLabel?: string | null;
+  onAgentModeChange?: (modeId: string) => void;
+  onConfigOptionChange?: (optionId: string, value: string) => void;
+  onRunCommand?: (commandId: string) => void;
+  isSettingsBusy?: boolean;
   metadata?: Metadata | null;
   onAbort?: () => void | Promise<void>;
   showAbortButton?: boolean;
@@ -63,7 +77,9 @@ interface AgentInputProps {
     isPulsing?: boolean;
     cliStatus?: {
       claude: boolean | null;
+      'claude-acp'?: boolean | null;
       codex: boolean | null;
+      'codex-acp'?: boolean | null;
       gemini?: boolean | null;
       opencode?: boolean | null;
     };
@@ -81,7 +97,9 @@ interface AgentInputProps {
   };
   alwaysShowContextSize?: boolean;
   onFileViewerPress?: () => void;
-  agentType?: 'claude' | 'codex' | 'gemini' | 'opencode';
+  agentType?: AppAgentFlavor;
+  availableAgentTypes?: AppAgentFlavor[];
+  onAgentChange?: (agent: AppAgentFlavor) => void;
   onAgentClick?: () => void;
   machineName?: string | null;
   onMachineClick?: () => void;
@@ -90,8 +108,6 @@ interface AgentInputProps {
   isSendDisabled?: boolean;
   isSending?: boolean;
   minHeight?: number;
-  profileId?: string | null;
-  onProfileClick?: () => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -330,10 +346,6 @@ export const AgentInput = React.memo(
 
     // Check if this is a Codex, Gemini, or OpenCode session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
-    const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
-    const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
-    const isOpenCode = props.metadata?.flavor === 'opencode' || props.agentType === 'opencode';
-    const isAcpAgent = isCodex || isGemini || isOpenCode; // All ACP-protocol agents
     const isSandboxEnabled = React.useMemo(() => {
       const sandbox = props.metadata?.sandbox as unknown;
       if (!sandbox) {
@@ -344,8 +356,6 @@ export const AgentInput = React.memo(
       }
       return true;
     }, [props.metadata?.sandbox]);
-    const isSandboxedYoloMode = isSandboxEnabled && props.permissionMode === 'yolo';
-
     const withSandboxSuffix = React.useCallback(
       (label: string, mode: PermissionMode | undefined) => {
         if (!isSandboxEnabled) {
@@ -359,21 +369,72 @@ export const AgentInput = React.memo(
       [isSandboxEnabled]
     );
 
-    // Profile data
-    const profiles = useSetting('profiles');
-    const currentProfile = React.useMemo(() => {
-      if (!props.profileId) return null;
-      // Check custom profiles first
-      const customProfile = profiles.find(p => p.id === props.profileId);
-      if (customProfile) return customProfile;
-      // Check built-in profiles
-      return getBuiltInProfile(props.profileId);
-    }, [profiles, props.profileId]);
-
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
       ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
       : null;
+    const modelCapabilities = props.capabilities?.models;
+    const modeCapabilities = props.capabilities?.modes;
+    const hasAgentModeList = (modeCapabilities?.available?.length ?? 0) > 0;
+    const usesDiscoveredCapabilities = usesDiscoveredCapabilitiesOnly(
+      (props.metadata?.flavor ?? props.agentType) || 'claude'
+    );
+    const showLocalPermissionModeControls = !usesDiscoveredCapabilities;
+    const currentModelId = props.modelMode ?? modelCapabilities?.current;
+    const extraConfigOptions = React.useMemo(
+      () => getVisibleConfigOptions(props.capabilities),
+      [props.capabilities]
+    );
+    const uniqueCapabilityCommands = React.useMemo(() => {
+      const commands = props.capabilities?.commands ?? [];
+      const deduped = new Map<string, (typeof commands)[number]>();
+      for (const command of commands) {
+        const key = command.id || command.name;
+        if (!deduped.has(key)) {
+          deduped.set(key, command);
+        }
+      }
+      return Array.from(deduped.values());
+    }, [props.capabilities?.commands]);
+    const hasDiscoveredCapabilities =
+      hasAgentModeList ||
+      (modelCapabilities?.available?.length ?? 0) > 0 ||
+      extraConfigOptions.length > 0 ||
+      uniqueCapabilityCommands.length > 0;
+    const cliStatus = props.connectionStatus?.cliStatus;
+    const cliStatusItems = React.useMemo(
+      () => [
+        { key: 'claude', available: cliStatus?.claude },
+        ...(cliStatus?.['claude-acp'] !== undefined
+          ? [{ key: 'claude-acp', available: cliStatus['claude-acp'] }]
+          : []),
+        { key: 'codex', available: cliStatus?.codex },
+        ...(cliStatus?.['codex-acp'] !== undefined
+          ? [{ key: 'codex-acp', available: cliStatus['codex-acp'] }]
+          : []),
+        ...(cliStatus?.gemini !== undefined
+          ? [{ key: 'gemini', available: cliStatus.gemini }]
+          : []),
+        ...(cliStatus?.opencode !== undefined
+          ? [{ key: 'opencode', available: cliStatus.opencode }]
+          : []),
+      ],
+      [
+        cliStatus?.claude,
+        cliStatus?.['claude-acp'],
+        cliStatus?.codex,
+        cliStatus?.['codex-acp'],
+        cliStatus?.gemini,
+        cliStatus?.opencode,
+      ]
+    );
+    const capabilityStatusText = React.useMemo(() => {
+      const items: string[] = [];
+      if (props.actualModelLabel) {
+        items.push(`Model: ${props.actualModelLabel}`);
+      }
+      return items.join('  ');
+    }, [props.actualModelLabel]);
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
@@ -456,11 +517,17 @@ export const AgentInput = React.memo(
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
 
+    // Agent picker overlay state
+    const [showAgentPicker, setShowAgentPicker] = React.useState(false);
+
     // Handle settings button press
     const handleSettingsPress = React.useCallback(() => {
+      if (props.isSettingsBusy) {
+        return;
+      }
       hapticsLight();
       setShowSettings(prev => !prev);
-    }, []);
+    }, [props.isSettingsBusy]);
 
     // Handle settings selection
     const handleSettingsSelect = React.useCallback(
@@ -491,7 +558,7 @@ export const AgentInput = React.memo(
       } catch (error) {
         // Shake on error
         shakerRef.current?.shake();
-        logger.error('Abort RPC call failed:', error);
+        logger.error('Abort RPC call failed:', toError(error));
       } finally {
         setIsAborting(false);
       }
@@ -541,14 +608,34 @@ export const AgentInput = React.memo(
               return true; // Key was handled
             }
           }
-          // Handle Shift+Tab for permission mode switching
-          if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-            const modeOrder: PermissionMode[] = ['read-only', 'accept-edits', 'yolo'];
-            const currentIndex = modeOrder.indexOf(props.permissionMode || 'accept-edits');
-            const nextIndex = (currentIndex + 1) % modeOrder.length;
-            props.onPermissionModeChange(modeOrder[nextIndex]);
-            hapticsLight();
-            return true; // Key was handled, prevent default tab behavior
+          // Handle Shift+Tab for mode switching
+          if (event.key === 'Tab' && event.shiftKey) {
+            if (props.isSettingsBusy) {
+              return true;
+            }
+
+            if (hasAgentModeList && props.onAgentModeChange && modeCapabilities) {
+              const currentIndex = modeCapabilities.available.findIndex(
+                mode => mode.id === modeCapabilities.current
+              );
+              const nextIndex =
+                currentIndex >= 0 ? (currentIndex + 1) % modeCapabilities.available.length : 0;
+              const nextMode = modeCapabilities.available[nextIndex];
+              if (nextMode) {
+                props.onAgentModeChange(nextMode.id);
+                hapticsLight();
+              }
+              return true; // Key was handled, prevent default tab behavior
+            }
+
+            if (showLocalPermissionModeControls && props.onPermissionModeChange) {
+              const modeOrder: PermissionMode[] = ['read-only', 'accept-edits', 'yolo'];
+              const currentIndex = modeOrder.indexOf(props.permissionMode || 'accept-edits');
+              const nextIndex = (currentIndex + 1) % modeOrder.length;
+              props.onPermissionModeChange(modeOrder[nextIndex]);
+              hapticsLight();
+              return true; // Key was handled, prevent default tab behavior
+            }
           }
         }
         return false; // Key was not handled
@@ -566,8 +653,13 @@ export const AgentInput = React.memo(
         agentInputEnterToSend,
         props.value,
         props.onSend,
+        hasAgentModeList,
+        modeCapabilities,
+        props.onAgentModeChange,
         props.permissionMode,
         props.onPermissionModeChange,
+        props.isSettingsBusy,
+        showLocalPermissionModeControls,
       ]
     );
 
@@ -602,122 +694,367 @@ export const AgentInput = React.memo(
               >
                 <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
                   {/* Permission Mode Section */}
-                  <View style={styles.overlaySection}>
-                    <Text style={styles.overlaySectionTitle}>
-                      {t('agentInput.permissionMode.title')}
-                    </Text>
-                    {(['read-only', 'accept-edits', 'yolo'] as const).map(mode => {
-                      const modeConfig: Record<PermissionMode, { label: string }> = {
-                        'read-only': { label: t('agentInput.permissionMode.readOnly') },
-                        'accept-edits': { label: t('agentInput.permissionMode.acceptEdits') },
-                        yolo: { label: t('agentInput.permissionMode.yolo') },
-                      };
-                      const config = modeConfig[mode];
-                      if (!config) return null;
-                      const isSelected = props.permissionMode === mode;
+                  {showLocalPermissionModeControls && !hasAgentModeList && (
+                    <>
+                      <View style={styles.overlaySection}>
+                        <Text style={styles.overlaySectionTitle}>
+                          {t('agentInput.permissionMode.title')}
+                        </Text>
+                        {(['read-only', 'accept-edits', 'yolo'] as const).map(mode => {
+                          const modeConfig: Record<PermissionMode, { label: string }> = {
+                            'read-only': { label: t('agentInput.permissionMode.readOnly') },
+                            'accept-edits': { label: t('agentInput.permissionMode.acceptEdits') },
+                            yolo: { label: t('agentInput.permissionMode.yolo') },
+                          };
+                          const config = modeConfig[mode];
+                          if (!config) return null;
+                          const isSelected = props.permissionMode === mode;
 
-                      return (
+                          return (
+                            <Pressable
+                              key={mode}
+                              onPress={() => handleSettingsSelect(mode)}
+                              disabled={props.isSettingsBusy}
+                              style={({ pressed }) => ({
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                paddingHorizontal: 16,
+                                paddingVertical: 8,
+                                backgroundColor: pressed
+                                  ? theme.colors.surfacePressed
+                                  : 'transparent',
+                                opacity: props.isSettingsBusy ? 0.5 : 1,
+                              })}
+                            >
+                              <View
+                                style={{
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: 8,
+                                  borderWidth: 2,
+                                  borderColor: isSelected
+                                    ? theme.colors.radio.active
+                                    : theme.colors.radio.inactive,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  marginRight: 12,
+                                }}
+                              >
+                                {isSelected && (
+                                  <View
+                                    style={{
+                                      width: 6,
+                                      height: 6,
+                                      borderRadius: 3,
+                                      backgroundColor: theme.colors.radio.dot,
+                                    }}
+                                  />
+                                )}
+                              </View>
+                              <Text
+                                style={{
+                                  fontSize: 14,
+                                  color: isSelected
+                                    ? theme.colors.radio.active
+                                    : theme.colors.text,
+                                  ...Typography.default(),
+                                }}
+                              >
+                                {withSandboxSuffix(config.label, mode as PermissionMode)}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+
+                      {/* Divider */}
+                      <View
+                        style={{
+                          height: 1,
+                          backgroundColor: theme.colors.divider,
+                          marginHorizontal: 16,
+                        }}
+                      />
+                    </>
+                  )}
+
+                  {/* Model Section */}
+                  {modeCapabilities?.available?.length ? (
+                    <View style={styles.overlaySection}>
+                      <Text style={styles.overlaySectionTitle}>{t('agentInput.agentModeTitle')}</Text>
+                      {modeCapabilities.available.map(mode => {
+                        const isSelected = modeCapabilities.current === mode.id;
+                        return (
+                          <Pressable
+                            key={mode.id}
+                            onPress={() => {
+                              hapticsLight();
+                              props.onAgentModeChange?.(mode.id);
+                            }}
+                            disabled={props.isSettingsBusy}
+                            style={({ pressed }) => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingHorizontal: 16,
+                              paddingVertical: 8,
+                              backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
+                              opacity: props.isSettingsBusy ? 0.5 : 1,
+                            })}
+                          >
+                            <View
+                              style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: 8,
+                                borderWidth: 2,
+                                borderColor: isSelected
+                                  ? theme.colors.radio.active
+                                  : theme.colors.radio.inactive,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginRight: 12,
+                              }}
+                            >
+                              {isSelected && <View style={styles.radioButtonDot} />}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={{
+                                  fontSize: 14,
+                                  color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                  ...Typography.default(),
+                                }}
+                              >
+                                {mode.name}
+                              </Text>
+                              {!!mode.description && (
+                                <Text
+                                  style={{
+                                    fontSize: 11,
+                                    color: theme.colors.textSecondary,
+                                    ...Typography.default(),
+                                  }}
+                                >
+                                  {mode.description}
+                                </Text>
+                              )}
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+
+                  {modelCapabilities?.available?.length ? (
+                    <View style={styles.overlaySection}>
+                      <Text style={styles.overlaySectionTitle}>{t('agentInput.model.title')}</Text>
+                      {modelCapabilities.available.map(model => {
+                        const isSelected = currentModelId === model.id;
+                        return (
+                          <Pressable
+                            key={model.id}
+                            onPress={() => {
+                              hapticsLight();
+                              props.onModelModeChange?.(model.id);
+                            }}
+                            disabled={props.isSettingsBusy}
+                            style={({ pressed }) => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingHorizontal: 16,
+                              paddingVertical: 8,
+                              backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
+                              opacity: props.isSettingsBusy ? 0.5 : 1,
+                            })}
+                          >
+                            <View
+                              style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: 8,
+                                borderWidth: 2,
+                                borderColor: isSelected
+                                  ? theme.colors.radio.active
+                                  : theme.colors.radio.inactive,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginRight: 12,
+                              }}
+                            >
+                              {isSelected && <View style={styles.radioButtonDot} />}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={{
+                                  fontSize: 14,
+                                  color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                  ...Typography.default(),
+                                }}
+                              >
+                                {model.name}
+                              </Text>
+                              {!!model.description && (
+                                <Text
+                                  style={{
+                                    fontSize: 11,
+                                    color: theme.colors.textSecondary,
+                                    ...Typography.default(),
+                                  }}
+                                >
+                                  {model.description}
+                                </Text>
+                              )}
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+
+                  {extraConfigOptions.map(option => (
+                    <View key={option.id} style={styles.overlaySection}>
+                      <Text style={styles.overlaySectionTitle}>{option.name}</Text>
+                      {option.options.map(choice => {
+                        const isSelected = option.currentValue === choice.value;
+                        return (
+                          <Pressable
+                            key={choice.value}
+                            onPress={() => {
+                              hapticsLight();
+                              props.onConfigOptionChange?.(option.id, choice.value);
+                            }}
+                            disabled={props.isSettingsBusy}
+                            style={({ pressed }) => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingHorizontal: 16,
+                              paddingVertical: 8,
+                              backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
+                              opacity: props.isSettingsBusy ? 0.5 : 1,
+                            })}
+                          >
+                            <View
+                              style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: 8,
+                                borderWidth: 2,
+                                borderColor: isSelected
+                                  ? theme.colors.radio.active
+                                  : theme.colors.radio.inactive,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginRight: 12,
+                              }}
+                            >
+                              {isSelected && <View style={styles.radioButtonDot} />}
+                            </View>
+                            <Text
+                              style={{
+                                fontSize: 14,
+                                color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                ...Typography.default(),
+                              }}
+                            >
+                              {choice.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ))}
+
+                  {uniqueCapabilityCommands.length ? (
+                    <View style={styles.overlaySection}>
+                      <Text style={styles.overlaySectionTitle}>Commands</Text>
+                      {uniqueCapabilityCommands.map(command => (
                         <Pressable
-                          key={mode}
-                          onPress={() => handleSettingsSelect(mode)}
+                          key={command.id}
+                          onPress={() => {
+                            hapticsLight();
+                            props.onRunCommand?.(command.id);
+                            setShowSettings(false);
+                          }}
+                          disabled={props.isSettingsBusy}
                           style={({ pressed }) => ({
-                            flexDirection: 'row',
-                            alignItems: 'center',
                             paddingHorizontal: 16,
                             paddingVertical: 8,
                             backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
+                            opacity: props.isSettingsBusy ? 0.5 : 1,
                           })}
                         >
-                          <View
-                            style={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: 8,
-                              borderWidth: 2,
-                              borderColor: isSelected
-                                ? theme.colors.radio.active
-                                : theme.colors.radio.inactive,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              marginRight: 12,
-                            }}
-                          >
-                            {isSelected && (
-                              <View
-                                style={{
-                                  width: 6,
-                                  height: 6,
-                                  borderRadius: 3,
-                                  backgroundColor: theme.colors.radio.dot,
-                                }}
-                              />
-                            )}
-                          </View>
                           <Text
                             style={{
                               fontSize: 14,
-                              color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                              color: theme.colors.text,
                               ...Typography.default(),
                             }}
                           >
-                            {withSandboxSuffix(config.label, mode as PermissionMode)}
+                            {command.name}
                           </Text>
+                          {!!command.description && (
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                color: theme.colors.textSecondary,
+                                ...Typography.default(),
+                              }}
+                            >
+                              {command.description}
+                            </Text>
+                          )}
                         </Pressable>
-                      );
-                    })}
-                  </View>
+                      ))}
+                    </View>
+                  ) : null}
 
-                  {/* Divider */}
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: theme.colors.divider,
-                      marginHorizontal: 16,
-                    }}
-                  />
+                  {!hasDiscoveredCapabilities ? (
+                    <View style={{ paddingVertical: 8 }}>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          color: theme.colors.textSecondary,
+                          paddingHorizontal: 16,
+                          paddingVertical: 8,
+                          ...Typography.default(),
+                        }}
+                      >
+                        {usesDiscoveredCapabilities
+                          ? 'Capabilities will be discovered automatically after your first message.'
+                          : t('agentInput.model.configureInCli')}
+                      </Text>
+                    </View>
+                  ) : null}
+                </FloatingOverlay>
+              </View>
+            </>
+          )}
 
-                  {/* Model Section */}
-                  <View style={{ paddingVertical: 8 }}>
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: '600',
-                        color: theme.colors.textSecondary,
-                        paddingHorizontal: 16,
-                        paddingBottom: 4,
-                        ...Typography.default('semiBold'),
-                      }}
-                    >
-                      {t('agentInput.model.title')}
-                    </Text>
-                    {isGemini ? (
-                      // Gemini model selector
-                      (
-                        ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const
-                      ).map(model => {
-                        const modelConfig = {
-                          'gemini-2.5-pro': {
-                            label: 'Gemini 2.5 Pro',
-                            description: 'Most capable',
-                          },
-                          'gemini-2.5-flash': {
-                            label: 'Gemini 2.5 Flash',
-                            description: 'Fast & efficient',
-                          },
-                          'gemini-2.5-flash-lite': {
-                            label: 'Gemini 2.5 Flash Lite',
-                            description: 'Fastest',
-                          },
-                        };
-                        const config = modelConfig[model];
-                        const isSelected = props.modelMode === model;
+          {/* Agent picker overlay */}
+          {showAgentPicker && props.availableAgentTypes && props.onAgentChange && (
+            <>
+              <TouchableWithoutFeedback onPress={() => setShowAgentPicker(false)}>
+                <View style={styles.overlayBackdrop} />
+              </TouchableWithoutFeedback>
+              <View
+                style={[styles.settingsOverlay, { paddingHorizontal: screenWidth > 700 ? 0 : 8 }]}
+              >
+                <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
+                  <View style={styles.overlaySection}>
+                    <Text style={styles.overlaySectionTitle}>{t('agentInput.agentTitle')}</Text>
+                    {(() => {
+                      const stableAgents = props.availableAgentTypes!.filter(a => !isExperimentalAgent(a));
+                      const experimentalAgents = props.availableAgentTypes!.filter(a => isExperimentalAgent(a));
 
+                      const renderAgentRow = (agent: AppAgentFlavor) => {
+                        const isSelected = agent === props.agentType;
                         return (
                           <Pressable
-                            key={model}
+                            key={agent}
                             onPress={() => {
                               hapticsLight();
-                              props.onModelModeChange?.(model);
+                              props.onAgentChange?.(agent);
+                              setShowAgentPicker(false);
                             }}
                             style={({ pressed }) => ({
                               flexDirection: 'row',
@@ -754,15 +1091,35 @@ export const AgentInput = React.memo(
                                 />
                               )}
                             </View>
-                            <View>
+                            <Ionicons
+                              name={
+                                agent.startsWith('claude')
+                                  ? 'sparkles-outline'
+                                  : agent.startsWith('codex')
+                                    ? 'code-slash-outline'
+                                    : agent === 'gemini'
+                                      ? 'logo-google'
+                                      : 'terminal-outline'
+                              }
+                              size={14}
+                              color={
+                                isSelected
+                                  ? theme.colors.radio.active
+                                  : theme.colors.textSecondary
+                              }
+                              style={{ marginRight: 8 }}
+                            />
+                            <View style={{ flex: 1 }}>
                               <Text
                                 style={{
                                   fontSize: 14,
-                                  color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                  color: isSelected
+                                    ? theme.colors.radio.active
+                                    : theme.colors.text,
                                   ...Typography.default(),
                                 }}
                               >
-                                {config.label}
+                                {getAgentDisplayName(agent)}
                               </Text>
                               <Text
                                 style={{
@@ -770,26 +1127,38 @@ export const AgentInput = React.memo(
                                   color: theme.colors.textSecondary,
                                   ...Typography.default(),
                                 }}
+                                numberOfLines={1}
                               >
-                                {config.description}
+                                {getAgentDescription(agent)}
                               </Text>
                             </View>
                           </Pressable>
                         );
-                      })
-                    ) : (
-                      <Text
-                        style={{
-                          fontSize: 13,
-                          color: theme.colors.textSecondary,
-                          paddingHorizontal: 16,
-                          paddingVertical: 8,
-                          ...Typography.default(),
-                        }}
-                      >
-                        {t('agentInput.model.configureInCli')}
-                      </Text>
-                    )}
+                      };
+
+                      return (
+                        <>
+                          {stableAgents.map(renderAgentRow)}
+                          {experimentalAgents.length > 0 && (
+                            <>
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  color: theme.colors.textSecondary,
+                                  paddingHorizontal: 16,
+                                  paddingTop: 12,
+                                  paddingBottom: 4,
+                                  ...Typography.default('semiBold'),
+                                }}
+                              >
+                                {t('agentInput.experimentalSection')}
+                              </Text>
+                              {experimentalAgents.map(renderAgentRow)}
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
                   </View>
                 </FloatingOverlay>
               </View>
@@ -797,7 +1166,10 @@ export const AgentInput = React.memo(
           )}
 
           {/* Connection status, context warning, and permission mode */}
-          {(props.connectionStatus || contextWarning || props.permissionMode) && (
+          {(props.connectionStatus ||
+            contextWarning ||
+            capabilityStatusText ||
+            props.pendingCapabilityLabel) && (
             <View
               style={{
                 flexDirection: 'row',
@@ -830,80 +1202,37 @@ export const AgentInput = React.memo(
                     {/* CLI Status - only shown when provided (wizard only) */}
                     {props.connectionStatus.cliStatus && (
                       <>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: props.connectionStatus.cliStatus.claude
-                                ? theme.colors.success
-                                : theme.colors.textDestructive,
-                              ...Typography.default(),
-                            }}
-                          >
-                            {props.connectionStatus.cliStatus.claude ? '✓' : '✗'}
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: props.connectionStatus.cliStatus.claude
-                                ? theme.colors.success
-                                : theme.colors.textDestructive,
-                              ...Typography.default(),
-                            }}
-                          >
-                            claude
-                          </Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: props.connectionStatus.cliStatus.codex
-                                ? theme.colors.success
-                                : theme.colors.textDestructive,
-                              ...Typography.default(),
-                            }}
-                          >
-                            {props.connectionStatus.cliStatus.codex ? '✓' : '✗'}
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: props.connectionStatus.cliStatus.codex
-                                ? theme.colors.success
-                                : theme.colors.textDestructive,
-                              ...Typography.default(),
-                            }}
-                          >
-                            codex
-                          </Text>
-                        </View>
-                        {props.connectionStatus.cliStatus.gemini !== undefined && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                color: props.connectionStatus.cliStatus.gemini
-                                  ? theme.colors.success
-                                  : theme.colors.textDestructive,
-                                ...Typography.default(),
-                              }}
+                        {cliStatusItems.map(item => {
+                          const color = item.available
+                            ? theme.colors.success
+                            : theme.colors.textDestructive;
+
+                          return (
+                            <View
+                              key={item.key}
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                             >
-                              {props.connectionStatus.cliStatus.gemini ? '✓' : '✗'}
-                            </Text>
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                color: props.connectionStatus.cliStatus.gemini
-                                  ? theme.colors.success
-                                  : theme.colors.textDestructive,
-                                ...Typography.default(),
-                              }}
-                            >
-                              gemini
-                            </Text>
-                          </View>
-                        )}
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  color,
+                                  ...Typography.default(),
+                                }}
+                              >
+                                {item.available ? '✓' : '✗'}
+                              </Text>
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  color,
+                                  ...Typography.default(),
+                                }}
+                              >
+                                {item.key}
+                              </Text>
+                            </View>
+                          );
+                        })}
                       </>
                     )}
                   </>
@@ -927,36 +1256,31 @@ export const AgentInput = React.memo(
                   flexDirection: 'column',
                   alignItems: 'flex-end',
                   minWidth: 150, // Fixed minimum width to prevent layout shift
+                  gap: 2,
                 }}
               >
-                {props.permissionMode && (
+                {props.pendingCapabilityLabel ? (
                   <Text
                     style={{
                       fontSize: 11,
-                      color: isSandboxedYoloMode
-                        ? '#4169E1'
-                        : props.permissionMode === 'read-only'
-                          ? theme.colors.permission.readOnly
-                          : props.permissionMode === 'accept-edits'
-                            ? theme.colors.permission.acceptEdits
-                            : props.permissionMode === 'yolo'
-                              ? theme.colors.permission.yolo
-                              : theme.colors.textSecondary,
+                      color: theme.colors.textSecondary,
                       ...Typography.default(),
                     }}
                   >
-                    {withSandboxSuffix(
-                      props.permissionMode === 'read-only'
-                        ? t('agentInput.permissionMode.badgeReadOnly')
-                        : props.permissionMode === 'accept-edits'
-                          ? t('agentInput.permissionMode.badgeAcceptEdits')
-                          : props.permissionMode === 'yolo'
-                            ? t('agentInput.permissionMode.badgeYolo')
-                            : '',
-                      props.permissionMode
-                    )}
+                    {props.pendingCapabilityLabel}
                   </Text>
-                )}
+                ) : null}
+                {capabilityStatusText ? (
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: theme.colors.textSecondary,
+                      ...Typography.default(),
+                    }}
+                  >
+                    {capabilityStatusText}
+                  </Text>
+                ) : null}
               </View>
             </View>
           )}
@@ -1077,9 +1401,10 @@ export const AgentInput = React.memo(
                 >
                   <View style={styles.actionButtonsLeft}>
                     {/* Settings button */}
-                    {props.onPermissionModeChange && (
+                    {(showLocalPermissionModeControls || hasDiscoveredCapabilities) && (
                       <Pressable
                         onPress={handleSettingsPress}
+                        disabled={props.isSettingsBusy}
                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                         style={p => ({
                           flexDirection: 'row',
@@ -1089,7 +1414,7 @@ export const AgentInput = React.memo(
                           paddingVertical: 6,
                           justifyContent: 'center',
                           height: 32,
-                          opacity: p.pressed ? 0.7 : 1,
+                          opacity: props.isSettingsBusy ? 0.4 : p.pressed ? 0.7 : 1,
                         })}
                       >
                         <Octicons
@@ -1100,50 +1425,17 @@ export const AgentInput = React.memo(
                       </Pressable>
                     )}
 
-                    {/* Profile selector button - FIRST */}
-                    {props.profileId && props.onProfileClick && (
-                      <Pressable
-                        onPress={() => {
-                          hapticsLight();
-                          props.onProfileClick?.();
-                        }}
-                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                        style={p => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          borderRadius: Platform.select({ default: 16, android: 20 }),
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          justifyContent: 'center',
-                          height: 32,
-                          opacity: p.pressed ? 0.7 : 1,
-                          gap: 6,
-                        })}
-                      >
-                        <Ionicons
-                          name="person-outline"
-                          size={14}
-                          color={theme.colors.button.secondary.tint}
-                        />
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            color: theme.colors.button.secondary.tint,
-                            fontWeight: '600',
-                            ...Typography.default('semiBold'),
-                          }}
-                        >
-                          {currentProfile?.name || 'Select Profile'}
-                        </Text>
-                      </Pressable>
-                    )}
-
                     {/* Agent selector button */}
-                    {props.agentType && props.onAgentClick && (
+                    {props.agentType && (props.onAgentChange || props.onAgentClick) && (
                       <Pressable
                         onPress={() => {
                           hapticsLight();
-                          props.onAgentClick?.();
+                          if (props.availableAgentTypes && props.onAgentChange) {
+                            setShowAgentPicker(prev => !prev);
+                            setShowSettings(false);
+                          } else {
+                            props.onAgentClick?.();
+                          }
                         }}
                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                         style={p => ({
@@ -1167,13 +1459,7 @@ export const AgentInput = React.memo(
                             ...Typography.default('semiBold'),
                           }}
                         >
-                          {props.agentType === 'claude'
-                            ? t('agentInput.agent.claude')
-                            : props.agentType === 'codex'
-                              ? t('agentInput.agent.codex')
-                              : props.agentType === 'gemini'
-                                ? t('agentInput.agent.gemini')
-                                : t('agentInput.agent.opencode')}
+                          {getAgentDisplayName(props.agentType)}
                         </Text>
                       </Pressable>
                     )}

@@ -1,0 +1,2 @@
+{"type":"user","uuid":"uuid-s1-user-say-lol","sessionId":"93a9705e-bc6a-406d-8dce-8acc014dedbd","parentUuid":null,"timestamp":"2025-01-01T00:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"say lol"}]}}
+{"type":"assistant","uuid":"uuid-s1-asst-lol","sessionId":"93a9705e-bc6a-406d-8dce-8acc014dedbd","parentUuid":"uuid-s1-user-say-lol","timestamp":"2025-01-01T00:00:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"lol"}],"usage":{"input_tokens":10,"output_tokens":1}}}

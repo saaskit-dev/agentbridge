@@ -5,6 +5,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { AvatarBrutalist } from './AvatarBrutalist';
 import { AvatarGradient } from './AvatarGradient';
 import { AvatarSkia } from './AvatarSkia';
+import { normalizeAgentFlavor } from '@/sync/agentFlavor';
 import { useSetting } from '@/sync/storage';
 
 interface AvatarProps {
@@ -67,7 +68,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
 
     // Add flavor icon overlay if enabled
     if (showFlavorIcons && flavor) {
-      const effectiveFlavor = flavor || 'claude';
+      const effectiveFlavor = normalizeAgentFlavor(flavor);
       const flavorIcon =
         flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
       const circleSize = Math.round(size * 0.35);
@@ -118,7 +119,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
   }
 
   // Determine flavor icon for generated avatars
-  const effectiveFlavor = flavor || 'claude';
+  const effectiveFlavor = normalizeAgentFlavor(flavor);
   const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
   // Make icons smaller while keeping same circle size
   // Claude slightly bigger than codex

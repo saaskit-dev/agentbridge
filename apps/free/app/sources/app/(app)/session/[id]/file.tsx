@@ -12,7 +12,7 @@ import { Modal } from '@/modal';
 import { sessionReadFile, sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/session/file');
 
 interface FileContent {
@@ -87,7 +87,7 @@ export default function FileScreen() {
   try {
     filePath = encodedPath ? atob(encodedPath) : '';
   } catch (error) {
-    logger.error('Failed to decode file path:', error);
+    logger.error('Failed to decode file path:', toError(error));
     filePath = encodedPath || ''; // Fallback to original path if decoding fails
   }
 
@@ -286,7 +286,7 @@ export default function FileScreen() {
           }
         }
       } catch (error) {
-        logger.error('Failed to load file:', error);
+        logger.error('Failed to load file:', toError(error));
         if (!isCancelled) {
           setError('Failed to load file');
         }

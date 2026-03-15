@@ -18,7 +18,7 @@ import { Text } from '@/components/StyledText';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/artifacts/new');
 
 const stylesheet = StyleSheet.create(theme => ({
@@ -107,7 +107,7 @@ export default function NewArtifactScreen() {
       // Navigate to the new artifact
       router.replace(`/artifacts/${artifactId}`);
     } catch (err) {
-      logger.error('Failed to create artifact:', err);
+      logger.error('Failed to create artifact:', toError(err));
       await Modal.alert(t('common.error'), t('artifacts.createError'));
       setIsSaving(false);
     }

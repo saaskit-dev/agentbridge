@@ -15,7 +15,7 @@ import { Modal } from '@/modal';
 import { getUserProfile, sendFriendRequest, removeFriend } from '@/sync/apiFriends';
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/user/profile');
 
 export default function UserProfileScreen() {
@@ -36,7 +36,7 @@ export default function UserProfileScreen() {
         const profile = await getUserProfile(credentials, id);
         setUserProfile(profile);
       } catch (error) {
-        logger.error('Failed to load user profile:', error);
+        logger.error('Failed to load user profile:', toError(error));
         await Modal.alert(t('errors.failedToLoadProfile'), '', [
           {
             text: t('common.ok'),

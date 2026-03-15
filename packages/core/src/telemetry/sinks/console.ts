@@ -1,5 +1,6 @@
 import type { LogEntry, Level } from '../types.js'
 import type { LogSink } from './types.js'
+import { safeStringify } from '../../utils/stringify.js'
 
 const LEVEL_LABELS: Record<Level, string> = {
   debug: 'DBG',
@@ -54,7 +55,7 @@ export class ConsoleSink implements LogSink {
     if (entry.durationMs != null) extra += ` ${entry.durationMs}ms`
     if (entry.data) {
       for (const [k, v] of Object.entries(entry.data)) {
-        extra += ` ${k}=${String(v)}`
+        extra += ` ${k}=${safeStringify(v)}`
       }
     }
     if (entry.error) {

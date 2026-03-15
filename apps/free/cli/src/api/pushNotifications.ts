@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('api/pushNotifications');
 
 export interface PushToken {
@@ -46,7 +47,7 @@ export class PushNotificationClient {
     } catch (error) {
       logger.debug('[PUSH] [ERROR] Failed to fetch push tokens:', error);
       throw new Error(
-        `Failed to fetch push tokens: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to fetch push tokens: ${safeStringify(error)}`
       );
     }
   }

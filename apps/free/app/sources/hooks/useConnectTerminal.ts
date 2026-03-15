@@ -11,6 +11,7 @@ import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/hooks/useConnectTerminal');
 
@@ -60,7 +61,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
         ]);
         return true;
       } catch (e) {
-        logger.error('Failed to connect terminal', undefined, { error: String(e) });
+        logger.error('Failed to connect terminal', undefined, { error: safeStringify(e) });
         Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [
           { text: t('common.ok') },
         ]);
@@ -108,7 +109,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
         ]);
         return true;
       } catch (e) {
-        logger.error('Failed to connect terminal', undefined, { error: String(e) });
+        logger.error('Failed to connect terminal', undefined, { error: safeStringify(e) });
         Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [
           { text: t('common.ok') },
         ]);

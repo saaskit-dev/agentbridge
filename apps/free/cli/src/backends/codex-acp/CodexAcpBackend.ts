@@ -1,0 +1,29 @@
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { createCodexBackend } from '@saaskit-dev/agentbridge';
+import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
+import type { AgentStartOpts } from '@/daemon/sessions/AgentBackend';
+import { DiscoveredAcpBackendBase } from '@/backends/acp/DiscoveredAcpBackendBase';
+import { mapCodexAcpRawToNormalized } from './mapCodexAcpRawToNormalized';
+
+const logger = new Logger('backends/codex-acp/CodexAcpBackend');
+
+export class CodexAcpBackend extends DiscoveredAcpBackendBase {
+  readonly agentType = 'codex-acp' as const;
+
+  constructor() {
+    super(logger);
+  }
+
+  protected createAcpBackend(opts: AgentStartOpts): IAgentBackend {
+    return createCodexBackend({
+      cwd: opts.cwd,
+      env: opts.env,
+      mcpServers: this.buildFreeMcpServers(opts),
+      permissionHandler: this.getPermissionHandler() ?? undefined,
+    });
+  }
+
+  protected mapRawMessage(msg: AgentMessage) {
+    return mapCodexAcpRawToNormalized(msg);
+  }
+}

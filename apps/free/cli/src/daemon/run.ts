@@ -1,8 +1,7 @@
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import fs from 'fs/promises';
 import os from 'os';
 import { join } from 'path';
-import * as tmp from 'tmp';
 import packageJson from '../../package.json';
 import {
   cleanupDaemonState,
@@ -10,11 +9,20 @@ import {
   stopDaemon,
 } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
-import { TrackedSession } from './types';
+import { IPCServer } from './ipc/IPCServer';
+import type { SpawnSessionOptions as IPCSpawnSessionOptions, SpawnSessionResult as IPCSpawnSessionResult } from './ipc/protocol';
+import { SessionManager } from './sessions/SessionManager';
+import { AgentSessionFactory } from './sessions/AgentSessionFactory';
+import { ClaudeSession } from './sessions/ClaudeSession';
+import { CodexSession } from './sessions/CodexSession';
+import { GeminiSession } from './sessions/GeminiSession';
+import { OpenCodeSession } from './sessions/OpenCodeSession';
+import { ClaudeAcpSession } from './sessions/ClaudeAcpSession';
+import { CodexAcpSession } from './sessions/CodexAcpSession';
 import { ApiClient } from '@/api/api';
-import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
+import { MachineMetadata, DaemonState } from '@/api/types';
 import { configuration } from '@/configuration';
-import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import {
   writeDaemonState,
   DaemonLocallyPersistedState,
@@ -23,29 +31,43 @@ import {
   releaseDaemonLock,
   readSettings,
   updateSettings,
-  getActiveProfile,
-  getEnvironmentVariables,
-  validateProfileForAgent,
-  getProfileEnvironmentVariables,
 } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import { authAndSetupMachineIfNeeded, hasCredentials, isHeadlessEnvironment } from '@/ui/auth';
-import { getEnvironmentInfo } from '@/ui/doctor';
-import { Logger, getCollector } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, getCollector, toError } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
-import {
-  getTmuxUtilities,
-  isTmuxAvailable,
-  parseTmuxSessionIdentifier,
-  formatTmuxSessionIdentifier,
-} from '@/utils/tmux';
-import { notifySessionToExit } from '@/utils/versionCheck';
-import { shutdownTelemetry } from '@/telemetry';
-import { createTrace } from '@saaskit-dev/agentbridge/telemetry';
+import { buildAgentAuthEnv } from './buildAgentAuthEnv';
+import { shutdownTelemetry, getProcessTraceContext } from '@/telemetry';
+import { readAllPersistedSessions, eraseSession as erasePersistedSession } from './sessions/sessionPersistence';
+
+// Register all agent session types at module load time
+AgentSessionFactory.register('claude', ClaudeSession);
+AgentSessionFactory.register('claude-acp', ClaudeAcpSession);
+AgentSessionFactory.register('codex', CodexSession);
+AgentSessionFactory.register('codex-acp', CodexAcpSession);
+AgentSessionFactory.register('gemini', GeminiSession);
+AgentSessionFactory.register('opencode', OpenCodeSession);
+
+import { readBuildMeta } from '@/utils/buildMeta';
+
+/** Read build hash from dist/.hash file (legacy compat) */
+function readBuildHash(): string | undefined {
+  return readBuildMeta().hash;
+}
 
 const logger = new Logger('daemon/run');
+
+/** Env keys that belong to the daemon/server and must never leak to agent subprocesses. */
+const DAEMON_SECRET_KEYS = [
+  'FREE_MASTER_SECRET',
+  'DATABASE_URL',
+  'PGLITE_DIR',
+  'NEW_RELIC_LICENSE_KEY',
+] as const;
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
   host: os.hostname(),
@@ -56,41 +78,11 @@ export const initialMachineMetadata: MachineMetadata = {
   freeLibDir: projectPath(),
 };
 
-// Get environment variables for a profile, filtered for agent compatibility
-async function getProfileEnvironmentVariablesForAgent(
-  profileId: string,
-  agentType: 'claude' | 'codex' | 'gemini' | 'opencode'
-): Promise<Record<string, string>> {
-  try {
-    const settings = await readSettings();
-    const profile = settings.profiles.find(p => p.id === profileId);
-
-    if (!profile) {
-      logger.debug(`[DAEMON RUN] Profile ${profileId} not found`);
-      return {};
-    }
-
-    // Check if profile is compatible with the agent
-    if (!validateProfileForAgent(profile, agentType)) {
-      logger.debug(`[DAEMON RUN] Profile ${profileId} not compatible with agent ${agentType}`);
-      return {};
-    }
-
-    // Get environment variables from profile (new schema)
-    const envVars = getProfileEnvironmentVariables(profile);
-
-    logger.debug(
-      `[DAEMON RUN] Loaded ${Object.keys(envVars).length} environment variables from profile ${profileId} for agent ${agentType}`
-    );
-    return envVars;
-  } catch (error) {
-    logger.debug('[DAEMON RUN] Failed to get profile environment variables:', error);
-    return {};
-  }
-}
-const isShuttingDown = false;
-
 export async function startDaemon(): Promise<void> {
+  // Unique ID for this daemon instance — used for session recovery ownership.
+  // Not a PID (which can be reused by the OS after process death).
+  const daemonInstanceId = randomUUID();
+
   // We don't have cleanup function at the time of server construction
   // Control flow is:
   // 1. Create promise that will resolve when shutdown is requested
@@ -104,6 +96,7 @@ export async function startDaemon(): Promise<void> {
     source: 'free-app' | 'free-cli' | 'os-signal' | 'exception',
     errorMessage?: string
   ) => void;
+  let clearShutdownFallback: (() => void) | undefined;
   const resolvesWhenShutdownRequested = new Promise<{
     source: 'free-app' | 'free-cli' | 'os-signal' | 'exception';
     errorMessage?: string;
@@ -115,7 +108,7 @@ export async function startDaemon(): Promise<void> {
 
       // Fallback - in case startup malfunctions - we will force exit the process with code 1
       // 15s gives time for graceful shutdown including API calls + telemetry flush
-      setTimeout(async () => {
+      const fallbackTimer = setTimeout(async () => {
         logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
 
         // Give time for logs to be flushed
@@ -123,6 +116,7 @@ export async function startDaemon(): Promise<void> {
 
         process.exit(1);
       }, 15_000);
+      clearShutdownFallback = () => clearTimeout(fallbackTimer);
 
       // Start graceful shutdown
       resolve({ source, errorMessage });
@@ -153,8 +147,7 @@ export async function startDaemon(): Promise<void> {
   process.on('unhandledRejection', (reason, promise) => {
     logger.debug('[DAEMON RUN] FATAL: Unhandled promise rejection', reason);
     logger.debug(`[DAEMON RUN] Rejected promise:`, promise);
-    const error =
-      reason instanceof Error ? reason : new Error(`Unhandled promise rejection: ${reason}`);
+    const error = toError(reason);
     logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
     // Set timeout to force exit after cleanup attempt
     setTimeout(() => {
@@ -184,12 +177,9 @@ export async function startDaemon(): Promise<void> {
     await stopDaemon();
   } else {
     logger.debug('[DAEMON RUN] Daemon version matches, keeping existing daemon');
-    console.log('Daemon already running with matching version');
-    // When started as a supervised service (start-sync), exit with code 1 so
-    // LaunchAgent/systemd KeepAlive keeps retrying. This ensures that if the
-    // existing daemon (started manually) eventually stops, the service manager
-    // will start a supervised instance automatically.
-    // When started manually by the user (start), exit 0 — no error to report.
+    // Exit 1 so LaunchAgent KeepAlive retries later — when the existing daemon
+    // eventually stops, the service manager will start a supervised instance.
+    // ThrottleInterval (5s) prevents excessive restarts.
     process.exit(configuration.isDaemonProcess ? 1 : 0);
   }
 
@@ -228,114 +218,128 @@ export async function startDaemon(): Promise<void> {
 
     // Ensure auth and machine registration BEFORE anything else
     const { credentials, machineId } = await authAndSetupMachineIfNeeded();
-    logger.info('[DAEMON] Auth completed', { machineId });
+    logger.info('[DAEMON] Auth completed', { machineId, traceId: getProcessTraceContext()?.traceId });
 
-    // Setup state - key by PID
-    const pidToTrackedSession = new Map<number, TrackedSession>();
+    // Session registry and IPC server (assigned after setup below)
+    let sessionManager: SessionManager | undefined;
+    let ipcServer: IPCServer | undefined;
 
-    // Session spawning awaiter system with timeout tracking
-    const pidToAwaiter = new Map<
-      number,
-      { resolver: (session: TrackedSession) => void; startTime: number }
-    >();
-    const AWAITER_TIMEOUT_MS = 30_000; // 30 seconds
-
-    // Cleanup stale awaiters periodically
-    const awaiterCleanupInterval = setInterval(() => {
-      const now = Date.now();
-      for (const [pid, entry] of pidToAwaiter.entries()) {
-        if (now - entry.startTime > AWAITER_TIMEOUT_MS) {
-          logger.debug(`[DAEMON RUN] Cleaning up stale awaiter for PID ${pid}`);
-          pidToAwaiter.delete(pid);
-        }
-      }
-    }, 10_000); // Check every 10 seconds
-
-    // Helper functions
-    const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
-
-    // Handle webhook from free session reporting itself
-    const onFreeSessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
-      logger.debug('[DAEMON RUN] Session reported');
-
-      const pid = sessionMetadata.hostPid;
-      if (!pid) {
-        logger.debug(`[DAEMON RUN] Session webhook missing hostPid for sessionId: ${sessionId}`);
-        return;
+    // Spawn a new session via IPC (CLI and direct internal calls).
+    const ipcSpawnSession = async (opts: IPCSpawnSessionOptions): Promise<IPCSpawnSessionResult> => {
+      const agentType = opts.agent ?? 'claude';
+      if (!AgentSessionFactory.isRegistered(agentType)) {
+        return { type: 'error', error: `Unsupported agent type: '${agentType}'` };
       }
 
-      logger.debug(
-        `[DAEMON RUN] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}`
-      );
-      logger.debug(
-        `[DAEMON RUN] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`
-      );
+      // The mobile/server token is Claude-specific OAuth and must not override
+      // Codex auth, which comes from local login or API-key environment vars.
+      const authEnv = buildAgentAuthEnv(agentType, opts.token);
+      const extraEnv = expandEnvironmentVariables(authEnv, process.env);
 
-      // Check if we already have this PID (daemon-spawned)
-      const existingSession = pidToTrackedSession.get(pid);
+      // Strip daemon-internal secrets from the env passed to agent subprocesses.
+      // Agent processes may be prompt-injected; they must not see daemon secrets.
+      // User env (HTTP_PROXY, NODE_EXTRA_CA_CERTS, etc.) passes through unchanged.
+      for (const key of DAEMON_SECRET_KEYS) {
+        delete extraEnv[key];
+      }
 
-      if (existingSession && existingSession.startedBy === 'daemon') {
-        // Update daemon-spawned session with reported data
-        existingSession.freeSessionId = sessionId;
-        existingSession.freeSessionMetadataFromLocalWebhook = sessionMetadata;
-        logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`);
-
-        // Resolve any awaiter for this PID
-        const awaiterEntry = pidToAwaiter.get(pid);
-        if (awaiterEntry) {
-          pidToAwaiter.delete(pid);
-          awaiterEntry.resolver(existingSession);
-          logger.debug(`[DAEMON RUN] Resolved session awaiter for PID ${pid}`);
-        }
-      } else if (!existingSession) {
-        // New session started externally
-        const trackedSession: TrackedSession = {
-          startedBy: 'free directly - likely by user from terminal',
-          freeSessionId: sessionId,
-          freeSessionMetadataFromLocalWebhook: sessionMetadata,
-          pid,
+      // Fail-fast: ensure auth vars are fully expanded
+      const potentialAuthVars = [
+        'ANTHROPIC_AUTH_TOKEN',
+        'CLAUDE_CODE_OAUTH_TOKEN',
+        'OPENAI_API_KEY',
+        'CODEX_HOME',
+        'AZURE_OPENAI_API_KEY',
+        'TOGETHER_API_KEY',
+      ];
+      const unexpandedAuthVars = potentialAuthVars.filter(v => {
+        const val = extraEnv[v];
+        return val && typeof val === 'string' && val.includes('${');
+      });
+      if (unexpandedAuthVars.length > 0) {
+        const details = unexpandedAuthVars.map(v => {
+          const val = extraEnv[v];
+          const m = val?.match(/\$\{([A-Z_][A-Z0-9_]*)(:-[^}]*)?\}/);
+          return `${v} references \${${m ? m[1] : 'unknown'}} which is not defined`;
+        });
+        return {
+          type: 'error',
+          error: `Authentication will fail - environment variables not found in daemon: ${details.join('; ')}. Ensure these variables are set in the daemon's environment before starting sessions.`,
         };
-        pidToTrackedSession.set(pid, trackedSession);
-        logger.info('[DAEMON] Session registered (external)', { sessionId, pid, startedBy: 'terminal' });
+      }
+
+      try {
+        const session = AgentSessionFactory.create(agentType, {
+          credential: credentials,
+          machineId,
+          startedBy: opts.startedBy ?? 'cli',
+          cwd: opts.directory,
+          resumeSessionId: opts.resumeAgentSessionId,
+          sessionTag: opts.sessionTag,
+          env: extraEnv,
+          permissionMode: opts.permissionMode,
+          model: opts.model,
+          mode: opts.mode,
+          startingMode: opts.startingMode,
+          broadcast: (sid, msg) => ipcServer!.broadcast(sid, msg),
+          daemonInstanceId,
+        });
+
+        await session.initialize();
+        const sessionId = session.sessionId;
+        sessionManager!.register(sessionId, session);
+
+        // Fire and forget: run() manages the full session lifecycle
+        session
+          .run()
+          .catch(err => logger.error('[DAEMON RUN] Session run error', toError(err), { sessionId, agentType, machineId }))
+          .finally(() => sessionManager?.unregister(sessionId));
+
+        logger.info('[DAEMON] Session spawned', {
+          sessionId,
+          agentType,
+          machineId,
+          cwd: opts.directory,
+          startedBy: opts.startedBy ?? 'cli',
+          model: opts.model,
+          mode: opts.mode,
+          traceId: getProcessTraceContext()?.traceId,
+        });
+        return { type: 'success', sessionId };
+      } catch (error) {
+        const msg = safeStringify(error);
+        logger.error('[DAEMON] Session spawn failed', toError(error), {
+          machineId,
+          cwd: opts.directory,
+          agentType,
+          traceId: getProcessTraceContext()?.traceId,
+        });
+        return { type: 'error', error: msg };
       }
     };
 
-    // Spawn a new session (sessionId reserved for future --resume functionality)
-    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
-      logger.debug('[DAEMON RUN] Spawning session');
+    // Mobile RPC adapter: handles directory creation and env conversion, then delegates to ipcSpawnSession.
+    const mobileSpawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+      logger.debug('[DAEMON RUN] Mobile session spawn', {
+        directory: options.directory,
+        agent: options.agent,
+        model: options.model,
+        mode: options.mode,
+        resumeAgentSessionId: options.resumeAgentSessionId,
+      });
 
-      const {
-        directory,
-        sessionId,
-        machineId,
-        approvedNewDirectoryCreation = true,
-        resumeClaudeSessionId,
-      } = options;
-      let directoryCreated = false;
-
+      // Ensure working directory exists
       try {
-        await fs.access(directory);
-        logger.debug(`[DAEMON RUN] Directory exists: ${directory}`);
-      } catch (error) {
-        logger.debug(`[DAEMON RUN] Directory doesn't exist, creating: ${directory}`);
-
-        // Check if directory creation is approved
-        if (!approvedNewDirectoryCreation) {
-          logger.debug(`[DAEMON RUN] Directory creation not approved for: ${directory}`);
-          return {
-            type: 'requestToApproveDirectoryCreation',
-            directory,
-          };
+        await fs.access(options.directory);
+      } catch {
+        if (!options.approvedNewDirectoryCreation) {
+          return { type: 'requestToApproveDirectoryCreation', directory: options.directory };
         }
-
         try {
-          await fs.mkdir(directory, { recursive: true });
-          logger.debug(`[DAEMON RUN] Successfully created directory: ${directory}`);
-          directoryCreated = true;
+          await fs.mkdir(options.directory, { recursive: true });
+          logger.debug(`[DAEMON RUN] Created directory: ${options.directory}`);
         } catch (mkdirError: any) {
-          let errorMessage = `Unable to create directory at '${directory}'. `;
-
-          // Provide more helpful error messages based on the error code
+          let errorMessage = `Unable to create directory at '${options.directory}'. `;
           if (mkdirError.code === 'EACCES') {
             errorMessage += `Permission denied. You don't have write access to create a folder at this location. Try using a different path or check your permissions.`;
           } else if (mkdirError.code === 'ENOTDIR') {
@@ -347,493 +351,117 @@ export async function startDaemon(): Promise<void> {
           } else {
             errorMessage += `System error: ${mkdirError.message || mkdirError}. Please verify the path is valid and you have the necessary permissions.`;
           }
-
-          logger.error('[DAEMON] Session spawn failed - directory creation', undefined, { directory, error: errorMessage });
-          return {
-            type: 'error',
-            errorMessage,
-          };
+          return { type: 'error', errorMessage };
         }
       }
 
-      try {
-        // Build environment variables with explicit precedence layers:
-        // Layer 1 (base): Authentication tokens - protected, cannot be overridden
-        // Layer 2 (middle): Profile environment variables - GUI profile OR CLI local profile
-        // Layer 3 (top): Auth tokens again to ensure they're never overridden
-
-        // Layer 1: Resolve authentication token if provided
-        const authEnv: Record<string, string> = {};
-        if (options.token) {
-          if (options.agent === 'codex') {
-            // Create a temporary directory for Codex
-            const codexHomeDir = tmp.dirSync();
-
-            // Write the token to the temporary directory
-            fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
-
-            // Set the environment variable for Codex
-            authEnv.CODEX_HOME = codexHomeDir.name;
-          } else {
-            // Assuming claude
-            authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;
-          }
-        }
-
-        // Layer 2: Profile environment variables
-        // Priority: GUI-provided profile > CLI local active profile > none
-        let profileEnv: Record<string, string> = {};
-
-        if (options.environmentVariables && Object.keys(options.environmentVariables).length > 0) {
-          // GUI provided profile environment variables - highest priority for profile settings
-          profileEnv = options.environmentVariables;
-          logger.info(
-            `[DAEMON RUN] Using GUI-provided profile environment variables (${Object.keys(profileEnv).length} vars)`
-          );
-          logger.debug(
-            `[DAEMON RUN] GUI profile env var keys: ${Object.keys(profileEnv).join(', ')}`
-          );
-        } else {
-          // Fallback to CLI local active profile
-          try {
-            const settings = await readSettings();
-            if (settings.activeProfileId) {
-              logger.debug(
-                `[DAEMON RUN] No GUI profile provided, loading CLI local active profile: ${settings.activeProfileId}`
-              );
-
-              // Get profile environment variables filtered for agent compatibility
-              profileEnv = await getProfileEnvironmentVariablesForAgent(
-                settings.activeProfileId,
-                options.agent || 'claude'
-              );
-
-              logger.debug(
-                `[DAEMON RUN] Loaded ${Object.keys(profileEnv).length} environment variables from CLI local profile for agent ${options.agent || 'claude'}`
-              );
-              logger.debug(
-                `[DAEMON RUN] CLI profile env var keys: ${Object.keys(profileEnv).join(', ')}`
-              );
-            } else {
-              logger.debug('[DAEMON RUN] No CLI local active profile set');
-            }
-          } catch (error) {
-            logger.debug(
-              '[DAEMON RUN] Failed to load CLI local profile environment variables:',
-              error
-            );
-            // Continue without profile env vars - this is not a fatal error
-          }
-        }
-
-        // Final merge: Profile vars first, then auth (auth takes precedence to protect authentication)
-        let extraEnv = { ...profileEnv, ...authEnv };
-        logger.debug(
-          `[DAEMON RUN] Final environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`
-        );
-
-        // Expand ${VAR} references from daemon's process.env
-        // This ensures variable substitution works in both tmux and non-tmux modes
-        // Example: ANTHROPIC_AUTH_TOKEN="${Z_AI_AUTH_TOKEN}" → ANTHROPIC_AUTH_TOKEN="sk-real-key"
-        extraEnv = expandEnvironmentVariables(extraEnv, process.env);
-        logger.debug(`[DAEMON RUN] After variable expansion: ${Object.keys(extraEnv).join(', ')}`);
-
-        // Fail-fast validation: Check that any auth variables present are fully expanded
-        // Only validate variables that are actually set (different agents need different auth)
-        const potentialAuthVars = [
-          'ANTHROPIC_AUTH_TOKEN',
-          'CLAUDE_CODE_OAUTH_TOKEN',
-          'OPENAI_API_KEY',
-          'CODEX_HOME',
-          'AZURE_OPENAI_API_KEY',
-          'TOGETHER_API_KEY',
-        ];
-        const unexpandedAuthVars = potentialAuthVars.filter(varName => {
-          const value = extraEnv[varName];
-          // Only fail if variable IS SET and contains unexpanded ${VAR} references
-          return value && typeof value === 'string' && value.includes('${');
-        });
-
-        if (unexpandedAuthVars.length > 0) {
-          // Extract the specific missing variable names from unexpanded references
-          const missingVarDetails = unexpandedAuthVars.map(authVar => {
-            const value = extraEnv[authVar];
-            const unresolvedMatch = value?.match(/\$\{([A-Z_][A-Z0-9_]*)(:-[^}]*)?\}/);
-            const missingVar = unresolvedMatch ? unresolvedMatch[1] : 'unknown';
-            return `${authVar} references \${${missingVar}} which is not defined`;
-          });
-
-          const errorMessage =
-            `Authentication will fail - environment variables not found in daemon: ${missingVarDetails.join('; ')}. ` +
-            `Ensure these variables are set in the daemon's environment (not just your shell) before starting sessions.`;
-          logger.warn(`[DAEMON RUN] ${errorMessage}`);
-          return {
-            type: 'error',
-            errorMessage,
-          };
-        }
-
-        // Create a trace context for this session so all child process logs share the same traceId.
-        const sessionTraceCtx = createTrace({
-          sessionId: sessionId || undefined,
-          machineId: machineId || undefined,
-        });
-        extraEnv = {
-          ...extraEnv,
-          FREE_TRACE_ID: sessionTraceCtx.traceId,
-          FREE_SPAN_ID: sessionTraceCtx.spanId,
-          ...(sessionId ? { FREE_SESSION_ID: sessionId } : {}),
-          ...(machineId ? { FREE_MACHINE_ID: machineId } : {}),
-          ...(options.sessionTag ? { FREE_SESSION_TAG: options.sessionTag } : {}),
-        };
-        logger.info('[DAEMON] Session spawning', {
-          traceId: sessionTraceCtx.traceId,
-          sessionId: sessionId || 'new',
-          machineId: machineId || 'unknown',
-          agent: options.agent || 'claude',
-          directory,
-        });
-
-        // Check if tmux is available and should be used
-        const tmuxAvailable = await isTmuxAvailable();
-        let useTmux = tmuxAvailable;
-
-        // Get tmux session name from environment variables (now set by profile system)
-        // Empty string means "use current/most recent session" (tmux default behavior)
-        const tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
-
-        // If tmux is not available or session name is explicitly undefined, fall back to regular spawning
-        // Note: Empty string is valid (means use current/most recent tmux session)
-        if (!tmuxAvailable || tmuxSessionName === undefined) {
-          useTmux = false;
-          if (tmuxSessionName !== undefined) {
-            logger.debug(
-              `[DAEMON RUN] tmux session name specified but tmux not available, falling back to regular spawning`
-            );
-          }
-        }
-
-        if (useTmux && tmuxSessionName !== undefined) {
-          // Try to spawn in tmux session
-          const sessionDesc = tmuxSessionName || 'current/most recent session';
-          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
-
-          const tmux = getTmuxUtilities(tmuxSessionName);
-
-          // Construct command for the CLI
-          const cliPath = join(projectPath(), 'dist', 'cli.mjs');
-          // Determine agent command - support claude, codex, gemini, and opencode
-          const agent =
-            options.agent === 'gemini'
-              ? 'gemini'
-              : options.agent === 'codex'
-                ? 'codex'
-                : options.agent === 'opencode'
-                  ? 'opencode'
-                  : 'claude';
-          const resumeArg =
-            resumeClaudeSessionId && (options.agent === 'claude' || !options.agent)
-              ? ` --resume-session-id ${resumeClaudeSessionId}`
-              : '';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --free-starting-mode remote --started-by daemon${resumeArg}`;
-
-          // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
-          // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
-          // 2. Regular spawn uses env: { ...process.env, ...extraEnv }
-          // 3. tmux needs explicit environment via -e flags to ensure all variables are available
-          const windowName = `free-${Date.now()}-${agent}`;
-          const tmuxEnv: Record<string, string> = {};
-
-          // Add all daemon environment variables (filtering out undefined)
-          for (const [key, value] of Object.entries(process.env)) {
-            if (value !== undefined) {
-              tmuxEnv[key] = value;
-            }
-          }
-
-          // Add extra environment variables (these should already be filtered)
-          Object.assign(tmuxEnv, extraEnv);
-
-          const tmuxResult = await tmux.spawnInTmux(
-            [fullCommand],
-            {
-              sessionName: tmuxSessionName,
-              windowName: windowName,
-              cwd: directory,
-            },
-            tmuxEnv
-          ); // Pass complete environment for tmux session
-
-          if (tmuxResult.success) {
-            logger.debug(
-              `[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}, PID: ${tmuxResult.pid}`
-            );
-
-            // Validate we got a PID from tmux
-            if (!tmuxResult.pid) {
-              throw new Error('Tmux window created but no PID returned');
-            }
-
-            // Create a tracked session for tmux windows - now we have the real PID!
-            const trackedSession: TrackedSession = {
-              startedBy: 'daemon',
-              pid: tmuxResult.pid, // Real PID from tmux -P flag
-              tmuxSessionId: tmuxResult.sessionId,
-              directoryCreated,
-              message: directoryCreated
-                ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
-                : `Spawned new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`,
-            };
-
-            // Add to tracking map so webhook can find it later
-            pidToTrackedSession.set(tmuxResult.pid, trackedSession);
-
-            // Wait for webhook to populate session with freeSessionId (exact same as regular flow)
-            logger.debug(
-              `[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`
-            );
-
-            return new Promise(resolve => {
-              // Set timeout for webhook (same as regular flow)
-              const timeout = setTimeout(() => {
-                pidToAwaiter.delete(tmuxResult.pid!);
-                logger.error('[DAEMON] Session webhook timeout', undefined, { pid: tmuxResult.pid, mode: 'tmux' });
-                resolve({
-                  type: 'error',
-                  errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`,
-                });
-              }, 15_000); // Same timeout as regular sessions
-
-              // Register awaiter for tmux session (exact same as regular flow)
-              pidToAwaiter.set(tmuxResult.pid!, {
-                resolver: completedSession => {
-                  clearTimeout(timeout);
-                  logger.info('[DAEMON] Session spawned (tmux)', {
-                    sessionId: completedSession.freeSessionId,
-                    pid: tmuxResult.pid,
-                    agent: options.agent || 'claude',
-                    machineId: machineId || 'unknown',
-                  });
-                  resolve({
-                    type: 'success',
-                    sessionId: completedSession.freeSessionId!,
-                  });
-                },
-                startTime: Date.now(),
-              });
-            });
-          } else {
-            logger.debug(
-              `[DAEMON RUN] Failed to spawn in tmux: ${tmuxResult.error}, falling back to regular spawning`
-            );
-            useTmux = false;
-          }
-        }
-
-        // Regular process spawning (fallback or if tmux not available)
-        if (!useTmux) {
-          logger.debug(`[DAEMON RUN] Using regular process spawning`);
-
-          // Construct arguments for the CLI - support claude, codex, gemini, and opencode
-          let agentCommand: string;
-          switch (options.agent) {
-            case 'claude':
-            case undefined:
-              agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
-              break;
-            case 'gemini':
-              agentCommand = 'gemini';
-              break;
-            case 'opencode':
-              agentCommand = 'opencode';
-              break;
-            default:
-              return {
-                type: 'error',
-                errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`,
-              };
-          }
-          const args = [agentCommand, '--free-starting-mode', 'remote', '--started-by', 'daemon'];
-
-          // Pass --resume-session-id for Claude agent when resuming a previous Claude Code session
-          if (resumeClaudeSessionId && (options.agent === 'claude' || !options.agent)) {
-            args.push('--resume-session-id', resumeClaudeSessionId);
-          }
-
-          const freeProcess = spawnFreeCLI(args, {
-            cwd: directory,
-            detached: true, // Sessions stay alive when daemon stops
-            stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr for debugging
-            env: {
-              ...process.env,
-              ...extraEnv,
-            },
-          });
-
-          // Always log stderr (errors); only log stdout in DEBUG mode
-          freeProcess.stderr?.on('data', data => {
-            logger.error(`[DAEMON RUN] Child stderr: ${data.toString().trimEnd()}`);
-          });
-          if (process.env.DEBUG) {
-            freeProcess.stdout?.on('data', data => {
-              logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
-            });
-          }
-
-          if (!freeProcess.pid) {
-            logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
-            return {
-              type: 'error',
-              errorMessage: 'Failed to spawn Free process - no PID returned',
-            };
-          }
-
-          logger.debug(`[DAEMON RUN] Spawned process with PID ${freeProcess.pid}`);
-
-          const trackedSession: TrackedSession = {
-            startedBy: 'daemon',
-            pid: freeProcess.pid,
-            childProcess: freeProcess,
-            directoryCreated,
-            message: directoryCreated
-              ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.`
-              : undefined,
-          };
-
-          pidToTrackedSession.set(freeProcess.pid, trackedSession);
-
-          freeProcess.on('exit', (code, signal) => {
-            logger.debug(
-              `[DAEMON RUN] Child PID ${freeProcess.pid} exited with code ${code}, signal ${signal}`
-            );
-            if (freeProcess.pid) {
-              onChildExited(freeProcess.pid);
-            }
-          });
-
-          freeProcess.on('error', error => {
-            logger.debug(`[DAEMON RUN] Child process error:`, error);
-            if (freeProcess.pid) {
-              onChildExited(freeProcess.pid);
-            }
-          });
-
-          // Wait for webhook to populate session with freeSessionId
-          logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${freeProcess.pid}`);
-
-          return new Promise(resolve => {
-            // Set timeout for webhook
-            const timeout = setTimeout(() => {
-              pidToAwaiter.delete(freeProcess.pid!);
-              logger.error('[DAEMON] Session webhook timeout', undefined, { pid: freeProcess.pid, mode: 'regular' });
-              resolve({
-                type: 'error',
-                errorMessage: `Session webhook timeout for PID ${freeProcess.pid}`,
-              });
-              // 15 second timeout - I have seen timeouts on 10 seconds
-              // even though session was still created successfully in ~2 more seconds
-            }, 15_000);
-
-            // Register awaiter
-            pidToAwaiter.set(freeProcess.pid!, {
-              resolver: completedSession => {
-                clearTimeout(timeout);
-                logger.info('[DAEMON] Session spawned', {
-                  sessionId: completedSession.freeSessionId,
-                  pid: freeProcess.pid,
-                  agent: options.agent || 'claude',
-                  machineId: machineId || 'unknown',
-                });
-                resolve({
-                  type: 'success',
-                  sessionId: completedSession.freeSessionId!,
-                });
-              },
-              startTime: Date.now(),
-            });
-          });
-        }
-
-        // This should never be reached, but TypeScript requires a return statement
-        return {
-          type: 'error',
-          errorMessage: 'Unexpected error in session spawning',
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error('[DAEMON] Session spawn failed', undefined, { error: errorMessage, directory });
-        return {
-          type: 'error',
-          errorMessage: `Failed to spawn session: ${errorMessage}`,
-        };
-      }
-    };
-
-    // Stop a session by sessionId or PID fallback
-    const stopSession = (sessionId: string): boolean => {
-      logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
-
-      // Try to find by sessionId first
-      for (const [pid, session] of pidToTrackedSession.entries()) {
-        if (
-          session.freeSessionId === sessionId ||
-          (sessionId.startsWith('PID-') && pid === parseInt(sessionId.replace('PID-', '')))
-        ) {
-          if (session.startedBy === 'daemon' && session.childProcess) {
-            try {
-              session.childProcess.kill('SIGTERM');
-              logger.debug(`[DAEMON RUN] Sent SIGTERM to daemon-spawned session ${sessionId}`);
-            } catch (error) {
-              logger.debug(`[DAEMON RUN] Failed to kill session ${sessionId}:`, error);
-            }
-          } else {
-            // For externally started sessions, try to kill by PID
-            try {
-              process.kill(pid, 'SIGTERM');
-              logger.debug(`[DAEMON RUN] Sent SIGTERM to external session PID ${pid}`);
-            } catch (error) {
-              logger.debug(`[DAEMON RUN] Failed to kill external session PID ${pid}:`, error);
-            }
-          }
-
-          pidToTrackedSession.delete(pid);
-          logger.debug(`[DAEMON RUN] Removed session ${sessionId} from tracking`);
-          return true;
-        }
-      }
-
-      logger.debug(`[DAEMON RUN] Session ${sessionId} not found`);
-      return false;
-    };
-
-    // Handle child process exit
-    const onChildExited = (pid: number) => {
-      const session = pidToTrackedSession.get(pid);
-      logger.info('[DAEMON] Session ended', {
-        pid,
-        sessionId: session?.freeSessionId || 'unknown',
+      const result = await ipcSpawnSession({
+        agent: options.agent,
+        directory: options.directory,
+        model: options.model,
+        mode: options.mode,
+        resumeAgentSessionId: options.resumeAgentSessionId,
+        sessionTag: options.sessionTag,
+        startedBy: options.startedBy ?? 'app',
+        token: options.token,
+        startingMode: 'remote',
       });
-      pidToTrackedSession.delete(pid);
+
+      if (result.type === 'success') {
+        return { type: 'success', sessionId: result.sessionId };
+      }
+      return { type: 'error', errorMessage: result.error };
     };
+
+    // Stop a session by ID (used by control server HTTP endpoint — fire-and-forget).
+    const stopSession = (sessionId: string): boolean => {
+      if (!sessionManager) return false;
+      const session = sessionManager.get(sessionId);
+      if (!session) {
+        logger.debug(`[DAEMON RUN] Session ${sessionId} not found`);
+        return false;
+      }
+      sessionManager
+        .stop(sessionId)
+        .catch(err => logger.error('[DAEMON RUN] Stop session error', toError(err)));
+      return true;
+    };
+
+    // Create session manager and IPC server, wire up eviction callback
+    sessionManager = new SessionManager(sessionId => ipcServer?.evictHistory(sessionId));
+
+    // Tracks whether a version/hash-change restart is in progress.
+    // Shared between heartbeat and orphan callback to suppress spawning headless CLI
+    // when the daemon is about to exit.
+    let restartInitiated = false;
+
+    // Orphan session detection: when all CLI clients disconnect from a session,
+    // wait 3s then spawn a headless CLI to re-attach (keeps agent alive & observable).
+    // Per-session spawn counter prevents infinite respawn loops (headless CLI connects
+    // then immediately disconnects → orphan callback fires again → repeat).
+    const orphanSpawnCounts = new Map<string, number>();
+    const MAX_ORPHAN_SPAWNS = 3;
+    const onSessionOrphaned = (sessionId: string) => {
+      setTimeout(() => {
+        if (restartInitiated) {
+          logger.debug('[DAEMON] orphan recheck: daemon restart in progress, skipping', { sessionId });
+          return;
+        }
+        const session = sessionManager?.get(sessionId);
+        if (!session || session.shuttingDown) {
+          logger.debug('[DAEMON] orphan recheck: session gone or shutting down', { sessionId });
+          return;
+        }
+        if (ipcServer!.getAttachmentCount(sessionId) > 0) {
+          logger.debug('[DAEMON] orphan recheck: session has clients again', { sessionId });
+          return;
+        }
+        const spawnCount = orphanSpawnCounts.get(sessionId) ?? 0;
+        if (spawnCount >= MAX_ORPHAN_SPAWNS) {
+          logger.warn('[DAEMON] orphan spawn limit reached, giving up', { sessionId, spawnCount });
+          return;
+        }
+        orphanSpawnCounts.set(sessionId, spawnCount + 1);
+        logger.info('[DAEMON] orphan session detected, spawning headless CLI to re-attach', { sessionId, attempt: spawnCount + 1 });
+        try {
+          const child = spawnFreeCLI(['--attach-session', sessionId], {
+            detached: true,
+            stdio: 'ignore',
+            env: process.env,
+          });
+          child.unref();
+        } catch (err) {
+          logger.error('[DAEMON] failed to spawn headless CLI for orphan session', toError(err), { sessionId });
+        }
+      }, 3_000);
+    };
+
+    ipcServer = new IPCServer(sessionManager, ipcSpawnSession, onSessionOrphaned);
+    await ipcServer.start(configuration.daemonSocketPath);
+    logger.debug('[DAEMON RUN] IPC server started', { socketPath: configuration.daemonSocketPath });
+
+    // Generate a per-run control token for HTTP API authentication
+    const controlToken = randomBytes(32).toString('base64url');
 
     // Start control server
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
-      getChildren: getCurrentChildren,
+      getSessions: () => (sessionManager?.list() ?? []).map(s => s.toSummary()),
       stopSession,
-      spawnSession,
+      spawnSession: mobileSpawnSession,
       requestShutdown: () => requestShutdown('free-cli'),
-      onFreeSessionWebhook,
+      controlToken,
     });
 
     // Write initial daemon state (no lock needed for state file)
+    const buildMeta = readBuildMeta();
     const fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
+      controlToken,
       startTime: new Date().toLocaleString(),
       startedWithCliVersion: packageJson.version,
+      buildHash: buildMeta.hash,
+      buildTime: buildMeta.time,
       daemonLogPath: getCollector().getLogFilePath() ?? '',
     };
     writeDaemonState(fileState);
@@ -863,14 +491,88 @@ export async function startDaemon(): Promise<void> {
 
     // Set RPC handlers
     apiMachine.setRPCHandlers({
-      spawnSession,
+      spawnSession: mobileSpawnSession,
       stopSession,
+      listSupportedAgents: () => AgentSessionFactory.listRegistered(),
       requestShutdown: () => requestShutdown('free-app'),
     });
 
     // Connect to server
     apiMachine.connect();
-    logger.info('[DAEMON] Machine connecting to server', { machineId, serverUrl: configuration.serverUrl });
+    logger.info('[DAEMON] Machine connecting to server', { machineId, serverUrl: configuration.serverUrl, traceId: getProcessTraceContext()?.traceId });
+
+    // ---------------------------------------------------------------------------
+    // Session recovery — restore sessions persisted by a previous daemon instance
+    // ---------------------------------------------------------------------------
+    {
+      const persisted = await readAllPersistedSessions();
+      // Recover sessions from any previous daemon instance.
+      // daemonInstanceId is a UUID — no PID reuse ambiguity.
+      const hasRecoverable = persisted.some(d => d.daemonInstanceId !== daemonInstanceId);
+      logger.info('[DAEMON] Session recovery scan', {
+        persistedTotal: persisted.length,
+        hasRecoverable,
+        daemonInstanceId,
+        sessionIds: persisted.map(d => d.sessionId),
+      });
+      if (hasRecoverable) ipcServer!.beginRecovery();
+      let recoveredCount = 0;
+      for (const data of persisted) {
+        if (data.daemonInstanceId === daemonInstanceId) continue; // ours, skip
+
+        try {
+          logger.info('[DAEMON] Recovering session', {
+            sessionId: data.sessionId,
+            agentType: data.agentType,
+            cwd: data.cwd,
+            resumeSessionId: data.resumeSessionId,
+            startingMode: data.startingMode,
+            createdAt: new Date(data.createdAt).toISOString(),
+            previousDaemonInstanceId: data.daemonInstanceId,
+          });
+          const session = AgentSessionFactory.create(data.agentType, {
+            credential: credentials,
+            machineId,
+            startedBy: 'daemon',
+            cwd: data.cwd,
+            resumeSessionId: data.resumeSessionId,
+            sessionTag: data.sessionTag,
+            permissionMode: data.permissionMode,
+            model: data.model,
+            mode: data.mode,
+            startingMode: data.startingMode,
+            env: data.env,
+            broadcast: (sid: string, msg: any) => ipcServer!.broadcast(sid, msg),
+            daemonInstanceId,
+          });
+
+          await session.initialize();
+
+          // If server assigned a new sessionId (e.g. old session was cleaned up), map the old one
+          // and erase the stale persisted file (initialize() already wrote a new one with the new ID).
+          if (session.sessionId !== data.sessionId) {
+            ipcServer!.addSessionIdMapping(data.sessionId, session.sessionId);
+            await erasePersistedSession(data.sessionId);
+            logger.info('[DAEMON] Session ID changed after recovery', { oldId: data.sessionId, newId: session.sessionId });
+          }
+
+          sessionManager!.register(session.sessionId, session);
+          session
+            .run()
+            .catch(err => logger.error('[DAEMON] Recovered session run error', toError(err), { sessionId: session.sessionId }))
+            .finally(() => sessionManager?.unregister(session.sessionId));
+
+          recoveredCount++;
+        } catch (err) {
+          logger.error('[DAEMON] Session recovery failed', toError(err), { sessionId: data.sessionId, agentType: data.agentType });
+          await erasePersistedSession(data.sessionId);
+        }
+      }
+      if (hasRecoverable) ipcServer!.endRecovery();
+      if (recoveredCount > 0) {
+        logger.info('[DAEMON] Session recovery complete', { recovered: recoveredCount, total: persisted.length });
+      }
+    }
 
     // Fallback sync: poll account settings every 5 minutes as backup for header sync
     // Primary sync is via X-Analytics-Enabled header on all API responses
@@ -889,7 +591,7 @@ export async function startDaemon(): Promise<void> {
             if (typeof serverSettings.analyticsEnabled === 'boolean') {
               const localSettings = await readSettings();
               if (localSettings.analyticsEnabled !== serverSettings.analyticsEnabled) {
-                logger.info('[DAEMON] Fallback sync: updating analyticsEnabled', {
+                logger.debug('[DAEMON] Fallback sync: updating analyticsEnabled', {
                   local: localSettings.analyticsEnabled,
                   server: serverSettings.analyticsEnabled,
                 });
@@ -917,10 +619,9 @@ export async function startDaemon(): Promise<void> {
     const fallbackSyncInterval = setInterval(fallbackSyncAccountSettings, FALLBACK_SYNC_INTERVAL_MS);
 
     // Every 60 seconds:
-    // 1. Prune stale sessions
-    // 2. Check if daemon needs update
-    // 3. If outdated, restart with latest version
-    // 4. Write heartbeat
+    // 1. Check if daemon needs update
+    // 2. If outdated, gracefully stop all sessions then restart
+    // 3. Write heartbeat
     const heartbeatIntervalMs = parseInt(process.env.FREE_DAEMON_HEARTBEAT_INTERVAL || '60000');
     let heartbeatRunning = false;
     let heartbeatStartTime = 0;
@@ -938,31 +639,18 @@ export async function startDaemon(): Promise<void> {
       heartbeatRunning = true;
       heartbeatStartTime = Date.now();
 
-      if (process.env.DEBUG) {
-        logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
-      }
-
-      // Prune stale sessions
-      for (const [pid, _] of pidToTrackedSession.entries()) {
-        try {
-          // Check if process is still alive (signal 0 doesn't kill, just checks)
-          process.kill(pid, 0);
-        } catch (error) {
-          // Process is dead, remove from tracking
-          logger.debug(
-            `[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`
-          );
-          pidToTrackedSession.delete(pid);
-        }
-      }
+      logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
 
       // Check if daemon needs update
       // If version on disk is different from the one in package.json - we need to restart
-      // BIG if - does this get updated from underneath us on npm upgrade?
       const projectVersion = JSON.parse(
         readFileSync(join(projectPath(), 'package.json'), 'utf-8')
       ).version;
       if (projectVersion !== configuration.currentCliVersion) {
+        // Guard against concurrent heartbeats both triggering restart
+        if (restartInitiated) return;
+        restartInitiated = true;
+
         logger.debug(
           '[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version'
         );
@@ -972,30 +660,26 @@ export async function startDaemon(): Promise<void> {
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
 
-        // Notify all tracked sessions to exit gracefully
-        const sessionPids = Array.from(pidToTrackedSession.keys());
-        if (sessionPids.length > 0) {
-          logger.debug(
-            `[DAEMON RUN] Notifying ${sessionPids.length} session(s) to exit due to CLI update`
-          );
-
-          // Notify all sessions in parallel
-          const exitPromises = sessionPids.map(pid => {
-            const session = pidToTrackedSession.get(pid);
-            logger.debug(`[DAEMON RUN] Notifying session PID ${pid} to exit`);
-            return notifySessionToExit(pid, 5000).then(success => {
-              if (success) {
-                logger.debug(`[DAEMON RUN] Session PID ${pid} exited gracefully`);
-              } else {
-                logger.debug(`[DAEMON RUN] Session PID ${pid} was force killed`);
-              }
-              pidToTrackedSession.delete(pid);
+        // Stop agent backends but keep persisted state for recovery by the new daemon.
+        // We do NOT call session.shutdown() here (which would delete persisted files).
+        if (sessionManager) {
+          const activeSessions = sessionManager.list();
+          if (activeSessions.length > 0) {
+            const sessionIds = activeSessions.map(s => s.sessionId);
+            logger.info('[DAEMON RUN] Suspending sessions for recovery after restart', {
+              count: activeSessions.length,
+              sessionIds,
             });
-          });
-
-          // Wait for all sessions to exit (with timeout)
-          await Promise.all(exitPromises);
-          logger.debug('[DAEMON RUN] All sessions notified, proceeding with daemon restart');
+            const results = await Promise.allSettled(
+              activeSessions.map(s => s.stopBackend())
+            );
+            const failed = results.filter(r => r.status === 'rejected').length;
+            logger.info('[DAEMON RUN] Backend suspend complete', {
+              total: activeSessions.length,
+              succeeded: activeSessions.length - failed,
+              failed,
+            });
+          }
         }
 
         // Spawn new daemon through the CLI
@@ -1035,15 +719,15 @@ export async function startDaemon(): Promise<void> {
         const updatedState: DaemonLocallyPersistedState = {
           pid: process.pid,
           httpPort: controlPort,
+          controlToken,
           startTime: fileState.startTime,
           startedWithCliVersion: packageJson.version,
           lastHeartbeat: new Date().toLocaleString(),
+          buildHash: readBuildHash(),
           daemonLogPath: fileState.daemonLogPath,
         };
         writeDaemonState(updatedState);
-        if (process.env.DEBUG) {
-          logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
-        }
+        logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
       } catch (error) {
         logger.debug('[DAEMON RUN] Failed to write heartbeat', error);
       }
@@ -1061,22 +745,30 @@ export async function startDaemon(): Promise<void> {
         `[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`
       );
 
+      // Cancel the force-exit fallback timer now that graceful shutdown is running
+      clearShutdownFallback?.();
+
       // Clear health check interval
       if (restartOnStaleVersionAndHeartbeat) {
         clearInterval(restartOnStaleVersionAndHeartbeat);
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
 
-      // Clear awaiter cleanup interval
-      if (awaiterCleanupInterval) {
-        clearInterval(awaiterCleanupInterval);
-        logger.debug('[DAEMON RUN] Awaiter cleanup interval cleared');
-      }
-
       // Clear fallback sync interval
       if (fallbackSyncInterval) {
         clearInterval(fallbackSyncInterval);
         logger.debug('[DAEMON RUN] Fallback sync interval cleared');
+      }
+
+      // Signal all sessions to shut down gracefully.
+      // handleSigterm sets pendingExit=true → shutdown() will keep persisted files
+      // so the next daemon can recover them.
+      if (sessionManager) {
+        sessionManager.handleSigterm();
+        logger.info('[DAEMON RUN] Session manager sigterm sent, persisted files kept for recovery', {
+          count: sessionManager.list().length,
+          sessionIds: sessionManager.list().map(s => s.sessionId),
+        });
       }
 
       // Update daemon state before shutting down
@@ -1091,6 +783,7 @@ export async function startDaemon(): Promise<void> {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       apiMachine.shutdown();
+      ipcServer?.stop();
       await stopControlServer();
       await cleanupDaemonState();
       await stopCaffeinate();
@@ -1107,8 +800,8 @@ export async function startDaemon(): Promise<void> {
     const shutdownRequest = await resolvesWhenShutdownRequested;
     await cleanupAndShutdown(shutdownRequest.source, shutdownRequest.errorMessage);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error('[DAEMON] Fatal error', error);
+    const errorMessage = safeStringify(error);
+    logger.error('[DAEMON] Fatal error', toError(error));
 
     // Release lock if we hold it
     if (daemonLockHandle) {

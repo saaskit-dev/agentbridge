@@ -23,6 +23,12 @@ cd "$PROJECT_ROOT"
 SERVER_PORT=3000
 WEB_PORT=8081
 
+# Dev 环境变量 — 全局设置，确保 cleanup 和 start 阶段都使用 dev variant
+export APP_ENV=development
+export FREE_HOME_DIR=~/.free-dev
+export FREE_SERVER_URL="http://localhost:$SERVER_PORT"
+export FREE_WEBAPP_URL="http://localhost:$WEB_PORT"
+
 # 日志目录
 LOG_DIR="$PROJECT_ROOT/.dev-logs"
 mkdir -p "$LOG_DIR"
@@ -137,7 +143,8 @@ link_cli() {
     cd "$PROJECT_ROOT/apps/free/cli"
 
     # 先移除旧的全局链接（如果存在）
-    npm unlink -g @saaskit-dev/free 2>/dev/null || true
+    rm -f $(which free) $(which free-mcp)
+    # npm unlink -g @saaskit-dev/free 2>/dev/null || true
 
     # 创建新的全局链接
     npm link 2>&1 | tee "$LOG_DIR/link-cli.log"
@@ -172,9 +179,6 @@ start_server() {
 
     log_info "启动 Server (端口 $SERVER_PORT)..."
 
-    # Dev 环境变量 — server 是独立进程，必须通过 env 传入
-    export FREE_HOME_DIR=~/.free-dev
-
     # 使用 standalone 模式（PGlite）
     pnpm --filter @free/server standalone serve 2>&1 | tee "$LOG_DIR/server.log" &
     SERVER_PID=$!
@@ -199,11 +203,6 @@ start_server() {
 
 start_daemon() {
     log_section "启动 Daemon"
-
-    # Dev 环境变量 — daemon 是独立进程，必须通过 env 传入
-    export FREE_HOME_DIR=~/.free-dev
-    export FREE_SERVER_URL="http://localhost:$SERVER_PORT"
-    export FREE_WEBAPP_URL="http://localhost:$WEB_PORT"
 
     log_info "启动 free daemon..."
     free daemon start 2>&1 | tee "$LOG_DIR/daemon.log" || true
@@ -237,8 +236,14 @@ start_web() {
     echo $WEB_PID > "$LOG_DIR/web.pid"
 
     # 等待 Web 启动
+    # 等待 Web 启动（Expo Metro 通常需要 15-30 秒）
     log_info "等待 Web 应用启动..."
-    sleep 5
+    for i in {1..60}; do
+        if curl -s "http://localhost:$WEB_PORT" > /dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
 
     # 获取本机内网 IP
     LOCAL_IP=$(ifconfig | grep -E "inet [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | grep -v "127.0.0.1" | head -1 | awk '{print $2}')

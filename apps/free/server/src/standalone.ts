@@ -36,6 +36,14 @@ const dataDir = process.env.DATA_DIR || './data';
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, 'pglite');
 const lockFile = path.join(dataDir, '.server.lock');
 
+function sortMigrationDirs(dirs: string[]): string[] {
+  return [...dirs].sort((a, b) => {
+    if (a === 'init') return -1;
+    if (b === 'init') return 1;
+    return a.localeCompare(b);
+  });
+}
+
 /**
  * Check if running in a container environment (Docker, etc.)
  */
@@ -143,10 +151,11 @@ async function migrate() {
   }
 
   // Get all migration directories sorted
-  const dirs = fs
-    .readdirSync(migrationsDirResolved)
-    .filter(d => fs.statSync(path.join(migrationsDirResolved, d)).isDirectory())
-    .sort();
+  const dirs = sortMigrationDirs(
+    fs
+      .readdirSync(migrationsDirResolved)
+      .filter(d => fs.statSync(path.join(migrationsDirResolved, d)).isDirectory())
+  );
 
   // Get already applied migrations
   const applied = await pg.query<{ migration_name: string }>(
@@ -260,10 +269,11 @@ async function runMigrationsIfNeeded(): Promise<void> {
     }
 
     // Count available migrations
-    const dirs = fs
-      .readdirSync(migrationsDir)
-      .filter(d => fs.statSync(path.join(migrationsDir, d)).isDirectory())
-      .sort();
+    const dirs = sortMigrationDirs(
+      fs
+        .readdirSync(migrationsDir)
+        .filter(d => fs.statSync(path.join(migrationsDir, d)).isDirectory())
+    );
 
     if (dirs.length === 0) {
       await pg.close();

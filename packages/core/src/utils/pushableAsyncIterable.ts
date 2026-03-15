@@ -6,6 +6,8 @@
  *
  */
 
+import { toError } from './stringify.js';
+
 /**
  * A pushable async iterable implementation
  * Allows asynchronous pushing of values that can be consumed via for-await-of
@@ -42,7 +44,11 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
    */
   push(value: T): void {
     if (this.isDone) {
-      throw new Error('Cannot push to completed iterable');
+      // Silently drop — this can happen legitimately when a backend pushes
+      // a final message concurrently with output.end() (e.g. PTY onData
+      // firing in the same tick as onExit). Throwing here would crash the
+      // daemon process.
+      return;
     }
 
     if (this.error) {
@@ -137,7 +143,7 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
    * Called when consumer throws an error in the loop
    */
   async throw(e: unknown): Promise<IteratorResult<T>> {
-    this.setError(e instanceof Error ? e : new Error(String(e)));
+    this.setError(toError(e));
     throw this.error;
   }
 

@@ -234,7 +234,7 @@ export default function PurchasesDevScreen() {
             detail={sync.revenueCatInitialized ? 'Initialized' : 'Not Initialized'}
             showChevron={false}
           />
-          <Item title="User ID" detail={sync.serverID || 'Not available'} showChevron={false} />
+          <Item title="User ID" detail={sync.accountId || 'Not available'} showChevron={false} />
         </ItemGroup>
       </ItemList>
     </>

@@ -97,6 +97,29 @@ export interface HandlerResult {
   toolCallCountSincePrompt?: number;
 }
 
+export const HANDLED_SESSION_UPDATE_TYPES = [
+  'agent_message_chunk',
+  'tool_call_update',
+  'agent_thought_chunk',
+  'tool_call',
+  'available_commands_update',
+  'current_mode_update',
+  'config_option_update',
+] as const;
+
+export function shouldLogUnhandledSessionUpdate(update: SessionUpdate): boolean {
+  const updateType = update.sessionUpdate;
+  if (!updateType) {
+    return false;
+  }
+
+  if (HANDLED_SESSION_UPDATE_TYPES.includes(updateType as (typeof HANDLED_SESSION_UPDATE_TYPES)[number])) {
+    return false;
+  }
+
+  return !update.messageChunk && !update.plan && !update.thinking;
+}
+
 /**
  * Parse args from update content (can be array or object)
  */

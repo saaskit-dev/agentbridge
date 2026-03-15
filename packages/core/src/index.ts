@@ -25,6 +25,7 @@ export type {
   AgentTransport,
   McpServerConfig,
   AgentBackendConfig,
+  AcpPermissionHandler,
   AcpAgentConfig,
 } from './types';
 
@@ -160,12 +161,13 @@ export { FsStorage, EncryptedFsStorage } from './implementations';
 export { AxiosHttpClient } from './implementations';
 export { SocketIoClient, SocketIoServer, SocketIoSocket } from './implementations';
 export { NodeProcess, NodeProcessManager } from './implementations';
-export { AcpBackend, createAcpBackendFactory, ClaudeBackend } from './implementations';
+export { AcpBackend, createAcpBackendFactory, createAcpBackend, ClaudeBackend } from './implementations';
 export {
   createGeminiBackend,
   createCodexBackend,
   createClaudeAcpBackend,
   createOpenCodeBackend,
+  type CreateAcpBackendOptions,
   type GeminiBackendOptions,
   type CodexBackendOptions,
   type ClaudeAcpBackendOptions,
@@ -212,6 +214,15 @@ export type { Encryptor, Decryptor, Cipher } from './encryption';
 export { SecretBoxEncryption, BoxEncryption, AES256Encryption } from './encryption';
 export { SessionEncryption, MachineEncryption, EncryptionCache } from './encryption';
 export type { DecryptedMessage } from './encryption';
+export {
+  wireEncode,
+  wireDecode,
+  wireEncodeBatch,
+  wireDecodeBatch,
+  tryParsePlaintext,
+  wireDecodeBytes,
+  wireDecodeBatchBytes,
+} from './encryption';
 
 // Utils - Encoding
 export {
@@ -247,6 +258,9 @@ export {
   PushableAsyncIterable,
   createPushableAsyncIterable,
 } from './utils';
+
+// Utils - Stringify
+export { safeStringify, toError } from './utils';
 
 // Utils - Environment Variables
 export { expandEnvVars, expandEnvironmentVariables, getUndefinedVars } from './utils';

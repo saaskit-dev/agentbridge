@@ -9,13 +9,14 @@ import {
   SpawnSessionOptions,
   SpawnSessionResult,
 } from '../modules/common/registerCommonHandlers';
-import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
+import { encryptToWireString, decryptFromWireString } from './encryption';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, WireTrace } from './types';
 import { configuration } from '@/configuration';
 import { getProcessTraceContext } from '@/telemetry';
 import { injectTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { backoff } from '@/utils/time';
 
 const logger = new Logger('api/apiMachine');
@@ -105,6 +106,7 @@ interface DaemonToServerEvents {
 type MachineRpcHandlers = {
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   stopSession: (sessionId: string) => boolean;
+  listSupportedAgents: () => string[];
   requestShutdown: () => void;
 };
 
@@ -125,10 +127,10 @@ export class ApiMachineClient {
       logger: (msg, data) => logger.debug(msg, data),
     });
 
-    registerCommonHandlers(this.rpcHandlerManager, process.cwd());
+    registerCommonHandlers(this.rpcHandlerManager, process.cwd(), this.machine.id);
   }
 
-  setRPCHandlers({ spawnSession, stopSession, requestShutdown }: MachineRpcHandlers) {
+  setRPCHandlers({ spawnSession, stopSession, listSupportedAgents, requestShutdown }: MachineRpcHandlers) {
     // Register spawn session handler
     this.rpcHandlerManager.registerHandler('spawn-free-session', async (params: any) => {
       const {
@@ -137,11 +139,20 @@ export class ApiMachineClient {
         machineId,
         approvedNewDirectoryCreation,
         agent,
+        model,
+        mode,
         token,
-        environmentVariables,
-        resumeClaudeSessionId,
+        resumeAgentSessionId,
       } = params || {};
-      logger.debug(`[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`);
+      logger.debug('[API MACHINE] Spawning session', {
+        machineId: this.machine.id,
+        sessionId,
+        directory,
+        agent,
+        model,
+        mode,
+        resumeAgentSessionId,
+      });
 
       if (!directory) {
         throw new Error('Directory is required');
@@ -153,20 +164,25 @@ export class ApiMachineClient {
         machineId,
         approvedNewDirectoryCreation,
         agent,
+        model,
+        mode,
         token,
-        environmentVariables,
-        resumeClaudeSessionId,
+        resumeAgentSessionId,
       });
 
       switch (result.type) {
         case 'success':
-          logger.debug(`[API MACHINE] Spawned session ${result.sessionId}`);
+          logger.debug('[API MACHINE] Spawned session', {
+            machineId: this.machine.id,
+            sessionId: result.sessionId,
+            agent,
+            model,
+            mode,
+          });
           return { type: 'success', sessionId: result.sessionId };
 
         case 'requestToApproveDirectoryCreation':
-          logger.debug(
-            `[API MACHINE] Requesting directory creation approval for: ${result.directory}`
-          );
+          logger.debug('[API MACHINE] Requesting directory creation approval', { machineId: this.machine.id, directory: result.directory });
           return { type: 'requestToApproveDirectoryCreation', directory: result.directory };
 
         case 'error':
@@ -187,8 +203,17 @@ export class ApiMachineClient {
         throw new Error('Session not found or failed to stop');
       }
 
-      logger.debug(`[API MACHINE] Stopped session ${sessionId}`);
+      logger.debug('[API MACHINE] Stopped session', { machineId: this.machine.id, sessionId });
       return { message: 'Session stopped' };
+    });
+
+    this.rpcHandlerManager.registerHandler('list-supported-agents', () => {
+      const agents = listSupportedAgents();
+      logger.debug('[API MACHINE] Listed supported agents', {
+        machineId: this.machine.id,
+        agents,
+      });
+      return { agents };
     });
 
     // Register stop daemon handler
@@ -218,28 +243,26 @@ export class ApiMachineClient {
 
       const answer = await this.socket.emitWithAck('machine-update-metadata', {
         machineId: this.machine.id,
-        metadata: encodeBase64(
-          encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, updated)
-        ),
+        metadata: await encryptToWireString(this.machine.encryptionKey, this.machine.encryptionVariant, updated),
         expectedVersion: this.machine.metadataVersion,
         _trace: getWireTrace(),
       });
 
       if (answer.result === 'success') {
-        this.machine.metadata = decrypt(
+        this.machine.metadata = await decryptFromWireString(
           this.machine.encryptionKey,
           this.machine.encryptionVariant,
-          decodeBase64(answer.metadata)
+          answer.metadata
         );
         this.machine.metadataVersion = answer.version;
-        logger.debug('[API MACHINE] Metadata updated successfully');
+        logger.debug('[API MACHINE] Metadata updated successfully', { machineId: this.machine.id });
       } else if (answer.result === 'version-mismatch') {
         if (answer.version > this.machine.metadataVersion) {
           this.machine.metadataVersion = answer.version;
-          this.machine.metadata = decrypt(
+          this.machine.metadata = await decryptFromWireString(
             this.machine.encryptionKey,
             this.machine.encryptionVariant,
-            decodeBase64(answer.metadata)
+            answer.metadata
           );
         }
         throw new Error('Metadata version mismatch'); // Triggers retry
@@ -257,28 +280,26 @@ export class ApiMachineClient {
 
       const answer = await this.socket.emitWithAck('machine-update-state', {
         machineId: this.machine.id,
-        daemonState: encodeBase64(
-          encrypt(this.machine.encryptionKey, this.machine.encryptionVariant, updated)
-        ),
+        daemonState: await encryptToWireString(this.machine.encryptionKey, this.machine.encryptionVariant, updated),
         expectedVersion: this.machine.daemonStateVersion,
         _trace: getWireTrace(),
       });
 
       if (answer.result === 'success') {
-        this.machine.daemonState = decrypt(
+        this.machine.daemonState = await decryptFromWireString(
           this.machine.encryptionKey,
           this.machine.encryptionVariant,
-          decodeBase64(answer.daemonState)
+          answer.daemonState
         );
         this.machine.daemonStateVersion = answer.version;
-        logger.debug('[API MACHINE] Daemon state updated successfully');
+        logger.debug('[API MACHINE] Daemon state updated successfully', { machineId: this.machine.id });
       } else if (answer.result === 'version-mismatch') {
         if (answer.version > this.machine.daemonStateVersion) {
           this.machine.daemonStateVersion = answer.version;
-          this.machine.daemonState = decrypt(
+          this.machine.daemonState = await decryptFromWireString(
             this.machine.encryptionKey,
             this.machine.encryptionVariant,
-            decodeBase64(answer.daemonState)
+            answer.daemonState
           );
         }
         throw new Error('Daemon state version mismatch'); // Triggers retry
@@ -288,7 +309,7 @@ export class ApiMachineClient {
 
   connect() {
     const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
-    logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);
+    logger.debug('[API MACHINE] Connecting to server', { machineId: this.machine.id, serverUrl });
 
     this.socket = io(serverUrl, {
       transports: ['websocket'],
@@ -315,7 +336,9 @@ export class ApiMachineClient {
         pid: process.pid,
         httpPort: this.machine.daemonState?.httpPort,
         startedAt: Date.now(),
-      }));
+      })).catch(err => {
+        logger.warn('[API MACHINE] Failed to update daemon state on connect', { error: err instanceof Error ? err.message : String(err) });
+      });
 
       // Register all handlers
       this.rpcHandlerManager.onSocketConnect(this.socket);
@@ -325,7 +348,7 @@ export class ApiMachineClient {
     });
 
     this.socket.on('disconnect', () => {
-      logger.debug('[API MACHINE] Disconnected from server');
+      logger.debug('[API MACHINE] Disconnected from server', { machineId: this.machine.id });
       this.rpcHandlerManager.onSocketDisconnect();
       this.stopKeepAlive();
     });
@@ -334,13 +357,13 @@ export class ApiMachineClient {
     this.socket.on(
       'rpc-request',
       async (data: { method: string; params: string }, callback: (response: string) => void) => {
-        logger.debug('[API MACHINE] Received RPC request');
+        logger.debug('[API MACHINE] Received RPC request', { machineId: this.machine.id, method: data.method });
         callback(await this.rpcHandlerManager.handleRequest(data));
       }
     );
 
     // Handle update events from server
-    this.socket.on('update', (data: Update) => {
+    this.socket.on('update', async (data: Update) => {
       // Machine clients should only care about machine updates
       if (
         data.body.t === 'update-machine' &&
@@ -350,26 +373,26 @@ export class ApiMachineClient {
         const update = data.body as UpdateMachineBody;
 
         if (update.metadata) {
-          logger.debug('[API MACHINE] Received external metadata update');
-          this.machine.metadata = decrypt(
+          logger.debug('[API MACHINE] Received external metadata update', { machineId: this.machine.id });
+          this.machine.metadata = await decryptFromWireString(
             this.machine.encryptionKey,
             this.machine.encryptionVariant,
-            decodeBase64(update.metadata.value)
+            update.metadata.value
           );
           this.machine.metadataVersion = update.metadata.version;
         }
 
         if (update.daemonState) {
-          logger.debug('[API MACHINE] Received external daemon state update');
-          this.machine.daemonState = decrypt(
+          logger.debug('[API MACHINE] Received external daemon state update', { machineId: this.machine.id });
+          this.machine.daemonState = await decryptFromWireString(
             this.machine.encryptionKey,
             this.machine.encryptionVariant,
-            decodeBase64(update.daemonState.value)
+            update.daemonState.value
           );
           this.machine.daemonStateVersion = update.daemonState.version;
         }
       } else {
-        logger.debug(`[API MACHINE] Received unknown update type: ${(data.body as any).t}`);
+        logger.debug('[API MACHINE] Received unknown update type', { machineId: this.machine.id, type: (data.body as any).t });
       }
     });
 
@@ -378,7 +401,7 @@ export class ApiMachineClient {
     });
 
     this.socket.io.on('error', (error: any) => {
-      logger.debug('[API MACHINE] Socket error:', error);
+      logger.debug('[API MACHINE] Socket error', { machineId: this.machine.id, error: safeStringify(error) });
     });
   }
 
@@ -389,29 +412,26 @@ export class ApiMachineClient {
         machineId: this.machine.id,
         time: Date.now(),
       };
-      if (process.env.DEBUG) {
-        // too verbose for production
-        logger.debug('[API MACHINE] Emitting machine-alive');
-      }
+      logger.debug('[API MACHINE] Emitting machine-alive', { machineId: this.machine.id });
       this.socket.emit('machine-alive', { ...payload, _trace: getWireTrace() });
     }, 20000);
-    logger.debug('[API MACHINE] Keep-alive started (20s interval)');
+    logger.debug('[API MACHINE] Keep-alive started (20s interval)', { machineId: this.machine.id });
   }
 
   private stopKeepAlive() {
     if (this.keepAliveInterval) {
       clearInterval(this.keepAliveInterval);
       this.keepAliveInterval = null;
-      logger.debug('[API MACHINE] Keep-alive stopped');
+      logger.debug('[API MACHINE] Keep-alive stopped', { machineId: this.machine.id });
     }
   }
 
   shutdown() {
-    logger.debug('[API MACHINE] Shutting down');
+    logger.debug('[API MACHINE] Shutting down', { machineId: this.machine.id });
     this.stopKeepAlive();
     if (this.socket) {
       this.socket.close();
-      logger.debug('[API MACHINE] Socket closed');
+      logger.debug('[API MACHINE] Socket closed', { machineId: this.machine.id });
     }
   }
 }

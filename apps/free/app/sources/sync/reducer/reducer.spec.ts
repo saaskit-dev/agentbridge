@@ -32,12 +32,11 @@ describe('reducer', () => {
   // });
 
   describe('user message handling', () => {
-    it('should process user messages with localId', () => {
+    it('should process user messages', () => {
       const state = createReducer();
       const messages: NormalizedMessage[] = [
         {
           id: 'msg1',
-          localId: 'local123',
           createdAt: 1000,
           role: 'user',
           content: { type: 'text', text: 'Hello' },
@@ -51,17 +50,15 @@ describe('reducer', () => {
       if (result.messages[0].kind === 'user-text') {
         expect(result.messages[0].text).toBe('Hello');
       }
-      expect(state.localIds.has('local123')).toBe(true);
+      expect(state.processedIds.has('msg1')).toBe(true);
     });
 
-    it('should deduplicate user messages by localId', () => {
+    it('should deduplicate user messages by id', () => {
       const state = createReducer();
 
-      // First message with localId
       const messages1: NormalizedMessage[] = [
         {
           id: 'msg1',
-          localId: 'local123',
           createdAt: 1000,
           role: 'user',
           content: { type: 'text', text: 'First' },
@@ -72,11 +69,10 @@ describe('reducer', () => {
       const result1 = reducer(state, messages1);
       expect(result1.messages).toHaveLength(1);
 
-      // Second message with same localId should be ignored
+      // Same id should be ignored
       const messages2: NormalizedMessage[] = [
         {
-          id: 'msg2',
-          localId: 'local123',
+          id: 'msg1',
           createdAt: 2000,
           role: 'user',
           content: { type: 'text', text: 'Second' },
@@ -88,46 +84,11 @@ describe('reducer', () => {
       expect(result2.messages).toHaveLength(0);
     });
 
-    it('should deduplicate user messages by message id when no localId', () => {
-      const state = createReducer();
-
-      // First message without localId
-      const messages1: NormalizedMessage[] = [
-        {
-          id: 'msg1',
-          localId: null,
-          createdAt: 1000,
-          role: 'user',
-          content: { type: 'text', text: 'First' },
-          isSidechain: false,
-        },
-      ];
-
-      const result1 = reducer(state, messages1);
-      expect(result1.messages).toHaveLength(1);
-
-      // Second message with same id should be ignored
-      const messages2: NormalizedMessage[] = [
-        {
-          id: 'msg1',
-          localId: null,
-          createdAt: 2000,
-          role: 'user',
-          content: { type: 'text', text: 'Second' },
-          isSidechain: false,
-        },
-      ];
-
-      const result2 = reducer(state, messages2);
-      expect(result2.messages).toHaveLength(0);
-    });
-
-    it('should process multiple user messages with different localIds', () => {
+    it('should process multiple user messages with different ids', () => {
       const state = createReducer();
       const messages: NormalizedMessage[] = [
         {
           id: 'msg1',
-          localId: 'local123',
           createdAt: 1000,
           role: 'user',
           content: { type: 'text', text: 'First' },
@@ -135,7 +96,6 @@ describe('reducer', () => {
         },
         {
           id: 'msg2',
-          localId: 'local456',
           createdAt: 2000,
           role: 'user',
           content: { type: 'text', text: 'Second' },
@@ -143,7 +103,6 @@ describe('reducer', () => {
         },
         {
           id: 'msg3',
-          localId: null,
           createdAt: 3000,
           role: 'user',
           content: { type: 'text', text: 'Third' },
@@ -171,7 +130,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'agent1',
-          localId: null,
           createdAt: 1000,
           role: 'agent',
           isSidechain: false,
@@ -199,7 +157,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'agent1',
-          localId: null,
           createdAt: 1000,
           role: 'agent',
           isSidechain: false,
@@ -229,6 +186,106 @@ describe('reducer', () => {
         expect(result.messages[1].text).toBe('Part 2');
       }
     });
+
+    it('should merge consecutive single-block agent text chunks into one message', () => {
+      const state = createReducer();
+
+      const first = reducer(state, [
+        {
+          id: 'agent-chunk-1',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-1',
+          content: [
+            {
+              type: 'text',
+              text: 'Hel',
+              uuid: 'chunk-1',
+              parentUUID: null,
+            },
+          ],
+        },
+      ]);
+
+      expect(first.messages).toHaveLength(1);
+      expect(first.messages[0].kind).toBe('agent-text');
+      if (first.messages[0].kind === 'agent-text') {
+        expect(first.messages[0].text).toBe('Hel');
+      }
+
+      const second = reducer(state, [
+        {
+          id: 'agent-chunk-2',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-1',
+          content: [
+            {
+              type: 'text',
+              text: 'lo',
+              uuid: 'chunk-2',
+              parentUUID: null,
+            },
+          ],
+        },
+      ]);
+
+      expect(second.messages).toHaveLength(1);
+      expect(second.messages[0].kind).toBe('agent-text');
+      if (second.messages[0].kind === 'agent-text') {
+        expect(second.messages[0].sourceId).toBe('agent-chunk-1');
+        expect(second.messages[0].text).toBe('Hello');
+      }
+    });
+
+    it('should merge consecutive single-block thinking chunks into one message', () => {
+      const state = createReducer();
+
+      reducer(state, [
+        {
+          id: 'thinking-chunk-1',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-thinking',
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'Plan',
+              uuid: 'thinking-1',
+              parentUUID: null,
+            },
+          ],
+        },
+      ]);
+
+      const second = reducer(state, [
+        {
+          id: 'thinking-chunk-2',
+          createdAt: 1200,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-thinking',
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'ning',
+              uuid: 'thinking-2',
+              parentUUID: null,
+            },
+          ],
+        },
+      ]);
+
+      expect(second.messages).toHaveLength(1);
+      expect(second.messages[0].kind).toBe('agent-text');
+      if (second.messages[0].kind === 'agent-text') {
+        expect(second.messages[0].isThinking).toBe(true);
+        expect(second.messages[0].text).toBe('*Thinking...*\n\n*Planning*');
+      }
+    });
   });
 
   describe('mixed message processing', () => {
@@ -237,7 +294,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'user1',
-          localId: 'local1',
           createdAt: 1000,
           role: 'user',
           content: { type: 'text', text: 'Question 1' },
@@ -245,7 +301,6 @@ describe('reducer', () => {
         },
         {
           id: 'agent1',
-          localId: null,
           createdAt: 2000,
           role: 'agent',
           content: [
@@ -260,7 +315,6 @@ describe('reducer', () => {
         },
         {
           id: 'user2',
-          localId: 'local2',
           createdAt: 3000,
           role: 'user',
           content: { type: 'text', text: 'Question 2' },
@@ -268,7 +322,6 @@ describe('reducer', () => {
         },
         {
           id: 'agent2',
-          localId: null,
           createdAt: 4000,
           role: 'agent',
           content: [
@@ -316,7 +369,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'agent1',
-          localId: null,
           createdAt: 1000,
           role: 'agent',
           content: [
@@ -347,7 +399,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'user1',
-          localId: 'local1',
           createdAt: 1000,
           role: 'user',
           content: { type: 'text', text: 'Valid' },
@@ -367,7 +418,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'agent1',
-          localId: null,
           createdAt: 1000,
           role: 'event',
           content: {
@@ -474,7 +524,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 3000,
           role: 'agent',
           isSidechain: false,
@@ -552,7 +601,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 4000,
           role: 'agent',
           isSidechain: false,
@@ -621,7 +669,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 5000,
           role: 'agent',
           isSidechain: false,
@@ -704,7 +751,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 4000,
           role: 'user',
           content: { type: 'text', text: 'Hello' },
@@ -740,7 +786,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'tool-msg-1',
-          localId: null,
           createdAt: 5000,
           role: 'agent',
           content: [
@@ -825,7 +870,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'tool-msg-1',
-          localId: null,
           createdAt: 5000,
           role: 'agent',
           content: [
@@ -907,7 +951,6 @@ describe('reducer', () => {
       const messages1: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 3000,
           role: 'agent',
           content: [
@@ -937,7 +980,6 @@ describe('reducer', () => {
       const messages2: NormalizedMessage[] = [
         {
           id: 'msg-2',
-          localId: null,
           createdAt: 4000,
           role: 'agent',
           content: [
@@ -989,7 +1031,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'tool-msg-1',
-          localId: null,
           createdAt: 2000,
           role: 'agent',
           content: [
@@ -1049,7 +1090,6 @@ describe('reducer', () => {
       const messages2: NormalizedMessage[] = [
         {
           id: 'tool-msg-2',
-          localId: null,
           createdAt: 4000,
           role: 'agent',
           content: [
@@ -1128,7 +1168,6 @@ describe('reducer', () => {
       const toolMessages: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 3000,
           role: 'agent',
           content: [
@@ -1156,7 +1195,6 @@ describe('reducer', () => {
       const resultMessages: NormalizedMessage[] = [
         {
           id: 'msg-2',
-          localId: null,
           createdAt: 4000,
           role: 'agent',
           content: [
@@ -1258,7 +1296,6 @@ describe('reducer', () => {
       const resultMessages: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 1000,
           role: 'agent',
           content: [
@@ -1282,7 +1319,6 @@ describe('reducer', () => {
       const toolMessages: NormalizedMessage[] = [
         {
           id: 'msg-2',
-          localId: null,
           createdAt: 2000,
           role: 'agent',
           content: [
@@ -1311,7 +1347,6 @@ describe('reducer', () => {
       const resultMessages2: NormalizedMessage[] = [
         {
           id: 'msg-3',
-          localId: null,
           createdAt: 3000,
           role: 'agent',
           content: [
@@ -1369,7 +1404,6 @@ describe('reducer', () => {
         // User message
         {
           id: 'user-1',
-          localId: 'local-1',
           createdAt: 1000,
           role: 'user',
           content: { type: 'text', text: 'Do something' },
@@ -1378,7 +1412,6 @@ describe('reducer', () => {
         // Agent text
         {
           id: 'agent-1',
-          localId: null,
           createdAt: 2000,
           role: 'agent',
           content: [
@@ -1394,7 +1427,6 @@ describe('reducer', () => {
         // Tool call
         {
           id: 'tool-1',
-          localId: null,
           createdAt: 3000,
           role: 'agent',
           content: [
@@ -1443,7 +1475,6 @@ describe('reducer', () => {
       const toolMessages: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 1000,
           role: 'agent',
           content: [
@@ -1467,7 +1498,6 @@ describe('reducer', () => {
       const result1Messages: NormalizedMessage[] = [
         {
           id: 'msg-2',
-          localId: null,
           createdAt: 2000,
           role: 'agent',
           content: [
@@ -1495,7 +1525,6 @@ describe('reducer', () => {
       const result2Messages: NormalizedMessage[] = [
         {
           id: 'msg-3',
-          localId: null,
           createdAt: 3000,
           role: 'agent',
           content: [
@@ -1544,7 +1573,6 @@ describe('reducer', () => {
       const toolMessages: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 3000,
           role: 'agent',
           content: [
@@ -1633,7 +1661,6 @@ describe('reducer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'msg-1',
-          localId: null,
           createdAt: 2000,
           role: 'agent',
           content: [
@@ -1677,7 +1704,6 @@ describe('reducer', () => {
         const userMsg: NormalizedMessage[] = [
           {
             id: `user-${i}`,
-            localId: `local-${i}`,
             createdAt: i * 1000,
             role: 'user',
             content: { type: 'text', text: `Message ${i}` },
@@ -1723,13 +1749,12 @@ describe('reducer', () => {
       // Verify state integrity
       expect(state.messages.size).toBe(totalMessages);
       expect(state.toolIdToMessageId.size).toBe(10);
-      expect(state.localIds.size).toBe(10);
+      expect(state.processedIds.size).toBe(10);
 
       // Try to add duplicates (should not increase count)
       const duplicateUser: NormalizedMessage[] = [
         {
           id: 'user-0',
-          localId: 'local-0',
           createdAt: 0,
           role: 'user',
           content: { type: 'text', text: 'Duplicate' },
@@ -1783,7 +1808,6 @@ describe('reducer', () => {
       // First, process the tool call message (as if loaded from storage)
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1000,
         role: 'agent',
         content: [
@@ -1857,7 +1881,6 @@ describe('reducer', () => {
       // Now process the tool call message
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1000,
         role: 'agent',
         content: [
@@ -1919,7 +1942,6 @@ describe('reducer', () => {
       // Process tool message
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         content: [
@@ -1968,7 +1990,6 @@ describe('reducer', () => {
 
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         content: [
@@ -2031,7 +2052,6 @@ describe('reducer', () => {
       // Step 1: Load tool message first (without AgentState) - simulates messages loaded before sessions
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         content: [
@@ -2098,7 +2118,6 @@ describe('reducer', () => {
       // Step 1: Load tool message first
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         content: [
@@ -2159,7 +2178,6 @@ describe('reducer', () => {
       // Step 1: Load tool message first
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         content: [
@@ -2301,7 +2319,6 @@ describe('reducer', () => {
       // Step 1: Load tool message that's already completed
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         isSidechain: false,
@@ -2321,7 +2338,6 @@ describe('reducer', () => {
       // Tool result message
       const resultMessage: NormalizedMessage = {
         id: 'msg-2',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: false,
@@ -2383,7 +2399,6 @@ describe('reducer', () => {
       // Step 1: Load completed tool
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         isSidechain: false,
@@ -2402,7 +2417,6 @@ describe('reducer', () => {
 
       const resultMessage: NormalizedMessage = {
         id: 'msg-2',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: false,
@@ -2461,7 +2475,6 @@ describe('reducer', () => {
       // Step 1: Load tool that errored
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         isSidechain: false,
@@ -2480,7 +2493,6 @@ describe('reducer', () => {
 
       const errorMessage: NormalizedMessage = {
         id: 'msg-2',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: false,
@@ -2531,7 +2543,6 @@ describe('reducer', () => {
       // Step 1: Load tool that errored
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         isSidechain: false,
@@ -2550,7 +2561,6 @@ describe('reducer', () => {
 
       const errorMessage: NormalizedMessage = {
         id: 'msg-2',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: false,
@@ -2599,7 +2609,6 @@ describe('reducer', () => {
       // Step 1: Tool call
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         isSidechain: false,
@@ -2621,7 +2630,6 @@ describe('reducer', () => {
       // Step 2: Tool result arrives
       const resultMessage: NormalizedMessage = {
         id: 'msg-2',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: false,
@@ -2680,7 +2688,6 @@ describe('reducer', () => {
       // Simulate a tool call message from the agent
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 1000,
         role: 'agent',
         content: [
@@ -2732,7 +2739,6 @@ describe('reducer', () => {
       // Step 1: Process tool messages WITHOUT AgentState (simulating messages loading before session)
       const toolMessage: NormalizedMessage = {
         id: 'msg-1',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: false,
@@ -2809,7 +2815,6 @@ describe('reducer', () => {
         // User message
         {
           id: 'user-1',
-          localId: 'local-1',
           createdAt: 1000,
           role: 'user',
           isSidechain: false,
@@ -2821,7 +2826,6 @@ describe('reducer', () => {
         // Tool call that should have permission
         {
           id: 'tool-msg-1',
-          localId: null,
           createdAt: 2000,
           role: 'agent',
           isSidechain: false,
@@ -2840,7 +2844,6 @@ describe('reducer', () => {
         // Tool result
         {
           id: 'result-1',
-          localId: null,
           createdAt: 3000,
           role: 'agent',
           isSidechain: false,
@@ -2899,7 +2902,6 @@ describe('reducer', () => {
       // Step 3: User sends a new message, triggering a new reducer call
       const newUserMessage: NormalizedMessage = {
         id: 'user-2',
-        localId: 'local-2',
         createdAt: 4000,
         role: 'user',
         isSidechain: false,
@@ -2932,7 +2934,6 @@ describe('reducer', () => {
       const result = reducer(state, [
         {
           id: 'ready-1',
-          localId: null,
           createdAt: 1000,
           role: 'event',
           content: { type: 'ready' },
@@ -2944,12 +2945,27 @@ describe('reducer', () => {
       expect(result.hasReadyEvent).toBe(true);
     });
 
+    it('captures status events without creating visible messages', () => {
+      const state = createReducer();
+      const result = reducer(state, [
+        {
+          id: 'status-1',
+          createdAt: 1000,
+          role: 'event',
+          content: { type: 'status', state: 'idle' },
+          isSidechain: false,
+        },
+      ]);
+
+      expect(result.messages).toHaveLength(0);
+      expect(result.latestStatus).toBe('idle');
+    });
+
     it('hides turn-start lifecycle messages', () => {
       const state = createReducer();
       const result = reducer(state, [
         {
           id: 'turn-start-1',
-          localId: null,
           createdAt: 1000,
           role: 'event',
           content: { type: 'message', message: 'Turn started' },
@@ -2965,7 +2981,6 @@ describe('reducer', () => {
       const result = reducer(state, [
         {
           id: 'parent-msg',
-          localId: null,
           createdAt: 1000,
           role: 'agent',
           isSidechain: false,
@@ -2983,7 +2998,6 @@ describe('reducer', () => {
         },
         {
           id: 'child-msg',
-          localId: null,
           createdAt: 1100,
           role: 'agent',
           isSidechain: true,

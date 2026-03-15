@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/auth/tokenStorage');
 
 const AUTH_KEY = 'auth_credentials';
@@ -26,7 +26,7 @@ export const TokenStorage = {
       credentialsCache = stored; // Update cache
       return JSON.parse(stored) as AuthCredentials;
     } catch (error) {
-      logger.error('Error getting credentials:', error);
+      logger.error('Error getting credentials:', toError(error));
       return null;
     }
   },
@@ -42,7 +42,7 @@ export const TokenStorage = {
       credentialsCache = json; // Update cache
       return true;
     } catch (error) {
-      logger.error('Error setting credentials:', error);
+      logger.error('Error setting credentials:', toError(error));
       return false;
     }
   },
@@ -57,7 +57,7 @@ export const TokenStorage = {
       credentialsCache = null; // Clear cache
       return true;
     } catch (error) {
-      logger.error('Error removing credentials:', error);
+      logger.error('Error removing credentials:', toError(error));
       return false;
     }
   },

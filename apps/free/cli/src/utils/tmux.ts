@@ -22,6 +22,7 @@
 import { spawn, SpawnOptions } from 'child_process';
 import { promisify } from 'util';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('utils/tmux');
 
 export enum TmuxControlState {
@@ -1002,7 +1003,7 @@ export class TmuxUtilities {
       logger.debug('[TMUX] Failed to spawn in tmux:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: safeStringify(error),
       };
     }
   }
@@ -1138,7 +1139,7 @@ export async function createTmuxSession(
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: safeStringify(error),
     };
   }
 }
@@ -1156,7 +1157,7 @@ export function validateTmuxSessionIdentifier(identifier: string): {
   } catch (error) {
     return {
       valid: false,
-      error: error instanceof Error ? error.message : 'Unknown validation error',
+      error: safeStringify(error),
     };
   }
 }
@@ -1190,7 +1191,7 @@ export function buildTmuxSessionIdentifier(params: {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: safeStringify(error),
     };
   }
 }

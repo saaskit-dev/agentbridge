@@ -7,10 +7,12 @@ export { ClaudeBackend } from './claude';
 
 // Factories for specific agents
 export {
+  createAcpBackend,
   createGeminiBackend,
   createCodexBackend,
   createClaudeAcpBackend,
   createOpenCodeBackend,
+  type CreateAcpBackendOptions,
   type GeminiBackendOptions,
   type CodexBackendOptions,
   type ClaudeAcpBackendOptions,

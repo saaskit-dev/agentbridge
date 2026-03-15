@@ -1,7 +1,8 @@
 # RFC-002: 消息全链路 E2E 集成测试
 
-- **Status**: Draft
+- **Status**: Implemented ✅
 - **Created**: 2026-03-08
+- **Implemented**: 2026-03-14
 - **Author**: AgentBridge Team
 
 ---
@@ -404,3 +405,31 @@ grep "$TRACE_ID" ~/.free-dev/logs/*.jsonl | wc -l  # 应该 > 5（跨 server/cli
 | `v3SessionRoutes.integration.test.ts` | Server HTTP → Socket 集成 | DB 真实，无 Daemon | ❌ |
 | `daemon.integration.test.ts` | Daemon 启停管理 | 无 mock | ❌ |
 | **`messageLifecycle.integration.test.ts`** | **全链路 E2E** | **无 mock，全真实** | **✅ 真实 Claude** |
+
+---
+
+## 9. 实现归档（2026-03-14）
+
+### 实现文件
+
+| 文件 | 用途 |
+|------|------|
+| `apps/free/cli/src/api/messageLifecycle.integration.test.ts` | 主测试文件（338 行） |
+| `apps/free/cli/src/test-helpers/FakeAppClient.ts` | 模拟 App 端协议行为（245 行） |
+| `apps/free/cli/src/test-helpers/FakeCliSessionClient.ts` | 模拟 CLI 端 session 行为（87 行） |
+| `apps/free/cli/src/test-helpers/integrationEnvironment.ts` | 测试环境初始化（180 行） |
+| `apps/free/cli/src/test-helpers/daemonTestHarness.ts` | Daemon 测试工具（110 行） |
+
+### 已实现的测试用例
+
+1. ✅ "broadcasts encrypted user and agent messages to both user-scoped and session-scoped sockets"
+2. ✅ "fetches and decrypts persisted messages via FakeAppClient"
+3. ✅ "persists and broadcasts capability updates without relying on the app UI"
+4. ✅ "emits delete-session to user-scoped sockets when the session is deleted"
+
+### 与原始设计的偏差
+
+1. **不依赖真实 Daemon/Claude**：原始设计要求全链路（包括真实 Daemon + 真实 Claude API），实际实现使用 `FakeCliSessionClient` 模拟 CLI 端，不需要启动 Daemon 或调用 Claude API。这大幅降低了测试环境要求和执行时间（45s 超时 vs 原设计 120s）
+2. **真实 Agent Smoke 单独测试**：需要真实 Agent 的测试拆分到了 `daemonAgentSmoke.integration.test.ts`，通过 `FREE_RUN_REAL_AGENT_SMOKE=1` 环境变量门控
+3. **traceId 贯通断言**：通过 FakeCliSessionClient 发送带 traceId 的消息并验证 Server 持久化和广播，而非端到端跟踪到 Claude API
+4. **Capability 验证**：原设计未包含 capability 测试，实际实现增加了 capability update 持久化和广播验证

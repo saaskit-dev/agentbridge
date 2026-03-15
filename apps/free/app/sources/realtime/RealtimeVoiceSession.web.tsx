@@ -5,7 +5,7 @@ import { registerVoiceSession } from './RealtimeSession';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import { storage } from '@/sync/storage';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/RealtimeVoiceSession');
 
 // Static reference to the conversation hook instance
@@ -27,7 +27,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
       try {
         await navigator.mediaDevices.getUserMedia({ audio: true });
       } catch (error) {
-        logger.error('Failed to get microphone permission:', error);
+        logger.error('Failed to get microphone permission:', toError(error));
         storage.getState().setRealtimeStatus('error');
         return;
       }
@@ -58,7 +58,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 
       logger.debug('Started conversation with ID:', conversationId);
     } catch (error) {
-      logger.error('Failed to start realtime session:', error);
+      logger.error('Failed to start realtime session:', toError(error));
       storage.getState().setRealtimeStatus('error');
     }
   }
@@ -72,7 +72,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
       await conversationInstance.endSession();
       storage.getState().setRealtimeStatus('disconnected');
     } catch (error) {
-      logger.error('Failed to end realtime session:', error);
+      logger.error('Failed to end realtime session:', toError(error));
     }
   }
 
@@ -154,7 +154,7 @@ export const RealtimeVoiceSession: React.FC = () => {
         hasRegistered.current = true;
         logger.debug('[RealtimeVoiceSession] Voice session registered successfully');
       } catch (error) {
-        logger.error('Failed to register voice session:', error);
+        logger.error('Failed to register voice session:', toError(error));
       }
     }
 

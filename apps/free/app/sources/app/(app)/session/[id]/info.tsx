@@ -5,6 +5,7 @@ import React, { useCallback } from 'react';
 import { View, Text, Animated } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Avatar } from '@/components/Avatar';
+import { getAgentDisplayName, normalizeAgentFlavor } from '@/sync/agentFlavor';
 import { CodeView } from '@/components/CodeView';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -124,7 +125,7 @@ function formatDangerouslySkipPermissionsMetadata(
     return 'Enabled';
   }
 
-  if (flavor === 'claude' && sandbox && typeof sandbox === 'object') {
+  if (normalizeAgentFlavor(flavor) === 'claude' && sandbox && typeof sandbox === 'object') {
     const sandboxValue = sandbox as Record<string, unknown>;
     if (sandboxValue.enabled === true) {
       return 'Enabled';
@@ -296,17 +297,18 @@ function SessionInfoContent({ session }: { session: Session }) {
             icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
             onPress={handleCopySessionId}
           />
-          {session.metadata?.claudeSessionId && (
+          {(session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId) && (
             <Item
-              title={t('sessionInfo.claudeCodeSessionId')}
-              subtitle={`${session.metadata.claudeSessionId.substring(0, 8)}...${session.metadata.claudeSessionId.substring(session.metadata.claudeSessionId.length - 8)}`}
+              title={t('sessionInfo.agentSessionId')}
+              subtitle={(() => { const sid = (session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId)!; return `${sid.substring(0, 8)}...${sid.substring(sid.length - 8)}`; })()}
               icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
               onPress={async () => {
                 try {
-                  await Clipboard.setStringAsync(session.metadata!.claudeSessionId!);
-                  Modal.alert(t('common.success'), t('sessionInfo.claudeCodeSessionIdCopied'));
+                  const sid = (session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId)!;
+                  await Clipboard.setStringAsync(sid);
+                  Modal.alert(t('common.success'), t('sessionInfo.agentSessionIdCopied'));
                 } catch (error) {
-                  Modal.alert(t('common.error'), t('sessionInfo.failedToCopyClaudeCodeSessionId'));
+                  Modal.alert(t('common.error'), t('sessionInfo.failedToCopyAgentSessionId'));
                 }
               }}
             />
@@ -411,14 +413,7 @@ function SessionInfoContent({ session }: { session: Session }) {
             )}
             <Item
               title={t('sessionInfo.aiProvider')}
-              subtitle={(() => {
-                const flavor = session.metadata.flavor || 'claude';
-                if (flavor === 'claude') return 'Claude';
-                if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
-                if (flavor === 'gemini') return 'Gemini';
-                if (flavor === 'opencode') return 'OpenCode';
-                return flavor;
-              })()}
+              subtitle={getAgentDisplayName(session.metadata.flavor ?? 'claude')}
               icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
               showChevron={false}
             />

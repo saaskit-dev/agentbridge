@@ -5,7 +5,7 @@ import { registerVoiceSession } from './RealtimeSession';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import { storage } from '@/sync/storage';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/RealtimeVoiceSession');
 
 // Static reference to the conversation hook instance
@@ -45,7 +45,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 
       await conversationInstance.startSession(sessionConfig);
     } catch (error) {
-      logger.error('Failed to start realtime session:', error);
+      logger.error('Failed to start realtime session:', toError(error));
       storage.getState().setRealtimeStatus('error');
     }
   }
@@ -59,7 +59,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
       await conversationInstance.endSession();
       storage.getState().setRealtimeStatus('disconnected');
     } catch (error) {
-      logger.error('Failed to end realtime session:', error);
+      logger.error('Failed to end realtime session:', toError(error));
     }
   }
 
@@ -72,7 +72,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
     try {
       conversationInstance.sendUserMessage(message);
     } catch (error) {
-      logger.error('Failed to send text message:', error);
+      logger.error('Failed to send text message:', toError(error));
     }
   }
 
@@ -85,7 +85,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
     try {
       conversationInstance.sendContextualUpdate(update);
     } catch (error) {
-      logger.error('Failed to send contextual update:', error);
+      logger.error('Failed to send contextual update:', toError(error));
     }
   }
 }
@@ -146,7 +146,7 @@ export const RealtimeVoiceSession: React.FC = () => {
         registerVoiceSession(new RealtimeVoiceSessionImpl());
         hasRegistered.current = true;
       } catch (error) {
-        logger.error('Failed to register voice session:', error);
+        logger.error('Failed to register voice session:', toError(error));
       }
     }
 

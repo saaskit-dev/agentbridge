@@ -1,5 +1,7 @@
 import { decodeBase64 } from '@/encryption/base64';
 import { decodeUTF8, encodeUTF8 } from '@/encryption/text';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
+import { toError } from '@saaskit-dev/agentbridge/telemetry';
 
 export function parseToken(token: string) {
   const parts = token.split('.');
@@ -17,11 +19,12 @@ export function parseToken(token: string) {
     }
     return sub;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Invalid token')) {
-      throw error; // Re-throw our validation errors
+    const err = toError(error);
+    if (err.message.includes('Invalid token')) {
+      throw err; // Re-throw our validation errors
     }
     throw new Error(
-      `Invalid token: failed to decode payload - ${error instanceof Error ? error.message : 'unknown error'}`
+      `Invalid token: failed to decode payload - ${safeStringify(error)}`
     );
   }
 }

@@ -3,7 +3,7 @@ import { getRandomBytes } from 'expo-crypto';
 import { encodeBase64 } from '../encryption/base64';
 import sodium from '@/encryption/libsodium.lib';
 import { getServerUrl } from '@/sync/serverConfig';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/auth/authQRStart');
 
 export interface QRAuthKeyPair {
@@ -41,7 +41,7 @@ export async function authQRStart(keypair: QRAuthKeyPair): Promise<boolean> {
         data: error.response?.data,
       });
     } else {
-      logger.error('[AUTH] Failed to send auth request:', error);
+      logger.error('[AUTH] Failed to send auth request:', toError(error));
     }
     logger.debug('Failed to create authentication request, please try again later.');
     return false;

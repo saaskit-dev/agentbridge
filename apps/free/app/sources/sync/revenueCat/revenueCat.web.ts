@@ -18,7 +18,7 @@ import {
   PaywallResult,
   PaywallOptions,
 } from './types';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/revenueCat');
 
@@ -159,7 +159,7 @@ class RevenueCatWeb implements RevenueCatInterface {
         return PaywallResult.ERROR;
       }
     } catch (error) {
-      logger.error('Error presenting paywall on web:', error);
+      logger.error('Error presenting paywall on web:', toError(error));
       return PaywallResult.ERROR;
     }
   }
@@ -181,7 +181,7 @@ class RevenueCatWeb implements RevenueCatInterface {
       // User doesn't have entitlement, present paywall
       return this.presentPaywall(options);
     } catch (error) {
-      logger.error('Error checking entitlement:', error);
+      logger.error('Error checking entitlement:', toError(error));
       return PaywallResult.ERROR;
     }
   }

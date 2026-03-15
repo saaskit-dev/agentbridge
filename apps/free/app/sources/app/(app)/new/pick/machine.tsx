@@ -89,13 +89,13 @@ export default function MachinePickerScreen() {
         <Stack.Screen
           options={{
             headerShown: true,
-            headerTitle: 'Select Machine',
+            headerTitle: t('machinePicker.headerTitle'),
             headerBackTitle: t('common.back'),
           }}
         />
         <View style={styles.container}>
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No machines available</Text>
+            <Text style={styles.emptyText}>{t('machinePicker.noMachinesAvailable')}</Text>
           </View>
         </View>
       </>
@@ -107,7 +107,7 @@ export default function MachinePickerScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: 'Select Machine',
+          headerTitle: t('machinePicker.headerTitle'),
           headerBackTitle: t('common.back'),
         }}
       />
@@ -127,7 +127,7 @@ export default function MachinePickerScreen() {
             getItemStatus: machine => {
               const offline = !isMachineOnline(machine);
               return {
-                text: offline ? 'offline' : 'online',
+                text: offline ? t('machinePicker.offline') : t('machinePicker.online'),
                 color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
                 dotColor: offline
                   ? theme.colors.status.disconnected
@@ -151,10 +151,10 @@ export default function MachinePickerScreen() {
               const search = searchText.toLowerCase();
               return displayName.includes(search) || host.includes(search);
             },
-            searchPlaceholder: 'Type to filter machines...',
-            recentSectionTitle: 'Recent Machines',
-            favoritesSectionTitle: 'Favorite Machines',
-            noItemsMessage: 'No machines available',
+            searchPlaceholder: t('machinePicker.searchPlaceholder'),
+            recentSectionTitle: t('machinePicker.recentSection'),
+            favoritesSectionTitle: t('machinePicker.favoritesSection'),
+            noItemsMessage: t('machinePicker.noMachinesAvailable'),
             showFavorites: false, // Simpler modal experience - no favorites in modal
             showRecent: true,
             showSearch: true,

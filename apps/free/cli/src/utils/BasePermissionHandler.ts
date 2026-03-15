@@ -74,6 +74,7 @@ export abstract class BasePermissionHandler {
    * Setup RPC handler for permission responses.
    */
   protected setupRpcHandler(): void {
+    logger.debug(`${this.getLogPrefix()} Registering permission RPC handler`);
     this.session.rpcHandlerManager.registerHandler<PermissionResponse, void>(
       'permission',
       async response => {

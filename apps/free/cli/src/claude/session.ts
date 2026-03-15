@@ -106,12 +106,12 @@ export class Session {
   onSessionFound = (sessionId: string) => {
     this.sessionId = sessionId;
 
-    // Update metadata with Claude Code session ID
+    // Update metadata with agent session ID
     this.client.updateMetadata(metadata => ({
       ...metadata,
-      claudeSessionId: sessionId,
+      agentSessionId: sessionId,
     }));
-    logger.debug(`[Session] Claude Code session ID ${sessionId} added to metadata`);
+    logger.debug(`[Session] Agent session ID ${sessionId} added to metadata`);
 
     // Notify all registered callbacks
     for (const callback of this.sessionFoundCallbacks) {

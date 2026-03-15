@@ -36,6 +36,25 @@ const agentEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('ready'),
   }),
+  z.object({
+    type: z.literal('status'),
+    state: z.enum(['working', 'idle']),
+  }),
+  z.object({
+    type: z.literal('token_count'),
+  }).passthrough(),
+  z.object({
+    type: z.literal('error'),
+    message: z.string(),
+    retryable: z.boolean(),
+  }),
+  z.object({
+    type: z.literal('permission_request'),
+    requestId: z.string(),
+    toolName: z.string(),
+    toolInput: z.unknown(),
+    permissionMode: z.string(),
+  }),
 ]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 
@@ -202,6 +221,80 @@ const rawThinkingContentSchema = z
   })
   .passthrough(); // ROBUST: Accept signature and future fields
 export type RawThinkingContent = z.infer<typeof rawThinkingContentSchema>;
+
+const normalizedDirectTextContentSchema = z
+  .object({
+    type: z.literal('text'),
+    text: z.string(),
+    uuid: z.string(),
+    parentUUID: z.string().nullable(),
+  })
+  .passthrough();
+
+const normalizedDirectThinkingContentSchema = z
+  .object({
+    type: z.literal('thinking'),
+    thinking: z.string(),
+    uuid: z.string(),
+    parentUUID: z.string().nullable(),
+  })
+  .passthrough();
+
+const normalizedDirectToolCallContentSchema = z
+  .object({
+    type: z.literal('tool-call'),
+    id: z.string(),
+    name: z.string(),
+    input: z.any(),
+    description: z.string().nullable(),
+    uuid: z.string(),
+    parentUUID: z.string().nullable(),
+  })
+  .passthrough();
+
+const normalizedDirectToolResultContentSchema = z
+  .object({
+    type: z.literal('tool-result'),
+    tool_use_id: z.string(),
+    content: z.any(),
+    is_error: z.boolean(),
+    uuid: z.string(),
+    parentUUID: z.string().nullable(),
+    permissions: z
+      .object({
+        date: z.number(),
+        result: z.enum(['approved', 'denied']),
+        mode: z.string().optional(),
+        allowedTools: z.array(z.string()).optional(),
+        decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+const normalizedDirectSummaryContentSchema = z
+  .object({
+    type: z.literal('summary'),
+    summary: z.string(),
+  })
+  .passthrough();
+
+const normalizedDirectSidechainContentSchema = z
+  .object({
+    type: z.literal('sidechain'),
+    uuid: z.string(),
+    prompt: z.string(),
+  })
+  .passthrough();
+
+const normalizedDirectAgentContentSchema = z.discriminatedUnion('type', [
+  normalizedDirectTextContentSchema,
+  normalizedDirectThinkingContentSchema,
+  normalizedDirectToolCallContentSchema,
+  normalizedDirectToolResultContentSchema,
+  normalizedDirectSummaryContentSchema,
+  normalizedDirectSidechainContentSchema,
+]);
 
 // ============================================================================
 // WOLOG: Type-Safe Content Normalization via Zod Transform
@@ -487,8 +580,18 @@ const rawRecordSchema = z.preprocess(
   preprocessMessageContent,
   z.discriminatedUnion('role', [
     z.object({
+      role: z.literal('event'),
+      content: agentEventSchema,
+      isSidechain: z.boolean().optional(),
+      traceId: z.string().optional(),
+      meta: MessageMetaSchema.optional(),
+    }),
+    z.object({
       role: z.literal('agent'),
-      content: rawAgentRecordSchema,
+      content: z.union([rawAgentRecordSchema, z.array(normalizedDirectAgentContentSchema)]),
+      isSidechain: z.boolean().optional(),
+      usage: usageDataSchema.optional(),
+      traceId: z.string().optional(),
       meta: MessageMetaSchema.optional(),
     }),
     z.object({
@@ -505,6 +608,8 @@ const rawRecordSchema = z.preprocess(
           data: sessionEnvelopeSchema,
         }),
       ]),
+      isSidechain: z.boolean().optional(),
+      traceId: z.string().optional(),
       meta: MessageMetaSchema.optional(),
     }),
   ])
@@ -581,10 +686,9 @@ export type NormalizedMessage = (
   | {
       role: 'event';
       content: AgentEvent;
-    }
+  }
 ) & {
   id: string;
-  localId: string | null;
   createdAt: number;
   isSidechain: boolean;
   meta?: MessageMeta;
@@ -594,20 +698,35 @@ export type NormalizedMessage = (
 
 export function normalizeRawMessage(
   id: string,
-  localId: string | null,
   createdAt: number,
   raw: RawRecord
 ): NormalizedMessage | null {
   // Zod transform handles normalization during validation
   const parsed = rawRecordSchema.safeParse(raw);
   if (!parsed.success) {
-    logger.error('=== VALIDATION ERROR ===');
-    logger.error('Zod issues:', JSON.stringify(parsed.error.issues, null, 2));
-    logger.error('Raw message:', JSON.stringify(raw, null, 2));
-    logger.error('=== END ERROR ===');
+    logger.error('normalizeRawMessage validation failed', new Error(JSON.stringify(parsed.error.issues)), {
+      id,
+
+      createdAt,
+    });
     return null;
   }
   raw = parsed.data;
+  if (raw.role === 'event') {
+    if (raw.content.type === 'token_count') {
+      return null;
+    }
+
+    return {
+      id,
+
+      createdAt,
+      role: 'event',
+      content: raw.content,
+      isSidechain: false,
+      meta: raw.meta,
+    };
+  }
   if (raw.role === 'user') {
     // Handle session envelope content (from CLI)
     if (raw.content.type === 'session') {
@@ -616,7 +735,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'text') {
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'user',
           content: {
@@ -633,7 +752,7 @@ export function normalizeRawMessage(
     // Handle standard text content
     return {
       id,
-      localId,
+
       createdAt,
       role: 'user',
       content: raw.content as { type: 'text'; text: string },
@@ -642,6 +761,20 @@ export function normalizeRawMessage(
     };
   }
   if (raw.role === 'agent') {
+    if (Array.isArray(raw.content)) {
+      return {
+        id,
+  
+        createdAt,
+        role: 'agent',
+        isSidechain: raw.isSidechain ?? false,
+        content: raw.content as NormalizedAgentContent[],
+        meta: raw.meta,
+        usage: raw.usage,
+        traceId: raw.traceId,
+      };
+    }
+
     if (raw.content.type === 'output') {
       // Skip Meta messages
       if (raw.content.data.isMeta) {
@@ -693,7 +826,7 @@ export function normalizeRawMessage(
         }
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: raw.content.data.isSidechain ?? false,
@@ -715,7 +848,7 @@ export function normalizeRawMessage(
           // Return as a special agent message with sidechain content
           return {
             id,
-            localId,
+      
             createdAt,
             role: 'agent',
             isSidechain: true,
@@ -733,7 +866,7 @@ export function normalizeRawMessage(
         if (raw.content.data.message && typeof raw.content.data.message.content === 'string') {
           return {
             id,
-            localId,
+      
             createdAt,
             role: 'user',
             isSidechain: false,
@@ -782,7 +915,7 @@ export function normalizeRawMessage(
         }
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: raw.content.data.isSidechain ?? false,
@@ -794,7 +927,7 @@ export function normalizeRawMessage(
     if (raw.content.type === 'event') {
       return {
         id,
-        localId,
+  
         createdAt,
         role: 'event',
         content: raw.content.data,
@@ -806,7 +939,7 @@ export function normalizeRawMessage(
         // Cast codex messages to agent text messages
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -825,7 +958,7 @@ export function normalizeRawMessage(
         // Cast codex messages to agent text messages
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -844,7 +977,7 @@ export function normalizeRawMessage(
         // Cast tool calls to agent tool-call messages
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -866,7 +999,7 @@ export function normalizeRawMessage(
         // Cast tool call results to agent tool-result messages
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -911,7 +1044,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'turn-end') {
         return {
           id: messageId,
-          localId,
+    
           createdAt: messageCreatedAt,
           role: 'event',
           isSidechain: false,
@@ -927,7 +1060,7 @@ export function normalizeRawMessage(
 
         return {
           id: messageId,
-          localId,
+    
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -947,7 +1080,7 @@ export function normalizeRawMessage(
         if (envelope.role === 'user') {
           return {
             id: messageId,
-            localId,
+      
             createdAt: messageCreatedAt,
             role: 'user',
             isSidechain: false,
@@ -961,7 +1094,7 @@ export function normalizeRawMessage(
 
         return {
           id: messageId,
-          localId,
+    
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -987,7 +1120,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'tool-call-start') {
         return {
           id: messageId,
-          localId,
+    
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1009,7 +1142,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'tool-call-end') {
         return {
           id: messageId,
-          localId,
+    
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1030,7 +1163,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'file') {
         return {
           id: messageId,
-          localId,
+    
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1055,7 +1188,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'photo') {
         return {
           id: messageId,
-          localId,
+    
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1084,7 +1217,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'message') {
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1102,7 +1235,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'reasoning') {
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1120,7 +1253,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'tool-call') {
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1141,7 +1274,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'tool-result') {
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1162,7 +1295,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'tool-call-result') {
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1182,7 +1315,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'thinking') {
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1201,7 +1334,7 @@ export function normalizeRawMessage(
         // Map file-edit to tool-call for UI rendering
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1229,7 +1362,7 @@ export function normalizeRawMessage(
         // Map terminal-output to tool-result
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1250,7 +1383,7 @@ export function normalizeRawMessage(
         // Map permission-request to tool-call for UI to show permission dialog
         return {
           id,
-          localId,
+    
           createdAt,
           role: 'agent',
           isSidechain: false,

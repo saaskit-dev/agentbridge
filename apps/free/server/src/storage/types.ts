@@ -29,7 +29,6 @@ declare global {
             id: string;
             seq: number;
             content: SessionMessageContent;
-            localId: string | null;
             createdAt: number;
             updatedAt: number;
           };
@@ -42,6 +41,8 @@ declare global {
           metadataVersion: number;
           agentState: string | null;
           agentStateVersion: number;
+          capabilities: string | null;
+          capabilitiesVersion: number;
           dataEncryptionKey: string | null;
           active: boolean;
           activeAt: number;
@@ -59,6 +60,13 @@ declare global {
             | null
             | undefined;
           agentState?:
+            | {
+                value: string | null;
+                version: number;
+              }
+            | null
+            | undefined;
+          capabilities?:
             | {
                 value: string | null;
                 version: number;

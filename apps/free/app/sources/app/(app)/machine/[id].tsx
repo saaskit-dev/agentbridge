@@ -27,6 +27,7 @@ import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 
 const styles = StyleSheet.create(theme => ({
@@ -195,7 +196,7 @@ export default function MachineDetailScreen() {
 
         Modal.alert(t('common.success'), 'Machine renamed successfully');
       } catch (error) {
-        Modal.alert('Error', error instanceof Error ? error.message : 'Failed to rename machine');
+        Modal.alert('Error', safeStringify(error));
         // Refresh to get latest state
         await sync.refreshMachines();
       } finally {
@@ -243,8 +244,9 @@ export default function MachineDetailScreen() {
     } catch (error) {
       let errorMessage =
         'Failed to start session. Make sure the daemon is running on the target machine.';
-      if (error instanceof Error && !error.message.includes('Failed to spawn session')) {
-        errorMessage = error.message;
+      const errMsg = safeStringify(error);
+      if (!errMsg.includes('Failed to spawn session')) {
+        errorMessage = errMsg;
       }
       Modal.alert(t('common.error'), errorMessage);
     } finally {

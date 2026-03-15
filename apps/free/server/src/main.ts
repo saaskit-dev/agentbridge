@@ -20,6 +20,7 @@ import {
   setGlobalContextProvider,
   type LogSink,
 } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify, toError } from '@saaskit-dev/agentbridge';
 import { getCurrentTrace } from './utils/requestTrace';
 import { FileSink, cleanupOldLogs } from '@saaskit-dev/agentbridge/telemetry/node';
 import { shutdownRelay } from '@/utils/telemetryRelay';
@@ -74,7 +75,7 @@ initTelemetry({
   layer: 'server',
   sinks,
   minLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'debug',
-  sanitize: process.env.DEBUG ? false : true,
+  sanitize: process.env.APP_ENV !== 'development',
   // RFC §17.10: throttle high-frequency streaming events (text_delta fires 10-50x/sec)
   // text_complete and thinking_delta are infrequent so they remain at the global level.
   componentLevels: {
@@ -153,14 +154,14 @@ async function gracefulExit(reason: string): Promise<void> {
 
 process.on('uncaughtException', error => {
   log.error(`Uncaught Exception: ${error.message}`);
-  log.error('Uncaught Exception (full):', { stack: error.stack });
+  log.error('Uncaught Exception (full):', error);
   gracefulExit('uncaughtException');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  const errorMsg = reason instanceof Error ? reason.message : String(reason);
+  const errorMsg = safeStringify(reason);
   log.error(`Unhandled Rejection: ${errorMsg}`);
-  log.error('Unhandled Rejection (full):', { reason: String(reason) });
+  log.error('Unhandled Rejection (full):', toError(reason));
   gracefulExit('unhandledRejection');
 });
 
@@ -179,7 +180,7 @@ process.on('exit', code => {
 
 main()
   .catch(e => {
-    log.error('main() fatal error:', { error: String(e) });
+    log.error('main() fatal error:', toError(e));
     process.exit(1);
   })
   .then(() => {

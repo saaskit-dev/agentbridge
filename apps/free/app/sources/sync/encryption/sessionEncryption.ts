@@ -1,3 +1,6 @@
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+import { wireEncode, wireDecode, wireDecodeBatch } from '@saaskit-dev/agentbridge/encryption';
+import { config } from '@/config';
 import { ApiMessage } from '../apiTypes';
 import {
   DecryptedMessage,
@@ -9,7 +12,12 @@ import {
 import { RawRecord } from '../typesRaw';
 import { EncryptionCache } from './encryptionCache';
 import { Decryptor, Encryptor } from './encryptor';
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
+import {
+  SessionCapabilities,
+  SessionCapabilitiesSchema,
+} from '../sessionCapabilities';
+
+const logger = new Logger('app/sync/encryption/session');
 
 export class SessionEncryption {
   private sessionId: string;
@@ -26,6 +34,7 @@ export class SessionEncryption {
    * Batch-first API for decrypting messages
    */
   async decryptMessages(messages: ApiMessage[]): Promise<(DecryptedMessage | null)[]> {
+    logger.debug('decryptMessages start', { sessionId: this.sessionId, count: messages.length });
     // Check cache for all messages first
     const results: (DecryptedMessage | null)[] = new Array(messages.length);
     const toDecrypt: { index: number; message: ApiMessage }[] = [];
@@ -48,7 +57,7 @@ export class SessionEncryption {
         results[i] = {
           id: message.id,
           seq: message.seq,
-          localId: message.localId ?? null,
+
           content: null,
           createdAt: message.createdAt,
         };
@@ -58,40 +67,32 @@ export class SessionEncryption {
 
     // Batch decrypt uncached messages
     if (toDecrypt.length > 0) {
-      const encrypted = toDecrypt.map(item => decodeBase64(item.message.content.c, 'base64'));
-
-      const decrypted = await this.encryptor.decrypt(encrypted);
+      logger.debug('decryptMessages batch', {
+        sessionId: this.sessionId,
+        toDecrypt: toDecrypt.length,
+        cached: messages.length - toDecrypt.length,
+      });
+      const wireStrs = toDecrypt.map(item => item.message.content.c);
+      const decrypted = await wireDecodeBatch(wireStrs, this.encryptor);
 
       for (let i = 0; i < toDecrypt.length; i++) {
         const decryptedData = decrypted[i];
         const { message, index } = toDecrypt[i];
 
-        if (decryptedData) {
-          const result: DecryptedMessage = {
-            id: message.id,
-            seq: message.seq,
-            localId: message.localId ?? null,
-            content: decryptedData,
-            createdAt: message.createdAt,
-            traceId: message.traceId ?? undefined,
-          };
-          this.cache.setCachedMessage(message.id, result);
-          results[index] = result;
-        } else {
-          const result: DecryptedMessage = {
-            id: message.id,
-            seq: message.seq,
-            localId: message.localId ?? null,
-            content: null,
-            createdAt: message.createdAt,
-            traceId: message.traceId ?? undefined,
-          };
-          this.cache.setCachedMessage(message.id, result);
-          results[index] = result;
-        }
+        const result: DecryptedMessage = {
+          id: message.id,
+          seq: message.seq,
+
+          content: decryptedData ?? null,
+          createdAt: message.createdAt,
+          traceId: message.traceId ?? undefined,
+        };
+        this.cache.setCachedMessage(message.id, result);
+        results[index] = result;
       }
     }
 
+    logger.debug('decryptMessages done', { sessionId: this.sessionId, count: results.length });
     return results;
   }
 
@@ -110,16 +111,15 @@ export class SessionEncryption {
    * Encrypt a raw record
    */
   async encryptRawRecord(record: RawRecord): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([record]);
-    return encodeBase64(encrypted[0], 'base64');
+    logger.debug('encryptRawRecord', { sessionId: this.sessionId });
+    return wireEncode(record, this.encryptor, !!config.isDev);
   }
 
   /**
    * Encrypt raw data using session-specific encryption
    */
   async encryptRaw(data: any): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([data]);
-    return encodeBase64(encrypted[0], 'base64');
+    return wireEncode(data, this.encryptor, !!config.isDev);
   }
 
   /**
@@ -127,10 +127,9 @@ export class SessionEncryption {
    */
   async decryptRaw(encrypted: string): Promise<any | null> {
     try {
-      const encryptedData = decodeBase64(encrypted, 'base64');
-      const decrypted = await this.encryptor.decrypt([encryptedData]);
-      return decrypted[0] || null;
+      return await wireDecode(encrypted, this.encryptor);
     } catch (error) {
+      logger.error('decryptRaw failed', toError(error), { sessionId: this.sessionId });
       return null;
     }
   }
@@ -139,8 +138,7 @@ export class SessionEncryption {
    * Encrypt metadata using session-specific encryption
    */
   async encryptMetadata(metadata: Metadata): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([metadata]);
-    return encodeBase64(encrypted[0], 'base64');
+    return wireEncode(metadata, this.encryptor, !!config.isDev);
   }
 
   /**
@@ -153,14 +151,13 @@ export class SessionEncryption {
       return cached;
     }
 
-    // Decrypt if not cached
-    const encryptedData = decodeBase64(encrypted, 'base64');
-    const decrypted = await this.encryptor.decrypt([encryptedData]);
-    if (!decrypted[0]) {
+    const decrypted = await wireDecode(encrypted, this.encryptor);
+    if (!decrypted) {
       return null;
     }
-    const parsed = MetadataSchema.safeParse(decrypted[0]);
+    const parsed = MetadataSchema.safeParse(decrypted);
     if (!parsed.success) {
+      logger.error('decryptMetadata parse failed', undefined, { sessionId: this.sessionId, version });
       return null;
     }
 
@@ -173,8 +170,7 @@ export class SessionEncryption {
    * Encrypt agent state using session-specific encryption
    */
   async encryptAgentState(state: AgentState): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([state]);
-    return encodeBase64(encrypted[0], 'base64');
+    return wireEncode(state, this.encryptor, !!config.isDev);
   }
 
   /**
@@ -194,19 +190,49 @@ export class SessionEncryption {
       return cached;
     }
 
-    // Decrypt if not cached
-    const encryptedData = decodeBase64(encrypted, 'base64');
-    const decrypted = await this.encryptor.decrypt([encryptedData]);
-    if (!decrypted[0]) {
+    const decrypted = await wireDecode(encrypted, this.encryptor);
+    if (!decrypted) {
       return {};
     }
-    const parsed = AgentStateSchema.safeParse(decrypted[0]);
+    const parsed = AgentStateSchema.safeParse(decrypted);
     if (!parsed.success) {
+      logger.error('decryptAgentState parse failed', undefined, { sessionId: this.sessionId, version });
       return {};
     }
 
     // Cache the result
     this.cache.setCachedAgentState(this.sessionId, version, parsed.data);
+    return parsed.data;
+  }
+
+  async decryptCapabilities(
+    version: number,
+    encrypted: string | null | undefined
+  ): Promise<SessionCapabilities | null> {
+    if (!encrypted) {
+      return null;
+    }
+
+    const cached = this.cache.getCachedCapabilities(this.sessionId, version);
+    if (cached) {
+      return cached;
+    }
+
+    const decrypted = await wireDecode(encrypted, this.encryptor);
+    if (!decrypted) {
+      return null;
+    }
+
+    const parsed = SessionCapabilitiesSchema.safeParse(decrypted);
+    if (!parsed.success) {
+      logger.error('decryptCapabilities parse failed', undefined, {
+        sessionId: this.sessionId,
+        version,
+      });
+      return null;
+    }
+
+    this.cache.setCachedCapabilities(this.sessionId, version, parsed.data);
     return parsed.data;
   }
 }

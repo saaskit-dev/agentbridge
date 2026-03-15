@@ -42,6 +42,9 @@ export { PushableAsyncIterable, createPushableAsyncIterable } from './pushableAs
 // Environment variable utilities
 export { expandEnvVars, expandEnvironmentVariables, getUndefinedVars } from './expandEnvVars';
 
+// Stringify utilities
+export { safeStringify, toError } from './stringify';
+
 // System utilities
 export {
   startCaffeinate,

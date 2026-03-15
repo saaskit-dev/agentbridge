@@ -36,7 +36,7 @@ export class RemoteSink implements LogSink {
     this.backend = opts.backend
     this.batchSize = opts.batchSize ?? 50
     this.maxBufferSize = opts.maxBufferSize ?? 500
-    this.minLevel = opts.minLevel ?? 'info'
+    this.minLevel = opts.minLevel ?? 'debug'
     this.metadata = opts.metadata
     this.extraSanitizer = opts.extraSanitizer
 

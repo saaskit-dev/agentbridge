@@ -8,7 +8,11 @@
  * the --experimental-acp flag for ACP mode.
  */
 
-import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '../acp/AcpBackend';
+import {
+  createAcpBackend,
+  type AcpPermissionHandler,
+  type CreateAcpBackendOptions,
+} from '@saaskit-dev/agentbridge';
 import type { AgentBackend, McpServerConfig, AgentFactoryOptions } from '../core';
 import { agentRegistry } from '../core';
 import { geminiTransport } from '../transport';
@@ -129,7 +133,7 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
     }
   }
 
-  const backendOptions: AcpBackendOptions = {
+  const backendOptions: CreateAcpBackendOptions = {
     agentName: 'gemini',
     cwd: options.cwd,
     command: geminiCommand,
@@ -177,7 +181,7 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
   });
 
   return {
-    backend: new AcpBackend(backendOptions),
+    backend: createAcpBackend(backendOptions),
     model,
     modelSource,
   };

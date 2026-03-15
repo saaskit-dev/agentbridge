@@ -1,155 +1,274 @@
-# Free
+<p align="center">
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-**Remote Control Platform for AI Coding Agents**
+<p align="center">
+  <h1 align="center">AgentBridge</h1>
+  <p align="center">
+    <strong>Remote Control Platform for AI Coding Agents</strong>
+  </p>
+  <p align="center">
+    Control Claude Code, Codex, Gemini, and OpenCode from anywhere.<br/>
+    Monitor progress, handle permissions, manage sessions — all from your phone.
+  </p>
+  <p align="center">
+    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"></a>
+    <a href="https://www.npmjs.com/package/@saaskit-dev/free"><img src="https://img.shields.io/npm/v/@saaskit-dev/free.svg" alt="npm version"></a>
+    <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node.js"></a>
+    <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.0-blue" alt="TypeScript"></a>
+  </p>
+</p>
 
-Control Claude Code, Codex, Gemini, and OpenCode from anywhere. Monitor progress, handle permission requests, and manage multiple AI agents through a unified mobile interface.
+---
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
+## Why AgentBridge?
 
-## Features
+AI coding agents like Claude Code and Codex are powerful — but they run in a terminal on your machine. When you step away, you lose visibility. Permission requests go unanswered. Sessions hang.
 
-- **Multi-Agent Support** — Unified management for Claude Code, OpenAI Codex, Google Gemini CLI, and OpenCode
-- **Remote Control** — Monitor agent progress, handle permission requests, and manage sessions from your phone
-- **End-to-End Encryption** — X25519 + AES-256-GCM ensures your code never leaves your device unencrypted
-- **Real-Time Sync** — WebSocket-based communication with millisecond latency
-- **Session Persistence** — Resume sessions across devices seamlessly
-- **Background Daemon** — Keep agents running even when CLI is closed
+**AgentBridge fixes this.** It wraps your AI agents in a daemon process and syncs everything to your phone in real-time with end-to-end encryption. Your code never leaves your machine unencrypted.
+
+**Key capabilities:**
+
+- **Multi-Agent** — One unified interface for Claude Code, OpenAI Codex, Google Gemini CLI, and OpenCode
+- **Remote Control** — Monitor progress, approve/deny permissions, send prompts from your phone
+- **Background Daemon** — Agents keep running even when your terminal closes or SSH disconnects
+- **End-to-End Encryption** — X25519 key exchange + AES-256-GCM; your code stays private
+- **Session Persistence** — Resume sessions across devices and restarts
+- **Real-Time Sync** — WebSocket-based with sub-second latency
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Client["📱 Client"]
-        App["Mobile App<br/>(React Native)"]
+    subgraph Phone["📱 Mobile App"]
+        App["React Native<br/>(iOS / Android / Web)"]
     end
 
-    subgraph Cloud["☁️ Cloud"]
-        Server["Server<br/>(Fastify)"]
+    subgraph Cloud["☁️ Server"]
+        Server["Relay Server<br/>(Fastify + Prisma)"]
     end
 
-    subgraph Local["💻 Local Machine"]
-        CLI["CLI / Daemon<br/>(Node.js)"]
-        Claude["Claude Code"]
-        Codex["Codex"]
-        Gemini["Gemini CLI"]
-        OpenCode["OpenCode"]
+    subgraph Local["💻 Your Machine"]
+        Daemon["Daemon<br/>(owns agent processes)"]
+        CLI["CLI<br/>(terminal UI)"]
+        Daemon --- CLI
+        Daemon --> Claude["Claude Code"]
+        Daemon --> Codex["Codex"]
+        Daemon --> Gemini["Gemini CLI"]
+        Daemon --> OpenCode["OpenCode"]
     end
 
-    App <-->|"E2E Encrypted"| Server
-    Server <-->|"WebSocket"| CLI
-    CLI --> Claude
-    CLI --> Codex
-    CLI --> Gemini
-    CLI --> OpenCode
+    App <-->|"E2E Encrypted<br/>WebSocket"| Server
+    Server <-->|"WebSocket"| Daemon
 ```
 
-## Project Structure
-
-```
-agentbridge/
-├── packages/
-│   └── core/              # @agentbridge/core - Shared types & interfaces
-│
-└── apps/free/
-    ├── cli/               # CLI & Daemon for local AI agents
-    ├── server/            # Backend API & WebSocket server
-    └── app/               # React Native mobile client
-```
-
-| Package | Description |
-|---------|-------------|
-| `@agentbridge/core` | Core types, interfaces, and cross-platform implementations |
-| `@saaskit-dev/free` (CLI) | Command-line tool for spawning and managing AI agents |
-| `@free/server` | Fastify-based backend with encryption relay and session management |
-| `@free/app` | React Native (Expo) mobile and web client |
+The daemon owns all agent processes — if your CLI crashes or you close the terminal, the agent keeps running. Reconnect anytime from the CLI or the mobile app.
 
 ## Quick Start
 
 ### Install CLI
 
-**One-line install (recommended):**
+```bash
+npm install -g @saaskit-dev/free
+```
+
+Or use the install script (builds from source + installs daemon service):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash
 ```
 
-**Or via npm:**
+### Start a Session
 
 ```bash
-npm install -g @saaskit-dev/free
+free                    # Claude Code (default)
+free gemini             # Gemini CLI
+free codex              # OpenAI Codex
+free opencode           # OpenCode
 ```
 
-**Uninstall:**
+A QR code appears on launch — scan it with the mobile app to connect.
+
+### Authenticate
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/uninstall.sh | bash
+free auth               # Account authentication
+free connect gemini     # Link Google account
+free connect claude     # Link Anthropic account
+free connect codex      # Link OpenAI account
+free connect status     # View all connection status
 ```
 
-### Start an Agent Session
+### CLI Options
 
 ```bash
-# Claude Code (default)
-free
-
-# Gemini CLI
-free gemini
-
-# OpenAI Codex
-free codex
-
-# OpenCode
-free opencode
+free --claude-env KEY=VALUE       # Pass env vars to Claude Code
+free --no-sandbox                 # Disable sandbox
 ```
 
-### Connect Mobile App
-
-The CLI displays a QR code on startup. Scan it with the Free mobile app to start remote control.
-
-## CLI Commands
-
-### Agent Sessions
-
-```bash
-free                    # Start Claude Code session
-free gemini             # Start Gemini CLI session
-free codex              # Start Codex session
-free opencode           # Start OpenCode session
-```
-
-### Authentication
-
-```bash
-free connect gemini     # Google account authentication
-free connect claude     # Anthropic authentication
-free connect codex      # OpenAI authentication
-free connect status     # View connection status
-free auth               # Manage authentication
-```
+> Unknown flags are passed through to the underlying agent CLI. For example, `free -m sonnet -p auto` forwards `-m sonnet -p auto` directly to Claude Code.
 
 ### Daemon Management
 
 ```bash
 free daemon start       # Start background daemon
 free daemon stop        # Stop daemon
-free daemon status      # Check daemon status
-```
-
-### Utilities
-
-```bash
+free daemon status      # Check status
 free doctor             # System diagnostics
-free --help             # Show help
 ```
 
-### Options
+## Project Structure
+
+This is a pnpm monorepo with four packages:
+
+```
+agentbridge/
+├── packages/
+│   └── core/                 # @saaskit-dev/agentbridge — shared SDK
+│       ├── types/            #   Type definitions (session, message, agent, ...)
+│       ├── interfaces/       #   Abstract contracts (ICrypto, IStorage, IAgentBackend, ...)
+│       ├── implementations/  #   Platform implementations (ACP backends, transports)
+│       ├── encryption/       #   E2E encryption (SecretBox, AES-256-GCM, wire encoding)
+│       ├── telemetry/        #   Structured logging with trace correlation
+│       └── utils/            #   Encoding, async primitives, tmux, etc.
+│
+└── apps/free/
+    ├── cli/                  # @saaskit-dev/free — CLI & Daemon
+    │   ├── daemon/           #   Background process (SessionManager, IPC, AgentBackends)
+    │   ├── backends/         #   Claude/Gemini/Codex/OpenCode backend implementations
+    │   ├── client/           #   CLI renderer & input handler
+    │   └── api/              #   Server communication & encryption
+    │
+    ├── server/               # Relay server (Fastify + Prisma)
+    │   ├── api/              #   REST routes, WebSocket handlers, RPC
+    │   ├── auth/             #   Challenge-response authentication
+    │   └── storage/          #   Database abstraction (PostgreSQL / PGlite)
+    │
+    └── app/                  # Mobile client (React Native / Expo)
+        ├── app/(app)/        #   Page components (Expo Router)
+        ├── components/       #   UI components (messages, tools, markdown, ...)
+        ├── sync/             #   State management, encryption, WebSocket
+        └── realtime/         #   Voice assistant & WebRTC
+```
+
+## Self-Hosted Deployment
+
+The relay server can be fully self-hosted. It ships with an embedded database (PGlite) — no external PostgreSQL needed:
 
 ```bash
-free -m sonnet                    # Specify model
-free -p auto                      # Permission mode: auto, default, plan
-free --claude-env KEY=VALUE       # Pass environment variables
-free --no-sandbox                 # Disable sandbox mode
+./run build server                                    # Build Docker image
+docker run -d -p 3000:3000 \
+  -e FREE_MASTER_SECRET=your-secret-key \
+  -v free-data:/app/data \
+  kilingzhang/free-server:latest
+```
+
+Then point your CLI:
+
+```bash
+FREE_SERVER_URL=https://your-server.example.com free
+```
+
+See **[apps/free/server/README.md](apps/free/server/README.md)** for the complete deployment guide (Docker Compose, external PostgreSQL, Nginx reverse proxy, logs, etc.).
+
+## Core SDK
+
+The `@saaskit-dev/agentbridge` package provides platform-agnostic building blocks:
+
+```bash
+npm install @saaskit-dev/agentbridge
+```
+
+| Import Path | Use Case |
+|---|---|
+| `@saaskit-dev/agentbridge` | Full SDK (Node.js) |
+| `@saaskit-dev/agentbridge/common` | React Native / Browser (no `node:*` imports) |
+| `@saaskit-dev/agentbridge/types` | Pure type definitions |
+| `@saaskit-dev/agentbridge/encryption` | Encryption primitives |
+| `@saaskit-dev/agentbridge/telemetry` | Structured logging |
+
+Key interfaces:
+
+- **`IAgentBackend`** — Unified agent control (`startSession`, `sendPrompt`, `cancel`, `onMessage`)
+- **`ITransportHandler`** — Agent-specific ACP protocol behaviors
+- **`ICrypto`** — TweetNaCl + AES-256-GCM encryption
+- **`IStorage`** — Key-value storage abstraction
+
+All interfaces use a **factory pattern** for dependency injection:
+
+```typescript
+import { registerCryptoFactory, createCrypto } from '@saaskit-dev/agentbridge';
+
+registerCryptoFactory(() => new NodeCrypto());
+const crypto = createCrypto();
+```
+
+See [`packages/core/README.md`](packages/core/README.md) for full API documentation.
+
+## Security
+
+| Layer | Mechanism |
+|-------|-----------|
+| **Key Exchange** | X25519 (Curve25519 Diffie-Hellman) |
+| **Symmetric Encryption** | AES-256-GCM |
+| **Authentication** | Ed25519 signatures + challenge-response |
+| **Transport** | TLS + E2E encryption (double encrypted) |
+| **Storage** | Private keys stored with `chmod 0600` |
+
+- All data is encrypted on-device before leaving your machine
+- The relay server never sees plaintext — it forwards encrypted blobs
+- Each session uses unique encryption keys
+- Challenge-response auth prevents replay attacks
+
+## Development
+
+### Prerequisites
+
+- Node.js >= 20
+- pnpm >= 8
+
+### Full Dev Environment
+
+All workflows are managed through the `./run` script:
+
+```bash
+git clone https://github.com/saaskit-dev/agentbridge.git
+cd agentbridge
+pnpm install
+
+# One-command setup: builds core + CLI, starts server + daemon + web
+./run dev
+
+# Or start individual services:
+./run dev server            # Server + daemon only
+./run dev web               # Web app only
+./run dev quick             # Skip build, fast restart
+```
+
+### Testing
+
+```bash
+./run test unit             # Unit tests (Vitest)
+./run test                  # E2E tests (Playwright)
+./run test lifecycle        # Message lifecycle integration tests
+```
+
+### Mobile Development
+
+```bash
+./run ios                   # iOS debug (connects to Metro)
+./run android               # Android debug (connects to Metro)
+./run ios release           # iOS release (production server, embedded bundle)
+./run android release       # Android release (production server, embedded bundle)
+```
+
+### Build & Publish
+
+```bash
+./run build core            # Build core SDK
+./run build cli             # Build CLI + npm link
+./run build server          # Build server Docker image
+./run npm publish           # Publish to npmjs.org
 ```
 
 ## Environment Variables
@@ -159,119 +278,57 @@ free --no-sandbox                 # Disable sandbox mode
 | `FREE_SERVER_URL` | Backend server URL | `https://free-server.saaskit.app` |
 | `FREE_HOME_DIR` | Data directory | `~/.free` |
 | `FREE_DISABLE_CAFFEINATE` | Disable macOS sleep prevention | `false` |
-| `GEMINI_MODEL` | Gemini model to use | - |
-| `GOOGLE_CLOUD_PROJECT` | GCP project ID (required for Workspace accounts) | - |
-
-## Development
-
-### Prerequisites
-
-- Node.js >= 20.0.0
-- pnpm >= 8.0.0
-- For mobile development: Expo CLI
-
-### Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/saaskit-dev/agentbridge.git
-cd agentbridge
-
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm build
-```
-
-### Run Locally
-
-```bash
-# Start backend server (development)
-pnpm server
-
-# Start mobile app
-pnpm app
-
-# iOS specific
-pnpm app:ios
-
-# Android specific
-pnpm app:android
-```
-
-### Testing
-
-```bash
-pnpm test
-```
-
-## Deployment
-
-### Docker
-
-```bash
-cd apps/free/server
-./build.sh
-./deploy.sh
-```
-
-### Server Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `FREE_MASTER_SECRET` | Master encryption key | Yes |
-| `PORT` | Server port | No (default: 3000) |
-| `DATABASE_URL` | PostgreSQL connection string | No (uses PGlite by default) |
-
-## Security
-
-- **End-to-End Encryption**: All data is encrypted using X25519 for key exchange and AES-256-GCM for symmetric encryption
-- **No Code Storage**: Your code never leaves your machine; only encrypted metadata is synced
-- **Challenge-Response Auth**: Cryptographic authentication prevents replay attacks
-- **Session Isolation**: Each session uses unique encryption keys
-
-## Telemetry
-
-Free uses a unified telemetry system for logging:
-
-- **Local Logs**: Stored in `~/.free/logs/` as JSONL files
-- **Remote Logs**: Only `info`, `warn`, `error` levels are sent to the server
-- **Trace Correlation**: Full trace ID propagation across Daemon → CLI → Server → App
 
 ## System Requirements
 
-- **Node.js**: >= 20.0.0
-- **Claude CLI**: Required for Claude mode
-- **Gemini CLI**: Required for Gemini mode
-- **Codex CLI**: Required for Codex mode
+| Agent | Requirement |
+|-------|-------------|
+| Claude Code | `claude` CLI installed and authenticated |
+| Gemini | `gemini` CLI installed (`npm i -g @google/gemini-cli`) |
+| Codex | `codex` CLI installed |
+| OpenCode | `opencode` CLI installed |
+
+## Contributing
+
+Contributions are welcome! Here's how to get started:
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Make your changes
+4. Run tests: `./run test unit`
+5. Verify no circular dependencies: `npx madge --circular --extensions ts,tsx packages/ apps/`
+6. Commit: `git commit -m 'feat: add my feature'`
+7. Push and open a Pull Request
+
+### Code Conventions
+
+- **No circular dependencies** — verified with madge
+- **Strict TypeScript** — no untyped code
+- **Logger over console.log** — all debug logging via `@agentbridge/core/telemetry`
+- **Named exports** preferred
+- **Tests colocated** with source files (`.test.ts`)
+
+## Uninstall
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/uninstall.sh | bash
+```
 
 ## Roadmap
 
 - [ ] Web dashboard for session management
-- [ ] Multiple session support per machine
-- [ ] Custom MCP server configuration via UI
+- [ ] Multiple concurrent sessions per machine
+- [ ] Custom MCP server configuration via mobile UI
 - [ ] Team collaboration features
-- [ ] Self-hosted server option
-
-## Contributing
-
-Contributions are welcome! Please read our contributing guidelines before submitting PRs.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- [ ] Apple Watch companion app
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+[MIT](LICENSE)
 
 ## Acknowledgments
 
-- [Happy](https://github.com/slopus/happy) for design inspiration
-- [Anthropic](https://anthropic.com) for Claude Code
-- [OpenAI](https://openai.com) for Codex
-- [Google](https://ai.google.dev) for Gemini CLI
-- [OpenCode](https://github.com/opencode-ai/opencode) for OpenCode
+- [Anthropic](https://anthropic.com) — Claude Code
+- [OpenAI](https://openai.com) — Codex
+- [Google](https://ai.google.dev) — Gemini CLI
+- [OpenCode](https://github.com/opencode-ai/opencode) — OpenCode

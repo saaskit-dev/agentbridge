@@ -7,6 +7,8 @@
 
 import spawn from 'cross-spawn';
 import psList from 'ps-list';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+const logger = new Logger('daemon/doctor');
 
 /**
  * Find all Free CLI processes (including current process)
@@ -93,7 +95,7 @@ export async function killRunawayFreeProcesses(): Promise<{
 
   for (const { pid, command } of runawayProcesses) {
     try {
-      console.log(`Killing runaway process PID ${pid}: ${command}`);
+      logger.info('Killing runaway process', { pid, command });
 
       if (process.platform === 'win32') {
         // Windows: use taskkill
@@ -111,17 +113,17 @@ export async function killRunawayFreeProcesses(): Promise<{
         const processes = await psList();
         const stillAlive = processes.find(p => p.pid === pid);
         if (stillAlive) {
-          console.log(`Process PID ${pid} ignored SIGTERM, using SIGKILL`);
+          logger.debug('Process ignored SIGTERM, using SIGKILL', { pid });
           process.kill(pid, 'SIGKILL');
         }
       }
 
-      console.log(`Successfully killed runaway process PID ${pid}`);
+      logger.info('Killed runaway process', { pid });
       killed++;
     } catch (error) {
       const errorMessage = (error as Error).message;
       errors.push({ pid, error: errorMessage });
-      console.log(`Failed to kill process PID ${pid}: ${errorMessage}`);
+      logger.warn('Failed to kill runaway process', { pid, error: errorMessage });
     }
   }
 

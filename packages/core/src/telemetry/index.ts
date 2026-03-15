@@ -10,7 +10,7 @@ export { createTrace, continueTrace, resumeTrace, injectTrace, extractTrace, set
 export type { IdGenerator } from './context.js'
 
 // Logger
-export { Logger, setGlobalContextProvider } from './logger.js'
+export { Logger, setGlobalContextProvider, toError, safeStringify } from './logger.js'
 export type { ScopedLogger } from './logger.js'
 
 // Span

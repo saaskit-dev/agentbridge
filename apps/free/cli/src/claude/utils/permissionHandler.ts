@@ -10,7 +10,8 @@ import type { EnhancedMode, PermissionMode } from '../sessionTypes';
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from '../sdk';
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from '../sdk/prompts';
 import { PermissionResult } from '../sdk/types';
-import { Session } from '../session';
+import { ApiSessionClient } from '@/api/apiSession';
+import { ApiClient } from '@/api/api';
 import { getToolDescriptor } from './getToolDescriptor';
 import { getToolName } from './getToolName';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
@@ -34,19 +35,42 @@ interface PendingRequest {
   input: unknown;
 }
 
+export interface PermissionHandlerOpts {
+  /** ApiClient used for push notifications to background devices (optional in daemon mode). */
+  api?: ApiClient;
+  /**
+   * Called when plan mode is approved. Implementor should inject PLAN_FAKE_RESTART at the
+   * front of the message queue with the resolved permission mode.
+   */
+  onPlanApproved?: (message: string, mode: EnhancedMode) => void;
+  /** Initial permission mode. Defaults to 'accept-edits'. */
+  initialPermissionMode?: PermissionMode;
+}
+
 export class PermissionHandler {
   private toolCalls: { id: string; name: string; input: any; used: boolean }[] = [];
   private responses = new Map<string, PermissionResponse>();
   private pendingRequests = new Map<string, PendingRequest>();
-  private session: Session;
+  private client: ApiSessionClient;
+  private opts: PermissionHandlerOpts;
   private allowedTools = new Set<string>();
   private allowedBashLiterals = new Set<string>();
   private allowedBashPrefixes = new Set<string>();
-  private permissionMode: PermissionMode = 'accept-edits';
+  private permissionMode: PermissionMode;
   private onPermissionRequestCallback?: (toolCallId: string) => void;
 
-  constructor(session: Session) {
-    this.session = session;
+  constructor(client: ApiSessionClient, opts: PermissionHandlerOpts = {}) {
+    this.client = client;
+    this.opts = opts;
+    this.permissionMode = opts.initialPermissionMode ?? 'accept-edits';
+    this.setupClientHandler();
+  }
+
+  /**
+   * Update the session reference after an offline reconnection swaps the ApiSessionClient.
+   */
+  updateSession(newClient: ApiSessionClient): void {
+    this.client = newClient;
     this.setupClientHandler();
   }
 
@@ -88,7 +112,7 @@ export class PermissionHandler {
       if (response.approved) {
         logger.debug('Plan approved - injecting PLAN_FAKE_RESTART');
         // Inject the approval message at the beginning of the queue
-            this.session.queue.unshift(PLAN_FAKE_RESTART, {
+        this.opts.onPlanApproved?.(PLAN_FAKE_RESTART, {
           permissionMode: response.mode ?? 'accept-edits',
         });
         pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
@@ -205,18 +229,18 @@ export class PermissionHandler {
         this.onPermissionRequestCallback(id);
       }
 
-      // Send push notification
-      this.session.api
-        .push()
+      // Send push notification (optional — skipped in daemon mode when no ApiClient is provided)
+      this.opts.api
+        ?.push()
         .sendToAllDevices('Permission Request', `Claude wants to ${getToolName(toolName)}`, {
-          sessionId: this.session.client.sessionId,
+          sessionId: this.client.sessionId,
           requestId: id,
           tool: toolName,
           type: 'permission_request',
         });
 
       // Update agent state
-      this.session.client.updateAgentState(currentState => ({
+      this.client.updateAgentState(currentState => ({
         ...currentState,
         requests: {
           ...currentState.requests,
@@ -351,7 +375,7 @@ export class PermissionHandler {
     this.pendingRequests.clear();
 
     // Move all pending requests to completedRequests with canceled status
-    this.session.client.updateAgentState(currentState => {
+    this.client.updateAgentState(currentState => {
       const pendingRequests = currentState.requests || {};
       const completedRequests = { ...currentState.completedRequests };
 
@@ -377,7 +401,7 @@ export class PermissionHandler {
    * Sets up the client handler for permission responses
    */
   private setupClientHandler(): void {
-    this.session.client.rpcHandlerManager.registerHandler<PermissionResponse, void>(
+    this.client.rpcHandlerManager.registerHandler<PermissionResponse, void>(
       'permission',
       async message => {
         logger.debug(`Permission response: ${JSON.stringify(message)}`);
@@ -398,7 +422,7 @@ export class PermissionHandler {
         this.handlePermissionResponse(message, pending);
 
         // Move processed request to completedRequests
-        this.session.client.updateAgentState(currentState => {
+        this.client.updateAgentState(currentState => {
           const request = currentState.requests?.[id];
           if (!request) return currentState;
           const r = { ...currentState.requests };

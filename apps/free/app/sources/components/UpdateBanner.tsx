@@ -9,7 +9,7 @@ import { useChangelog } from '@/hooks/useChangelog';
 import { useNativeUpdate } from '@/hooks/useNativeUpdate';
 import { useUpdates } from '@/hooks/useUpdates';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/UpdateBanner');
 
 export const UpdateBanner = React.memo(() => {
@@ -28,7 +28,7 @@ export const UpdateBanner = React.memo(() => {
           await Linking.openURL(updateUrl);
         }
       } catch (error) {
-        logger.error('Error opening app store:', error);
+        logger.error('Error opening app store:', toError(error));
       }
     };
 

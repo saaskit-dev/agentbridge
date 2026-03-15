@@ -7,7 +7,7 @@ import { ToolViewProps } from './types';
 import { sessionAllow } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/tools/AskUserQuestionView');
 
 interface QuestionOption {
@@ -252,7 +252,7 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
       // 2. Send the answer as a message
       await sync.sendMessage(sessionId, responseText);
     } catch (error) {
-      logger.error('Failed to submit answer:', error);
+      logger.error('Failed to submit answer', toError(error), { sessionId });
     } finally {
       setIsSubmitting(false);
     }

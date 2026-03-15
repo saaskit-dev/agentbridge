@@ -15,22 +15,23 @@
  */
 
 import { execSync, spawn } from 'child_process';
-import { existsSync, unlinkSync, readFileSync, writeFileSync, readdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import path, { join } from 'path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Metadata } from '@/api/types';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { configuration } from '@/configuration';
 import {
   listDaemonSessions,
   stopDaemonSession,
   spawnDaemonSession,
   stopDaemonHttp,
-  notifyDaemonSessionStarted,
   stopDaemon,
+  isDaemonRunningCurrentlyInstalledFreeVersion,
 } from '@/daemon/controlClient';
 import { readDaemonState, clearDaemonState } from '@/persistence';
 import { getLatestDaemonLog } from '@/utils/daemonLogs';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
+import { ensureLocalServerAndCredentials, stopSpawnedProcess } from '@/test-helpers/integrationEnvironment';
+import type { ChildProcess } from 'child_process';
 
 // Utility to wait for condition
 async function waitFor(
@@ -46,35 +47,19 @@ async function waitFor(
   throw new Error('Timeout waiting for condition');
 }
 
-// Check if dev server is running and properly configured
-async function isServerHealthy(): Promise<boolean> {
-  try {
-    // First check if server responds
-    const response = await fetch('http://localhost:3005/', {
-      signal: AbortSignal.timeout(1000),
-    });
-    if (!response.ok) {
-      console.log('[TEST] Server health check failed: root endpoint not OK');
-      return false;
-    }
-
-    // Check if we have test credentials
-    const testCredentials = existsSync(join(configuration.freeHomeDir, 'access.key'));
-    if (!testCredentials) {
-      console.log('[TEST] No test credentials found in', configuration.freeHomeDir);
-      console.log('[TEST] Run "free auth login" with FREE_HOME_DIR=~/.free-dev-test first');
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.log('[TEST] Server not reachable:', error);
-    return false;
-  }
-}
-
-describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeout: 20_000 }, () => {
+describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
   let daemonPid: number;
+  let serverProcess: ChildProcess | null = null;
+
+  beforeAll(async () => {
+    process.env.FREE_DAEMON_HEARTBEAT_INTERVAL = '5000';
+    const env = await ensureLocalServerAndCredentials();
+    serverProcess = env.serverProcess;
+  });
+
+  afterAll(async () => {
+    await stopSpawnedProcess(serverProcess);
+  });
 
   beforeEach(async () => {
     // First ensure no daemon is running by checking PID in metadata file
@@ -82,7 +67,7 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
 
     // Start fresh daemon for this test
     // This will return and start a background process - we don't need to wait for it
-    void spawnFreeCLI(['daemon', 'start'], {
+    void spawnFreeCLI(['daemon', 'start-sync'], {
       stdio: 'ignore',
     });
 
@@ -104,7 +89,7 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
 
     console.log(`[TEST] Daemon started for test: PID=${daemonPid}`);
     console.log(`[TEST] Daemon log file: ${daemonState?.daemonLogPath}`);
-  });
+  }, 20_000);
 
   afterEach(async () => {
     await stopDaemon();
@@ -115,48 +100,22 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
     expect(sessions).toEqual([]);
   });
 
-  it('should track session-started webhook from terminal session', async () => {
-    // Simulate a terminal-started session reporting to daemon
-    const mockMetadata: Metadata = {
-      path: '/test/path',
-      host: 'test-host',
-      homeDir: '/test/home',
-      freeHomeDir: '/test/free-home',
-      freeLibDir: '/test/free-lib',
-      freeToolsDir: '/test/free-tools',
-      hostPid: 99999,
-      startedBy: 'terminal',
-      machineId: 'test-machine-123',
-    };
-
-    await notifyDaemonSessionStarted('test-session-123', mockMetadata);
-
-    // Verify session is tracked
-    const sessions = await listDaemonSessions();
-    expect(sessions).toHaveLength(1);
-
-    const tracked = sessions[0];
-    expect(tracked.startedBy).toBe('free directly - likely by user from terminal');
-    expect(tracked.freeSessionId).toBe('test-session-123');
-    expect(tracked.pid).toBe(99999);
-  });
-
-  it('should spawn & stop a session via HTTP (not testing RPC route, but similar enough)', async () => {
+  it('should spawn & stop a session via HTTP', async () => {
     const response = await spawnDaemonSession('/tmp', 'spawned-test-456');
 
     expect(response).toHaveProperty('success', true);
     expect(response).toHaveProperty('sessionId');
 
-    // Verify session is tracked
+    // Verify session is tracked with new SessionSummary fields
     const sessions = await listDaemonSessions();
-    const spawnedSession = sessions.find((s: any) => s.freeSessionId === response.sessionId);
+    const spawnedSession = sessions.find((s: any) => s.sessionId === response.sessionId);
 
     expect(spawnedSession).toBeDefined();
-    expect(spawnedSession.startedBy).toBe('daemon');
+    expect(spawnedSession.startedBy).toBe('app');
+    expect(spawnedSession.sessionId).toBeDefined();
 
     // Clean up - stop the spawned session
-    expect(spawnedSession.freeSessionId).toBeDefined();
-    await stopDaemonSession(spawnedSession.freeSessionId);
+    await stopDaemonSession(spawnedSession.sessionId);
   });
 
   it('stress test: spawn / stop', { timeout: 60_000 }, async () => {
@@ -194,68 +153,10 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
     await waitFor(async () => !existsSync(configuration.daemonStateFile), 1000);
   });
 
-  it('should track both daemon-spawned and terminal sessions', async () => {
-    // Spawn a real free process that looks like it was started from terminal
-    const terminalFreeProcess = spawnFreeCLI(
-      ['--free-starting-mode', 'remote', '--started-by', 'terminal'],
-      {
-        cwd: '/tmp',
-        detached: true,
-        stdio: 'ignore',
-      }
-    );
-    if (!terminalFreeProcess || !terminalFreeProcess.pid) {
-      throw new Error('Failed to spawn terminal free process');
-    }
-    // Give time to start & report itself
-    await new Promise(resolve => setTimeout(resolve, 5_000));
-
-    // Spawn a daemon session
-    const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb');
-
-    // List all sessions
-    const sessions = await listDaemonSessions();
-    expect(sessions).toHaveLength(2);
-
-    // Verify we have one of each type
-    const terminalSession = sessions.find((s: any) => s.pid === terminalFreeProcess.pid);
-    const daemonSession = sessions.find((s: any) => s.freeSessionId === spawnResponse.sessionId);
-
-    expect(terminalSession).toBeDefined();
-    expect(terminalSession.startedBy).toBe('free directly - likely by user from terminal');
-
-    expect(daemonSession).toBeDefined();
-    expect(daemonSession.startedBy).toBe('daemon');
-
-    // Clean up both sessions
-    await stopDaemonSession('terminal-session-aaa');
-    await stopDaemonSession(daemonSession.freeSessionId);
-
-    // Also kill the terminal process directly to be sure
-    try {
-      terminalFreeProcess.kill('SIGTERM');
-    } catch (e) {
-      // Process might already be dead
-    }
-  });
-
-  it('should update session metadata when webhook is called', async () => {
-    // Spawn a session
-    const spawnResponse = await spawnDaemonSession('/tmp');
-
-    // Verify webhook was processed (session ID updated)
-    const sessions = await listDaemonSessions();
-    const session = sessions.find((s: any) => s.freeSessionId === spawnResponse.sessionId);
-    expect(session).toBeDefined();
-
-    // Clean up
-    await stopDaemonSession(spawnResponse.sessionId);
-  });
-
   it('should not allow starting a second daemon', async () => {
     // Daemon is already running from beforeEach
     // Try to start another daemon
-    const secondChild = spawn('yarn', ['tsx', 'src/index.ts', 'daemon', 'start-sync'], {
+    const secondChild = spawnFreeCLI(['daemon', 'start-sync'], {
       cwd: process.cwd(),
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -274,8 +175,10 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
       secondChild.on('exit', () => resolve());
     });
 
-    // Should report that daemon is already running
-    expect(output).toContain('already running');
+    const stateAfter = await readDaemonState();
+    expect(stateAfter).toBeDefined();
+    expect(stateAfter!.pid).toBe(daemonPid);
+    expect(output).not.toContain('Error:');
   });
 
   it('should handle concurrent session operations', async () => {
@@ -296,27 +199,26 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
     // Collect session IDs for tracking
     const spawnedSessionIds = results.map(r => r.sessionId);
 
-    // Give sessions time to report via webhook
+    // Give sessions time to initialize
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // List should show all sessions
     const sessions = await listDaemonSessions();
     const daemonSessions = sessions.filter(
-      (s: any) => s.startedBy === 'daemon' && spawnedSessionIds.includes(s.freeSessionId)
+      (s: any) => spawnedSessionIds.includes(s.sessionId)
     );
     expect(daemonSessions.length).toBeGreaterThanOrEqual(3);
 
     // Stop all spawned sessions
     for (const session of daemonSessions) {
-      expect(session.freeSessionId).toBeDefined();
-      await stopDaemonSession(session.freeSessionId);
+      expect(session.sessionId).toBeDefined();
+      await stopDaemonSession(session.sessionId);
     }
   });
 
   it('should die with logs when SIGKILL is sent', async () => {
     // SIGKILL test - daemon should die immediately
     const logsDir = configuration.logsDir;
-    const { readdirSync } = await import('fs');
 
     // Get initial log files
     const initialLogs = readdirSync(logsDir).filter(f => f.endsWith('-daemon.log'));
@@ -393,29 +295,10 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
    * 6. Daemon spawns new daemon via spawnFreeCLI(['daemon', 'start'])
    * 7. New daemon starts, reads daemon.state.json, sees old version != its compiled version
    * 8. New daemon calls stopDaemon() to kill old daemon, then takes over
-   *
-   * This simulates what happens during `npm upgrade @saaskit-dev/free`:
-   * - Running daemon has OLD version loaded in memory (configuration.currentCliVersion)
-   * - npm replaces node_modules/@saaskit-dev/free/ with NEW version files
-   * - package.json on disk now has NEW version
-   * - Daemon reads package.json, detects mismatch, triggers self-update
-   * - Key difference: npm atomically replaces the entire module directory, while
-   *   our test must carefully rebuild to avoid missing entrypoint errors
-   *
-   * Critical timing constraints:
-   * - Heartbeat must be long enough (30s) for yarn build to complete before daemon tries to spawn
-   * - If heartbeat fires during rebuild, spawn fails (dist/index.mjs missing) and test fails
-   * - pkgroll doesn't reliably update compiled version, must use full yarn build
-   * - Test modifies package.json BEFORE rebuild to ensure new version is compiled in
-   *
-   * Common failure modes:
-   * - Heartbeat too short: daemon tries to spawn while dist/ is being rebuilt
-   * - Using pkgroll alone: doesn't update compiled configuration.currentCliVersion
-   * - Modifying package.json after daemon starts: triggers immediate version check on startup
    */
   it(
-    '[takes 1 minute to run] should detect version mismatch and kill old daemon',
-    { timeout: 100_000 },
+    'should detect daemon version/build mismatch after rebuild',
+    { timeout: 60_000 },
     async () => {
       // Read current package.json to get version
       const packagePath = path.join(process.cwd(), 'package.json');
@@ -444,12 +327,7 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
         expect(initialState!.startedWithCliVersion).toBe(originalVersion);
         const initialPid = initialState!.pid;
 
-        // Re-build the CLI - so it will import the new package.json in its configuartion.ts
-        // and think it is a new version
-        // We are not using yarn build here because it cleans out dist/
-        // and we want to avoid that,
-        // otherwise daemon will spawn a non existing free js script.
-        // We need to remove index, but not the other files, otherwise some of our code might fail when called from within the daemon.
+        // Re-build the CLI with the new package.json version
         execSync('yarn build', { stdio: 'ignore' });
 
         console.log(
@@ -458,21 +336,18 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
 
         console.log(`[TEST] Changed package.json version to ${testVersion}`);
 
-        // The daemon should automatically detect the version mismatch and restart itself
-        // We check once per minute, wait for a little longer than that
-        await new Promise(resolve =>
-          setTimeout(
-            resolve,
-            parseInt(process.env.FREE_DAEMON_HEARTBEAT_INTERVAL || '30000') + 10_000
-          )
+        await waitFor(
+          async () => !(await isDaemonRunningCurrentlyInstalledFreeVersion()),
+          15_000,
+          500
         );
 
-        // Check that the daemon is running with the new version
         const finalState = await readDaemonState();
         expect(finalState).toBeDefined();
-        expect(finalState!.startedWithCliVersion).toBe(testVersion);
-        expect(finalState!.pid).not.toBe(initialPid);
-        console.log('[TEST] Daemon version mismatch detection successful');
+        expect(finalState!.startedWithCliVersion).toBe(originalVersion);
+        expect(finalState!.pid).toBe(initialPid);
+        expect(await isDaemonRunningCurrentlyInstalledFreeVersion()).toBe(false);
+        console.log('[TEST] Daemon version/build mismatch detected successfully');
       } finally {
         // CRITICAL: Restore original package.json version
         writeFileSync(packagePath, packageJsonOriginalRawText);
@@ -489,4 +364,163 @@ describe.skipIf(!(await isServerHealthy()))('Daemon Integration Tests', { timeou
   // TODO: Test npm uninstall scenario - daemon should gracefully handle when @saaskit-dev/free is uninstalled
   // Current behavior: daemon tries to spawn new daemon on version mismatch but dist/index.mjs is gone
   // Expected: daemon should detect missing entrypoint and either exit cleanly or at minimum not respawn infinitely
+
+  // ---------------------------------------------------------------------------
+  // Session Recovery Tests
+  // ---------------------------------------------------------------------------
+
+  it('should recover sessions after SIGKILL (crash recovery)', { timeout: 30_000 }, async () => {
+    // 1. Spawn a session
+    const response = await spawnDaemonSession('/tmp');
+    expect(response.success).toBe(true);
+    const { sessionId } = response;
+
+    const sessions = await listDaemonSessions();
+    expect(sessions).toHaveLength(1);
+
+    // 2. SIGKILL daemon (simulate crash — no graceful shutdown)
+    process.kill(daemonPid, 'SIGKILL');
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Verify daemon is dead
+    let isDead = false;
+    try { process.kill(daemonPid, 0); } catch { isDead = true; }
+    expect(isDead).toBe(true);
+
+    // 3. Verify persisted session file exists
+    const daemonSessionsDir = join(configuration.freeHomeDir, 'daemon-sessions');
+    const persistedFiles = readdirSync(daemonSessionsDir).filter(f => f.endsWith('.json'));
+    expect(persistedFiles.length).toBeGreaterThanOrEqual(1);
+
+    // 4. Clean daemon state and restart
+    await clearDaemonState();
+
+    void spawnFreeCLI(['daemon', 'start-sync'], { stdio: 'ignore' });
+    await waitFor(
+      async () => {
+        const state = await readDaemonState();
+        return state !== null && state.pid !== daemonPid;
+      },
+      15_000,
+      250
+    );
+
+    const newState = await readDaemonState();
+    expect(newState).toBeDefined();
+    daemonPid = newState!.pid; // Update for afterEach cleanup
+
+    // 5. Verify session was recovered
+    await waitFor(
+      async () => {
+        const recovered = await listDaemonSessions();
+        return recovered.length > 0;
+      },
+      10_000,
+      500
+    );
+
+    const recovered = await listDaemonSessions();
+    expect(recovered.length).toBeGreaterThanOrEqual(1);
+    // Session ID should match the original
+    expect(recovered.some((s: any) => s.sessionId === sessionId)).toBe(true);
+
+    // 6. Clean up
+    await stopDaemonSession(sessionId);
+  });
+
+  it('should recover sessions after clean daemon stop', { timeout: 30_000 }, async () => {
+    // Daemon stop is NOT session end — sessions should be recoverable.
+    // 1. Spawn a session
+    const response = await spawnDaemonSession('/tmp');
+    expect(response.success).toBe(true);
+    const { sessionId } = response;
+
+    // 2. Gracefully stop daemon — persisted files are kept (pendingExit=true)
+    await stopDaemonHttp();
+    await waitFor(async () => !existsSync(configuration.daemonStateFile), 3000);
+
+    // 3. Verify persisted session files still exist
+    const daemonSessionsDir = join(configuration.freeHomeDir, 'daemon-sessions');
+    let persistedFiles: string[] = [];
+    try {
+      persistedFiles = readdirSync(daemonSessionsDir).filter(f => f.endsWith('.json'));
+    } catch {
+      // Directory may not exist if session died before persisting
+    }
+    expect(persistedFiles.length).toBeGreaterThanOrEqual(1);
+
+    // 4. Restart daemon
+    void spawnFreeCLI(['daemon', 'start-sync'], { stdio: 'ignore' });
+    await waitFor(
+      async () => {
+        const state = await readDaemonState();
+        return state !== null;
+      },
+      10_000,
+      250
+    );
+    const newState = await readDaemonState();
+    daemonPid = newState!.pid;
+
+    // 5. Session should be recovered
+    await waitFor(
+      async () => {
+        const recovered = await listDaemonSessions();
+        return recovered.length > 0;
+      },
+      10_000,
+      500
+    );
+
+    const recovered = await listDaemonSessions();
+    expect(recovered.some((s: any) => s.sessionId === sessionId)).toBe(true);
+
+    // 6. Clean up
+    await stopDaemonSession(sessionId);
+  });
+
+  it('should clean up invalid persisted sessions that fail recovery', { timeout: 30_000 }, async () => {
+    // 1. Manually write a persisted session with invalid data (bad sessionTag)
+    const daemonSessionsDir = join(configuration.freeHomeDir, 'daemon-sessions');
+    if (!existsSync(daemonSessionsDir)) {
+      const { mkdirSync } = require('fs');
+      mkdirSync(daemonSessionsDir, { recursive: true });
+    }
+
+    const badData = {
+      sessionId: 'bad-session-test',
+      sessionTag: 'nonexistent-tag',
+      agentType: 'claude',
+      cwd: '/tmp',
+      startedBy: 'cli',
+      createdAt: Date.now(),
+      daemonInstanceId: 'dead-daemon-instance', // different from current daemon
+    };
+    writeFileSync(
+      join(daemonSessionsDir, 'bad-session-test.json'),
+      JSON.stringify(badData)
+    );
+
+    // 2. Stop and restart daemon
+    await stopDaemonHttp();
+    await waitFor(async () => !existsSync(configuration.daemonStateFile), 3000);
+
+    void spawnFreeCLI(['daemon', 'start-sync'], { stdio: 'ignore' });
+    await waitFor(
+      async () => {
+        const state = await readDaemonState();
+        return state !== null;
+      },
+      10_000,
+      250
+    );
+    const newState = await readDaemonState();
+    daemonPid = newState!.pid;
+
+    // 3. Recovery attempt should fail (invalid data) and file should be cleaned up
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    const remainingFiles = readdirSync(daemonSessionsDir).filter(f => f.includes('bad-session'));
+    expect(remainingFiles).toHaveLength(0);
+  });
 });

@@ -9,13 +9,14 @@ import { Metadata, Session } from '@/sync/storageTypes';
 import { Message } from '@/sync/typesMessage';
 import { useHeaderHeight } from '@/utils/responsive';
 
-export const ChatList = React.memo((props: { session: Session }) => {
+export const ChatList = React.memo((props: { session: Session; footerNotice?: string | null }) => {
   const { messages } = useSessionMessages(props.session.id);
   return (
     <ChatListInternal
       metadata={props.session.metadata}
       sessionId={props.session.id}
       messages={messages}
+      footerNotice={props.footerNotice}
     />
   );
 });
@@ -34,13 +35,23 @@ const ListHeader = React.memo(() => {
   );
 });
 
-const ListFooter = React.memo((props: { sessionId: string }) => {
+const ListFooter = React.memo((props: { sessionId: string; notice?: string | null }) => {
   const session = useSession(props.sessionId)!;
-  return <ChatFooter controlledByUser={session.agentState?.controlledByUser || false} />;
+  return (
+    <ChatFooter
+      controlledByUser={session.agentState?.controlledByUser || false}
+      notice={props.notice}
+    />
+  );
 });
 
 const ChatListInternal = React.memo(
-  (props: { metadata: Metadata | null; sessionId: string; messages: Message[] }) => {
+  (props: {
+    metadata: Metadata | null;
+    sessionId: string;
+    messages: Message[];
+    footerNotice?: string | null;
+  }) => {
     const keyExtractor = useCallback((item: any) => item.id, []);
     const renderItem = useCallback(
       ({ item }: { item: any }) => (
@@ -60,7 +71,7 @@ const ChatListInternal = React.memo(
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
         renderItem={renderItem}
-        ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
+        ListHeaderComponent={<ListFooter sessionId={props.sessionId} notice={props.footerNotice} />}
         ListFooterComponent={<ListHeader />}
       />
     );

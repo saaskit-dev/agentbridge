@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { db } from '@/storage/db';
 import { delay } from '@/utils/delay';
@@ -33,7 +34,7 @@ export async function inTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
           callback();
         } catch (e) {
           // Ignore errors in callbacks because they are used mostly for notifications
-          logger.error('afterTx callback error:', undefined, { error: String(e) });
+          logger.warn('afterTx callback error:', { error: safeStringify(e) });
         }
       }
       return result.result;
