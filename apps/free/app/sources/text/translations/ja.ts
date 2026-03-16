@@ -356,6 +356,7 @@ export const ja: TranslationStructure = {
 
   session: {
     inputPlaceholder: 'メッセージを入力...',
+    sendFailed: '送信に失敗しました。タップしてリトライ',
   },
 
   commandPalette: {

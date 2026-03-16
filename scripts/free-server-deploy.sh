@@ -8,13 +8,26 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env}"
+
+# Load .env file if it exists (supports PORT, DATA_DIR, NEW_RELIC_LICENSE_KEY, etc.)
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+    echo "📄 Loaded env from $ENV_FILE"
+fi
+
 IMAGE_NAME="kilingzhang/free-server"
 CONTAINER_NAME="free-server"
 PORT="${PORT:-3000}"
 DATA_DIR="${DATA_DIR:-./data}"
+FREE_HOME="${FREE_HOME:-$HOME/.free}"
 HASH_FILE="$DATA_DIR/.previous-image-hash"
 
-mkdir -p "$DATA_DIR"
+mkdir -p "$DATA_DIR" "$FREE_HOME"
 
 # Save current image hash for rollback
 save_current_hash() {
@@ -58,13 +71,16 @@ if [ "$1" = "rollback" ]; then
     fi
     
     # Start container with previous image
-    docker run -d \
-        --name $CONTAINER_NAME \
-        --restart unless-stopped \
-        -p $PORT:3000 \
-        -v "$DATA_DIR:/app/data" \
-        -e FREE_MASTER_SECRET="$FREE_MASTER_SECRET" \
-        $IMAGE_NAME@$PREVIOUS_HASH
+    DOCKER_ARGS=(
+        --name "$CONTAINER_NAME"
+        --restart unless-stopped
+        -p "$PORT:3000"
+        -v "$DATA_DIR:/app/data"
+        -v "$FREE_HOME:/root/.free"
+        -e FREE_MASTER_SECRET="$FREE_MASTER_SECRET"
+    )
+    [ -f "$ENV_FILE" ] && DOCKER_ARGS+=(--env-file "$ENV_FILE")
+    docker run -d "${DOCKER_ARGS[@]}" "$IMAGE_NAME@$PREVIOUS_HASH"
     
     echo "✅ Rollback complete!"
     echo ""
@@ -103,13 +119,16 @@ if [ -z "$FREE_MASTER_SECRET" ]; then
 fi
 
 # Start new container
-docker run -d \
-    --name $CONTAINER_NAME \
-    --restart unless-stopped \
-    -p $PORT:3000 \
-    -v "$DATA_DIR:/app/data" \
-    -e FREE_MASTER_SECRET="$FREE_MASTER_SECRET" \
-    $IMAGE_NAME:latest
+DOCKER_ARGS=(
+    --name "$CONTAINER_NAME"
+    --restart unless-stopped
+    -p "$PORT:3000"
+    -v "$DATA_DIR:/app/data"
+    -v "$FREE_HOME:/root/.free"
+    -e FREE_MASTER_SECRET="$FREE_MASTER_SECRET"
+)
+[ -f "$ENV_FILE" ] && DOCKER_ARGS+=(--env-file "$ENV_FILE")
+docker run -d "${DOCKER_ARGS[@]}" "$IMAGE_NAME:latest"
 
 echo "✅ Done!"
 echo ""

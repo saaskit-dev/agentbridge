@@ -7,9 +7,11 @@ const serverConfigStorage = new MMKV({ id: 'server-config' });
 const SERVER_KEY = 'custom-server-url';
 const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
 
-// 由 app.config.js 按 APP_ENV 决定：development → localhost, production → 生产服务器
-const DEFAULT_SERVER_URL: string =
-  Constants.expoConfig?.extra?.app?.serverUrl ?? PRODUCTION_SERVER_URL;
+// __DEV__ 由 React Native 运行时注入：debug build = true, release build = false
+// debug 时优先用 app.config.js 烘焙的局域网 IP 地址，release 时直接用生产 URL
+const DEFAULT_SERVER_URL: string = __DEV__
+  ? (Constants.expoConfig?.extra?.app?.serverUrl ?? PRODUCTION_SERVER_URL)
+  : PRODUCTION_SERVER_URL;
 
 export function getServerUrl(): string {
   return serverConfigStorage.getString(SERVER_KEY) || DEFAULT_SERVER_URL;

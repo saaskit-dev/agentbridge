@@ -460,6 +460,7 @@ export const ru: TranslationStructure = {
 
   session: {
     inputPlaceholder: 'Введите сообщение...',
+    sendFailed: 'Ошибка отправки. Нажмите для повтора.',
   },
 
   commandPalette: {

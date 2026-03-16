@@ -13,7 +13,7 @@ import {
   SUPPORTED_SCHEMA_VERSION,
 } from './settings';
 import { Profile, profileParse } from './profile';
-import { loadPendingSettings, savePendingSettings } from './persistence';
+import { loadPendingSettings, savePendingSettings, loadPendingOutbox, savePendingOutbox } from './persistence';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
 import { getServerUrl } from './serverConfig';
@@ -238,6 +238,15 @@ class Sync {
   }
 
   async #init() {
+    // Restore any outbox messages persisted before the app was killed
+    const persistedOutbox = loadPendingOutbox();
+    for (const [sessionId, messages] of Object.entries(persistedOutbox)) {
+      if (messages.length > 0) {
+        this.pendingOutbox.set(sessionId, messages);
+        this.getSendSync(sessionId).invalidate();
+      }
+    }
+
     // Subscribe to updates
     this.subscribeToUpdates();
 
@@ -294,6 +303,20 @@ class Sync {
       this.messagesSync.set(sessionId, sync);
     }
     return sync;
+  }
+
+  private outboxPersistTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Debounced persist of pendingOutbox to MMKV (50ms). Call cancelOutboxPersist() to flush immediately. */
+  private persistOutbox() {
+    if (this.outboxPersistTimer) return;
+    this.outboxPersistTimer = setTimeout(() => {
+      this.outboxPersistTimer = null;
+      const obj: Record<string, Array<{ id: string; content: string; _trace?: { tid: string; sid: string; pid?: string; ses?: string; mid?: string } }>> = {};
+      for (const [sid, msgs] of this.pendingOutbox) {
+        if (msgs.length > 0) obj[sid] = msgs;
+      }
+      savePendingOutbox(obj);
+    }, 50);
   }
 
   private getSendSync(sessionId: string): InvalidateSync {
@@ -542,9 +565,32 @@ class Sync {
       content: encryptedRawRecord,
       _trace: trace,
     });
+    this.persistOutbox();
 
     this.getSendSync(sessionId).invalidate();
     this.maybeStartBackgroundSendWatchdog();
+  }
+
+  /** Manually retry sending pending messages for a session. */
+  retrySend(sessionId: string) {
+    if (!this.pendingOutbox.has(sessionId) || this.pendingOutbox.get(sessionId)!.length === 0) {
+      return;
+    }
+    storage.getState().setSessionSendError(sessionId, null);
+    this.getSendSync(sessionId).invalidate();
+  }
+
+  /** Discard all pending outbox messages for a session. */
+  discardPendingMessages(sessionId: string) {
+    // Abort any in-flight request
+    const controller = this.sendAbortControllers.get(sessionId);
+    if (controller) {
+      controller.abort();
+      this.sendAbortControllers.delete(sessionId);
+    }
+    this.pendingOutbox.delete(sessionId);
+    this.persistOutbox();
+    storage.getState().setSessionSendError(sessionId, null);
   }
 
   applySettings = (delta: Partial<Settings>) => {
@@ -1650,6 +1696,7 @@ class Sync {
         const data = (await response.json()) as V3PostSessionMessagesResponse;
         logger.debug('flushOutbox: batch sent successfully', { sessionId, batchSize: batch.length, remaining: pending.length - batch.length });
         pending.splice(0, batch.length);
+        this.persistOutbox();
         if (Array.isArray(data.messages) && data.messages.length > 0) {
           const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
           let maxSeq = currentLastSeq;
@@ -1662,6 +1709,10 @@ class Sync {
         }
       } catch (error) {
         logger.error('flushOutbox: failed to send batch', toError(error), { sessionId, batchSize: batch.length });
+        storage.getState().setSessionSendError(sessionId, {
+          message: 'Message failed to send. Will retry automatically.',
+          timestamp: Date.now(),
+        });
         this.maybeStartBackgroundSendWatchdog();
         throw error;
       } finally {
@@ -1669,7 +1720,10 @@ class Sync {
       }
     }
 
+    // All messages sent successfully — clear any previous error
+    storage.getState().setSessionSendError(sessionId, null);
     this.pendingOutbox.delete(sessionId);
+    this.persistOutbox();
     if (!this.hasPendingOutboxMessages()) {
       this.clearBackgroundSendWatchdog();
       await this.cancelBackgroundSendTimeoutNotification();
@@ -1994,6 +2048,7 @@ class Sync {
       this.messagesSync.delete(sessionId);
       this.sendSync.delete(sessionId);
       this.pendingOutbox.delete(sessionId);
+      this.persistOutbox();
       this.sessionLastSeq.delete(sessionId);
       this.sessionMessageQueue.delete(sessionId);
       this.sessionQueueProcessing.delete(sessionId);

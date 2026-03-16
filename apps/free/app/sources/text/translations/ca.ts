@@ -357,6 +357,7 @@ export const ca: TranslationStructure = {
 
   session: {
     inputPlaceholder: 'Escriu un missatge...',
+    sendFailed: 'Error en enviar. Toca per reintentar.',
   },
 
   commandPalette: {

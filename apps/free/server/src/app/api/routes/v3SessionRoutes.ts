@@ -23,12 +23,15 @@ const WireTracePassthroughSchema = z
     { message: '_trace must have string tid and sid' }
   );
 
+/** Per-message content character limit. Zod .max() counts characters, not bytes. Override via MESSAGE_CONTENT_MAX_CHARS env var. Default: 10M chars. */
+const MESSAGE_CONTENT_MAX_CHARS = parseInt(process.env.MESSAGE_CONTENT_MAX_CHARS ?? '10000000', 10);
+
 const sendMessagesBodySchema = z.object({
   messages: z
     .array(
       z.object({
         id: z.string().min(1),
-        content: z.string().max(1_000_000),
+        content: z.string().max(MESSAGE_CONTENT_MAX_CHARS),
         _trace: WireTracePassthroughSchema.optional(),
       })
     )

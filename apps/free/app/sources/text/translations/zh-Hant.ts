@@ -351,6 +351,7 @@ export const zhHant: TranslationStructure = {
 
   session: {
     inputPlaceholder: '輸入訊息...',
+    sendFailed: '傳送失敗，點擊重試',
   },
 
   commandPalette: {

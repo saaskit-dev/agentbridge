@@ -86,4 +86,4 @@ wrangler pages deploy "$DIST_DIR" --project-name="$PROJECT_NAME" --commit-dirty=
 
 echo ""
 echo "✅ 部署完成! (环境: $APP_ENV)"
-echo "   访问: https://$PROJECT_NAME.pages.dev"
+echo "   访问: https://$PROJECT_NAME-3bp.pages.dev"

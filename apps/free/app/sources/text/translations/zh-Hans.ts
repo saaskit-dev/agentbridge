@@ -351,6 +351,7 @@ export const zhHans: TranslationStructure = {
 
   session: {
     inputPlaceholder: '输入消息...',
+    sendFailed: '发送失败，点击重试',
   },
 
   commandPalette: {
