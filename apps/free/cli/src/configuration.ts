@@ -10,6 +10,19 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import packageJson from '../package.json';
 
+/** Strip `--variant <value>` pairs injected by spawnFreeCLI for process identification. */
+export function stripVariantArgs(argv: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--variant') {
+      i++; // skip the value
+    } else {
+      out.push(argv[i]);
+    }
+  }
+  return out;
+}
+
 class Configuration {
   public readonly serverUrl: string;
   public readonly webappUrl: string;
@@ -32,8 +45,8 @@ class Configuration {
   public readonly disableCaffeinate: boolean;
   public readonly isDev: boolean;
 
-  /** 'dev' when APP_ENV=development, 'stable' otherwise */
-  public readonly variant: 'dev' | 'stable';
+  /** Mirrors APP_ENV: 'development' or 'production' */
+  public readonly variant: 'development' | 'production';
   /** macOS LaunchAgent label (variant-aware, e.g. app.saaskit.free.daemon-dev) */
   public readonly daemonServiceLabel: string;
   /** Linux systemd service unit name (variant-aware, e.g. free-daemon-dev) */
@@ -49,7 +62,7 @@ class Configuration {
     this.webappUrl = process.env.FREE_WEBAPP_URL || 'https://free.saaskit.app';
 
     // Check if we're running as daemon based on process args
-    const args = process.argv.slice(2);
+    const args = stripVariantArgs(process.argv.slice(2));
     this.isDaemonProcess = args.length >= 2 && args[0] === 'daemon' && args[1] === 'start-sync';
 
     // Directory configuration - Priority: FREE_HOME_DIR env > default home dir
@@ -81,23 +94,23 @@ class Configuration {
 
     this.currentCliVersion = packageJson.version;
 
-    // Variant detection — drives service label isolation so dev/stable daemons can coexist
-    this.variant = this.isDev ? 'dev' : 'stable';
-    const variantSuffix = this.variant === 'dev' ? '-dev' : '';
+    // Variant detection — drives service label isolation so dev/production daemons can coexist
+    this.variant = this.isDev ? 'development' : 'production';
+    const variantSuffix = this.variant === 'development' ? '-dev' : '';
     this.daemonServiceLabel = `app.saaskit.free.daemon${variantSuffix}`;
     this.daemonSystemdServiceName = `free-daemon${variantSuffix}`;
     this.daemonPlistFile = join(homedir(), 'Library', 'LaunchAgents', `${this.daemonServiceLabel}.plist`);
     this.daemonSystemdFile = join(homedir(), '.config', 'systemd', 'user', `${this.daemonSystemdServiceName}.service`);
 
     // Validate variant configuration
-    if (this.variant === 'dev' && !this.freeHomeDir.includes('dev')) {
+    if (this.variant === 'development' && !this.freeHomeDir.includes('dev')) {
       console.warn('⚠️  WARNING: APP_ENV=development but FREE_HOME_DIR does not contain "dev"');
       console.warn(`   Current: ${this.freeHomeDir}`);
       console.warn(`   Expected: Should contain "dev" (e.g., ~/.free-dev)`);
     }
 
     // Visual indicator on CLI startup (only if not daemon process to avoid log clutter)
-    if (!this.isDaemonProcess && this.variant === 'dev') {
+    if (!this.isDaemonProcess && this.variant === 'development') {
       console.log('\x1b[33m🔧 DEV MODE\x1b[0m - Data: ' + this.freeHomeDir);
     }
 

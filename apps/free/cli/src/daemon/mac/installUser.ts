@@ -59,6 +59,8 @@ export async function installUserAgent(): Promise<void> {
                     <string>--no-warnings</string>
                     <string>--no-deprecation</string>
                     <string>${scriptPath}</string>
+                    <string>--variant</string>
+                    <string>${configuration.variant}</string>
                     <string>daemon</string>
                     <string>start-sync</string>
                 </array>

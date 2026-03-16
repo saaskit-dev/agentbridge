@@ -41,7 +41,7 @@ import { getLatestDaemonLog } from './utils/daemonLogs';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { exportDiagnostic } from '@saaskit-dev/agentbridge/telemetry/node';
 import { safeStringify } from '@saaskit-dev/agentbridge';
-import { configuration } from '@/configuration';
+import { configuration, stripVariantArgs } from '@/configuration';
 import { extractNoSandboxFlag } from './utils/sandboxFlags';
 import { runWithDaemonIPC } from '@/client/CLIClient';
 import { IPCClient } from '@/daemon/ipc/IPCClient';
@@ -195,7 +195,7 @@ async function discoverOrphanSession(): Promise<string | undefined> {
 }
 
 (async () => {
-  const args = process.argv.slice(2);
+  const args = stripVariantArgs(process.argv.slice(2));
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
@@ -611,7 +611,7 @@ async function discoverOrphanSession(): Promise<string | undefined> {
       // installUserAgent() handles unload → write plist → load
       try {
         await install();
-        const variantLabel = configuration.variant === 'dev' ? ' (dev)' : '';
+        const variantLabel = configuration.variant === 'development' ? ' (dev)' : '';
         console.log(chalk.green('✓ ') + `Daemon${variantLabel} started via system service`);
       } catch (error) {
         console.log(chalk.red('✗ ') + safeStringify(error));

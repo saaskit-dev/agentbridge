@@ -375,9 +375,10 @@ export async function claudeLocal(opts: {
           });
         }
         child.on('error', error => {
-          // Ignore
+          logger.error('[ClaudeLocal] child process error', error, { cwd: opts.path, pid: child.pid });
         });
         child.on('exit', async (code, signal) => {
+          logger.info('[ClaudeLocal] child process exited', { code, signal, pid: child.pid, cwd: opts.path, sessionId: effectiveSessionId });
           if (cleanupSandbox) {
             try {
               await cleanupSandbox();

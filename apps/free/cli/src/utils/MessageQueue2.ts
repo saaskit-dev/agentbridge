@@ -197,7 +197,7 @@ export class MessageQueue2<T> {
    * Close the queue - no more messages can be pushed
    */
   close(): void {
-    logger.debug(`[MessageQueue2] close() called`);
+    logger.debug(`[MessageQueue2] close() called`, { queueSize: this.queue.length, hadWaiter: this.waiter != null });
     this.closed = true;
 
     // Notify any waiting caller
