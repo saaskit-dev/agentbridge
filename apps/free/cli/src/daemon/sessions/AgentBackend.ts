@@ -19,6 +19,18 @@ import type { IPCServerMessage } from '@/daemon/ipc/protocol';
 import type { AgentType, NormalizedMessage } from './types';
 import type { SessionCapabilities } from './capabilities';
 
+/** Structured exit information from a backend process/SDK. */
+export interface BackendExitInfo {
+  /** Process exit code (PTY backends only). */
+  exitCode?: number;
+  /** Signal name that killed the process, e.g. 'SIGTERM' (PTY backends only). */
+  signal?: string;
+  /** Human-readable reason the backend stopped. */
+  reason?: string;
+  /** The Error that caused the exit, if any. */
+  error?: Error;
+}
+
 export interface AgentStartOpts {
   cwd: string;
   env: Record<string, string>;
@@ -47,6 +59,12 @@ export interface AgentStartOpts {
 
 export interface AgentBackend {
   readonly agentType: AgentType;
+
+  /**
+   * Populated after the backend exits (stream ends or process terminates).
+   * Read by AgentSession to include exit diagnostics in crash-restart logs.
+   */
+  readonly exitInfo?: BackendExitInfo;
 
   start(opts: AgentStartOpts): Promise<void>;
   sendMessage(text: string, permissionMode?: PermissionMode): Promise<void>;

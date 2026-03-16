@@ -4,7 +4,7 @@ import { safeStringify } from '@saaskit-dev/agentbridge';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
-import type { AgentBackend, AgentStartOpts } from '@/daemon/sessions/AgentBackend';
+import type { AgentBackend, AgentStartOpts, BackendExitInfo } from '@/daemon/sessions/AgentBackend';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
 import type { AgentType, NormalizedMessage } from '@/daemon/sessions/types';
 import type { CapabilityAwareAcpBackend } from '@/backends/acp/types';
@@ -33,6 +33,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   abstract readonly agentType: AgentType;
   readonly output = new PushableAsyncIterable<NormalizedMessage>();
   readonly capabilities = new PushableAsyncIterable<SessionCapabilities>();
+  exitInfo?: BackendExitInfo;
 
   protected acpBackend: IAgentBackend | null = null;
   protected capabilityBackend: CapabilityAwareAcpBackend | null = null;
@@ -191,8 +192,13 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       acpSessionId: this.acpSessionId,
       preview: text.slice(0, 100),
     });
-    await this.acpBackend.sendPrompt(this.acpSessionId, prompt);
-    await this.acpBackend.waitForResponseComplete?.();
+    try {
+      await this.acpBackend.sendPrompt(this.acpSessionId, prompt);
+      await this.acpBackend.waitForResponseComplete?.();
+    } catch (err) {
+      this.exitInfo = { reason: `sendPrompt/waitForResponseComplete failed: ${safeStringify(err)}`, error: err instanceof Error ? err : undefined };
+      throw err;
+    }
     this.logger.debug(`[${this.agentType}] response complete`, {
       apiSessionId: this.apiSessionId,
       acpSessionId: this.acpSessionId,
@@ -210,9 +216,18 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   async stop(): Promise<void> {
     await this.abort();
     this.permissionHandler?.reset();
-    await this.acpBackend?.dispose().catch((err: unknown) =>
-      this.logger.warn(`[${this.agentType}] dispose error`, { error: safeStringify(err) })
-    );
+    await this.acpBackend?.dispose().catch((err: unknown) => {
+      this.logger.warn(`[${this.agentType}] dispose error`, { error: safeStringify(err) });
+      this.exitInfo = { reason: `dispose error: ${safeStringify(err)}` };
+    });
+    if (!this.exitInfo) {
+      this.exitInfo = { reason: 'stopped gracefully' };
+    }
+    this.logger.info(`[${this.agentType}] backend stopped`, {
+      apiSessionId: this.apiSessionId,
+      acpSessionId: this.acpSessionId,
+      reason: this.exitInfo.reason,
+    });
     if (!this.capabilities.done) {
       this.capabilities.end();
     }

@@ -29,6 +29,7 @@ export class IPCClient {
   private reconnectDelay = 500;
   private readonly MAX_RECONNECT_DELAY_MS = 10_000;
   private destroyed = false;
+  private reconnectAttempt = 0;
 
   /**
    * send_input messages buffered during reconnect window.
@@ -60,6 +61,7 @@ export class IPCClient {
 
     // Successful connection — reset back-off
     this.reconnectDelay = 500;
+    this.reconnectAttempt = 0;
 
     const reader = readline.createInterface({ input: this.socket, crlfDelay: Infinity });
 
@@ -72,8 +74,13 @@ export class IPCClient {
       }
     });
 
-    this.socket.on('close', () => {
-      if (!this.destroyed) this.scheduleReconnect();
+    this.socket.on('close', (hadError) => {
+      if (!this.destroyed) {
+        logger.info('[IPCClient] socket closed, will reconnect', { hadError, socketPath: this.socketPath });
+        this.scheduleReconnect();
+      } else {
+        logger.debug('[IPCClient] socket closed (destroyed, no reconnect)');
+      }
     });
 
     this.socket.on('error', (err) => {
@@ -83,33 +90,45 @@ export class IPCClient {
   }
 
   private scheduleReconnect(): void {
-    logger.info('[IPCClient] scheduling reconnect', { delayMs: this.reconnectDelay });
+    this.reconnectAttempt++;
+    logger.info('[IPCClient] scheduling reconnect', {
+      delayMs: this.reconnectDelay,
+      attempt: this.reconnectAttempt,
+      bufferedSendInputs: this.pendingSendInputs.length,
+    });
     this.reconnectTimer = setTimeout(async () => {
       try {
         await this.doConnect();
-        logger.info('[IPCClient] reconnected to daemon');
+        logger.info('[IPCClient] reconnected to daemon', { attempt: this.reconnectAttempt });
 
         // Re-attach sessions FIRST so daemon is ready to route
-        this.onReconnect?.();
+        try {
+          this.onReconnect?.();
+        } catch (err) {
+          logger.error('[IPCClient] onReconnect callback failed', toError(err));
+        }
 
         // Then replay buffered send_inputs in order (check writable in case socket closed during onReconnect)
         const pending = this.pendingSendInputs.splice(0);
+        if (pending.length > 0) {
+          logger.info('[IPCClient] replaying buffered send_inputs', { count: pending.length });
+        }
         for (const msg of pending) {
           if (!this.socket?.writable) {
-            logger.warn('[IPCClient] socket closed during replay, re-buffering remaining', { remaining: pending.length });
-            this.pendingSendInputs.push(...pending.slice(pending.indexOf(msg)));
+            const remaining = pending.slice(pending.indexOf(msg));
+            logger.warn('[IPCClient] socket closed during replay, re-buffering remaining', { remaining: remaining.length });
+            this.pendingSendInputs.push(...remaining);
             break;
           }
           this.socket.write(JSON.stringify(msg) + '\n');
         }
-        if (pending.length > 0) {
-          logger.debug('[IPCClient] replayed buffered send_input after reconnect', {
-            count: pending.length,
-          });
-        }
-      } catch {
+      } catch (err) {
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.MAX_RECONNECT_DELAY_MS);
-        logger.warn('[IPCClient] reconnect failed, backing off', { nextDelayMs: this.reconnectDelay });
+        logger.warn('[IPCClient] reconnect failed, backing off', {
+          attempt: this.reconnectAttempt,
+          nextDelayMs: this.reconnectDelay,
+          error: safeStringify(err),
+        });
         this.scheduleReconnect();
       }
     }, this.reconnectDelay);
@@ -135,9 +154,11 @@ export class IPCClient {
           limit: this.PENDING_SEND_INPUT_LIMIT,
         });
       }
+    } else {
+      // Other message types (attach, detach, etc.) are not buffered:
+      // attach is replayed via onReconnect; others are fire-and-forget.
+      logger.debug('[IPCClient] message dropped (socket not writable, non-bufferable type)', { type: msg.type });
     }
-    // Other message types (attach, detach, etc.) are not buffered:
-    // attach is replayed via onReconnect; others are fire-and-forget.
   }
 
   on(type: IPCServerMessage['type'], handler: (msg: IPCServerMessage) => void): void {
@@ -154,6 +175,10 @@ export class IPCClient {
   }
 
   disconnect(): void {
+    logger.info('[IPCClient] disconnecting', {
+      bufferedSendInputs: this.pendingSendInputs.length,
+      hadReconnectTimer: this.reconnectTimer != null,
+    });
     this.destroyed = true;
     clearTimeout(this.reconnectTimer);
     this.pendingSendInputs = [];
@@ -162,13 +187,15 @@ export class IPCClient {
 
   private dispatch(msg: IPCServerMessage): void {
     const handlers = this.handlers.get(msg.type);
-    if (handlers) {
-      for (const h of handlers) {
-        try {
-          h(msg);
-        } catch (err) {
-          logger.error('[IPCClient] handler threw', toError(err), { type: msg.type });
-        }
+    if (!handlers || handlers.size === 0) {
+      logger.debug('[IPCClient] no handlers for message type', { type: msg.type });
+      return;
+    }
+    for (const h of handlers) {
+      try {
+        h(msg);
+      } catch (err) {
+        logger.error('[IPCClient] handler threw', toError(err), { type: msg.type });
       }
     }
   }

@@ -248,15 +248,18 @@ export class ApiClient {
     }
 
     // Helper to create minimal machine object for offline mode (DRY)
-    const createMinimalMachine = (): Machine => ({
-      id: opts.machineId,
-      encryptionKey: encryptionKey,
-      encryptionVariant: encryptionVariant,
-      metadata: opts.metadata,
-      metadataVersion: 0,
-      daemonState: opts.daemonState || null,
-      daemonStateVersion: 0,
-    });
+    const createMinimalMachine = (): Machine => {
+      logger.warn('[api] entering offline mode (createMinimalMachine fallback)', { machineId: opts.machineId });
+      return {
+        id: opts.machineId,
+        encryptionKey: encryptionKey,
+        encryptionVariant: encryptionVariant,
+        metadata: opts.metadata,
+        metadataVersion: 0,
+        daemonState: opts.daemonState || null,
+        daemonStateVersion: 0,
+      };
+    };
 
     // Create machine
     try {

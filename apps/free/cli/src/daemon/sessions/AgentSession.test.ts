@@ -388,7 +388,7 @@ describe('AgentSession visible backend failures', () => {
     await runPromise;
   });
 
-  it('auto-restarts backend after unexpected crash', { timeout: 10_000 }, async () => {
+  it('auto-restarts backend after unexpected crash and enters dormant mode', { timeout: 10_000 }, async () => {
     // Use short cooldown for test speed
     const origCooldown = TestAgentSession.RESTART_COOLDOWN_MS;
     TestAgentSession.RESTART_COOLDOWN_MS = 100;
@@ -418,51 +418,67 @@ describe('AgentSession visible backend failures', () => {
 
       const runPromise = session.run();
 
-      // Wait for restart cycles to complete (100ms cooldown × 3 restarts + margin)
+      // Wait for restart cycles to exhaust and enter dormant mode
       await new Promise(r => setTimeout(r, 2000));
-      // Force exit if somehow still running
-      session.handleSigint();
-      await runPromise;
 
-      // 1 initial + up to 3 restarts = 4 total backend creations
+      // 1 initial + 3 restarts = 4 total backend creations
       expect(startCount).toBeGreaterThanOrEqual(2); // At least one restart
 
-      // Should have published crash error events
+      // Should have published crash error events + dormant mode notification
       const errorCalls = (apiSession.sendNormalizedMessage as ReturnType<typeof vi.fn>).mock.calls
         .filter((c: any) => c[0]?.role === 'event' && c[0]?.content?.type === 'error');
       expect(errorCalls.length).toBeGreaterThanOrEqual(1);
+
+      // The dormant mode message should tell user to send a message or archive
+      const dormantMsg = errorCalls.find((c: any) => c[0]?.content?.message?.includes('Send a message to restart'));
+      expect(dormantMsg).toBeDefined();
+
+      // Session should still be alive (dormant, waiting for user action) — kill it
+      session.handleSigint();
+      await runPromise;
     } finally {
       TestAgentSession.RESTART_COOLDOWN_MS = origCooldown;
     }
   });
 
-  it('publishes an error event when backend.start throws', async () => {
+  it('enters dormant mode when backend.start throws and recovers on user message', { timeout: 10_000 }, async () => {
     const session = new TestAgentSession(makeOpts());
     const apiSession = makeMockSession('sess-start-error');
     session.injectSession(apiSession);
     session.injectMessageQueue();
 
-    const backend = {
-      agentType: 'claude' as const,
-      output: { [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }) } as never,
-      start: vi.fn().mockRejectedValue(new Error('agent boot failed')),
-      sendMessage: vi.fn().mockResolvedValue(undefined),
-      abort: vi.fn().mockResolvedValue(undefined),
-      stop: vi.fn().mockResolvedValue(undefined),
-    } satisfies AgentBackend;
+    let startCallCount = 0;
+    vi.spyOn(session, 'createBackend').mockImplementation(() => {
+      startCallCount++;
+      const output = new PushableAsyncIterable<NormalizedMessage>();
+      return {
+        agentType: 'claude' as const,
+        output,
+        start: vi.fn().mockRejectedValue(new Error('agent boot failed')),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+        abort: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockImplementation(async () => { output.end(); }),
+      } satisfies AgentBackend;
+    });
 
-    vi.spyOn(session, 'createBackend').mockReturnValue(backend);
+    const runPromise = session.run();
 
-    await session.run();
+    // Wait for dormant mode to be entered
+    await new Promise(r => setTimeout(r, 500));
 
+    // Should have published an error event with retry instructions
     expect(apiSession.sendNormalizedMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         role: 'event',
         content: expect.objectContaining({
           type: 'error',
-          message: 'agent boot failed',
+          retryable: true,
         }),
       })
     );
+
+    // Session is still alive — signal exit
+    session.handleSigint();
+    await runPromise;
   });
 });

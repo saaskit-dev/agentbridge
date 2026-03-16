@@ -18,7 +18,7 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify } from '@saaskit-dev/agentbridge';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import type { ApiSessionClient } from '@/api/apiSession';
-import type { AgentBackend, AgentStartOpts } from '@/daemon/sessions/AgentBackend';
+import type { AgentBackend, AgentStartOpts, BackendExitInfo } from '@/daemon/sessions/AgentBackend';
 import type { NormalizedMessage } from '@/daemon/sessions/types';
 import { mapCodexRawToNormalized } from './mapCodexRawToNormalized';
 
@@ -27,6 +27,7 @@ const logger = new Logger('backends/codex/CodexBackend');
 export class CodexBackend implements AgentBackend {
   readonly agentType = 'codex' as const;
   readonly output = new PushableAsyncIterable<NormalizedMessage>();
+  exitInfo?: BackendExitInfo;
 
   private client!: CodexMcpClient;
   private permissionHandler: CodexPermissionHandler | null = null;
@@ -91,17 +92,23 @@ export class CodexBackend implements AgentBackend {
 
   async abort(): Promise<void> {
     logger.debug('[CodexBackend] abort — disconnecting client');
-    await this.client.disconnect().catch((err) =>
-      logger.warn('[CodexBackend] error during abort disconnect', { error: safeStringify(err) })
-    );
+    await this.client.disconnect().catch((err) => {
+      logger.warn('[CodexBackend] error during abort disconnect', { error: safeStringify(err) });
+      this.exitInfo = { reason: `abort disconnect error: ${safeStringify(err)}` };
+    });
   }
 
   async stop(): Promise<void> {
     logger.debug('[CodexBackend] stop — force closing session');
     this.permissionHandler?.reset();
-    await this.client.forceCloseSession().catch((err) =>
-      logger.warn('[CodexBackend] error during stop', { error: safeStringify(err) })
-    );
+    await this.client.forceCloseSession().catch((err) => {
+      logger.warn('[CodexBackend] error during stop', { error: safeStringify(err) });
+      this.exitInfo = { reason: `stop error: ${safeStringify(err)}` };
+    });
+    if (!this.exitInfo) {
+      this.exitInfo = { reason: 'stopped gracefully' };
+    }
+    logger.info('[CodexBackend] backend stopped', { reason: this.exitInfo.reason });
     this.output.end();
   }
 }

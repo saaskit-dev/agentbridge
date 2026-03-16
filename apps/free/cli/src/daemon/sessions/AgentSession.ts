@@ -122,6 +122,8 @@ export abstract class AgentSession<TMode> {
   private reconnectionHandle: OfflineReconnectionHandle<ApiSessionClient> | null = null;
   protected shouldExit = false;
   protected pendingExit = false;
+  /** Set only by handleSigterm/handleSigint — tells shutdown() to keep persisted state for crash recovery. */
+  private _keepStateForRecovery = false;
   private _isShuttingDown = false;
   protected lastStatus: 'working' | 'idle' = 'idle';
   /** Current execution mode — local (PTY) or remote (SDK). Updated by subclasses on mode switch. */
@@ -410,9 +412,13 @@ export abstract class AgentSession<TMode> {
           this.backend?.onSessionChange?.(newSession);
           this.registerSessionRpcHandlers();
           registerKillSessionHandler(this.session.rpcHandlerManager, async () => {
+            this.pendingExit = true; // prevent auto-restart
             this.shouldExit = true;
+            this.messageQueue?.close();
             await this.backend.abort();
           });
+          // Re-register DB-archived fallback on new session
+          this.listenForServerArchived();
           logger.info('[AgentSession] onSessionSwap succeeded', { userId: this.userId, newSessionId: newSession.sessionId });
         } catch (err) {
           logger.error('[AgentSession] onSessionSwap failed, retaining old session',
@@ -466,6 +472,10 @@ export abstract class AgentSession<TMode> {
     this.keepAliveInterval = setInterval(() => {
       this.session.keepAlive(this.lastStatus === 'working', this.currentMode);
     }, 2000);
+
+    // Fallback: if the server tells us the DB already has this session archived,
+    // trigger graceful shutdown. DB is the source of truth.
+    this.listenForServerArchived();
 
     // Persist session state to disk for crash recovery
     logger.info('[AgentSession] persisting session for crash recovery', {
@@ -535,11 +545,31 @@ export abstract class AgentSession<TMode> {
 
   async run(): Promise<void> {
     try {
-      await this.startBackendAndLoop();
-    } catch (err) {
-      this.publishVisibleError(err, 'backend start failed');
-      this.shouldExit = true;
-      this.messageQueue?.close();
+      while (true) {
+        try {
+          await this.startBackendAndLoop();
+          break; // Normal exit (pendingExit, kill, or archived)
+        } catch (err) {
+          if (this.pendingExit || this._isShuttingDown) break;
+          // Backend failed to start — enter dormant mode rather than dying.
+          // The session stays alive so the user can retry or archive.
+          logger.error('[AgentSession] backend start failed, entering dormant mode',
+            toError(err),
+            { sessionId: this.session?.sessionId, agentType: this.agentType });
+          this.publishVisibleError(
+            new Error(`Agent failed to start. Send a message to retry, or archive this session.`),
+            'backend start failed — waiting for user action',
+            true,
+          );
+          this.shouldExit = false;
+          this.backendRestartCount = 0;
+          this.messageQueue = new MessageQueue2<TMode>(this.createModeHasher());
+          const item = await this.messageQueue.waitForMessagesAndGetAsString();
+          if (!item || this.pendingExit || this._isShuttingDown) break;
+          this.messageQueue.push(item.message, item.mode);
+          // continue → retry startBackendAndLoop
+        }
+      }
     } finally {
       await this.shutdown('loop_ended');
     }
@@ -571,7 +601,9 @@ export abstract class AgentSession<TMode> {
       if (this.backendRestartCount === 0) {
         // Only register RPC handlers on first start (they persist across restarts)
         registerKillSessionHandler(this.session.rpcHandlerManager, async () => {
+          this.pendingExit = true; // prevent auto-restart
           this.shouldExit = true;
+          this.messageQueue?.close();
           await this.backend.abort();
         });
         this.registerSessionRpcHandlers();
@@ -586,33 +618,63 @@ export abstract class AgentSession<TMode> {
 
       // If we get here, the message loop exited.
       // Check if it was a graceful exit or a crash.
-      logger.debug('[AgentSession] messageLoop exited', { shouldExit: this.shouldExit, pendingExit: this.pendingExit, isShuttingDown: this._isShuttingDown, restartCount: this.backendRestartCount });
+      const exitInfo = this.backend.exitInfo;
+      logger.info('[AgentSession] messageLoop exited', {
+        shouldExit: this.shouldExit,
+        pendingExit: this.pendingExit,
+        isShuttingDown: this._isShuttingDown,
+        restartCount: this.backendRestartCount,
+        exitCode: exitInfo?.exitCode,
+        exitSignal: exitInfo?.signal,
+        exitReason: exitInfo?.reason,
+      });
       if (this.pendingExit || this._isShuttingDown) break; // graceful — don't restart
       if (this.shouldExit) {
         // Backend died unexpectedly — try to restart
+        await this.outputPipeFinished;
+        await this.capabilitiesPipeFinished;
+
         if (!this.canRestartBackend()) {
+          // Exhausted fast restarts — enter "dormant" mode.
+          // Keep the session alive so the user can send a message to retry
+          // or archive the session from the app.
+          logger.warn('[AgentSession] backend exhausted fast restarts, entering dormant mode', {
+            sessionId: this.session.sessionId,
+            agentType: this.agentType,
+            restartCount: this.backendRestartCount,
+          });
           this.publishVisibleError(
-            new Error(`Agent process crashed ${this.backendRestartCount} times and could not recover. Session ended.`),
-            'backend restart limit reached',
-            false,
+            new Error(`Agent process crashed ${this.backendRestartCount} times. Send a message to restart, or archive this session.`),
+            'backend restart limit reached — waiting for user action',
+            true,
           );
-          break;
+
+          // Wait for user to send a new message (or kill/archive to arrive)
+          this.shouldExit = false;
+          this.backendRestartCount = 0;
+          this.messageQueue = new MessageQueue2<TMode>(this.createModeHasher());
+          const item = await this.messageQueue.waitForMessagesAndGetAsString();
+          if (!item || this.pendingExit || this._isShuttingDown) break;
+          // User sent a message — push it back so the new messageLoop picks it up
+          this.messageQueue.push(item.message, item.mode);
+          continue;
         }
+
         this.backendRestartCount++;
         logger.warn('[AgentSession] backend crashed, restarting', {
           sessionId: this.session.sessionId,
           agentType: this.agentType,
           attempt: this.backendRestartCount,
           maxAttempts: AgentSession.MAX_BACKEND_RESTARTS,
+          exitCode: exitInfo?.exitCode,
+          exitSignal: exitInfo?.signal,
+          exitReason: exitInfo?.reason,
         });
         this.publishVisibleError(
           new Error(`Agent process crashed — restarting (attempt ${this.backendRestartCount}/${AgentSession.MAX_BACKEND_RESTARTS})`),
           'backend crashed',
           true,
         );
-        // Wait output pipe to drain before starting new backend
-        await this.outputPipeFinished;
-        await this.capabilitiesPipeFinished;
         const cooldownMs = (this.constructor as typeof AgentSession).RESTART_COOLDOWN_MS;
         const elapsed = Date.now() - this.lastBackendStartTime;
         if (elapsed < cooldownMs) {
@@ -727,10 +789,9 @@ export abstract class AgentSession<TMode> {
     this.freeServer?.stop();
     this.reconnectionHandle?.cancel();
 
-    // Only erase persisted state when the session ended on its own terms
-    // (user quit, app stopped, backend exhausted restarts).
-    // If pendingExit is set, the daemon is shutting down — keep the file for recovery.
-    if (this.session && !this.pendingExit) {
+    // Only keep persisted state when the daemon itself is shutting down (SIGTERM/SIGINT)
+    // so it can be recovered on next start. For session-level kills and archives, erase it.
+    if (this.session && !this._keepStateForRecovery) {
       logger.info('[AgentSession] erasing persisted state (session ended)', { sessionId: this.session.sessionId, reason });
       eraseSession(this.session.sessionId).catch(() => {});
     } else if (this.session) {
@@ -747,6 +808,7 @@ export abstract class AgentSession<TMode> {
 
   handleSigterm(): void {
     this.pendingExit = true;
+    this._keepStateForRecovery = true;
     if (this.lastStatus === 'idle') {
       this.messageQueue?.close(); // already idle, unblock immediately
     }
@@ -754,8 +816,23 @@ export abstract class AgentSession<TMode> {
 
   handleSigint(): void {
     this.pendingExit = true; // prevent auto-restart
+    this._keepStateForRecovery = true;
     this.shouldExit = true;
     this.messageQueue?.close();
+  }
+
+  /** Register a one-time listener on the current `this.session` for the server-driven archive fallback. */
+  private listenForServerArchived(): void {
+    this.session.once('archived', () => {
+      if (this._isShuttingDown) return;
+      logger.info('[AgentSession] server reported session archived in DB, shutting down', {
+        sessionId: this.session?.sessionId,
+      });
+      this.pendingExit = true;
+      this.shouldExit = true;
+      this.messageQueue?.close();
+      this.backend?.abort();
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -889,16 +966,16 @@ export abstract class AgentSession<TMode> {
       try {
         await this.drainBackendOutput(backendRef);
         // Backend output stream ended — signal session to exit and trigger shutdown
+        const exitInfo = backendRef.exitInfo;
         logger.info('[AgentSession] backend output ended, signalling exit', {
           userId: this.userId,
           sessionId: this.session?.sessionId,
+          exitCode: exitInfo?.exitCode,
+          exitSignal: exitInfo?.signal,
+          exitReason: exitInfo?.reason,
         });
         this.shouldExit = true;
         this.messageQueue?.close();
-        logger.info('[AgentSession] backend output ended, signalling exit', {
-          userId: this.userId,
-          sessionId: this.session?.sessionId,
-        });
       } catch (err) {
         logger.error('[AgentSession] output pipe broken, triggering shutdown',
           toError(err),

@@ -54,6 +54,10 @@ class HistoryRing {
     return [...this.buf.slice(this.head), ...this.buf.slice(0, this.head)];
   }
 
+  get size(): number {
+    return this.count;
+  }
+
   clear(): void {
     this.head = 0;
     this.count = 0;
@@ -110,7 +114,7 @@ export class IPCServer {
 
     // Restrict access to current user only
     fs.chmodSync(socketPath, 0o600);
-    logger.debug('[IPCServer] listening', { socketPath });
+    logger.info('[IPCServer] listening', { socketPath });
   }
 
   /**
@@ -154,8 +158,11 @@ export class IPCServer {
    * Called via SessionManager.unregister() → onEvictHistory callback.
    */
   evictHistory(sessionId: string): void {
+    const historySize = this.history.get(sessionId)?.size ?? 0;
+    const attachedClients = this.attachments.get(sessionId)?.size ?? 0;
     this.history.delete(sessionId);
     this.attachments.delete(sessionId);
+    logger.info('[IPCServer] evicted session history and attachments', { sessionId, historySize, attachedClients });
   }
 
   /** Return the number of CLI sockets currently attached to a session. */
@@ -166,6 +173,7 @@ export class IPCServer {
   /** Map an old session ID to a new one (used after recovery when server re-assigns IDs). */
   addSessionIdMapping(oldId: string, newId: string): void {
     this.sessionIdMap.set(oldId, newId);
+    logger.info('[IPCServer] session ID mapping added', { oldId, newId });
   }
 
   /** Signal that session recovery is starting. Attach requests for unknown sessions will wait. */
@@ -173,14 +181,14 @@ export class IPCServer {
     this.recoveryDone = new Promise<void>(resolve => {
       this.resolveRecovery = resolve;
     });
-    logger.debug('[IPCServer] recovery gate opened');
+    logger.info('[IPCServer] recovery gate opened');
   }
 
   /** Signal that session recovery is complete. Deferred attach requests will proceed. */
   endRecovery(): void {
     this.resolveRecovery?.();
     this.resolveRecovery = null;
-    logger.debug('[IPCServer] recovery gate closed');
+    logger.info('[IPCServer] recovery gate closed');
   }
 
   stop(): void {
@@ -300,18 +308,23 @@ export class IPCServer {
           });
           session.sendInput(msg.text);
         } else {
-          logger.debug('[IPCServer] send_input: session not found', { sessionId: msg.sessionId });
+          logger.warn('[IPCServer] send_input: session not found, message dropped', { sessionId: msg.sessionId });
         }
         break;
       }
 
       case 'abort': {
         const session = this.sessionManager.get(msg.sessionId);
-        session?.abort().catch((err) => {
-          logger.error('[IPCServer] abort failed', toError(err), {
-            sessionId: msg.sessionId,
+        if (session) {
+          logger.info('[IPCServer] abort routed to session', { sessionId: msg.sessionId });
+          session.abort().catch((err) => {
+            logger.error('[IPCServer] abort failed', toError(err), {
+              sessionId: msg.sessionId,
+            });
           });
-        });
+        } else {
+          logger.warn('[IPCServer] abort: session not found', { sessionId: msg.sessionId });
+        }
         break;
       }
 
@@ -375,6 +388,12 @@ export class IPCServer {
         });
         this.onSpawnSession(msg.opts)
           .then((result) => {
+            logger.info('[IPCServer] spawn session completed', {
+              agent: msg.opts.agent,
+              success: result.type === 'success',
+              sessionId: result.type === 'success' ? result.sessionId : undefined,
+              error: result.type === 'error' ? result.error : undefined,
+            });
             this.writeToSocket(socket, {
               type: 'spawn_result',
               sessionId: result.type === 'success' ? result.sessionId : '',
@@ -383,6 +402,10 @@ export class IPCServer {
             });
           })
           .catch((err) => {
+            logger.error('[IPCServer] spawn session threw', toError(err), {
+              agent: msg.opts.agent,
+              directory: msg.opts.directory,
+            });
             this.writeToSocket(socket, {
               type: 'spawn_result',
               sessionId: '',
@@ -400,7 +423,7 @@ export class IPCServer {
         if (ptySession) {
           ptySession.sendPtyInput(msg.data);
         } else {
-          logger.debug('[IPCServer] pty_data: session not found', { sessionId: msg.sessionId });
+          logger.warn('[IPCServer] pty_data: session not found, data dropped', { sessionId: msg.sessionId });
         }
         break;
       }
@@ -411,7 +434,7 @@ export class IPCServer {
         if (resizeSession) {
           resizeSession.resizePty(msg.cols, msg.rows);
         } else {
-          logger.debug('[IPCServer] pty_resize: session not found', { sessionId: msg.sessionId });
+          logger.warn('[IPCServer] pty_resize: session not found', { sessionId: msg.sessionId });
         }
         break;
       }
@@ -423,7 +446,7 @@ export class IPCServer {
           logger.info('[IPCServer] switch_mode routed to session', { sessionId: msg.sessionId });
           switchSession.requestSwitchToLocal();
         } else {
-          logger.debug('[IPCServer] switch_mode: session not found', { sessionId: msg.sessionId });
+          logger.warn('[IPCServer] switch_mode: session not found', { sessionId: msg.sessionId });
         }
         break;
       }
@@ -462,6 +485,8 @@ export class IPCServer {
   private writeToSocket(socket: net.Socket, msg: IPCServerMessage): void {
     if (socket.writable) {
       socket.write(JSON.stringify(msg) + '\n');
+    } else {
+      logger.warn('[IPCServer] writeToSocket: socket not writable, message dropped', { type: msg.type });
     }
   }
 
