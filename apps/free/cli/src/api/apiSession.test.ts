@@ -846,6 +846,36 @@ describe('ApiSessionClient v3 messages API migration', () => {
     expect((client as any).lastSeq).toBe(11);
   });
 
+  it('flushOutbox sends in batches when outbox exceeds FLUSH_BATCH_SIZE', async () => {
+    const client = new ApiSessionClient('fake-token', session);
+
+    mockAxiosPost.mockImplementation(async () => ({
+      data: { messages: [] },
+    }));
+
+    // Directly populate pendingOutbox with 150 pre-encrypted messages
+    const totalMessages = 150;
+    const outbox = (client as any).pendingOutbox as Array<{ content: string; id: string }>;
+    for (let i = 0; i < totalMessages; i++) {
+      outbox.push({ content: `encrypted-${i}`, id: `id-${i}` });
+    }
+
+    // Trigger flush
+    (client as any).sendSync.invalidate();
+
+    await waitForCheck(() => {
+      expect((client as any).pendingOutbox).toHaveLength(0);
+    });
+
+    // Every batch must be <= 100 and total sent must equal 150
+    const batchSizes = mockAxiosPost.mock.calls.map(
+      (call: any[]) => (call[1].messages as unknown[]).length
+    );
+    expect(batchSizes.length).toBeGreaterThanOrEqual(2);
+    expect(batchSizes.every((s: number) => s <= 100)).toBe(true);
+    expect(batchSizes.reduce((a: number, b: number) => a + b, 0)).toBe(totalMessages);
+  });
+
   it('flushOutbox tolerates missing response.data.messages and keeps lastSeq unchanged', async () => {
     const client = new ApiSessionClient('fake-token', session);
     (client as any).lastSeq = 7;

@@ -487,6 +487,9 @@ export class ApiSessionClient extends EventEmitter {
     }
   }
 
+  /** Server accepts at most 100 messages per POST. */
+  private static readonly FLUSH_BATCH_SIZE = 100;
+
   private async flushOutbox() {
     if (this.pendingOutbox.length === 0) {
       return;
@@ -502,72 +505,85 @@ export class ApiSessionClient extends EventEmitter {
       return;
     }
 
-    const batch = this.pendingOutbox.slice();
-    logger.debug('[apiSession] flushing outbox', {
-      userId: this.userId,
-      sessionId: this.sessionId,
-      count: batch.length,
-      ids: batch.map(m => m.id),
-      traceIds: batch.map(m => m._trace?.tid).filter(Boolean),
-    });
-
-    let response: Awaited<ReturnType<typeof axios.post<V3PostSessionMessagesResponse>>>;
-    try {
-      response = await axios.post<V3PostSessionMessagesResponse>(
-        `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-        {
-          messages: batch,
-        },
-        {
-          headers: {
-            ...this.authHeaders(),
-            'X-Socket-Id': this.socket.id ?? '',
-          },
-          timeout: 60000,
-        }
-      );
-    } catch (err: unknown) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      const errorMessage = safeStringify(err);
-      logger.error('[apiSession] outbox flush failed', undefined, {
-        userId: this.userId,
-        sessionId: this.sessionId,
-        traceId: getProcessTraceContext()?.traceId,
-        count: batch.length,
-        ids: batch.map(m => m.id),
-        status,
-        error: errorMessage,
-      });
-      // Session deleted on the server — stop sending permanently, don't retry.
-      if (status === 404) {
-        this.sendSync.stop();
-        return;
-      }
-      // Don't retry if socket disconnected after we started
+    // Drain in batches — server schema limits each POST to 100 messages.
+    while (this.pendingOutbox.length > 0) {
       if (!this.socket.connected) {
-        logger.debug('[apiSession] socket disconnected during flush, stopping retry', {
+        logger.debug('[apiSession] socket disconnected mid-flush, will resume later', {
           sessionId: this.sessionId,
+          remaining: this.pendingOutbox.length,
         });
         return;
       }
-      throw err;
+
+      const batch = this.pendingOutbox.slice(0, ApiSessionClient.FLUSH_BATCH_SIZE);
+      logger.debug('[apiSession] flushing outbox', {
+        userId: this.userId,
+        sessionId: this.sessionId,
+        count: batch.length,
+        total: this.pendingOutbox.length,
+        ids: batch.map(m => m.id),
+        traceIds: batch.map(m => m._trace?.tid).filter(Boolean),
+      });
+
+      let response: Awaited<ReturnType<typeof axios.post<V3PostSessionMessagesResponse>>>;
+      try {
+        response = await axios.post<V3PostSessionMessagesResponse>(
+          `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+          {
+            messages: batch,
+          },
+          {
+            headers: {
+              ...this.authHeaders(),
+              'X-Socket-Id': this.socket.id ?? '',
+            },
+            timeout: 60000,
+          }
+        );
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        const errorMessage = safeStringify(err);
+        logger.error('[apiSession] outbox flush failed', undefined, {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          traceId: getProcessTraceContext()?.traceId,
+          count: batch.length,
+          ids: batch.map(m => m.id),
+          status,
+          error: errorMessage,
+        });
+        // Session deleted on the server — stop sending permanently, don't retry.
+        if (status === 404) {
+          this.sendSync.stop();
+          return;
+        }
+        // Don't retry if socket disconnected after we started
+        if (!this.socket.connected) {
+          logger.debug('[apiSession] socket disconnected during flush, stopping retry', {
+            sessionId: this.sessionId,
+          });
+          return;
+        }
+        throw err;
+      }
+
+      this.pendingOutbox.splice(0, batch.length);
+
+      const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+      const maxSeq = messages.reduce(
+        (acc, message) => (message.seq > acc ? message.seq : acc),
+        this.lastSeq
+      );
+      this.lastSeq = maxSeq;
+      logger.debug('[apiSession] outbox batch flushed', {
+        userId: this.userId,
+        sessionId: this.sessionId,
+        count: batch.length,
+        remaining: this.pendingOutbox.length,
+        ids: batch.map(m => m.id),
+        traceIds: batch.map(m => m._trace?.tid).filter(Boolean),
+      });
     }
-
-    this.pendingOutbox.splice(0, batch.length);
-
-    const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
-    const maxSeq = messages.reduce(
-      (acc, message) => (message.seq > acc ? message.seq : acc),
-      this.lastSeq
-    );
-    this.lastSeq = maxSeq;
-    logger.debug('[apiSession] outbox flushed', {
-      userId: this.userId,
-      sessionId: this.sessionId,
-      count: batch.length,
-      ids: batch.map(m => m.id),
-      traceIds: batch.map(m => m._trace?.tid).filter(Boolean),
-    });
   }
 
   private async enqueueMessage(content: unknown): Promise<string> {
