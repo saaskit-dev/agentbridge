@@ -5,6 +5,8 @@ export interface DeviceMetadata {
   appVersion: string
   layer: string
   machineId?: string
+  env?: string
+  serverIp?: string
 }
 
 export interface RemoteRequest {

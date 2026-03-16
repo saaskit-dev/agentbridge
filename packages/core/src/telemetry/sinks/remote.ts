@@ -76,31 +76,45 @@ export class RemoteSink implements LogSink {
       clearInterval(this.flushTimer)
       this.flushTimer = null
     }
-    await this.doFlush()
+    // Drain all remaining batches on shutdown
+    while (this.buffer.length > 0) {
+      const before = this.buffer.length
+      await this.doFlush()
+      // If doFlush made no progress (backend not ready / network error), stop
+      if (this.buffer.length >= before) break
+    }
   }
 
   private async doFlush(): Promise<void> {
     if (this.flushing) return
     this.flushing = true
     try {
-      const batch = this.buffer.splice(0, this.batchSize)
-      if (batch.length === 0) return
+      while (this.buffer.length > 0) {
+        const batch = this.buffer.splice(0, this.batchSize)
 
-      const request = this.backend.buildRequest(batch, this.metadata)
-      if (!request) {
-        // Backend not ready (e.g. no auth token), put entries back
-        this.buffer.unshift(...batch)
-        return
-      }
+        const request = this.backend.buildRequest(batch, this.metadata)
+        if (!request) {
+          // Backend not ready (e.g. no auth token), put entries back
+          this.buffer.unshift(...batch)
+          return
+        }
 
-      try {
-        await fetch(request.url, {
-          method: request.method,
-          headers: request.headers,
-          body: request.body,
-        })
-      } catch {
-        // Silent drop. Telemetry must never block the user.
+        try {
+          const res = await fetch(request.url, {
+            method: request.method,
+            headers: request.headers,
+            body: request.body,
+          })
+          if (!res.ok) {
+            // Server error — put entries back for next retry cycle
+            this.buffer.unshift(...batch)
+            return
+          }
+        } catch {
+          // Network error — put entries back for next retry cycle
+          this.buffer.unshift(...batch)
+          return
+        }
       }
     } finally {
       this.flushing = false
