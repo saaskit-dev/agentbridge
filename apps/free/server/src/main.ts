@@ -1,5 +1,5 @@
 import { createRequire } from 'module';
-import { homedir } from 'os';
+import { homedir, networkInterfaces } from 'os';
 import { join } from 'path';
 import { auth } from './app/auth/auth';
 import { startTimeout } from './app/presence/timeout';
@@ -54,6 +54,17 @@ const sinks: LogSink[] = [
   }),
 ];
 
+function getServerIp(): string | undefined {
+  const interfaces = networkInterfaces();
+  for (const addrs of Object.values(interfaces)) {
+    if (!addrs) continue;
+    for (const addr of addrs) {
+      if (addr.family === 'IPv4' && !addr.internal) return addr.address;
+    }
+  }
+  return undefined;
+}
+
 const nrLicenseKey = process.env.NEW_RELIC_LICENSE_KEY;
 if (nrLicenseKey) {
   sinks.push(
@@ -66,6 +77,8 @@ if (nrLicenseKey) {
         deviceId: `server-${process.pid}`,
         appVersion: getServerVersion(),
         layer: 'server',
+        env: process.env.APP_ENV || process.env.NODE_ENV || 'unknown',
+        serverIp: getServerIp(),
       },
     })
   );

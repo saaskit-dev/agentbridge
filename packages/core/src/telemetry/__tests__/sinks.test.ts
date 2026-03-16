@@ -451,7 +451,7 @@ describe('RemoteSink', () => {
     await sink.close()
   })
 
-  it('default minLevel is info — drops debug entries (RFC §22.1)', async () => {
+  it('default minLevel is debug — keeps all levels (RFC §22.1)', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true })
     vi.stubGlobal('fetch', mockFetch)
 
@@ -460,21 +460,20 @@ describe('RemoteSink', () => {
       batchSize: 10,
       flushIntervalMs: 100_000,
       metadata: { deviceId: 'dev-1', appVersion: '1.0', layer: 'test' },
-      // no minLevel specified — should default to 'info'
+      // no minLevel specified — should default to 'debug'
     })
 
-    sink.write(makeEntry({ level: 'debug' }))   // should be dropped
-    sink.write(makeEntry({ level: 'info' }))    // should be kept
-    sink.write(makeEntry({ level: 'warn' }))    // should be kept
+    sink.write(makeEntry({ level: 'debug' }))
+    sink.write(makeEntry({ level: 'info' }))
+    sink.write(makeEntry({ level: 'warn' }))
 
     await sink.flush()
 
-    if (mockFetch.mock.calls.length > 0) {
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body) as Array<{ logs: Array<{ level: string }> }>
-      const levels = body[0].logs.map(e => e.level)
-      expect(levels).not.toContain('debug')
-    }
-    // Even if nothing was flushed (all dropped), at least debug should be absent
+    expect(mockFetch).toHaveBeenCalledOnce()
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body) as Array<{ logs: Array<{ level: string }> }>
+    const levels = body[0].logs.map(e => e.level)
+    expect(levels).toEqual(['debug', 'info', 'warn'])
+
     await sink.close()
     vi.unstubAllGlobals()
   })
@@ -547,6 +546,121 @@ describe('RemoteSink', () => {
     vi.unstubAllGlobals()
     await sink.close()
   })
+
+  it('close() drains all batches, not just one', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const sink = new RemoteSink({
+      backend: new NewRelicBackend({ licenseKey: 'key' }),
+      batchSize: 2,
+      flushIntervalMs: 100_000,
+      minLevel: 'debug',
+      metadata: { deviceId: 'dev-1', appVersion: '1.0', layer: 'test' },
+    })
+
+    // Write 5 entries with batchSize=2, should need 3 flush calls
+    for (let i = 1; i <= 5; i++) {
+      sink.write(makeEntry({ message: `msg-${i}` }))
+    }
+
+    await sink.close()
+
+    // All entries should have been sent across multiple batches
+    const allMessages = mockFetch.mock.calls.flatMap(([, opts]) => {
+      const body = JSON.parse(opts.body) as Array<{ logs: Array<{ message: string }> }>
+      return body[0].logs.map(l => l.message)
+    })
+    expect(allMessages).toHaveLength(5)
+    for (let i = 1; i <= 5; i++) {
+      expect(allMessages).toContain(`msg-${i}`)
+    }
+
+    vi.unstubAllGlobals()
+  })
+
+  it('retains entries in buffer on fetch network error', async () => {
+    const mockFetch = vi.fn().mockRejectedValue(new Error('network down'))
+    vi.stubGlobal('fetch', mockFetch)
+
+    const sink = new RemoteSink({
+      backend: new NewRelicBackend({ licenseKey: 'key' }),
+      batchSize: 2,
+      flushIntervalMs: 100_000,
+      minLevel: 'debug',
+      metadata: { deviceId: 'dev-1', appVersion: '1.0', layer: 'test' },
+    })
+
+    sink.write(makeEntry({ message: 'a' }))
+    sink.write(makeEntry({ message: 'b' }))
+    await sink.flush()
+
+    // Entries should be back in buffer, not lost
+    const buf = (sink as any).buffer as Array<{ message: string }>
+    expect(buf).toHaveLength(2)
+
+    vi.unstubAllGlobals()
+    // Prevent close from retrying
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+    await sink.close()
+    vi.unstubAllGlobals()
+  })
+
+  it('retains entries in buffer on HTTP 500 response', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500 })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const sink = new RemoteSink({
+      backend: new NewRelicBackend({ licenseKey: 'key' }),
+      batchSize: 2,
+      flushIntervalMs: 100_000,
+      minLevel: 'debug',
+      metadata: { deviceId: 'dev-1', appVersion: '1.0', layer: 'test' },
+    })
+
+    sink.write(makeEntry({ message: 'x' }))
+    sink.write(makeEntry({ message: 'y' }))
+    await sink.flush()
+
+    const buf = (sink as any).buffer as Array<{ message: string }>
+    expect(buf).toHaveLength(2)
+
+    vi.unstubAllGlobals()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
+    await sink.close()
+    vi.unstubAllGlobals()
+  })
+
+  it('doFlush sends multiple batches in one call', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const sink = new RemoteSink({
+      backend: new NewRelicBackend({ licenseKey: 'key' }),
+      batchSize: 2,
+      flushIntervalMs: 100_000,
+      minLevel: 'debug',
+      metadata: { deviceId: 'dev-1', appVersion: '1.0', layer: 'test' },
+    })
+
+    // Write 4 entries without triggering auto-flush (we'll call flush manually)
+    // batchSize=2, so 4 entries should need 2 fetch calls in one flush
+    ;(sink as any).buffer = [
+      makeEntry({ message: 'm1' }),
+      makeEntry({ message: 'm2' }),
+      makeEntry({ message: 'm3' }),
+      makeEntry({ message: 'm4' }),
+    ]
+
+    await sink.flush()
+
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    const buf = (sink as any).buffer
+    expect(buf).toHaveLength(0)
+
+    vi.unstubAllGlobals()
+    await sink.close()
+  })
 })
 
 describe('NewRelicBackend', () => {
@@ -587,16 +701,18 @@ describe('NewRelicBackend', () => {
     expect('parentSpanId' in attrs).toBe(false)
     expect('sessionId' in attrs).toBe(false)
     expect('durationMs' in attrs).toBe(false)
-    // machineId in common should also be omitted when not provided
+    // machineId, env, serverIp in common should also be omitted when not provided
     const common = JSON.parse(req.body)[0].common.attributes
     expect('machine.id' in common).toBe(false)
+    expect('deployment.environment' in common).toBe(false)
+    expect('server.ip' in common).toBe(false)
   })
 
   it('includes optional attributes when present', () => {
     const backend = new NewRelicBackend({ licenseKey: 'key' })
     const req = backend.buildRequest(
       [makeEntry({ traceId: 'tid', spanId: 'sid', durationMs: 42 })],
-      { deviceId: 'dev-1', appVersion: '1.0', layer: 'cli', machineId: 'machine-1' },
+      { deviceId: 'dev-1', appVersion: '1.0', layer: 'cli', machineId: 'machine-1', env: 'production', serverIp: '10.0.1.5' },
     )!
     const attrs = JSON.parse(req.body)[0].logs[0].attributes
     expect(attrs.traceId).toBe('tid')
@@ -604,6 +720,8 @@ describe('NewRelicBackend', () => {
     expect(attrs.durationMs).toBe(42)
     const common = JSON.parse(req.body)[0].common.attributes
     expect(common['machine.id']).toBe('machine-1')
+    expect(common['deployment.environment']).toBe('production')
+    expect(common['server.ip']).toBe('10.0.1.5')
   })
 
   it('core fields win over user data with same key (RFC field priority)', () => {

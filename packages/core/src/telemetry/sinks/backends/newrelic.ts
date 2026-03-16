@@ -27,6 +27,8 @@ export class NewRelicBackend implements RemoteBackend {
           'app.version': meta.appVersion,
           'telemetry.layer': meta.layer,
           ...(meta.machineId ? { 'machine.id': meta.machineId } : {}),
+          ...(meta.env ? { 'deployment.environment': meta.env } : {}),
+          ...(meta.serverIp ? { 'server.ip': meta.serverIp } : {}),
         },
       },
       logs: entries.map(entry => ({

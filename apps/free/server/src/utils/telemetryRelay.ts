@@ -66,68 +66,77 @@ export class TelemetryRelay {
     this.flushing = true;
 
     try {
-      const batch = this.buffer.splice(0, this.batchSize);
+      while (this.buffer.length > 0) {
+        const batch = this.buffer.splice(0, this.batchSize);
 
-      // Group by source metadata
-      const groups = new Map<string, { meta: DeviceMetadata; entries: LogEntry[] }>();
-      for (const { entry, metadata } of batch) {
-        const key = `${metadata.deviceId}|${metadata.layer}|${metadata.appVersion}`;
-        let g = groups.get(key);
-        if (!g) {
-          g = { meta: metadata, entries: [] };
-          groups.set(key, g);
+        // Group by source metadata
+        const groups = new Map<string, { meta: DeviceMetadata; entries: LogEntry[] }>();
+        for (const { entry, metadata } of batch) {
+          const key = `${metadata.deviceId}|${metadata.layer}|${metadata.appVersion}`;
+          let g = groups.get(key);
+          if (!g) {
+            g = { meta: metadata, entries: [] };
+            groups.set(key, g);
+          }
+          g.entries.push(entry);
         }
-        g.entries.push(entry);
-      }
 
-      // Build NR Log API payload — one block per source group
-      const payload = Array.from(groups.values()).map(({ meta, entries }) => ({
-        common: {
-          attributes: {
-            'service.name': 'agentbridge',
-            'device.id': meta.deviceId,
-            'app.version': meta.appVersion,
-            'telemetry.layer': meta.layer,
-            'telemetry.source': 'relay',
-            ...(meta.machineId ? { 'machine.id': meta.machineId } : {}),
+        // Build NR Log API payload — one block per source group
+        const payload = Array.from(groups.values()).map(({ meta, entries }) => ({
+          common: {
+            attributes: {
+              'service.name': 'agentbridge',
+              'device.id': meta.deviceId,
+              'app.version': meta.appVersion,
+              'telemetry.layer': meta.layer,
+              'telemetry.source': 'relay',
+              ...(meta.machineId ? { 'machine.id': meta.machineId } : {}),
+            },
           },
-        },
-        logs: entries.map((e) => ({
-          timestamp: new Date(e.timestamp).getTime(),
-          message: e.message,
-          level: e.level,
-          attributes: {
-            ...e.data,
-            component: e.component,
-            layer: e.layer,
-            ...(e.traceId ? { traceId: e.traceId } : {}),
-            ...(e.spanId ? { spanId: e.spanId } : {}),
-            ...(e.parentSpanId ? { parentSpanId: e.parentSpanId } : {}),
-            ...(e.sessionId ? { sessionId: e.sessionId } : {}),
-            ...(e.machineId ? { machineId: e.machineId } : {}),
-            ...(e.durationMs != null ? { durationMs: e.durationMs } : {}),
-            ...(e.error
-              ? {
-                  'error.message': e.error.message,
-                  'error.stack': e.error.stack,
-                  'error.code': e.error.code,
-                }
-              : {}),
-          },
-        })),
-      }));
+          logs: entries.map((e) => ({
+            timestamp: new Date(e.timestamp).getTime(),
+            message: e.message,
+            level: e.level,
+            attributes: {
+              ...e.data,
+              component: e.component,
+              layer: e.layer,
+              ...(e.traceId ? { traceId: e.traceId } : {}),
+              ...(e.spanId ? { spanId: e.spanId } : {}),
+              ...(e.parentSpanId ? { parentSpanId: e.parentSpanId } : {}),
+              ...(e.sessionId ? { sessionId: e.sessionId } : {}),
+              ...(e.machineId ? { machineId: e.machineId } : {}),
+              ...(e.durationMs != null ? { durationMs: e.durationMs } : {}),
+              ...(e.error
+                ? {
+                    'error.message': e.error.message,
+                    'error.stack': e.error.stack,
+                    'error.code': e.error.code,
+                  }
+                : {}),
+            },
+          })),
+        }));
 
-      try {
-        await fetch(`${this.baseUrl}/log/v1`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Api-Key': this.licenseKey,
-          },
-          body: JSON.stringify(payload),
-        });
-      } catch {
-        // Silent drop — telemetry must never block the server
+        try {
+          const res = await fetch(`${this.baseUrl}/log/v1`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Api-Key': this.licenseKey,
+            },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            // Server error — put entries back for next retry cycle
+            this.buffer.unshift(...batch);
+            return;
+          }
+        } catch {
+          // Network error — put entries back for next retry cycle
+          this.buffer.unshift(...batch);
+          return;
+        }
       }
     } finally {
       this.flushing = false;
@@ -139,7 +148,12 @@ export class TelemetryRelay {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
     }
-    await this.flush();
+    // Drain all remaining batches on shutdown
+    while (this.buffer.length > 0) {
+      const before = this.buffer.length;
+      await this.flush();
+      if (this.buffer.length >= before) break;
+    }
   }
 }
 

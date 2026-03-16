@@ -2437,7 +2437,7 @@ No longer needed. Section 21.2 was simplified: RemoteSink uploads App/CLI logs t
 
 No more architecture issues. These are practical details that would block implementation if left unspecified.
 
-### 22.1 RemoteSink minLevel Should Default to 'info', Not 'warn'
+### 22.1 RemoteSink minLevel Should Default to 'debug', Not 'warn'
 
 **Current spec (Section 5.5):** `minLevel: 'warn'`
 
@@ -2452,12 +2452,12 @@ No more architecture issues. These are practical details that would block implem
 
 Without the breadcrumbs, the error is an orphan -- we see it failed but not what led to it.
 
-**Volume estimate at info level:**
-- ~10 info entries/min/session * 200 bytes = ~2KB/min
-- 5 sessions * 8 hours = ~5MB/day per user
-- Acceptable for mobile data and server storage
+**Volume estimate at debug level:**
+- ~50 debug entries/min/session * 200 bytes = ~10KB/min
+- 5 sessions * 8 hours = ~24MB/day per user
+- Acceptable given NR compression and retention policies
 
-**Corrected default:** `minLevel: 'info'`. Debug stays local only -- it's too noisy for remote upload (~50 entries/min/session).
+**Corrected default:** `minLevel: 'debug'`. All levels uploaded to enable full remote debugging. Use `componentLevels` to throttle noisy components (e.g. streaming handlers).
 
 ### 22.2 RemoteSink Needs Lazy Auth Token
 
@@ -2747,7 +2747,7 @@ class RemoteSink implements LogSink {
     batchSize?: number          // default: 50
     flushIntervalMs?: number    // default: 30_000
     maxBufferSize?: number      // default: 500
-    minLevel?: Level            // default: 'info' (see Section 22.1)
+    minLevel?: Level            // default: 'debug' (see Section 22.1)
     metadata: DeviceMetadata
   })
 
@@ -3254,7 +3254,7 @@ packages/core/src/telemetry/
 ### 与原始设计的偏差
 
 1. **FileSink 文件轮转**：RFC 设计按秒+PID 分文件（`{prefix}-{YYYY-MM-DD}-{HH-MM-SS}-{pid}.jsonl`），实际按小时轮转（`{prefix}-{YYYY-MM-DD}-{HH}.jsonl`），减少文件碎片。额外支持 `bufferFlushMs` 异步 buffer（server 模式）
-2. **RemoteSink 架构**：RFC 设计直接接收 `endpoint` + `authToken`，实际抽象为 `RemoteBackend` 接口 + 多后端实现（ServerRelay / Axiom / NewRelic）。`minLevel` 默认值为 `'debug'`（RFC §22.1 修订为 `'info'`，实际代码未完全对齐）
+2. **RemoteSink 架构**：RFC 设计直接接收 `endpoint` + `authToken`，实际抽象为 `RemoteBackend` 接口 + 多后端实现（ServerRelay / Axiom / NewRelic）。`minLevel` 默认值为 `'debug'`（RFC §22.1 已对齐）
 3. **Exporter 输出**：RFC 描述 `timeline.json`，实际输出 `environment.json`
 4. **额外功能**：`componentLevels`（按组件级别过滤）、`setGlobalContextProvider()`（全局 trace provider）、`setIdGenerator()`（自定义 ID 策略）、`isCollectorReady()`、`cleanupOldLogs()` — RFC 未提，均为实现中发现的实际需求
 5. **Layer 类型**：RFC §3.3 定义封闭 union `'app' | 'server' | 'cli' | 'daemon' | 'agent'`，§17.8 修正为 `string`，实现遵循修正
