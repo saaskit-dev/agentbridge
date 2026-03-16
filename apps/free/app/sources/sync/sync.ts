@@ -1627,6 +1627,9 @@ class Sync {
     }
   };
 
+  /** Server accepts at most 100 messages per POST. */
+  private static readonly FLUSH_BATCH_SIZE = 100;
+
   private flushOutbox = async (sessionId: string) => {
     const pending = this.pendingOutbox.get(sessionId);
     if (!pending || pending.length === 0) {
@@ -1638,55 +1641,56 @@ class Sync {
       return;
     }
 
-    const batch = pending.slice();
-    logger.debug('flushOutbox: sending batch', { sessionId, batchSize: batch.length });
-    const controller = new AbortController();
-    this.sendAbortControllers.set(sessionId, controller);
-    try {
-      const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({
-          messages: batch.map(message => ({
-            id: message.id,
-            content: message.content,
-            ...(message._trace ? { _trace: message._trace } : {}),
-          })),
-        }),
-        headers: {
-          'Content-Type': 'application/json',
-          // RFC §7.2: carry trace context in HTTP headers for server-side log correlation
-          ...(batch[0]?._trace ? { 'X-Trace-Id': batch[0]._trace.tid, 'X-Span-Id': batch[0]._trace.sid } : {}),
-        },
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to send messages for ${sessionId}: ${response.status}`);
-      }
-
-      const data = (await response.json()) as V3PostSessionMessagesResponse;
-      logger.debug('flushOutbox: batch sent successfully', { sessionId, batchSize: batch.length });
-      pending.splice(0, batch.length);
-      if (Array.isArray(data.messages) && data.messages.length > 0) {
-        const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
-        let maxSeq = currentLastSeq;
-        for (const message of data.messages) {
-          if (message.seq > maxSeq) {
-            maxSeq = message.seq;
-          }
+    // Drain in batches — server schema limits each POST to 100 messages.
+    while (pending.length > 0) {
+      const batch = pending.slice(0, Sync.FLUSH_BATCH_SIZE);
+      logger.debug('flushOutbox: sending batch', { sessionId, batchSize: batch.length, total: pending.length });
+      const controller = new AbortController();
+      this.sendAbortControllers.set(sessionId, controller);
+      try {
+        const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({
+            messages: batch.map(message => ({
+              id: message.id,
+              content: message.content,
+              ...(message._trace ? { _trace: message._trace } : {}),
+            })),
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+            // RFC §7.2: carry trace context in HTTP headers for server-side log correlation
+            ...(batch[0]?._trace ? { 'X-Trace-Id': batch[0]._trace.tid, 'X-Span-Id': batch[0]._trace.sid } : {}),
+          },
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to send messages for ${sessionId}: ${response.status}`);
         }
-        this.sessionLastSeq.set(sessionId, maxSeq);
+
+        const data = (await response.json()) as V3PostSessionMessagesResponse;
+        logger.debug('flushOutbox: batch sent successfully', { sessionId, batchSize: batch.length, remaining: pending.length - batch.length });
+        pending.splice(0, batch.length);
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+          let maxSeq = currentLastSeq;
+          for (const message of data.messages) {
+            if (message.seq > maxSeq) {
+              maxSeq = message.seq;
+            }
+          }
+          this.sessionLastSeq.set(sessionId, maxSeq);
+        }
+      } catch (error) {
+        logger.error('flushOutbox: failed to send batch', toError(error), { sessionId, batchSize: batch.length });
+        this.maybeStartBackgroundSendWatchdog();
+        throw error;
+      } finally {
+        this.sendAbortControllers.delete(sessionId);
       }
-    } catch (error) {
-      logger.error('flushOutbox: failed to send batch', toError(error), { sessionId, batchSize: batch.length });
-      this.maybeStartBackgroundSendWatchdog();
-      throw error;
-    } finally {
-      this.sendAbortControllers.delete(sessionId);
     }
 
-    if (pending.length === 0) {
-      this.pendingOutbox.delete(sessionId);
-    }
+    this.pendingOutbox.delete(sessionId);
     if (!this.hasPendingOutboxMessages()) {
       this.clearBackgroundSendWatchdog();
       await this.cancelBackgroundSendTimeoutNotification();
