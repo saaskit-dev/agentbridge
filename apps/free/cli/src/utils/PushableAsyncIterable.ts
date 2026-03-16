@@ -2,6 +2,7 @@
  * PushableAsyncIterable - A generic async iterable that allows external pushing
  * Provides a clean API for creating async iterables that can be pushed to from external sources
  */
+import { toError } from '@saaskit-dev/agentbridge';
 
 /**
  * A pushable async iterable implementation
@@ -24,7 +25,11 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
    */
   push(value: T): void {
     if (this.isDone) {
-      throw new Error('Cannot push to completed iterable');
+      // Silently drop — this can happen legitimately when a backend pushes
+      // a final message concurrently with output.end() (e.g. PTY onData
+      // firing in the same tick as onExit). Throwing here would crash the
+      // daemon process.
+      return;
     }
 
     if (this.error) {
@@ -116,7 +121,7 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
    * AsyncIterableIterator throw implementation
    */
   async throw(e: any): Promise<IteratorResult<T>> {
-    this.setError(e instanceof Error ? e : new Error(String(e)));
+    this.setError(toError(e));
     throw this.error;
   }
 

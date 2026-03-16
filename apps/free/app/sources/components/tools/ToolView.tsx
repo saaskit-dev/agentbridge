@@ -267,7 +267,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
         ) {
           return (
             <View style={styles.content}>
-              <ToolError message={String(tool.result)} />
+              <ToolError message={tool.result} />
             </View>
           );
         }

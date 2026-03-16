@@ -8,7 +8,7 @@
  * ## Core Responsibilities:
  *
  * 1. **Message Deduplication**: Prevents duplicate messages using multiple tracking mechanisms:
- *    - localId tracking for user messages
+ *    - processedIds tracking for deduplication
  *    - messageId tracking for all messages
  *    - Permission ID tracking for tool permissions
  *
@@ -130,7 +130,6 @@ type ReducerMessage = {
   event: AgentEvent | null;
   tool: ToolCall | null;
   meta?: MessageMeta;
-  localId?: string | null;
   traceId?: string;
 };
 
@@ -150,9 +149,10 @@ export type ReducerState = {
   toolIdToMessageId: Map<string, string>; // toolId/permissionId -> messageId (since they're the same now)
   sidechainToolIdToMessageId: Map<string, string>; // toolId -> sidechain messageId (for dual tracking)
   permissions: Map<string, StoredPermission>; // Store permission details by ID for quick lookup
-  localIds: Map<string, string>;
+  processedIds: Map<string, string>;
   messageIds: Map<string, string>; // originalId -> internalId
   messages: Map<string, ReducerMessage>;
+  rootMessageIds: string[];
   sidechains: Map<string, ReducerMessage[]>;
   tracerState: TracerState; // Tracer state for sidechain processing
   latestTodos?: {
@@ -180,7 +180,8 @@ export function createReducer(): ReducerState {
     sidechainToolIdToMessageId: new Map(),
     permissions: new Map(),
     messages: new Map(),
-    localIds: new Map(),
+    rootMessageIds: [],
+    processedIds: new Map(),
     messageIds: new Map(),
     sidechains: new Map(),
     tracerState: createTracer(),
@@ -188,6 +189,7 @@ export function createReducer(): ReducerState {
 }
 
 const ENABLE_LOGGING = false;
+const STREAM_CHUNK_WINDOW_MS = 60_000;
 
 export type ReducerResult = {
   messages: Message[];
@@ -205,6 +207,7 @@ export type ReducerResult = {
     contextSize: number;
   };
   hasReadyEvent?: boolean;
+  latestStatus?: 'working' | 'idle';
 };
 
 export function reducer(
@@ -231,6 +234,7 @@ export function reducer(
   const newMessages: Message[] = [];
   const changed: Set<string> = new Set();
   let hasReadyEvent = false;
+  let latestStatus: 'working' | 'idle' | undefined;
 
   // First, trace all messages to identify sidechains
   const tracedMessages = traceMessages(state.tracerState, messages);
@@ -253,7 +257,7 @@ export function reducer(
 
   for (const msg of nonSidechainMessages) {
     // Check if we've already processed this message
-    if (msg.role === 'user' && msg.localId && state.localIds.has(msg.localId)) {
+    if (state.processedIds.has(msg.id)) {
       continue;
     }
     if (state.messageIds.has(msg.id)) {
@@ -265,6 +269,12 @@ export function reducer(
       // Mark as processed to prevent duplication but don't add to messages
       state.messageIds.set(msg.id, msg.id);
       hasReadyEvent = true;
+      continue;
+    }
+
+    if (msg.role === 'event' && msg.content.type === 'status') {
+      state.messageIds.set(msg.id, msg.id);
+      latestStatus = msg.content.state;
       continue;
     }
 
@@ -327,9 +337,7 @@ export function reducer(
       convertedEvents.push({ message: msg, event });
       // Mark as processed to prevent duplication
       state.messageIds.set(msg.id, msg.id);
-      if (msg.role === 'user' && msg.localId) {
-        state.localIds.set(msg.localId, msg.id);
-      }
+      state.processedIds.set(msg.id, msg.id);
     } else {
       messagesToProcess.push(msg);
     }
@@ -338,7 +346,7 @@ export function reducer(
   // Process converted events immediately
   for (const { message, event } of convertedEvents) {
     const mid = allocateId();
-    state.messages.set(mid, {
+    storeRootMessage(state, {
       id: mid,
       realID: message.id,
       role: 'agent',
@@ -419,7 +427,7 @@ export function reducer(
             },
           };
 
-          state.messages.set(mid, {
+          storeRootMessage(state, {
             id: mid,
             realID: null,
             role: 'agent',
@@ -588,7 +596,7 @@ export function reducer(
             },
           };
 
-          state.messages.set(mid, {
+          storeRootMessage(state, {
             id: mid,
             realID: null,
             role: 'agent',
@@ -625,18 +633,14 @@ export function reducer(
 
   for (const msg of nonSidechainMessages) {
     if (msg.role === 'user') {
-      // Check if we've seen this localId before
-      if (msg.localId && state.localIds.has(msg.localId)) {
-        continue;
-      }
-      // Check if we've seen this message ID before
-      if (state.messageIds.has(msg.id)) {
+      // Check if we've seen this message before
+      if (state.processedIds.has(msg.id) || state.messageIds.has(msg.id)) {
         continue;
       }
 
       // Create a new message
       const mid = allocateId();
-      state.messages.set(mid, {
+      storeRootMessage(state, {
         id: mid,
         realID: msg.id,
         role: 'user',
@@ -645,14 +649,10 @@ export function reducer(
         tool: null,
         event: null,
         meta: msg.meta,
-        localId: msg.localId,
         traceId: msg.traceId,
       });
 
-      // Track both localId and messageId
-      if (msg.localId) {
-        state.localIds.set(msg.localId, mid);
-      }
+      state.processedIds.set(msg.id, mid);
       state.messageIds.set(msg.id, mid);
 
       changed.add(mid);
@@ -673,14 +673,27 @@ export function reducer(
       // Process text and thinking content (tool calls handled in Phase 2)
       for (const c of msg.content) {
         if (c.type === 'text' || c.type === 'thinking') {
-          const mid = allocateId();
           const isThinking = c.type === 'thinking';
-          state.messages.set(mid, {
+          const chunkText = isThinking ? c.thinking : c.text;
+
+          if (
+            msg.content.length === 1 &&
+            mergeIntoPreviousRootAgentText(state, msg.createdAt, chunkText, isThinking, msg.traceId)
+          ) {
+            const lastRootMessageId = state.rootMessageIds.at(-1);
+            if (lastRootMessageId) {
+              changed.add(lastRootMessageId);
+            }
+            continue;
+          }
+
+          const mid = allocateId();
+          storeRootMessage(state, {
             id: mid,
             realID: msg.id,
             role: 'agent',
             createdAt: msg.createdAt,
-            text: isThinking ? `*Thinking...*\n\n*${c.thinking}*` : c.text,
+            text: chunkText,
             isThinking,
             tool: null,
             event: null,
@@ -786,7 +799,7 @@ export function reducer(
             }
 
             const mid = allocateId();
-            state.messages.set(mid, {
+            storeRootMessage(state, {
               id: mid,
               realID: msg.id,
               role: 'agent',
@@ -1093,7 +1106,7 @@ export function reducer(
   for (const msg of nonSidechainMessages) {
     if (msg.role === 'event') {
       const mid = allocateId();
-      state.messages.set(mid, {
+      storeRootMessage(state, {
         id: mid,
         realID: msg.id,
         role: 'agent',
@@ -1143,6 +1156,7 @@ export function reducer(
         }
       : undefined,
     hasReadyEvent: hasReadyEvent || undefined,
+    latestStatus,
   };
 }
 
@@ -1171,6 +1185,38 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
   }
 }
 
+function storeRootMessage(state: ReducerState, message: ReducerMessage) {
+  state.messages.set(message.id, message);
+  state.rootMessageIds.push(message.id);
+}
+
+function getLastRootMessage(state: ReducerState): ReducerMessage | null {
+  const lastRootMessageId = state.rootMessageIds.at(-1);
+  if (!lastRootMessageId) return null;
+  return state.messages.get(lastRootMessageId) ?? null;
+}
+
+function mergeIntoPreviousRootAgentText(
+  state: ReducerState,
+  createdAt: number,
+  chunkText: string,
+  isThinking: boolean,
+  traceId?: string
+): boolean {
+  const previous = getLastRootMessage(state);
+  if (!previous) return false;
+  if (previous.role !== 'agent' || previous.text === null || previous.tool || previous.event) {
+    return false;
+  }
+  if (Boolean(previous.isThinking) !== isThinking) return false;
+  if (createdAt < previous.createdAt) return false;
+  if (createdAt - previous.createdAt > STREAM_CHUNK_WINDOW_MS) return false;
+  if (previous.traceId && traceId && previous.traceId !== traceId) return false;
+
+  previous.text += chunkText;
+  return true;
+}
+
 function convertReducerMessageToMessage(
   reducerMsg: ReducerMessage,
   state: ReducerState
@@ -1178,7 +1224,6 @@ function convertReducerMessageToMessage(
   if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
     return {
       id: reducerMsg.id,
-      localId: reducerMsg.localId ?? null,
       createdAt: reducerMsg.createdAt,
       kind: 'user-text',
       text: reducerMsg.text,
@@ -1189,10 +1234,12 @@ function convertReducerMessageToMessage(
   } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {
     return {
       id: reducerMsg.id,
-      localId: reducerMsg.localId ?? null,
+      ...(reducerMsg.realID ? { sourceId: reducerMsg.realID } : {}),
       createdAt: reducerMsg.createdAt,
       kind: 'agent-text',
-      text: reducerMsg.text,
+      text: reducerMsg.isThinking
+        ? `*Thinking...*\n\n*${reducerMsg.text}*`
+        : reducerMsg.text,
       ...(reducerMsg.isThinking && { isThinking: true }),
       meta: reducerMsg.meta,
       ...(reducerMsg.traceId && { traceId: reducerMsg.traceId }),
@@ -1210,7 +1257,6 @@ function convertReducerMessageToMessage(
 
     return {
       id: reducerMsg.id,
-      localId: reducerMsg.localId ?? null,
       createdAt: reducerMsg.createdAt,
       kind: 'tool-call',
       tool: { ...reducerMsg.tool },

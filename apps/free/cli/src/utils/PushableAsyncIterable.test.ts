@@ -125,11 +125,14 @@ describe('PushableAsyncIterable', () => {
     expect(results).toEqual([1, 2, 3]);
   });
 
-  it('should throw when pushing to completed iterable', () => {
+  it('should silently drop push after end()', () => {
     const iterable = new PushableAsyncIterable<number>();
     iterable.end();
 
-    expect(() => iterable.push(1)).toThrow('Cannot push to completed iterable');
+    // Should NOT throw — silently drops to avoid crashing the daemon when
+    // a backend pushes a late message concurrently with output.end().
+    expect(() => iterable.push(1)).not.toThrow();
+    expect(iterable.done).toBe(true);
   });
 
   it('should only allow single iteration', async () => {

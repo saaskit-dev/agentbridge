@@ -5,8 +5,9 @@
 
 import { Socket } from 'socket.io-client';
 import { RpcHandler, RpcHandlerMap, RpcRequest, RpcHandlerConfig } from './types';
-import { decodeBase64, encodeBase64, encrypt, decrypt } from '@/api/encryption';
+import { encryptToWireString, decryptFromWireString } from '@/api/encryption';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const defaultLogger = new Logger('api/rpc/RpcHandlerManager');
 
 export class RpcHandlerManager {
@@ -55,17 +56,14 @@ export class RpcHandlerManager {
       if (!handler) {
         this.logger('[RPC] [ERROR] Method not found', { method: request.method });
         const errorResponse = { error: 'Method not found' };
-        const encryptedError = encodeBase64(
-          encrypt(this.encryptionKey, this.encryptionVariant, errorResponse)
-        );
-        return encryptedError;
+        return await encryptToWireString(this.encryptionKey, this.encryptionVariant, errorResponse);
       }
 
       // Decrypt the incoming params
-      const decryptedParams = decrypt(
+      const decryptedParams = await decryptFromWireString(
         this.encryptionKey,
         this.encryptionVariant,
-        decodeBase64(request.params)
+        request.params
       );
 
       // Call the handler
@@ -77,20 +75,18 @@ export class RpcHandlerManager {
       });
 
       // Encrypt and return the response
-      const encryptedResponse = encodeBase64(
-        encrypt(this.encryptionKey, this.encryptionVariant, result)
-      );
+      const wireResponse = await encryptToWireString(this.encryptionKey, this.encryptionVariant, result);
       this.logger('[RPC] Sending encrypted response', {
         method: request.method,
-        responseLength: encryptedResponse.length,
+        responseLength: wireResponse.length,
       });
-      return encryptedResponse;
+      return wireResponse;
     } catch (error) {
       this.logger('[RPC] [ERROR] Error handling request', { error });
       const errorResponse = {
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: safeStringify(error),
       };
-      return encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, errorResponse));
+      return await encryptToWireString(this.encryptionKey, this.encryptionVariant, errorResponse);
     }
   }
 

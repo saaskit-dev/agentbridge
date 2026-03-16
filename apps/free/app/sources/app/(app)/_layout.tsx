@@ -118,6 +118,12 @@ export default function RootLayout() {
         }}
       />
       <Stack.Screen
+        name="settings/features/permissionMode"
+        options={{
+          headerTitle: t('agentInput.permissionMode.title'),
+        }}
+      />
+      <Stack.Screen
         name="settings/diagnostics"
         options={{
           headerTitle: t('diagnostics.title'),
@@ -312,7 +318,7 @@ export default function RootLayout() {
         }}
       />
       <Stack.Screen
-        name="new/pick/profile-edit"
+        name="new/pick/agent"
         options={{
           headerTitle: '',
           headerBackTitle: t('common.back'),

@@ -24,17 +24,17 @@ export class Encryption {
     const contentKeyPair = sodium.crypto_box_seed_keypair(contentDataKey);
 
     // Derive anonymous ID
-    const anonID = encodeHex(await deriveKey(masterSecret, 'Free Coder', ['analytics', 'id']))
+    const anonId = encodeHex(await deriveKey(masterSecret, 'Free Coder', ['analytics', 'id']))
       .slice(0, 16)
       .toLowerCase();
 
     // Create encryption
-    return new Encryption(anonID, masterSecret, contentKeyPair);
+    return new Encryption(anonId, masterSecret, contentKeyPair);
   }
 
   private readonly legacyEncryption: SecretBoxEncryption;
   private readonly contentKeyPair: sodium.KeyPair;
-  readonly anonID: string;
+  readonly anonId: string;
   readonly contentDataKey: Uint8Array;
 
   // Session and machine encryption management
@@ -42,8 +42,8 @@ export class Encryption {
   private machineEncryptions = new Map<string, MachineEncryption>();
   private cache: EncryptionCache;
 
-  private constructor(anonID: string, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair) {
-    this.anonID = anonID;
+  private constructor(anonId: string, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair) {
+    this.anonId = anonId;
     this.contentKeyPair = contentKeyPair;
     this.legacyEncryption = new SecretBoxEncryption(masterSecret);
     this.cache = new EncryptionCache();

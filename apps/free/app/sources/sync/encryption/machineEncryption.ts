@@ -1,10 +1,11 @@
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+import { wireEncode, wireDecode } from '@saaskit-dev/agentbridge/encryption';
+import { config } from '@/config';
 import { MachineMetadata, MachineMetadataSchema } from '../storageTypes';
-
-const logger = new Logger('app/sync/encryption/machine');
 import { EncryptionCache } from './encryptionCache';
 import { Decryptor, Encryptor } from './encryptor';
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
+
+const logger = new Logger('app/sync/encryption/machine');
 
 export class MachineEncryption {
   private machineId: string;
@@ -21,8 +22,7 @@ export class MachineEncryption {
    * Encrypt machine metadata
    */
   async encryptMetadata(metadata: MachineMetadata): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([metadata]);
-    return encodeBase64(encrypted[0], 'base64');
+    return wireEncode(metadata, this.encryptor, !!config.isDev);
   }
 
   /**
@@ -35,15 +35,13 @@ export class MachineEncryption {
       return cached;
     }
 
-    // Decrypt if not cached
     try {
-      const encryptedData = decodeBase64(encrypted, 'base64');
-      const decrypted = await this.encryptor.decrypt([encryptedData]);
-      if (!decrypted[0]) {
+      const decrypted = await wireDecode(encrypted, this.encryptor);
+      if (!decrypted) {
         return null;
       }
 
-      const parsed = MachineMetadataSchema.safeParse(decrypted[0]);
+      const parsed = MachineMetadataSchema.safeParse(decrypted);
       if (!parsed.success) {
         logger.error('Failed to parse machine metadata:', parsed.error);
         return null;
@@ -53,7 +51,7 @@ export class MachineEncryption {
       this.cache.setCachedMachineMetadata(this.machineId, version, parsed.data);
       return parsed.data;
     } catch (error) {
-      logger.error('Failed to decrypt machine metadata:', error);
+      logger.error('Failed to decrypt machine metadata:', toError(error));
       return null;
     }
   }
@@ -62,8 +60,7 @@ export class MachineEncryption {
    * Encrypt daemon state
    */
   async encryptDaemonState(state: any): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([state]);
-    return encodeBase64(encrypted[0], 'base64');
+    return wireEncode(state, this.encryptor, !!config.isDev);
   }
 
   /**
@@ -83,17 +80,14 @@ export class MachineEncryption {
       return cached;
     }
 
-    // Decrypt if not cached
     try {
-      const encryptedData = decodeBase64(encrypted, 'base64');
-      const decrypted = await this.encryptor.decrypt([encryptedData]);
-      const result = decrypted[0] || null;
+      const result = await wireDecode(encrypted, this.encryptor);
 
       // Cache the result (including null values)
       this.cache.setCachedDaemonState(this.machineId, version, result);
       return result;
     } catch (error) {
-      logger.error('Failed to decrypt daemon state:', error);
+      logger.error('Failed to decrypt daemon state:', toError(error));
       // Cache null result to avoid repeated decryption attempts
       this.cache.setCachedDaemonState(this.machineId, version, null);
       return null;
@@ -104,8 +98,7 @@ export class MachineEncryption {
    * Encrypt raw data using machine-specific encryption
    */
   async encryptRaw(data: any): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([data]);
-    return encodeBase64(encrypted[0], 'base64');
+    return wireEncode(data, this.encryptor, !!config.isDev);
   }
 
   /**
@@ -113,11 +106,9 @@ export class MachineEncryption {
    */
   async decryptRaw(encrypted: string): Promise<any | null> {
     try {
-      const encryptedData = decodeBase64(encrypted, 'base64');
-      const decrypted = await this.encryptor.decrypt([encryptedData]);
-      return decrypted[0] || null;
+      return await wireDecode(encrypted, this.encryptor);
     } catch (error) {
-      logger.error('Failed to decrypt raw data:', error);
+      logger.error('Failed to decrypt raw data:', toError(error));
       return null;
     }
   }

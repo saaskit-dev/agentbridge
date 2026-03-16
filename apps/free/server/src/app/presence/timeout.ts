@@ -7,6 +7,9 @@ import { db } from '@/storage/db';
 import { delay } from '@/utils/delay';
 import { forever } from '@/utils/forever';
 import { shutdownSignal } from '@/utils/shutdown';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+
+const logger = new Logger('server/presence/timeout');
 
 export function startTimeout() {
   forever('session-timeout', async () => {
@@ -20,6 +23,9 @@ export function startTimeout() {
           },
         },
       });
+      if (sessions.length > 0) {
+        logger.info('timed out sessions found', { count: sessions.length });
+      }
       for (const session of sessions) {
         const updated = await db.session.updateManyAndReturn({
           where: { id: session.id, active: true },
@@ -28,6 +34,7 @@ export function startTimeout() {
         if (updated.length === 0) {
           continue;
         }
+        logger.debug('session marked inactive', { sessionId: session.id, accountId: session.accountId });
         eventRouter.emitEphemeral({
           userId: session.accountId,
           payload: buildSessionActivityEphemeral(
@@ -49,6 +56,9 @@ export function startTimeout() {
           },
         },
       });
+      if (machines.length > 0) {
+        logger.info('timed out machines found', { count: machines.length });
+      }
       for (const machine of machines) {
         const updated = await db.machine.updateManyAndReturn({
           where: { id: machine.id, active: true },
@@ -57,6 +67,7 @@ export function startTimeout() {
         if (updated.length === 0) {
           continue;
         }
+        logger.debug('machine marked inactive', { machineId: machine.id, accountId: machine.accountId });
         eventRouter.emitEphemeral({
           userId: machine.accountId,
           payload: buildMachineActivityEphemeral(

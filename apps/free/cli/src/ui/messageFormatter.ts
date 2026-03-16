@@ -162,9 +162,7 @@ export function formatClaudeMessage(
 
     default: {
       // Handle other message types
-      if (process.env.DEBUG) {
-        console.log(chalk.gray(`[Unknown message type: ${message.type}]`));
-      }
+      logger.debug(`[Unknown message type: ${message.type}]`);
     }
   }
 }

@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
-import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
+import { decryptFromWireString, encryptToWireString } from './encryption';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import {
   AgentState,
@@ -18,20 +18,23 @@ import {
 } from './types';
 import { RawJSONLines } from '@/claude/types';
 import { configuration } from '@/configuration';
+import type { NormalizedMessage } from '@/daemon/sessions/types';
 import { setCurrentTurnTrace, getProcessTraceContext } from '@/telemetry';
 import { continueTrace, resumeTrace, injectTrace } from '@saaskit-dev/agentbridge/telemetry';
 import type { WireTrace } from './types';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { AsyncLock } from '@/utils/lock';
 import { calculateCost } from '@/utils/pricing';
 import { InvalidateSync } from '@/utils/sync';
 import { backoff, delay } from '@/utils/time';
 import type { SessionEnvelope } from '@/sessionProtocol/types';
 import type { SessionTurnEndStatus } from '@/sessionProtocol/types';
+import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
 import {
 
-  closeClaudeTurnWithStatus,
-  mapClaudeLogMessageToSessionEnvelopes,
+  closeClaudeTurnWithStatusNormalized,
+  mapClaudeLogMessageToNormalizedMessages,
   type ClaudeSessionProtocolState,
 } from '@/claude/utils/sessionProtocolMapper';
 
@@ -90,7 +93,6 @@ type V3SessionMessage = {
   id: string;
   seq: number;
   content: { t: 'encrypted'; c: string };
-  localId: string | null;
   /** RFC §19.3: traceId stored in DB for HTTP sync path trace correlation. */
   traceId?: string;
   createdAt: number;
@@ -106,25 +108,39 @@ type V3PostSessionMessagesResponse = {
   messages: Array<{
     id: string;
     seq: number;
-    localId: string | null;
     createdAt: number;
     updatedAt: number;
   }>;
 };
 
+function decodeUserId(token: string): string | undefined {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return undefined;
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf-8'));
+    return typeof decoded.sub === 'string' ? decoded.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class ApiSessionClient extends EventEmitter {
   private readonly token: string;
+  private readonly userId: string | undefined;
   readonly sessionId: string;
   private metadata: Metadata | null;
   private metadataVersion: number;
   private agentState: AgentState | null;
   private agentStateVersion: number;
+  private capabilities: SessionCapabilities | null;
+  private capabilitiesVersion: number;
   private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
   private pendingMessages: UserMessage[] = [];
   private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
   readonly rpcHandlerManager: RpcHandlerManager;
   private agentStateLock = new AsyncLock();
   private metadataLock = new AsyncLock();
+  private capabilitiesLock = new AsyncLock();
   private encryptionKey: Uint8Array;
   private encryptionVariant: 'legacy' | 'dataKey';
   private claudeSessionProtocolState: ClaudeSessionProtocolState = {
@@ -139,18 +155,21 @@ export class ApiSessionClient extends EventEmitter {
     activeSubagents: new Set<string>(),
   };
   private lastSeq = 0;
-  private pendingOutbox: Array<{ content: string; localId: string; _trace?: WireTrace }> = [];
+  private pendingOutbox: Array<{ content: string; id: string; _trace?: WireTrace }> = [];
   private readonly sendSync: InvalidateSync;
   private readonly receiveSync: InvalidateSync;
 
   constructor(token: string, session: Session) {
     super();
     this.token = token;
+    this.userId = decodeUserId(token);
     this.sessionId = session.id;
     this.metadata = session.metadata;
     this.metadataVersion = session.metadataVersion;
     this.agentState = session.agentState;
     this.agentStateVersion = session.agentStateVersion;
+    this.capabilities = session.capabilities ?? null;
+    this.capabilitiesVersion = session.capabilitiesVersion ?? 0;
     this.encryptionKey = session.encryptionKey;
     this.encryptionVariant = session.encryptionVariant;
     this.sendSync = new InvalidateSync(() => this.flushOutbox());
@@ -190,9 +209,11 @@ export class ApiSessionClient extends EventEmitter {
     //
 
     this.socket.on('connect', () => {
-      logger.info('[CLI] Session connected', { sessionId: this.sessionId });
+      logger.info('[CLI] Session connected', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId });
       this.rpcHandlerManager.onSocketConnect(this.socket);
       this.receiveSync.invalidate();
+      // Flush any messages that were queued while disconnected
+      this.sendSync.invalidate();
     });
 
     // Set up global RPC request handler
@@ -204,22 +225,27 @@ export class ApiSessionClient extends EventEmitter {
     );
 
     this.socket.on('disconnect', reason => {
-      logger.info('[CLI] Session disconnected', { sessionId: this.sessionId, reason });
+      logger.info('[CLI] Session disconnected', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId, reason });
       this.rpcHandlerManager.onSocketDisconnect();
     });
 
     this.socket.on('connect_error', error => {
-      logger.error('[CLI] Session connect failed', undefined, { sessionId: this.sessionId, error: error.message });
+      logger.error('[CLI] Session connect failed', undefined, { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId, error: error.message });
       this.rpcHandlerManager.onSocketDisconnect();
     });
 
     // Server events
-    this.socket.on('update', (data: Update) => {
+    this.socket.on('update', async (data: Update) => {
       try {
-        logger.debug('[SOCKET] [UPDATE] Received update');
+        logger.debug('[SOCKET] [UPDATE] Received update', {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          type: data.body?.t,
+          traceId: (data as any)._trace?.tid,
+        });
 
         if (!data.body) {
-          logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!');
+          logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!', { userId: this.userId, sessionId: this.sessionId });
           return;
         }
 
@@ -252,35 +278,36 @@ export class ApiSessionClient extends EventEmitter {
             this.receiveSync.invalidate();
             return;
           }
-          const body = decrypt(
-            this.encryptionKey,
-            this.encryptionVariant,
-            decodeBase64(data.body.message.content.c)
-          );
+          const c = data.body.message.content.c;
+          const body = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, c);
           logger.debug('[SOCKET] [UPDATE] Processing message (fast path)', {
+            userId: this.userId,
             sessionId: this.sessionId,
             seq: messageSeq,
+            messageId: data.body.message.id,
+            traceId: data._trace?.tid,
           });
           this.routeIncomingMessage(body);
           this.lastSeq = messageSeq;
         } else if (data.body.t === 'update-session') {
           if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-            this.metadata = decrypt(
-              this.encryptionKey,
-              this.encryptionVariant,
-              decodeBase64(data.body.metadata.value)
-            );
+            const mv = data.body.metadata.value;
+            this.metadata = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, mv);
             this.metadataVersion = data.body.metadata.version;
           }
           if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
-            this.agentState = data.body.agentState.value
-              ? decrypt(
-                  this.encryptionKey,
-                  this.encryptionVariant,
-                  decodeBase64(data.body.agentState.value)
-                )
+            const sv = data.body.agentState.value;
+            this.agentState = sv
+              ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, sv)
               : null;
             this.agentStateVersion = data.body.agentState.version;
+          }
+          if (data.body.capabilities && data.body.capabilities.version > this.capabilitiesVersion) {
+            const cv = data.body.capabilities.value;
+            this.capabilities = cv
+              ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, cv)
+              : null;
+            this.capabilitiesVersion = data.body.capabilities.version;
           }
         } else if (data.body.t === 'update-machine') {
           // Session clients shouldn't receive machine updates - log warning
@@ -310,8 +337,23 @@ export class ApiSessionClient extends EventEmitter {
 
   onUserMessage(callback: (data: UserMessage) => void) {
     this.pendingMessageCallback = callback;
+    logger.info('[apiSession] onUserMessage callback registered', {
+      userId: this.userId,
+      sessionId: this.sessionId,
+      pendingCount: this.pendingMessages.length,
+      traceId: getProcessTraceContext()?.traceId,
+    });
     while (this.pendingMessages.length > 0) {
-      callback(this.pendingMessages.shift()!);
+      const msg = this.pendingMessages.shift()!;
+      logger.info('[apiSession] draining pending user message', {
+        userId: this.userId,
+        sessionId: this.sessionId,
+        textLen: msg.content.text.length,
+        preview: msg.content.text.slice(0, 120),
+        remainingPending: this.pendingMessages.length,
+        traceId: getProcessTraceContext()?.traceId,
+      });
+      callback(msg);
     }
   }
 
@@ -328,14 +370,36 @@ export class ApiSessionClient extends EventEmitter {
   private routeIncomingMessage(message: unknown) {
     const userResult = UserMessageSchema.safeParse(message);
     if (userResult.success) {
+      const traceId = getProcessTraceContext()?.traceId;
       logger.debug('[apiSession] routing user message to callback', {
+        userId: this.userId,
         sessionId: this.sessionId,
         hasCallback: !!this.pendingMessageCallback,
+        textLen: userResult.data.content.text.length,
+        preview: userResult.data.content.text.slice(0, 120),
+        permissionMode: userResult.data.meta?.permissionMode,
+        model: userResult.data.meta?.model,
+        traceId,
       });
       if (this.pendingMessageCallback) {
+        logger.info('[apiSession] invoking user message callback', {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          textLen: userResult.data.content.text.length,
+          preview: userResult.data.content.text.slice(0, 120),
+          traceId,
+        });
         this.pendingMessageCallback(userResult.data);
       } else {
         this.pendingMessages.push(userResult.data);
+        logger.info('[apiSession] queued user message until callback registration', {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          textLen: userResult.data.content.text.length,
+          preview: userResult.data.content.text.slice(0, 120),
+          pendingCount: this.pendingMessages.length,
+          traceId,
+        });
       }
       return;
     }
@@ -362,7 +426,9 @@ export class ApiSessionClient extends EventEmitter {
         // Session deleted on the server — stop polling permanently, don't retry.
         if (err?.response?.status === 404) {
           logger.debug('[API] fetchMessages: session not found (404), stopping sync', {
+            userId: this.userId,
             sessionId: this.sessionId,
+            traceId: getProcessTraceContext()?.traceId,
           });
           this.receiveSync.stop();
           return;
@@ -388,17 +454,17 @@ export class ApiSessionClient extends EventEmitter {
         }
 
         try {
-          const body = decrypt(
-            this.encryptionKey,
-            this.encryptionVariant,
-            decodeBase64(message.content.c)
-          );
+          const c = message.content.c;
+          const body = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, c);
           this.routeIncomingMessage(body);
         } catch (error) {
           logger.error('[CLI] Message decrypt failed', undefined, {
+            userId: this.userId,
             sessionId: this.sessionId,
+            messageId: message.id,
             seq: message.seq,
-            error: String(error),
+            traceId: message.traceId,
+            error: safeStringify(error),
           });
         }
       }
@@ -407,7 +473,9 @@ export class ApiSessionClient extends EventEmitter {
       const hasMore = !!response.data.hasMore;
       if (hasMore && maxSeq === afterSeq) {
         logger.debug('[API] fetchMessages pagination stalled, stopping to avoid infinite loop', {
+          userId: this.userId,
           sessionId: this.sessionId,
+          traceId: getProcessTraceContext()?.traceId,
           afterSeq,
         });
         break;
@@ -427,6 +495,7 @@ export class ApiSessionClient extends EventEmitter {
     // Skip flush if socket is disconnected - wait for reconnection
     if (!this.socket.connected) {
       logger.debug('[apiSession] skipping outbox flush - socket disconnected', {
+        userId: this.userId,
         sessionId: this.sessionId,
         count: this.pendingOutbox.length,
       });
@@ -434,7 +503,13 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     const batch = this.pendingOutbox.slice();
-    logger.debug('[apiSession] flushing outbox', { sessionId: this.sessionId, count: batch.length });
+    logger.debug('[apiSession] flushing outbox', {
+      userId: this.userId,
+      sessionId: this.sessionId,
+      count: batch.length,
+      ids: batch.map(m => m.id),
+      traceIds: batch.map(m => m._trace?.tid).filter(Boolean),
+    });
 
     let response: Awaited<ReturnType<typeof axios.post<V3PostSessionMessagesResponse>>>;
     try {
@@ -444,16 +519,22 @@ export class ApiSessionClient extends EventEmitter {
           messages: batch,
         },
         {
-          headers: this.authHeaders(),
+          headers: {
+            ...this.authHeaders(),
+            'X-Socket-Id': this.socket.id ?? '',
+          },
           timeout: 60000,
         }
       );
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorMessage = safeStringify(err);
       logger.error('[apiSession] outbox flush failed', undefined, {
+        userId: this.userId,
         sessionId: this.sessionId,
+        traceId: getProcessTraceContext()?.traceId,
         count: batch.length,
+        ids: batch.map(m => m.id),
         status,
         error: errorMessage,
       });
@@ -480,43 +561,52 @@ export class ApiSessionClient extends EventEmitter {
       this.lastSeq
     );
     this.lastSeq = maxSeq;
-    logger.debug('[apiSession] outbox flushed', { sessionId: this.sessionId, count: batch.length });
+    logger.debug('[apiSession] outbox flushed', {
+      userId: this.userId,
+      sessionId: this.sessionId,
+      count: batch.length,
+      ids: batch.map(m => m.id),
+      traceIds: batch.map(m => m._trace?.tid).filter(Boolean),
+    });
   }
 
-  private enqueueMessage(content: unknown) {
-    const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+  private async enqueueMessage(content: unknown): Promise<string> {
+    const encrypted = await encryptToWireString(this.encryptionKey, this.encryptionVariant, content);
     const trace = getWireTrace();
-    const localId = randomUUID();
+    const id = randomUUID();
     this.pendingOutbox.push({
       content: encrypted,
-      localId,
+      id,
       ...(trace ? { _trace: trace } : {}),
     });
     logger.debug('[apiSession] message enqueued', {
+      userId: this.userId,
       sessionId: this.sessionId,
-      localId,
+      id,
       outboxSize: this.pendingOutbox.length,
       traceId: trace?.tid,
+      spanId: trace?.sid,
     });
     this.sendSync.invalidate();
+    return id;
   }
 
   /**
    * Send message to session
    * @param body - Message body (can be MessageContent or raw content for agent messages)
    */
-  sendClaudeSessionMessage(body: RawJSONLines) {
-    const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
+  async sendClaudeSessionMessage(body: RawJSONLines) {
+    const mapped = mapClaudeLogMessageToNormalizedMessages(body, this.claudeSessionProtocolState);
     this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-    for (const envelope of mapped.envelopes) {
-      this.sendSessionProtocolMessage(envelope);
+    for (const message of mapped.messages) {
+      await this.sendNormalizedMessage(message);
     }
     // Track usage from assistant messages
     if (body.type === 'assistant' && body.message?.usage) {
       try {
         this.sendUsageData(body.message.usage, body.message.model);
       } catch (error) {
-        logger.debug('[SOCKET] Failed to send usage data:', error);
+        logger.debug('[SOCKET] Failed to send usage data', { userId: this.userId, sessionId: this.sessionId, error: safeStringify(error) });
       }
     }
 
@@ -532,17 +622,21 @@ export class ApiSessionClient extends EventEmitter {
     }
   }
 
-  closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
-    const mapped = closeClaudeTurnWithStatus(this.claudeSessionProtocolState, status);
+  async closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
+    const mapped = closeClaudeTurnWithStatusNormalized(this.claudeSessionProtocolState, status);
     this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-    for (const envelope of mapped.envelopes) {
-      this.sendSessionProtocolMessage(envelope);
+    for (const message of mapped.messages) {
+      await this.sendNormalizedMessage(message);
     }
     // Turn is complete — clear the per-message trace so idle logs don't inherit it.
     setCurrentTurnTrace(undefined);
   }
 
-  sendCodexMessage(body: any) {
+  /**
+   * Legacy transport wrapper kept for older tests and compatibility paths.
+   * The daemon/app main path should prefer sendNormalizedMessage().
+   */
+  async sendCodexMessage(body: any) {
     const content = {
       role: 'agent',
       content: {
@@ -553,10 +647,14 @@ export class ApiSessionClient extends EventEmitter {
         sentFrom: 'cli',
       },
     };
-    this.enqueueMessage(content);
+    await this.enqueueMessage(content);
   }
 
-  sendSessionProtocolMessage(envelope: SessionEnvelope) {
+  /**
+   * Legacy Claude session-protocol envelope used by local Claude JSONL/session sync.
+   * The daemon/app main path should prefer sendNormalizedMessage().
+   */
+  async sendSessionProtocolMessage(envelope: SessionEnvelope) {
     const content = {
       role: envelope.role,
       content: {
@@ -568,7 +666,15 @@ export class ApiSessionClient extends EventEmitter {
       },
     };
 
-    this.enqueueMessage(content);
+    await this.enqueueMessage(content);
+  }
+
+  /**
+   * Send a normalized message (pre-formatted with role and content).
+   * Used by AgentSession to pipe backend output directly.
+   */
+  async sendNormalizedMessage(msg: Pick<NormalizedMessage, 'role' | 'content'> & Partial<NormalizedMessage>): Promise<string> {
+    return this.enqueueMessage(msg);
   }
 
   /**
@@ -578,7 +684,11 @@ export class ApiSessionClient extends EventEmitter {
    * @param provider - The agent provider sending the message (e.g., 'gemini', 'codex', 'claude')
    * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
    */
-  sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
+  /**
+   * Legacy ACP wrapper kept for compatibility. New daemon output should already
+   * be normalized before reaching ApiSessionClient.
+   */
+  async sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
     const content = {
       role: 'agent',
       content: {
@@ -591,15 +701,16 @@ export class ApiSessionClient extends EventEmitter {
       },
     };
 
-    logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, {
+    const id = await this.enqueueMessage(content);
+    logger.debug(`[SOCKET] Sending ACP message from ${provider}`, {
+      userId: this.userId,
+      sessionId: this.sessionId,
+      id,
       type: body.type,
-      hasMessage: 'message' in body,
     });
-
-    this.enqueueMessage(content);
   }
 
-  sendSessionEvent(
+  async sendSessionEvent(
     event:
       | {
           type: 'switch';
@@ -618,25 +729,32 @@ export class ApiSessionClient extends EventEmitter {
         },
     id?: string
   ) {
-    const content = {
-      role: 'agent',
-      content: {
-        id: id ?? randomUUID(),
-        type: 'event',
-        data: event,
-      },
-    };
-    this.enqueueMessage(content);
+    if (event.type === 'permission-mode-changed') {
+      await this.enqueueMessage({
+        role: 'agent',
+        content: {
+          id: id ?? randomUUID(),
+          type: 'event',
+          data: event,
+        },
+      });
+      return;
+    }
+
+    await this.sendNormalizedMessage({
+      id: id ?? randomUUID(),
+      createdAt: Date.now(),
+      isSidechain: false,
+      role: 'event',
+      content: event,
+    });
   }
 
   /**
    * Send a ping message to keep the connection alive
    */
   keepAlive(thinking: boolean, mode: 'local' | 'remote') {
-    if (process.env.DEBUG) {
-      // too verbose for production
-      logger.debug(`[API] Sending keep alive message: ${thinking}`);
-    }
+    logger.debug(`[API] Sending keep alive message: ${thinking}`);
     this.socket.volatile.emit('session-alive', {
       sid: this.sessionId,
       time: Date.now(),
@@ -683,7 +801,7 @@ export class ApiSessionClient extends EventEmitter {
         output: costs.output,
       },
     };
-    logger.debug('[SOCKET] Sending usage data');
+    logger.debug('[SOCKET] Sending usage data', { userId: this.userId, sessionId: this.sessionId });
     this.socket.emit('usage-report', { ...usageReport, _trace: getWireTrace() });
   }
 
@@ -698,24 +816,18 @@ export class ApiSessionClient extends EventEmitter {
         const answer = await this.socket.emitWithAck('update-metadata', {
           sid: this.sessionId,
           expectedVersion: this.metadataVersion,
-          metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)),
+          metadata: await encryptToWireString(this.encryptionKey, this.encryptionVariant, updated),
           _trace: getWireTrace(),
         });
         if (answer.result === 'success') {
-          this.metadata = decrypt(
-            this.encryptionKey,
-            this.encryptionVariant,
-            decodeBase64(answer.metadata)
-          );
+          const am = answer.metadata;
+          this.metadata = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, am);
           this.metadataVersion = answer.version;
         } else if (answer.result === 'version-mismatch') {
           if (answer.version > this.metadataVersion) {
             this.metadataVersion = answer.version;
-            this.metadata = decrypt(
-              this.encryptionKey,
-              this.encryptionVariant,
-              decodeBase64(answer.metadata)
-            );
+            const am = answer.metadata;
+            this.metadata = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, am);
           }
           throw new Error('Metadata version mismatch');
         } else if (answer.result === 'error') {
@@ -730,7 +842,7 @@ export class ApiSessionClient extends EventEmitter {
    * @param handler - Handler function that returns the updated agent state
    */
   updateAgentState(handler: (metadata: AgentState) => AgentState) {
-    logger.debug('Updating agent state');
+    logger.debug('Updating agent state', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId });
     this.agentStateLock.inLock(async () => {
       await backoff(async () => {
         const updated = handler(this.agentState || {});
@@ -739,26 +851,59 @@ export class ApiSessionClient extends EventEmitter {
           expectedVersion: this.agentStateVersion,
           _trace: getWireTrace(),
           agentState: updated
-            ? encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated))
+            ? await encryptToWireString(this.encryptionKey, this.encryptionVariant, updated)
             : null,
         });
         if (answer.result === 'success') {
-          this.agentState = answer.agentState
-            ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState))
+          const as = answer.agentState;
+          this.agentState = as
+            ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, as)
             : null;
           this.agentStateVersion = answer.version;
-          logger.debug('Agent state updated', this.agentState);
+          logger.debug('Agent state updated', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId });
         } else if (answer.result === 'version-mismatch') {
           if (answer.version > this.agentStateVersion) {
             this.agentStateVersion = answer.version;
-            this.agentState = answer.agentState
-              ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState))
+            const as = answer.agentState;
+            this.agentState = as
+              ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, as)
               : null;
           }
           throw new Error('Agent state version mismatch');
         } else if (answer.result === 'error') {
           // console.error('Agent state update error', answer);
           // Hard error - ignore
+        }
+      });
+    });
+  }
+
+  updateCapabilities(capabilities: SessionCapabilities | null) {
+    this.capabilitiesLock.inLock(async () => {
+      await backoff(async () => {
+        const answer = await this.socket.emitWithAck('update-capabilities', {
+          sid: this.sessionId,
+          expectedVersion: this.capabilitiesVersion,
+          _trace: getWireTrace(),
+          capabilities: capabilities
+            ? await encryptToWireString(this.encryptionKey, this.encryptionVariant, capabilities)
+            : null,
+        });
+        if (answer.result === 'success') {
+          const cv = answer.capabilities;
+          this.capabilities = cv
+            ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, cv)
+            : null;
+          this.capabilitiesVersion = answer.version;
+        } else if (answer.result === 'version-mismatch') {
+          if (answer.version > this.capabilitiesVersion) {
+            this.capabilitiesVersion = answer.version;
+            const cv = answer.capabilities;
+            this.capabilities = cv
+              ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, cv)
+              : null;
+          }
+          throw new Error('Capabilities version mismatch');
         }
       });
     });

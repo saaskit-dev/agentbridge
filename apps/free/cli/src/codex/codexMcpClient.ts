@@ -12,6 +12,7 @@ import { CodexPermissionHandler } from './utils/permissionHandler';
 import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('codex/codexMcpClient');
 
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
@@ -237,7 +238,7 @@ export class CodexMcpClient {
         logger.debug('[CodexMCP] Error handling permission request:', error);
         return {
           decision: 'denied' as const,
-          reason: error instanceof Error ? error.message : 'Permission request failed',
+          reason: safeStringify(error),
         };
       }
     });

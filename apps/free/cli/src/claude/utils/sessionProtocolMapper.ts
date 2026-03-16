@@ -1,5 +1,6 @@
 import { createId } from '@paralleldrive/cuid2';
 import type { RawJSONLines } from '@/claude/types';
+import type { NormalizedMessage } from '@/daemon/sessions/types';
 import {
   createEnvelope,
   type SessionEnvelope,
@@ -484,6 +485,183 @@ export function mapClaudeLogMessageToSessionEnvelopes(
   state: ClaudeSessionProtocolState
 ): ClaudeMapperResult {
   return mapClaudeLogMessageToSessionEnvelopesInternal(message, state);
+}
+
+function sessionEnvelopeToNormalizedMessage(envelope: SessionEnvelope): NormalizedMessage | null {
+  const parentUUID = envelope.subagent ?? null;
+  const isSidechain = parentUUID !== null;
+  const base = {
+    id: envelope.id,
+    createdAt: envelope.time,
+    isSidechain,
+  } as const;
+
+  if (envelope.ev.t === 'turn-start' || envelope.ev.t === 'start' || envelope.ev.t === 'stop') {
+    return null;
+  }
+
+  if (envelope.ev.t === 'turn-end') {
+    return {
+      ...base,
+      role: 'event',
+      content: { type: 'ready' },
+    };
+  }
+
+  if (envelope.ev.t === 'service') {
+    return {
+      ...base,
+      role: 'agent',
+      content: [
+        {
+          type: 'text',
+          text: envelope.ev.text,
+          uuid: envelope.id,
+          parentUUID,
+        },
+      ],
+    };
+  }
+
+  if (envelope.ev.t === 'text') {
+    if (envelope.role === 'user') {
+      return {
+        ...base,
+        role: 'user',
+        content: {
+          type: 'text',
+          text: envelope.ev.text,
+        },
+      };
+    }
+
+    return {
+      ...base,
+      role: 'agent',
+      content: [
+        envelope.ev.thinking
+          ? {
+              type: 'thinking',
+              thinking: envelope.ev.text,
+              uuid: envelope.id,
+              parentUUID,
+            }
+          : {
+              type: 'text',
+              text: envelope.ev.text,
+              uuid: envelope.id,
+              parentUUID,
+            },
+      ],
+    };
+  }
+
+  if (envelope.ev.t === 'tool-call-start') {
+    return {
+      ...base,
+      role: 'agent',
+      content: [
+        {
+          type: 'tool-call',
+          id: envelope.ev.call,
+          name: envelope.ev.name || 'unknown',
+          input: envelope.ev.args,
+          description: envelope.ev.description,
+          uuid: envelope.id,
+          parentUUID,
+        },
+      ],
+    };
+  }
+
+  if (envelope.ev.t === 'tool-call-end') {
+    return {
+      ...base,
+      role: 'agent',
+      content: [
+        {
+          type: 'tool-result',
+          tool_use_id: envelope.ev.call,
+          content: null,
+          is_error: false,
+          uuid: envelope.id,
+          parentUUID,
+        },
+      ],
+    };
+  }
+
+  if (envelope.ev.t === 'file') {
+    return {
+      ...base,
+      role: 'agent',
+      content: [
+        {
+          type: 'tool-call',
+          id: envelope.id,
+          name: 'file',
+          input: {
+            ref: envelope.ev.ref,
+            name: envelope.ev.name,
+          },
+          description: `Attached file: ${envelope.ev.name}`,
+          uuid: envelope.id,
+          parentUUID,
+        },
+      ],
+    };
+  }
+
+  if (envelope.ev.t === 'photo') {
+    return {
+      ...base,
+      role: 'agent',
+      content: [
+        {
+          type: 'tool-call',
+          id: envelope.id,
+          name: 'photo',
+          input: {
+            ref: envelope.ev.ref,
+            thumbhash: envelope.ev.thumbhash,
+            width: envelope.ev.width,
+            height: envelope.ev.height,
+          },
+          description: `Attached photo (${envelope.ev.width}x${envelope.ev.height})`,
+          uuid: envelope.id,
+          parentUUID,
+        },
+      ],
+    };
+  }
+
+  return null;
+}
+
+export function mapClaudeLogMessageToNormalizedMessages(
+  message: RawJSONLines,
+  state: ClaudeSessionProtocolState
+): { currentTurnId: string | null; messages: NormalizedMessage[] } {
+  const mapped = mapClaudeLogMessageToSessionEnvelopes(message, state);
+  return {
+    currentTurnId: mapped.currentTurnId,
+    messages: mapped.envelopes
+      .map(sessionEnvelopeToNormalizedMessage)
+      .filter((value): value is NormalizedMessage => value !== null),
+  };
+}
+
+export function closeClaudeTurnWithStatusNormalized(
+  state: ClaudeSessionProtocolState,
+  status: SessionTurnEndStatus
+): { currentTurnId: string | null; messages: NormalizedMessage[] } {
+  const mapped = closeClaudeTurnWithStatus(state, status);
+  return {
+    currentTurnId: mapped.currentTurnId,
+    messages: mapped.envelopes
+      .map(sessionEnvelopeToNormalizedMessage)
+      .filter((value): value is NormalizedMessage => value !== null),
+  };
 }
 
 function mapClaudeLogMessageToSessionEnvelopesInternal(

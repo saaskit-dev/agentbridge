@@ -3,24 +3,13 @@ import React from 'react';
 import { Text, Pressable, Platform } from 'react-native';
 import { hapticsLight } from './haptics';
 import { Typography } from '@/constants/Typography';
+import type { PermissionMode } from '@/sync/sessionCapabilities';
 
-export type PermissionMode = 'read-only' | 'accept-edits' | 'yolo';
+export type { PermissionMode } from '@/sync/sessionCapabilities';
 
 export type ModelMode =
-  | 'default'
-  | 'adaptiveUsage'
-  | 'sonnet'
-  | 'opus'
-  | 'gpt-5-codex-high'
-  | 'gpt-5-codex-medium'
-  | 'gpt-5-codex-low'
-  | 'gpt-5-minimal'
-  | 'gpt-5-low'
-  | 'gpt-5-medium'
-  | 'gpt-5-high'
-  | 'gemini-2.5-pro'
-  | 'gemini-2.5-flash'
-  | 'gemini-2.5-flash-lite';
+  | string
+  | null;
 
 interface PermissionModeSelectorProps {
   mode: PermissionMode;

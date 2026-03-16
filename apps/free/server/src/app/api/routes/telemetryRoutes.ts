@@ -4,8 +4,7 @@
  *
  * Protection:
  * - JWT authentication (existing app.authenticate)
- * - Payload size: max 50 entries/request, message max 4KB
- * - Route-level body limit: 256KB
+ * - Payload size: max 50 entries/request
  *
  * Rate limiting: temporarily disabled for monitoring.
  * Stats collected for future rate limit calibration.
@@ -114,7 +113,7 @@ const logEntrySchema = z.object({
   level: z.enum(['debug', 'info', 'warn', 'error']),
   layer: z.string().max(64),
   component: z.string().max(128),
-  message: z.string().max(4096),
+  message: z.string().max(8192),
   traceId: z.string().max(64).optional(),
   spanId: z.string().max(64).optional(),
   parentSpanId: z.string().max(64).optional(),
@@ -123,8 +122,8 @@ const logEntrySchema = z.object({
   data: z.record(z.unknown()).optional(),
   error: z
     .object({
-      message: z.string().max(4096),
-      stack: z.string().max(8192).optional(),
+      message: z.string().max(8192),
+      stack: z.string().max(16384).optional(),
       code: z.string().max(64).optional(),
     })
     .optional(),
@@ -154,7 +153,7 @@ export function telemetryRoutes(app: Fastify) {
       schema: { body: ingestBodySchema },
       preHandler: app.authenticate,
       config: { rawBody: false },
-      bodyLimit: 256 * 1024, // 256KB
+      bodyLimit: 1024 * 1024, // 1 MB — prevent abuse via oversized payloads
     },
     async (request, reply) => {
       const userId = request.userId;

@@ -8,6 +8,7 @@
 import { Box, Text, useStdout, useInput } from 'ink';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageBuffer, type BufferedMessage } from './messageBuffer';
+import { configuration } from '@/configuration';
 
 interface GeminiDisplayProps {
   messageBuffer: MessageBuffer;
@@ -246,7 +247,7 @@ export const GeminiDisplay: React.FC<GeminiDisplayProps> = ({
               )}
             </>
           )}
-          {process.env.DEBUG && logPath && (
+          {configuration.isDev && logPath && (
             <Text color="gray" dimColor>
               Debug logs: {logPath}
             </Text>

@@ -51,7 +51,6 @@ export type UpdateEvent =
         id: string;
         seq: number;
         content: any;
-        localId: string | null;
         createdAt: number;
         updatedAt: number;
       };
@@ -64,6 +63,8 @@ export type UpdateEvent =
       metadataVersion: number;
       agentState: string | null;
       agentStateVersion: number;
+      capabilities: string | null;
+      capabilitiesVersion: number;
       dataEncryptionKey: string | null;
       active: boolean;
       activeAt: number;
@@ -81,6 +82,13 @@ export type UpdateEvent =
         | null
         | undefined;
       agentState?:
+        | {
+            value: string | null;
+            version: number;
+          }
+        | null
+        | undefined;
+      capabilities?:
         | {
             value: string | null;
             version: number;
@@ -283,6 +291,15 @@ class EventRouter {
     return this.userConnections.get(userId);
   }
 
+  findConnectionBySocketId(userId: string, socketId: string): ClientConnection | undefined {
+    const connections = this.userConnections.get(userId);
+    if (!connections) return undefined;
+    for (const conn of connections) {
+      if (conn.socket.id === socketId) return conn;
+    }
+    return undefined;
+  }
+
   // === EVENT EMISSION METHODS ===
 
   emitUpdate(params: {
@@ -431,7 +448,11 @@ class EventRouter {
   }): void {
     const connections = this.userConnections.get(params.userId);
     if (!connections) {
-      log.warn(`No connections found for user ${params.userId}`);
+      log.warn(`No connections found for user ${params.userId}`, {
+        userId: params.userId,
+        updateId: (params.payload as any).id,
+        event: params.eventName,
+      });
       return;
     }
 
@@ -443,6 +464,8 @@ class EventRouter {
 
     log.debug('[eventRouter] emitting event', {
       event: params.eventName,
+      userId: params.userId,
+      updateId: (params.payload as any).id,
       connections: connections.size,
       ...(sessionId ? { sessionId } : {}),
       ...(traceId ? { traceId } : {}),
@@ -466,8 +489,11 @@ class EventRouter {
 
     log.debug('[eventRouter] event delivered', {
       event: params.eventName,
+      userId: params.userId,
+      updateId: (params.payload as any).id,
       delivered,
       ...(sessionId ? { sessionId } : {}),
+      ...(traceId ? { traceId } : {}),
     });
   }
 }
@@ -484,6 +510,8 @@ export function buildNewSessionUpdate(
     metadataVersion: number;
     agentState: string | null;
     agentStateVersion: number;
+    capabilities: string | null;
+    capabilitiesVersion: number;
     dataEncryptionKey: string | null;
     active: boolean;
     lastActiveAt: Date;
@@ -504,6 +532,8 @@ export function buildNewSessionUpdate(
       metadataVersion: session.metadataVersion,
       agentState: session.agentState,
       agentStateVersion: session.agentStateVersion,
+      capabilities: session.capabilities,
+      capabilitiesVersion: session.capabilitiesVersion,
       dataEncryptionKey: session.dataEncryptionKey, // Already base64 string in Free
       active: session.active,
       activeAt: session.lastActiveAt.getTime(),
@@ -519,7 +549,6 @@ export function buildNewMessageUpdate(
     id: string;
     seq: number;
     content: any;
-    localId: string | null;
     createdAt: Date;
     updatedAt: Date;
   },
@@ -538,7 +567,6 @@ export function buildNewMessageUpdate(
         id: message.id,
         seq: message.seq,
         content: message.content,
-        localId: message.localId,
         createdAt: message.createdAt.getTime(),
         updatedAt: message.updatedAt.getTime(),
       },
@@ -554,7 +582,8 @@ export function buildUpdateSessionUpdate(
   updateId: string,
   metadata?: { value: string; version: number },
   agentState?: { value: string | null; version: number },
-  trace?: WireTrace
+  trace?: WireTrace,
+  capabilities?: { value: string | null; version: number }
 ): UpdatePayload {
   return {
     id: updateId,
@@ -564,6 +593,7 @@ export function buildUpdateSessionUpdate(
       id: sessionId,
       metadata,
       agentState,
+      capabilities,
     },
     createdAt: Date.now(),
     ...(trace ? { _trace: trace } : {}),

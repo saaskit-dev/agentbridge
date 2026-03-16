@@ -16,7 +16,7 @@ import {
   PaywallResult,
   PaywallOptions,
 } from './types';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/revenueCat');
 
@@ -111,7 +111,7 @@ class RevenueCatNative implements RevenueCatInterface {
           return PaywallResult.ERROR;
       }
     } catch (error) {
-      logger.error('Error presenting paywall:', error);
+      logger.error('Error presenting paywall:', toError(error));
       return PaywallResult.ERROR;
     }
   }
@@ -149,7 +149,7 @@ class RevenueCatNative implements RevenueCatInterface {
           return PaywallResult.ERROR;
       }
     } catch (error) {
-      logger.error('Error presenting paywall if needed:', error);
+      logger.error('Error presenting paywall if needed:', toError(error));
       return PaywallResult.ERROR;
     }
   }

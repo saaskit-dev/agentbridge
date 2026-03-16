@@ -19,6 +19,12 @@ import {
   saveSessionDrafts,
   loadSessionPermissionModes,
   saveSessionPermissionModes,
+  loadSessionDesiredAgentModes,
+  saveSessionDesiredAgentModes,
+  loadSessionDesiredConfigOptions,
+  saveSessionDesiredConfigOptions,
+  loadSessionModelModes,
+  saveSessionModelModes,
 } from './persistence';
 import { Profile } from './profile';
 import { projectManager } from './projectManager';
@@ -27,11 +33,11 @@ import { createReducer, reducer, ReducerState } from './reducer/reducer';
 import { Session, Machine, GitStatus } from './storageTypes';
 import { Message } from './typesMessage';
 import { NormalizedMessage } from './typesRaw';
-import type { PermissionMode } from '@/components/PermissionModeSelector';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from './settings';
 import type { CustomerInfo } from './revenueCat/types';
 import { isMutableTool } from '@/components/tools/knownTools';
+import type { PermissionMode, SessionCapabilities } from './sessionCapabilities';
 
 const logger = new Logger('app/sync/storage');
 
@@ -91,6 +97,8 @@ interface SessionMessages {
   messagesMap: Record<string, Message>;
   reducerState: ReducerState;
   isLoaded: boolean;
+  hasOlderMessages: boolean;
+  isLoadingOlder: boolean;
 }
 
 // Machine type is now imported from storageTypes - represents persisted machine data
@@ -142,8 +150,9 @@ interface StorageState {
   applyMessages: (
     sessionId: string,
     messages: NormalizedMessage[]
-  ) => { changed: string[]; hasReadyEvent: boolean };
+  ) => { changed: string[]; hasReadyEvent: boolean; latestStatus?: 'working' | 'idle' };
   applyMessagesLoaded: (sessionId: string) => void;
+  setSessionOlderMessagesState: (sessionId: string, state: { hasOlderMessages?: boolean; isLoadingOlder?: boolean }) => void;
   applySettings: (settings: Settings, version: number) => void;
   applySettingsLocal: (settings: Partial<Settings>) => void;
   applyLocalSettings: (settings: Partial<LocalSettings>) => void;
@@ -159,9 +168,15 @@ interface StorageState {
   getActiveSessions: () => Session[];
   updateSessionDraft: (sessionId: string, draft: string | null) => void;
   updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) => void;
+  updateSessionDesiredAgentMode: (sessionId: string, mode: string | null) => void;
   updateSessionModelMode: (
     sessionId: string,
-    mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite'
+    mode: string | null
+  ) => void;
+  updateSessionDesiredConfigOption: (sessionId: string, optionId: string, value: string | null) => void;
+  updateSessionCapabilities: (
+    sessionId: string,
+    capabilities: SessionCapabilities | null
   ) => void;
   // Artifact methods
   applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
@@ -304,6 +319,9 @@ export const storage = create<StorageState>()((set, get) => {
   const profile = loadProfile();
   const sessionDrafts = loadSessionDrafts();
   const sessionPermissionModes = loadSessionPermissionModes();
+  const sessionDesiredAgentModes = loadSessionDesiredAgentModes();
+  const sessionDesiredConfigOptions = loadSessionDesiredConfigOptions();
+  const sessionModelModes = loadSessionModelModes();
   return {
     settings,
     settingsVersion: version,
@@ -357,6 +375,11 @@ export const storage = create<StorageState>()((set, get) => {
         const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
         const savedPermissionModes =
           Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+        const savedDesiredAgentModes =
+          Object.keys(state.sessions).length === 0 ? sessionDesiredAgentModes : {};
+        const savedDesiredConfigOptions =
+          Object.keys(state.sessions).length === 0 ? sessionDesiredConfigOptions : {};
+        const savedModelModes = Object.keys(state.sessions).length === 0 ? sessionModelModes : {};
 
         // Merge new sessions with existing ones
         const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -371,6 +394,12 @@ export const storage = create<StorageState>()((set, get) => {
           const savedDraft = savedDrafts[session.id];
           const existingPermissionMode = state.sessions[session.id]?.permissionMode;
           const savedPermissionMode = savedPermissionModes[session.id];
+          const existingDesiredAgentMode = state.sessions[session.id]?.desiredAgentMode;
+          const savedDesiredAgentMode = savedDesiredAgentModes[session.id];
+          const existingDesiredConfigOptions = state.sessions[session.id]?.desiredConfigOptions;
+          const savedDesiredConfigOption = savedDesiredConfigOptions[session.id];
+          const existingModelMode = state.sessions[session.id]?.modelMode;
+          const savedModelMode = savedModelModes[session.id];
           const defaultPermissionMode: PermissionMode = isSandboxEnabled(session.metadata)
             ? 'yolo'
             : (state.settings.defaultPermissionMode as PermissionMode) ?? 'accept-edits';
@@ -385,6 +414,9 @@ export const storage = create<StorageState>()((set, get) => {
             presence,
             draft: existingDraft || savedDraft || session.draft || null,
             permissionMode: resolvedPermissionMode,
+            desiredAgentMode: existingDesiredAgentMode || savedDesiredAgentMode || null,
+            desiredConfigOptions: existingDesiredConfigOptions || savedDesiredConfigOption || null,
+            modelMode: existingModelMode || savedModelMode || session.modelMode || null,
           };
         });
 
@@ -500,6 +532,8 @@ export const storage = create<StorageState>()((set, get) => {
               messagesMap: mergedMessagesMap,
               reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
               isLoaded: existingSessionMessages.isLoaded,
+              hasOlderMessages: existingSessionMessages.hasOlderMessages,
+              isLoadingOlder: existingSessionMessages.isLoadingOlder,
             };
 
             // IMPORTANT: Copy latestUsage from reducerState to Session for immediate availability
@@ -546,8 +580,10 @@ export const storage = create<StorageState>()((set, get) => {
         isDataReady: true,
       })),
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
+      logger.debug('applyMessages', { sessionId, messageCount: messages.length });
       const changed = new Set<string>();
       let hasReadyEvent = false;
+      let latestStatus: 'working' | 'idle' | undefined;
       set(state => {
         // Resolve session messages state
         const existingSession = state.sessionMessages[sessionId] || {
@@ -555,6 +591,8 @@ export const storage = create<StorageState>()((set, get) => {
           messagesMap: {},
           reducerState: createReducer(),
           isLoaded: false,
+          hasOlderMessages: false,
+          isLoadingOlder: false,
         };
 
         // Get the session's agentState if available
@@ -572,6 +610,9 @@ export const storage = create<StorageState>()((set, get) => {
         }
         if (reducerResult.hasReadyEvent) {
           hasReadyEvent = true;
+        }
+        if (reducerResult.latestStatus) {
+          latestStatus = reducerResult.latestStatus;
         }
 
         // Merge messages
@@ -625,7 +666,13 @@ export const storage = create<StorageState>()((set, get) => {
         };
       });
 
-      return { changed: Array.from(changed), hasReadyEvent };
+      logger.debug('applyMessages done', {
+        sessionId,
+        changedCount: changed.size,
+        hasReadyEvent,
+        latestStatus,
+      });
+      return { changed: Array.from(changed), hasReadyEvent, latestStatus };
     },
     applyMessagesLoaded: (sessionId: string) =>
       set(state => {
@@ -678,6 +725,8 @@ export const storage = create<StorageState>()((set, get) => {
                 messages,
                 messagesMap,
                 isLoaded: true,
+                hasOlderMessages: false,
+                isLoadingOlder: false,
               } satisfies SessionMessages,
             },
           };
@@ -695,6 +744,22 @@ export const storage = create<StorageState>()((set, get) => {
         }
 
         return result;
+      }),
+    setSessionOlderMessagesState: (sessionId: string, update: { hasOlderMessages?: boolean; isLoadingOlder?: boolean }) =>
+      set(state => {
+        const existing = state.sessionMessages[sessionId];
+        if (!existing) return state;
+        return {
+          ...state,
+          sessionMessages: {
+            ...state.sessionMessages,
+            [sessionId]: {
+              ...existing,
+              ...(update.hasOlderMessages !== undefined ? { hasOlderMessages: update.hasOlderMessages } : {}),
+              ...(update.isLoadingOlder !== undefined ? { isLoadingOlder: update.isLoadingOlder } : {}),
+            },
+          },
+        };
       }),
     applySettingsLocal: (settings: Partial<Settings>) =>
       set(state => {
@@ -885,9 +950,35 @@ export const storage = create<StorageState>()((set, get) => {
           sessions: updatedSessions,
         };
       }),
+    updateSessionDesiredAgentMode: (sessionId: string, mode: string | null) =>
+      set(state => {
+        const session = state.sessions[sessionId];
+        if (!session) return state;
+
+        const updatedSessions = {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            desiredAgentMode: mode,
+          },
+        };
+
+        const allModes: Record<string, string> = {};
+        Object.entries(updatedSessions).forEach(([id, sess]) => {
+          if (sess.desiredAgentMode) {
+            allModes[id] = sess.desiredAgentMode;
+          }
+        });
+        saveSessionDesiredAgentModes(allModes);
+
+        return {
+          ...state,
+          sessions: updatedSessions,
+        };
+      }),
     updateSessionModelMode: (
       sessionId: string,
-      mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite'
+      mode: string | null
     ) =>
       set(state => {
         const session = state.sessions[sessionId];
@@ -902,10 +993,68 @@ export const storage = create<StorageState>()((set, get) => {
           },
         };
 
+        const allModes: Record<string, string> = {};
+        Object.entries(updatedSessions).forEach(([id, sess]) => {
+          if (sess.modelMode) {
+            allModes[id] = sess.modelMode;
+          }
+        });
+        saveSessionModelModes(allModes);
+
         // No need to rebuild sessionListViewData since model mode doesn't affect the list display
         return {
           ...state,
           sessions: updatedSessions,
+        };
+      }),
+    updateSessionDesiredConfigOption: (sessionId: string, optionId: string, value: string | null) =>
+      set(state => {
+        const session = state.sessions[sessionId];
+        if (!session) return state;
+
+        const nextDesiredConfigOptions = { ...(session.desiredConfigOptions ?? {}) };
+        if (value === null) {
+          delete nextDesiredConfigOptions[optionId];
+        } else {
+          nextDesiredConfigOptions[optionId] = value;
+        }
+
+        const updatedSessions = {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            desiredConfigOptions:
+              Object.keys(nextDesiredConfigOptions).length > 0 ? nextDesiredConfigOptions : null,
+          },
+        };
+
+        const allOptions: Record<string, Record<string, string>> = {};
+        Object.entries(updatedSessions).forEach(([id, sess]) => {
+          if (sess.desiredConfigOptions && Object.keys(sess.desiredConfigOptions).length > 0) {
+            allOptions[id] = sess.desiredConfigOptions;
+          }
+        });
+        saveSessionDesiredConfigOptions(allOptions);
+
+        return {
+          ...state,
+          sessions: updatedSessions,
+        };
+      }),
+    updateSessionCapabilities: (sessionId: string, capabilities: SessionCapabilities | null) =>
+      set(state => {
+        const session = state.sessions[sessionId];
+        if (!session) return state;
+
+        return {
+          ...state,
+          sessions: {
+            ...state.sessions,
+            [sessionId]: {
+              ...session,
+              capabilities,
+            },
+          },
         };
       }),
     // Project management methods
@@ -1000,6 +1149,10 @@ export const storage = create<StorageState>()((set, get) => {
       }),
     deleteSession: (sessionId: string) =>
       set(state => {
+        const messageCount = state.sessionMessages[sessionId]?.messages.length ?? 0;
+        const hasGitStatus = !!state.sessionGitStatus[sessionId];
+        logger.debug('deleteSession', { sessionId, messageCount, hasGitStatus });
+
         // Remove session from sessions
         const { [sessionId]: deletedSession, ...remainingSessions } = state.sessions;
 
@@ -1018,8 +1171,25 @@ export const storage = create<StorageState>()((set, get) => {
         delete modes[sessionId];
         saveSessionPermissionModes(modes);
 
+        const desiredAgentModes = loadSessionDesiredAgentModes();
+        delete desiredAgentModes[sessionId];
+        saveSessionDesiredAgentModes(desiredAgentModes);
+
+        const desiredConfigOptions = loadSessionDesiredConfigOptions();
+        delete desiredConfigOptions[sessionId];
+        saveSessionDesiredConfigOptions(desiredConfigOptions);
+
+        const modelModes = loadSessionModelModes();
+        delete modelModes[sessionId];
+        saveSessionModelModes(modelModes);
+
         // Rebuild sessionListViewData without the deleted session
         const sessionListViewData = buildSessionListViewData(remainingSessions);
+
+        logger.debug('deleteSession done', {
+          sessionId,
+          remainingSessions: Object.keys(remainingSessions).length,
+        });
 
         return {
           ...state,
@@ -1165,15 +1335,26 @@ export function useSession(id: string): Session | null {
   return storage(useShallow(state => state.sessions[id] ?? null));
 }
 
+export function useSessionCapabilities(id: string) {
+  return storage(useShallow(state => state.sessions[id]?.capabilities ?? null));
+}
+
 const emptyArray: unknown[] = [];
 
-export function useSessionMessages(sessionId: string): { messages: Message[]; isLoaded: boolean } {
+export function useSessionMessages(sessionId: string): {
+  messages: Message[];
+  isLoaded: boolean;
+  hasOlderMessages: boolean;
+  isLoadingOlder: boolean;
+} {
   return storage(
     useShallow(state => {
       const session = state.sessionMessages[sessionId];
       return {
         messages: session?.messages ?? emptyArray,
         isLoaded: session?.isLoaded ?? false,
+        hasOlderMessages: session?.hasOlderMessages ?? false,
+        isLoadingOlder: session?.isLoadingOlder ?? false,
       };
     })
   );

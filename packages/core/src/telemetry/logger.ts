@@ -1,6 +1,7 @@
 import type { LogEntry, Level, TraceContext } from './types.js'
 import { isCollectorReady, getCollector, _registerOnCollectorReady } from './collector.js'
 import { Span } from './span.js'
+export { safeStringify, toError } from '../utils/stringify.js'
 let _globalContextProvider: (() => TraceContext | undefined) | undefined
 
 /**
@@ -33,43 +34,6 @@ export class Logger {
       })
     }
   }
-  /**
-   * Convert any value to a readable string for error logging.
-   * Never returns [object Object] - always produces readable output.
-   */
-  private static errorToString(err: unknown): string {
-    if (err instanceof Error) {
-      return err.message
-    }
-    if (typeof err === 'string') {
-      return err
-    }
-    if (typeof err === 'number' || typeof err === 'boolean') {
-      return String(err)
-    }
-    if (err === null) {
-      return 'null'
-    }
-    if (err === undefined) {
-      return 'undefined'
-    }
-    // For objects, try JSON.stringify for readable output
-    try {
-      return JSON.stringify(err)
-    } catch {
-      // If JSON.stringify fails (circular ref, etc), fall back to Object.prototype.toString
-      return Object.prototype.toString.call(err)
-    }
-  }
-  /**
-   * Normalize error parameter to Error object or undefined.
-   * Ensures error.message is always readable, never [object Object].
-   */
-  private static normalizeError(err: unknown): Error | undefined {
-    if (err === undefined || err === null) return undefined
-    if (err instanceof Error) return err
-    return new Error(Logger.errorToString(err))
-  }
   debug(message: string, data?: unknown): void {
     this.emit('debug', message, undefined, data)
   }
@@ -80,7 +44,8 @@ export class Logger {
     this.emit('warn', message, undefined, data)
   }
   error(message: string, err?: Error | unknown, data?: unknown): void {
-    this.emit('error', message, Logger.normalizeError(err), data)
+    const normalized = err instanceof Error ? err : err !== undefined ? new Error(String(err)) : undefined
+    this.emit('error', message, normalized, data)
   }
   withContext(ctx: TraceContext): ScopedLogger {
     return {
@@ -88,7 +53,8 @@ export class Logger {
       info: (message, data) => this.emit('info', message, undefined, data, ctx),
       warn: (message, data) => this.emit('warn', message, undefined, data, ctx),
       error: (message, err, data) => {
-        this.emit('error', message, Logger.normalizeError(err), data, ctx)
+        const normalized = err instanceof Error ? err : err !== undefined ? new Error(String(err)) : undefined
+        this.emit('error', message, normalized, data, ctx)
       },
       context: ctx,
     }
@@ -134,6 +100,7 @@ export class Logger {
       if (resolvedCtx.parentSpanId) entry.parentSpanId = resolvedCtx.parentSpanId
       if (resolvedCtx.sessionId) entry.sessionId = resolvedCtx.sessionId
       if (resolvedCtx.machineId) entry.machineId = resolvedCtx.machineId
+      if (resolvedCtx.userId) entry.userId = resolvedCtx.userId
     }
     const resolvedData = Logger.toData(data)
     if (resolvedData) entry.data = resolvedData

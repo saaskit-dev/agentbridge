@@ -31,7 +31,6 @@ const createReadToolCall = (
   result: string
 ): Message => ({
   id,
-  localId: null,
   createdAt: Date.now() - Math.random() * 10000,
   kind: 'tool-call' as const,
   tool: createToolCall(
@@ -49,14 +48,18 @@ const createReadToolCall = (
 
 // Helper function to create user messages that serve as descriptions
 function createSectionTitle(id: string, text: string, timeOffset: number = 0): Message {
-  return { id, localId: null, createdAt: Date.now() - timeOffset, kind: 'user-text', text };
+  return {
+    id,
+    createdAt: Date.now() - timeOffset,
+    kind: 'user-text',
+    text,
+  };
 }
 
 export const debugMessages: Message[] = [
   // User message
   {
     id: 'user-1',
-    localId: null,
     createdAt: Date.now() - 200000,
     kind: 'user-text',
     text: 'Can you help me debug my application and make some improvements?',
@@ -65,7 +68,6 @@ export const debugMessages: Message[] = [
   // Agent message
   {
     id: 'agent-1',
-    localId: null,
     createdAt: Date.now() - 190000,
     kind: 'agent-text',
     text: "I'll help you debug and improve your application. Let me start by examining the codebase and running various analysis tools.",
@@ -74,7 +76,6 @@ export const debugMessages: Message[] = [
   // Agent message with markdown table (simple repro for mobile rendering issue)
   {
     id: 'agent-table-demo',
-    localId: null,
     createdAt: Date.now() - 185000,
     kind: 'agent-text',
     text: `Here is a summary of the analysis results:
@@ -92,7 +93,6 @@ The main issues are in Button.tsx and helpers.ts.`,
   // Simple minimal table repro
   {
     id: 'agent-table-minimal',
-    localId: null,
     createdAt: Date.now() - 184000,
     kind: 'agent-text',
     text: `Minimal table test:
@@ -105,7 +105,6 @@ The main issues are in Button.tsx and helpers.ts.`,
   // Code snippet demo - test horizontal scrolling
   {
     id: 'agent-code-demo',
-    localId: null,
     createdAt: Date.now() - 183000,
     kind: 'agent-text',
     text: `Here's a function that handles the complex data transformation:
@@ -152,7 +151,6 @@ This function handles validation, transformation, and normalization in a single 
   // Bash tool - running
   {
     id: 'bash-running',
-    localId: null,
     createdAt: Date.now() - 180000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -171,7 +169,6 @@ This function handles validation, transformation, and normalization in a single 
   // Bash tool - completed
   {
     id: 'bash-completed',
-    localId: null,
     createdAt: Date.now() - 170000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -188,7 +185,6 @@ This function handles validation, transformation, and normalization in a single 
   // Bash tool - error
   {
     id: 'bash-error',
-    localId: null,
     createdAt: Date.now() - 160000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -207,7 +203,6 @@ This function handles validation, transformation, and normalization in a single 
   // Edit tool - running
   {
     id: 'edit-running',
-    localId: null,
     createdAt: Date.now() - 150000,
     kind: 'tool-call',
     tool: createToolCall('Edit', 'running', {
@@ -221,7 +216,6 @@ This function handles validation, transformation, and normalization in a single 
   // Edit tool - completed
   {
     id: 'edit-completed',
-    localId: null,
     createdAt: Date.now() - 140000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -240,7 +234,6 @@ This function handles validation, transformation, and normalization in a single 
   // Edit tool - completed (larger diff)
   {
     id: 'edit-large',
-    localId: null,
     createdAt: Date.now() - 130000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -261,7 +254,6 @@ This function handles validation, transformation, and normalization in a single 
   // Edit tool - error
   {
     id: 'edit-error',
-    localId: null,
     createdAt: Date.now() - 120000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -280,7 +272,6 @@ This function handles validation, transformation, and normalization in a single 
   // Read tool - running
   {
     id: 'read-running',
-    localId: null,
     createdAt: Date.now() - 110000,
     kind: 'tool-call',
     tool: createToolCall('Read', 'running', {
@@ -337,7 +328,6 @@ root.render(
   // Write tool
   {
     id: 'write-completed',
-    localId: null,
     createdAt: Date.now() - 80000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -369,7 +359,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
   // Write tool - error
   {
     id: 'write-error',
-    localId: null,
     createdAt: Date.now() - 70000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -387,7 +376,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
   // Grep tool - running
   {
     id: 'grep-running',
-    localId: null,
     createdAt: Date.now() - 60000,
     kind: 'tool-call',
     tool: createToolCall('Grep', 'running', {
@@ -402,7 +390,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
   // Grep tool - completed with results
   {
     id: 'grep-completed',
-    localId: null,
     createdAt: Date.now() - 50000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -431,7 +418,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
   // Grep tool - completed with no results
   {
     id: 'grep-empty',
-    localId: null,
     createdAt: Date.now() - 40000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -457,7 +443,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
   // TodoWrite tool
   {
     id: 'todo-write',
-    localId: null,
     createdAt: Date.now() - 30000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -494,7 +479,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
   // Glob tool
   {
     id: 'glob-completed',
-    localId: null,
     createdAt: Date.now() - 20000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -516,7 +500,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
   // LS tool
   {
     id: 'ls-completed',
-    localId: null,
     createdAt: Date.now() - 10000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -542,7 +525,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
   // Complex nested example - Task with children
   {
     id: 'task-with-children',
-    localId: null,
     createdAt: Date.now() - 5000,
     kind: 'tool-call',
     tool: createToolCall(
@@ -558,7 +540,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
     children: [
       {
         id: 'task-child-1',
-        localId: null,
         createdAt: Date.now() - 4000,
         kind: 'tool-call',
         tool: createToolCall(
@@ -574,7 +555,6 @@ export const NewComponent: React.FC<NewComponentProps> = ({ title, description }
       },
       {
         id: 'task-child-2',
-        localId: null,
         createdAt: Date.now() - 3000,
         kind: 'tool-call',
         tool: createToolCall(

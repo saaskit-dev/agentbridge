@@ -140,7 +140,7 @@ export default function PathPickerScreen() {
         <Stack.Screen
           options={{
             headerShown: true,
-            headerTitle: 'Select Path',
+            headerTitle: t('pathPicker.headerTitle'),
             headerBackTitle: t('common.back'),
             headerRight: () => (
               <Pressable
@@ -159,7 +159,7 @@ export default function PathPickerScreen() {
         />
         <View style={styles.container}>
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No machine selected</Text>
+            <Text style={styles.emptyText}>{t('pathPicker.noMachineSelected')}</Text>
           </View>
         </View>
       </>
@@ -171,7 +171,7 @@ export default function PathPickerScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: 'Select Path',
+          headerTitle: t('pathPicker.headerTitle'),
           headerBackTitle: t('common.back'),
           headerRight: () => (
             <Pressable
@@ -194,14 +194,14 @@ export default function PathPickerScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.contentWrapper}>
-            <ItemGroup title="Enter Path">
+            <ItemGroup title={t('pathPicker.enterPath')}>
               <View style={styles.pathInputContainer}>
                 <View style={[styles.pathInput, { paddingVertical: 8 }]}>
                   <MultiTextInput
                     ref={inputRef}
                     value={customPath}
                     onChangeText={setCustomPath}
-                    placeholder="Enter path (e.g. /home/user/projects)"
+                    placeholder={t('pathPicker.enterPathPlaceholder')}
                     maxHeight={76}
                     paddingTop={8}
                     paddingBottom={8}
@@ -214,7 +214,7 @@ export default function PathPickerScreen() {
             </ItemGroup>
 
             {recentPaths.length > 0 && (
-              <ItemGroup title="Recent Paths">
+              <ItemGroup title={t('pathPicker.recentPaths')}>
                 {recentPaths.map((path, index) => {
                   const isSelected = customPath.trim() === path;
                   const isLast = index === recentPaths.length - 1;
@@ -247,7 +247,7 @@ export default function PathPickerScreen() {
             )}
 
             {recentPaths.length === 0 && (
-              <ItemGroup title="Suggested Paths">
+              <ItemGroup title={t('pathPicker.suggestedPaths')}>
                 {(() => {
                   const homeDir = machine.metadata?.homeDir || '/home';
                   const suggestedPaths = [

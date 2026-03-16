@@ -4,6 +4,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { WebView } from 'react-native-webview';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/markdown/MermaidRenderer');
 
@@ -56,7 +57,7 @@ export const MermaidRenderer = React.memo((props: { content: string }) => {
         } catch (error) {
           if (isMounted) {
             logger.warn(
-              `[Mermaid] ${t('markdown.mermaidRenderFailed')}: ${error instanceof Error ? error.message : String(error)}`
+              `[Mermaid] ${t('markdown.mermaidRenderFailed')}: ${safeStringify(error)}`
             );
             setHasError(true);
           }

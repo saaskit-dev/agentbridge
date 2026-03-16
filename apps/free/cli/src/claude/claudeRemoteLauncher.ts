@@ -14,9 +14,11 @@ import { MessageBuffer } from '@/ui/ink/messageBuffer';
 import { RemoteModeDisplay } from '@/ui/ink/RemoteModeDisplay';
 import type { PermissionMode } from '@/api/types';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify, toError } from '@saaskit-dev/agentbridge';
 import { formatClaudeMessageForInk } from '@/ui/messageFormatterInk';
 import { Future } from '@/utils/future';
 
+import { configuration } from '@/configuration';
 const logger = new Logger('claude/claudeRemoteLauncher');
 interface PermissionsField {
   date: number;
@@ -41,7 +43,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     inkInstance = render(
       React.createElement(RemoteModeDisplay, {
         messageBuffer,
-        logPath: process.env.DEBUG ? session.logPath : undefined,
+        logPath: configuration.isDev ? session.logPath : undefined,
         onExit: async () => {
           // Exit the entire client
           logger.debug('[remote]: Exiting client via Ctrl-C');
@@ -102,7 +104,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
   // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
   // Create permission handler
-  const permissionHandler = new PermissionHandler(session);
+  const permissionHandler = new PermissionHandler(session.client, {
+    api: session.api,
+    onPlanApproved: (message, mode) => session.queue.unshift(message, mode),
+  });
 
   // Create outgoing message queue
   const messageQueue = new OutgoingMessageQueue(logMessage =>
@@ -422,22 +427,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
           session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
         }
       } catch (e) {
-        // Log full error details
-      const errorDetails = e instanceof Error
-        ? {
-            name: e.name,
-            message: e.message,
-            stack: e.stack,
-            code: (e as any).code
-          }
-        : {
-            name: typeof e === 'object' && e !== null ? e.constructor?.name : 'Unknown',
-            message: String(e),
-          }
-      logger.error('[remote]: launch error with details', undefined, {
-        error: errorDetails,
-        originalError: e
-      });
+        logger.error('[remote]: launch error with details', toError(e), {
+          errorCode: (e as any)?.code,
+        });
         if (!exitReason) {
           session.client.closeClaudeSessionTurn('failed');
           session.client.sendSessionEvent({

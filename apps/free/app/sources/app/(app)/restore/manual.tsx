@@ -14,7 +14,7 @@ import { Typography } from '@/constants/Typography';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/restore/manual');
 
 const stylesheet = StyleSheet.create(theme => ({
@@ -103,7 +103,7 @@ export default function Restore() {
       // Dismiss
       router.back();
     } catch (error) {
-      logger.error('Restore error:', error);
+      logger.error('Restore error:', toError(error));
       Modal.alert(t('common.error'), t('connect.invalidSecretKey'));
     }
   };

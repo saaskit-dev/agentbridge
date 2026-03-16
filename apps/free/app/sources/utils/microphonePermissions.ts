@@ -1,6 +1,6 @@
 import { AudioModule } from 'expo-audio';
 import { Platform, Linking } from 'react-native';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/utils/microphonePermissions');
 export interface MicrophonePermissionResult {
   granted: boolean;
@@ -24,7 +24,7 @@ export async function requestMicrophonePermission(): Promise<MicrophonePermissio
         return { granted: true };
       } catch (error: any) {
         // User denied permission or browser doesn't support getUserMedia
-        logger.error('Web microphone permission denied:', error);
+        logger.error('Web microphone permission denied:', toError(error));
         return { granted: false, canAskAgain: error.name !== 'NotAllowedError' };
       }
     } else {
@@ -44,7 +44,7 @@ export async function requestMicrophonePermission(): Promise<MicrophonePermissio
       return { granted: false, canAskAgain: result.canAskAgain };
     }
   } catch (error) {
-    logger.error('Error requesting microphone permission:', error);
+    logger.error('Error requesting microphone permission:', toError(error));
     return { granted: false };
   }
 }
@@ -75,7 +75,7 @@ export async function checkMicrophonePermission(): Promise<MicrophonePermissionR
       return { granted: result.granted, canAskAgain: result.canAskAgain };
     }
   } catch (error) {
-    logger.error('Error checking microphone permission:', error);
+    logger.error('Error checking microphone permission:', toError(error));
     return { granted: false };
   }
 }

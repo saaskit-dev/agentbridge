@@ -1,16 +1,20 @@
 import * as React from 'react';
-import { View, Text } from 'react-native';
-import { StyleSheet } from 'react-native-unistyles';
+import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from './layout';
 import { MarkdownView } from './markdown/MarkdownView';
 import { Option } from './markdown/MarkdownView';
+import { StreamingAgentText } from './StreamingText';
 import { ToolView } from './tools/ToolView';
 import { useLocalSetting, useSetting } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/sync/typesMessage';
 import { AgentEvent } from '@/sync/typesRaw';
+import { apiSocket } from '@/sync/apiSocket';
 import { t } from '@/text';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+const logger = new Logger('app/components/MessageView');
 
 export const MessageView = (props: {
   message: Message;
@@ -57,7 +61,7 @@ function RenderBlock(props: {
       );
 
     case 'agent-event':
-      return <AgentEventBlock event={props.message.event} metadata={props.metadata} />;
+      return <AgentEventBlock event={props.message.event} metadata={props.metadata} sessionId={props.sessionId} />;
 
     default:
       // Exhaustive check - TypeScript will error if we miss a case
@@ -67,7 +71,7 @@ function RenderBlock(props: {
 }
 
 /** Small monospace overlay shown in dev mode below a message. */
-function DevTraceBadge(props: { traceId?: string; localId?: string | null; id: string; alignSelf?: 'flex-start' | 'flex-end' }) {
+function DevTraceBadge(props: { traceId?: string; id: string; alignSelf?: 'flex-start' | 'flex-end' }) {
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
   if (!devModeEnabled) return null;
   return (
@@ -75,11 +79,6 @@ function DevTraceBadge(props: { traceId?: string; localId?: string | null; id: s
       {!!props.traceId && (
         <Text style={styles.devBadgeText} selectable>
           trace:{props.traceId}
-        </Text>
-      )}
-      {!!props.localId && (
-        <Text style={styles.devBadgeText} selectable>
-          local:{props.localId}
         </Text>
       )}
       <Text style={[styles.devBadgeText, { color: '#aaa' }]} selectable>
@@ -108,7 +107,7 @@ function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
       </View>
-      <DevTraceBadge traceId={props.message.traceId} localId={props.message.localId} id={props.message.id} alignSelf="flex-end" />
+      <DevTraceBadge traceId={props.message.traceId} id={props.message.id} alignSelf="flex-end" />
     </View>
   );
 }
@@ -129,13 +128,106 @@ function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string })
 
   return (
     <View style={styles.agentMessageContainer}>
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
-      <DevTraceBadge traceId={props.message.traceId} localId={props.message.localId} id={props.message.id} />
+      <StreamingAgentText
+        sessionId={props.sessionId}
+        message={{
+          id: props.message.sourceId ?? props.message.id,
+          text: props.message.text,
+          isThinking: props.message.isThinking,
+        }}
+        onOptionPress={handleOptionPress}
+      />
+      <DevTraceBadge traceId={props.message.traceId} id={props.message.id} />
     </View>
   );
 }
 
-function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null }) {
+function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null; sessionId: string }) {
+  const { theme } = useUnistyles();
+  const [loadingDecision, setLoadingDecision] = React.useState<'allow' | 'deny' | null>(null);
+  const [resolved, setResolved] = React.useState<'allow' | 'deny' | null>(null);
+
+  if (props.event.type === 'permission_request') {
+    const { requestId, toolName, permissionMode } = props.event;
+    const isPending = resolved === null;
+
+    const handleDecision = async (decision: 'allow' | 'deny') => {
+      if (!isPending || loadingDecision !== null) return;
+      setLoadingDecision(decision);
+      try {
+        await apiSocket.sessionRPC<{ ok: boolean }, { requestId: string; toolName: string; decision: 'allow' | 'deny' }>(
+          props.sessionId,
+          'permission_response',
+          { requestId, toolName, decision }
+        );
+        setResolved(decision);
+      } catch (error) {
+        logger.error('[MessageView] permission_response RPC failed', toError(error), { requestId, decision });
+      } finally {
+        setLoadingDecision(null);
+      }
+    };
+
+    return (
+      <View style={styles.permissionRequestContainer}>
+        <Text style={[styles.agentEventText, { color: theme.colors.text, fontWeight: '500', marginBottom: 4 }]}>
+          {t('message.permissionRequest', { toolName })}
+        </Text>
+        <Text style={[styles.agentEventText, { fontSize: 12, marginBottom: 8, opacity: 0.6 }]}>
+          {t('message.permissionMode', { mode: permissionMode })}
+        </Text>
+        <View style={styles.permissionButtonRow}>
+          <TouchableOpacity
+            style={[
+              styles.permissionButton,
+              styles.permissionButtonAllow,
+              !isPending && styles.permissionButtonInactive,
+              resolved === 'allow' && styles.permissionButtonSelected,
+            ]}
+            onPress={() => handleDecision('allow')}
+            disabled={!isPending || loadingDecision !== null}
+            activeOpacity={0.7}
+          >
+            {loadingDecision === 'allow' ? (
+              <ActivityIndicator size="small" color={theme.colors.permissionButton.allow.background} />
+            ) : (
+              <Text style={[
+                styles.permissionButtonText,
+                { color: theme.colors.permissionButton.allow.background },
+                resolved === 'allow' && { color: theme.colors.text, fontWeight: '600' },
+              ]}>
+                {t('common.yes')}
+              </Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.permissionButton,
+              styles.permissionButtonDeny,
+              !isPending && styles.permissionButtonInactive,
+              resolved === 'deny' && styles.permissionButtonSelected,
+            ]}
+            onPress={() => handleDecision('deny')}
+            disabled={!isPending || loadingDecision !== null}
+            activeOpacity={0.7}
+          >
+            {loadingDecision === 'deny' ? (
+              <ActivityIndicator size="small" color={theme.colors.permissionButton.deny.background} />
+            ) : (
+              <Text style={[
+                styles.permissionButtonText,
+                { color: theme.colors.permissionButton.deny.background },
+                resolved === 'deny' && { color: theme.colors.text, fontWeight: '600' },
+              ]}>
+                {t('common.no')}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   if (props.event.type === 'switch') {
     return (
       <View style={styles.agentEventContainer}>
@@ -170,6 +262,15 @@ function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null }
       </View>
     );
   }
+  if (props.event.type === 'error') {
+    return (
+      <View style={styles.agentEventContainer}>
+        <Text style={[styles.agentEventText, { color: theme.colors.error }]}>
+          {props.event.message}
+        </Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.agentEventContainer}>
       <Text style={styles.agentEventText}>{t('message.unknownEvent')}</Text>
@@ -195,7 +296,7 @@ function ToolCallBlock(props: {
         sessionId={props.sessionId}
         messageId={props.message.id}
       />
-      <DevTraceBadge traceId={props.message.traceId} localId={props.message.localId} id={props.message.id} />
+      <DevTraceBadge traceId={props.message.traceId} id={props.message.id} />
     </View>
   );
 }
@@ -240,6 +341,44 @@ const styles = StyleSheet.create(theme => ({
   agentEventText: {
     color: theme.colors.agentEventText,
     fontSize: 14,
+  },
+  permissionRequestContainer: {
+    marginHorizontal: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  permissionButtonRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  permissionButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 36,
+    minWidth: 64,
+  },
+  permissionButtonAllow: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: theme.colors.permissionButton.allow.background,
+  },
+  permissionButtonDeny: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: theme.colors.permissionButton.deny.background,
+  },
+  permissionButtonSelected: {
+    opacity: 1,
+  },
+  permissionButtonInactive: {
+    opacity: 0.4,
+  },
+  permissionButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   toolContainer: {
     marginHorizontal: 8,

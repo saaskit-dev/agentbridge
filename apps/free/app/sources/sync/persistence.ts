@@ -2,16 +2,17 @@ import { MMKV } from 'react-native-mmkv';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Profile, profileDefaults, profileParse } from './profile';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
+import { coerceAgentType, type AppAgentFlavor } from './agentFlavor';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
-import type { PermissionMode } from '@/components/PermissionModeSelector';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import type { PermissionMode } from './sessionCapabilities';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/persistence');
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 
-export type NewSessionAgentType = 'claude' | 'codex' | 'gemini' | 'opencode';
+export type NewSessionAgentType = AppAgentFlavor;
 export type NewSessionSessionType = 'simple' | 'worktree';
 
 export interface NewSessionDraft {
@@ -31,7 +32,7 @@ export function loadSettings(): { settings: Settings; version: number | null } {
       const parsed = JSON.parse(settings);
       return { settings: settingsParse(parsed.settings), version: parsed.version };
     } catch (e) {
-      logger.error('Failed to parse settings', e);
+      logger.error('Failed to parse settings', toError(e));
       return { settings: { ...settingsDefaults }, version: null };
     }
   }
@@ -49,7 +50,7 @@ export function loadPendingSettings(): Partial<Settings> {
       const parsed = JSON.parse(pending);
       return SettingsSchema.partial().parse(parsed);
     } catch (e) {
-      logger.error('Failed to parse pending settings', e);
+      logger.error('Failed to parse pending settings', toError(e));
       return {};
     }
   }
@@ -67,7 +68,7 @@ export function loadLocalSettings(): LocalSettings {
       const parsed = JSON.parse(localSettings);
       return localSettingsParse(parsed);
     } catch (e) {
-      logger.error('Failed to parse local settings', e);
+      logger.error('Failed to parse local settings', toError(e));
       return { ...localSettingsDefaults };
     }
   }
@@ -86,7 +87,7 @@ export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
       const settings = localSettingsParse(parsed);
       return settings.themePreference;
     } catch (e) {
-      logger.error('Failed to parse local settings for theme preference', e);
+      logger.error('Failed to parse local settings for theme preference', toError(e));
       return localSettingsDefaults.themePreference;
     }
   }
@@ -100,7 +101,7 @@ export function loadPurchases(): Purchases {
       const parsed = JSON.parse(purchases);
       return purchasesParse(parsed);
     } catch (e) {
-      logger.error('Failed to parse purchases', e);
+      logger.error('Failed to parse purchases', toError(e));
       return { ...purchasesDefaults };
     }
   }
@@ -117,7 +118,7 @@ export function loadSessionDrafts(): Record<string, string> {
     try {
       return JSON.parse(drafts);
     } catch (e) {
-      logger.error('Failed to parse session drafts', e);
+      logger.error('Failed to parse session drafts', toError(e));
       return {};
     }
   }
@@ -143,8 +144,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
     const selectedMachineId =
       typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
     const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
-    const agentType: NewSessionAgentType =
-      parsed.agentType === 'codex' || parsed.agentType === 'gemini' ? parsed.agentType : 'claude';
+    const agentType: NewSessionAgentType = coerceAgentType(parsed.agentType);
     const permissionMode: PermissionMode =
       typeof parsed.permissionMode === 'string'
         ? (parsed.permissionMode as PermissionMode)
@@ -163,7 +163,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
       updatedAt,
     };
   } catch (e) {
-    logger.error('Failed to parse new session draft', e);
+    logger.error('Failed to parse new session draft', toError(e));
     return null;
   }
 }
@@ -182,7 +182,7 @@ export function loadSessionPermissionModes(): Record<string, PermissionMode> {
     try {
       return JSON.parse(modes);
     } catch (e) {
-      logger.error('Failed to parse session permission modes', e);
+      logger.error('Failed to parse session permission modes', toError(e));
       return {};
     }
   }
@@ -193,6 +193,57 @@ export function saveSessionPermissionModes(modes: Record<string, PermissionMode>
   mmkv.set('session-permission-modes', JSON.stringify(modes));
 }
 
+export function loadSessionDesiredAgentModes(): Record<string, string> {
+  const modes = mmkv.getString('session-desired-agent-modes');
+  if (modes) {
+    try {
+      return JSON.parse(modes);
+    } catch (e) {
+      logger.error('Failed to parse session desired agent modes', toError(e));
+      return {};
+    }
+  }
+  return {};
+}
+
+export function saveSessionDesiredAgentModes(modes: Record<string, string>) {
+  mmkv.set('session-desired-agent-modes', JSON.stringify(modes));
+}
+
+export function loadSessionModelModes(): Record<string, string> {
+  const modes = mmkv.getString('session-model-modes');
+  if (modes) {
+    try {
+      return JSON.parse(modes);
+    } catch (e) {
+      logger.error('Failed to parse session model modes', toError(e));
+      return {};
+    }
+  }
+  return {};
+}
+
+export function saveSessionModelModes(modes: Record<string, string>) {
+  mmkv.set('session-model-modes', JSON.stringify(modes));
+}
+
+export function loadSessionDesiredConfigOptions(): Record<string, Record<string, string>> {
+  const options = mmkv.getString('session-desired-config-options');
+  if (options) {
+    try {
+      return JSON.parse(options);
+    } catch (e) {
+      logger.error('Failed to parse session desired config options', toError(e));
+      return {};
+    }
+  }
+  return {};
+}
+
+export function saveSessionDesiredConfigOptions(options: Record<string, Record<string, string>>) {
+  mmkv.set('session-desired-config-options', JSON.stringify(options));
+}
+
 export function loadProfile(): Profile {
   const profile = mmkv.getString('profile');
   if (profile) {
@@ -200,7 +251,7 @@ export function loadProfile(): Profile {
       const parsed = JSON.parse(profile);
       return profileParse(parsed);
     } catch (e) {
-      logger.error('Failed to parse profile', e);
+      logger.error('Failed to parse profile', toError(e));
       return { ...profileDefaults };
     }
   }

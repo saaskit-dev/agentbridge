@@ -8,6 +8,7 @@ import { useEntitlement } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { Modal } from '@/modal';
 import { Text } from '@/components/StyledText';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { config } from '@/config';
 
 const TIERS = [
@@ -197,7 +198,7 @@ export default function SupportScreen() {
                   await sync.purchasesSync.invalidateAndAwait();
                   Modal.alert('诊断', sync.revenueCatInitialized ? '✅ 初始化成功' : '❌ 初始化失败，请查看控制台');
                 } catch (e: any) {
-                  Modal.alert('诊断错误', e?.message || String(e));
+                  Modal.alert('诊断错误', e?.message || safeStringify(e));
                 }
               }}
               style={{ paddingVertical: 6, paddingHorizontal: 12, backgroundColor: btnBg, borderRadius: 6, alignSelf: 'flex-start' }}

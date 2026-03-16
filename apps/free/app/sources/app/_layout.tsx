@@ -29,7 +29,8 @@ import { syncRestore } from '@/sync/sync';
 import { loadSettings } from '@/sync/persistence';
 // import * as SystemUI from 'expo-system-ui';
 import { AsyncLock } from '@/utils/lock';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { useWatchConnectivity } from '@/hooks/useWatchConnectivity';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/layout');
 
 // Initialize telemetry — in-memory ring buffer for diagnostics (Settings → Support)
@@ -201,7 +202,7 @@ export default function RootLayout() {
 
         setInitState({ credentials });
       } catch (error) {
-        logger.error('Error initializing:', error);
+        logger.error('Error initializing:', toError(error));
       }
     })();
   }, []);
@@ -217,6 +218,9 @@ export default function RootLayout() {
   //
   // Not inited
   //
+
+  // Sync session data to Apple Watch (no-op on non-iOS)
+  useWatchConnectivity();
 
   if (!initState) {
     return null;

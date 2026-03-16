@@ -8,7 +8,7 @@ import {
   requestMicrophonePermission,
   showMicrophonePermissionDeniedAlert,
 } from '@/utils/microphonePermissions';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/RealtimeSession');
 
 let voiceSession: VoiceSession | null = null;
@@ -24,6 +24,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
   // Request microphone permission before starting voice session
   // Critical for iOS/Android - first session will fail without this
   const permissionResult = await requestMicrophonePermission();
+  logger.debug('[Voice] microphone permission', { granted: permissionResult.granted, sessionId });
   if (!permissionResult.granted) {
     showMicrophonePermissionDeniedAlert(permissionResult.canAskAgain);
     return;
@@ -47,6 +48,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         initialContext,
         agentId, // Use agentId directly, no token
       });
+      logger.info('[Voice] session started (simple)', { sessionId });
       return;
     }
 
@@ -59,13 +61,13 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     }
 
     const response = await fetchVoiceToken(credentials, sessionId);
-    logger.debug('[Voice] fetchVoiceToken response:', response);
+    logger.debug('[Voice] fetchVoiceToken response', { sessionId, allowed: response.allowed });
 
     if (!response.allowed) {
-      logger.debug('[Voice] Not allowed, presenting paywall...');
+      logger.debug('[Voice] Not allowed, presenting paywall', { sessionId });
       const { sync } = require('@/sync/sync');
       const result = await sync.presentPaywall();
-      logger.debug('[Voice] Paywall result:', result);
+      logger.debug('[Voice] Paywall result', { sessionId, purchased: result.purchased });
       if (result.purchased) {
         await startRealtimeSession(sessionId, initialContext);
       }
@@ -83,6 +85,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         token: response.token,
         agentId: response.agentId,
       });
+      logger.info('[Voice] session started (with token)', { sessionId });
     } else {
       // No token (e.g. server not deployed yet) - use agentId directly
       await voiceSession.startSession({
@@ -90,9 +93,10 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         initialContext,
         agentId,
       });
+      logger.info('[Voice] session started (agentId only)', { sessionId });
     }
   } catch (error) {
-    logger.error('Failed to start realtime session:', error);
+    logger.error('Failed to start realtime session', toError(error), { sessionId });
     currentSessionId = null;
     voiceSessionStarted = false;
     const { Modal } = require('@/modal');
@@ -107,16 +111,19 @@ export async function stopRealtimeSession() {
 
   try {
     await voiceSession.endSession();
+    logger.info('[Voice] session stopped', { sessionId: currentSessionId });
     currentSessionId = null;
     voiceSessionStarted = false;
   } catch (error) {
-    logger.error('Failed to stop realtime session:', error);
+    logger.error('Failed to stop realtime session', toError(error), { sessionId: currentSessionId });
   }
 }
 
 export function registerVoiceSession(session: VoiceSession) {
   if (voiceSession) {
     logger.warn('Voice session already registered, replacing with new one');
+  } else {
+    logger.debug('[Voice] voice session registered');
   }
   voiceSession = session;
 }

@@ -15,10 +15,11 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { trimIdent } from '@/utils/trimIdent';
 
 const logger = new Logger('daemon/mac/installUser');
-const PLIST_LABEL = 'app.saaskit.free.daemon';
-const PLIST_FILE = `${homedir()}/Library/LaunchAgents/${PLIST_LABEL}.plist`;
 
 export async function installUserAgent(): Promise<void> {
+  const PLIST_LABEL = configuration.daemonServiceLabel;
+  const PLIST_FILE = configuration.daemonPlistFile;
+
   try {
     // Ensure Library/LaunchAgents directory exists
     const launchAgentsDir = `${homedir()}/Library/LaunchAgents`;
@@ -41,11 +42,7 @@ export async function installUserAgent(): Promise<void> {
     const freePath = process.execPath; // Node.js executable
     const scriptPath = process.argv[1]; // free CLI script
 
-    // Get log directory
-    const logDir = `${configuration.freeHomeDir}/logs`;
-    if (!existsSync(logDir)) {
-      mkdirSync(logDir, { recursive: true });
-    }
+    const logDir = configuration.logsDir;
 
     // Create plist content
     const plistContent = trimIdent(`
@@ -95,7 +92,15 @@ export async function installUserAgent(): Promise<void> {
                 <key>EnvironmentVariables</key>
                 <dict>
                     <key>PATH</key>
-                    <string>${process.env.PATH}</string>
+                    <string>${process.env.PATH}</string>${process.env.FREE_HOME_DIR ? `
+                    <key>FREE_HOME_DIR</key>
+                    <string>${process.env.FREE_HOME_DIR}</string>` : ''}${process.env.APP_ENV ? `
+                    <key>APP_ENV</key>
+                    <string>${process.env.APP_ENV}</string>` : ''}${process.env.FREE_SERVER_URL ? `
+                    <key>FREE_SERVER_URL</key>
+                    <string>${process.env.FREE_SERVER_URL}</string>` : ''}${process.env.FREE_WEBAPP_URL ? `
+                    <key>FREE_WEBAPP_URL</key>
+                    <string>${process.env.FREE_WEBAPP_URL}</string>` : ''}
                 </dict>
             </dict>
             </plist>
@@ -128,6 +133,8 @@ export async function installUserAgent(): Promise<void> {
 }
 
 export async function uninstallUserAgent(): Promise<void> {
+  const PLIST_FILE = configuration.daemonPlistFile;
+
   try {
     if (existsSync(PLIST_FILE)) {
       logger.info('Unloading LaunchAgent...');
@@ -150,5 +157,5 @@ export async function uninstallUserAgent(): Promise<void> {
 }
 
 export function isUserAgentInstalled(): boolean {
-  return existsSync(PLIST_FILE);
+  return existsSync(configuration.daemonPlistFile);
 }

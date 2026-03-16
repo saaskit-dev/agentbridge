@@ -54,6 +54,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: bundleId,
+      appleTeamId: process.env.APPLE_TEAM_ID || 'SD58V5WA54',
       config: {
         usesNonExemptEncryption: false,
       },
@@ -111,8 +112,10 @@ export default {
       require('./plugins/withVersionSync.js'), // 自动同步版本到原生项目
       require('./plugins/withDevelopmentTeam.js'), // 自动写入 DEVELOPMENT_TEAM，防止 prebuild 后丢失
       require('./plugins/withDevReleaseBundleId.js'), // Debug→.dev / Release→.preview (仅 APP_ENV=development)
+      require('./plugins/withXcodeDefaults.js'), // Scheme Run→Release + App Category→Developer Tools
       require('./plugins/withPushNotificationEntitlements.js'), // 自动配置推送 entitlements
       require('./plugins/withEinkCompatibility.js'),
+      // '@bacons/apple-targets', // watchOS app target (targets/watch/) — 暂未配置 Watch 签名，跳过
       require('./plugins/withSourceBuildRN.js'),
       require('./plugins/withFmtConsteval.js'),
       [
@@ -212,6 +215,7 @@ export default {
         projectId: '79f0465e-eaa6-47f9-91e0-09e5a5661790',
       },
       app: {
+        isDev: variant === 'development',
         serverUrl,
         postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
         revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,

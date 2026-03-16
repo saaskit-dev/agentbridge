@@ -11,7 +11,7 @@ import { Text } from '@/components/StyledText';
 import { getUsageForPeriod, calculateTotals, UsageDataPoint } from '@/sync/apiUsage';
 import { t } from '@/text';
 import { FreeError } from '@/utils/errors';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/usage/UsagePanel');
 
 type TimePeriod = 'today' | '7days' | '30days';
@@ -148,7 +148,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
       setUsageData(response.usage || []);
       setTotals(calculateTotals(response.usage || []));
     } catch (err) {
-      logger.error('Failed to load usage data:', err);
+      logger.error('Failed to load usage data:', toError(err));
       if (err instanceof FreeError) {
         setError(err.message);
       } else {

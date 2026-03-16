@@ -14,10 +14,13 @@ import { configuration } from '@/configuration';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/linux/installUser');
 
-const SERVICE_NAME = 'free-daemon';
-const SERVICE_FILE = `${homedir()}/.config/systemd/user/${SERVICE_NAME}.service`;
+// SERVICE_NAME and SERVICE_FILE are derived from configuration at call time
+// so that dev and stable variants get separate systemd services
 
 export async function installUserAgent(): Promise<void> {
+  const SERVICE_NAME = configuration.daemonSystemdServiceName;
+  const SERVICE_FILE = configuration.daemonSystemdFile;
+
   try {
     // Ensure systemd user directory exists
     const systemdDir = `${homedir()}/.config/systemd/user`;
@@ -29,15 +32,18 @@ export async function installUserAgent(): Promise<void> {
     const freePath = process.execPath; // Node.js executable
     const scriptPath = process.argv[1]; // free CLI script
 
-    // Get log directory
-    const logDir = `${configuration.freeHomeDir}/logs`;
-    if (!existsSync(logDir)) {
-      mkdirSync(logDir, { recursive: true });
-    }
+    const logDir = configuration.logsDir;
+
+    // Build environment block — capture current env so daemon inherits the correct variant
+    const envLines = [`Environment="PATH=${process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'}"`];
+    if (process.env.FREE_HOME_DIR) envLines.push(`Environment="FREE_HOME_DIR=${process.env.FREE_HOME_DIR}"`);
+    if (process.env.APP_ENV) envLines.push(`Environment="APP_ENV=${process.env.APP_ENV}"`);
+    if (process.env.FREE_SERVER_URL) envLines.push(`Environment="FREE_SERVER_URL=${process.env.FREE_SERVER_URL}"`);
+    if (process.env.FREE_WEBAPP_URL) envLines.push(`Environment="FREE_WEBAPP_URL=${process.env.FREE_WEBAPP_URL}"`);
 
     // Create systemd service file
     const serviceContent = `[Unit]
-Description=Free CLI Daemon
+Description=Free CLI Daemon${configuration.variant === 'dev' ? ' (dev)' : ''}
 After=network.target
 
 [Service]
@@ -52,7 +58,7 @@ StandardOutput=append:${logDir}/daemon-stdout.log
 StandardError=append:${logDir}/daemon-stderr.log
 
 # Environment
-Environment="PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+${envLines.join('\n')}
 
 [Install]
 WantedBy=default.target
@@ -81,11 +87,11 @@ WantedBy=default.target
     logger.info(`Logs: ${logDir}/`);
     logger.info('');
     logger.info('Commands:');
-    logger.info('  View status: systemctl --user status free-daemon');
-    logger.info('  View logs: journalctl --user -u free-daemon -f');
-    logger.info('  Stop: systemctl --user stop free-daemon');
-    logger.info('  Start: systemctl --user start free-daemon');
-    logger.info('  Disable auto-start: systemctl --user disable free-daemon');
+    logger.info(`  View status: systemctl --user status ${SERVICE_NAME}`);
+    logger.info(`  View logs: journalctl --user -u ${SERVICE_NAME} -f`);
+    logger.info(`  Stop: systemctl --user stop ${SERVICE_NAME}`);
+    logger.info(`  Start: systemctl --user start ${SERVICE_NAME}`);
+    logger.info(`  Disable auto-start: systemctl --user disable ${SERVICE_NAME}`);
   } catch (error) {
     logger.debug('Failed to install systemd service:', error);
     throw error;
@@ -93,6 +99,9 @@ WantedBy=default.target
 }
 
 export async function uninstallUserAgent(): Promise<void> {
+  const SERVICE_NAME = configuration.daemonSystemdServiceName;
+  const SERVICE_FILE = configuration.daemonSystemdFile;
+
   try {
     // Stop the service if running
     try {
@@ -129,5 +138,5 @@ export async function uninstallUserAgent(): Promise<void> {
 }
 
 export function isUserAgentInstalled(): boolean {
-  return existsSync(SERVICE_FILE);
+  return existsSync(configuration.daemonSystemdFile);
 }

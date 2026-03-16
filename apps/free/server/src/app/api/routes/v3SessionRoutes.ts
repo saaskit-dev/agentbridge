@@ -27,8 +27,8 @@ const sendMessagesBodySchema = z.object({
   messages: z
     .array(
       z.object({
-        content: z.string(),
-        localId: z.string().min(1),
+        id: z.string().min(1),
+        content: z.string().max(1_000_000),
         _trace: WireTracePassthroughSchema.optional(),
       })
     )
@@ -40,7 +40,6 @@ type SelectedMessage = {
   id: string;
   seq: number;
   content: unknown;
-  localId: string | null;
   traceId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -51,7 +50,6 @@ function toResponseMessage(message: SelectedMessage) {
     id: message.id,
     seq: message.seq,
     content: message.content,
-    localId: message.localId,
     ...(message.traceId ? { traceId: message.traceId } : {}),
     createdAt: message.createdAt.getTime(),
     updatedAt: message.updatedAt.getTime(),
@@ -62,7 +60,6 @@ function toSendResponseMessage(message: Omit<SelectedMessage, 'content'>) {
   return {
     id: message.id,
     seq: message.seq,
-    localId: message.localId,
     ...(message.traceId ? { traceId: message.traceId } : {}),
     createdAt: message.createdAt.getTime(),
     updatedAt: message.updatedAt.getTime(),
@@ -95,6 +92,7 @@ export function v3SessionRoutes(app: Fastify) {
       });
 
       if (!session) {
+        log.debug('[v3] messages: session not found', { sessionId, userId });
         return reply.code(404).send({ error: 'Session not found' });
       }
 
@@ -109,7 +107,6 @@ export function v3SessionRoutes(app: Fastify) {
           id: true,
           seq: true,
           content: true,
-          localId: true,
           traceId: true,
           createdAt: true,
           updatedAt: true,
@@ -118,6 +115,8 @@ export function v3SessionRoutes(app: Fastify) {
 
       const hasMore = messages.length > limit;
       const page = hasMore ? messages.slice(0, limit) : messages;
+
+      log.debug('[v3] messages fetched', { sessionId, userId, after_seq, count: page.length, hasMore });
 
       return reply.send({
         messages: page.map(toResponseMessage),
@@ -138,11 +137,18 @@ export function v3SessionRoutes(app: Fastify) {
       },
     },
     async (request, reply) => {
+      const requestStart = Date.now();
       const userId = request.userId;
       const { sessionId } = request.params;
       const { messages } = request.body;
 
-      log.debug('[v3] received messages', { sessionId, messageCount: messages.length });
+      log.debug('[v3] received messages', {
+        sessionId,
+        userId,
+        messageCount: messages.length,
+        ids: messages.map(m => m.id),
+        traceIds: messages.map(m => (m._trace as { tid?: string } | undefined)?.tid).filter(Boolean),
+      });
 
       const session = await db.session.findFirst({
         where: {
@@ -153,78 +159,73 @@ export function v3SessionRoutes(app: Fastify) {
       });
 
       if (!session) {
+        log.debug('[v3] send: session not found', { sessionId, userId });
         return reply.code(404).send({ error: 'Session not found' });
       }
 
-      const firstMessageByLocalId = new Map<
+      // Deduplicate within the batch by id
+      const firstMessageById = new Map<
         string,
-        { localId: string; content: string; _trace?: Record<string, unknown> }
+        { id: string; content: string; _trace?: Record<string, unknown> }
       >();
       for (const message of messages) {
-        if (!firstMessageByLocalId.has(message.localId)) {
-          firstMessageByLocalId.set(message.localId, message);
+        if (!firstMessageById.has(message.id)) {
+          firstMessageById.set(message.id, message);
         }
       }
 
-      const uniqueMessages = Array.from(firstMessageByLocalId.values());
-      const contentByLocalId = new Map(
-        uniqueMessages.map(message => [message.localId, message.content])
+      const uniqueMessages = Array.from(firstMessageById.values());
+      const contentById = new Map(
+        uniqueMessages.map(message => [message.id, message.content])
       );
-      const traceByLocalId = new Map<string, WireTrace>(
+      const traceById = new Map<string, WireTrace>(
         uniqueMessages
           .filter(m => m._trace)
-          .map(m => [m.localId, m._trace as unknown as WireTrace])
+          .map(m => [m.id, m._trace as unknown as WireTrace])
       );
 
       const txResult = await db.$transaction(async tx => {
-        const localIds = uniqueMessages.map(message => message.localId);
+        const ids = uniqueMessages.map(message => message.id);
         const existing = await tx.sessionMessage.findMany({
           where: {
             sessionId,
-            localId: { in: localIds },
+            id: { in: ids },
           },
           select: {
             id: true,
             seq: true,
-            localId: true,
             traceId: true,
             createdAt: true,
             updatedAt: true,
           },
         });
 
-        const existingByLocalId = new Map<string, Omit<SelectedMessage, 'content'>>();
-        for (const message of existing) {
-          if (message.localId) {
-            existingByLocalId.set(message.localId, message);
-          }
-        }
+        const existingIds = new Set(existing.map(m => m.id));
 
         const newMessages = uniqueMessages.filter(
-          message => !existingByLocalId.has(message.localId)
+          message => !existingIds.has(message.id)
         );
         const seqs = await allocateSessionSeqBatch(sessionId, newMessages.length, tx);
 
         const createdMessages: Omit<SelectedMessage, 'content'>[] = [];
         for (let i = 0; i < newMessages.length; i += 1) {
           const message = newMessages[i];
-          const trace = traceByLocalId.get(message.localId);
+          const trace = traceById.get(message.id);
           const createdMessage = await tx.sessionMessage.create({
             data: {
+              id: message.id,
               sessionId,
               seq: seqs[i],
               content: {
                 t: 'encrypted',
                 c: message.content,
               },
-              localId: message.localId,
               traceId: trace?.tid ?? null,
             },
             select: {
               id: true,
               seq: true,
               content: true,
-              localId: true,
               traceId: true,
               createdAt: true,
               updatedAt: true,
@@ -241,15 +242,30 @@ export function v3SessionRoutes(app: Fastify) {
         };
       });
 
-      log.debug('[v3] stored messages', { sessionId, newCount: txResult.createdMessages.length });
+      log.debug('[v3] stored messages', {
+        sessionId,
+        userId,
+        newCount: txResult.createdMessages.length,
+        ids: txResult.createdMessages.map(m => m.id),
+        seqs: txResult.createdMessages.map(m => m.seq),
+        traceIds: txResult.createdMessages.map(m => m.traceId).filter(Boolean),
+        elapsed: Date.now() - requestStart,
+      });
+
+      // Skip broadcasting back to the sender's socket connection to prevent self-echo.
+      // The CLI sends its socket ID via X-Socket-Id header so we can look up the connection.
+      const senderSocketId = request.headers['x-socket-id'] as string | undefined;
+      const skipConnection = senderSocketId
+        ? eventRouter.findConnectionBySocketId(userId, senderSocketId)
+        : undefined;
 
       for (const message of txResult.createdMessages) {
-        const content = message.localId ? contentByLocalId.get(message.localId) : null;
+        const content = contentById.get(message.id);
         if (!content) {
           continue;
         }
         const updSeq = await allocateUserSeq(userId);
-        const trace = message.localId ? traceByLocalId.get(message.localId) : undefined;
+        const trace = traceById.get(message.id);
         const updatePayload = buildNewMessageUpdate(
           {
             ...message,
@@ -268,9 +284,25 @@ export function v3SessionRoutes(app: Fastify) {
           userId,
           payload: updatePayload,
           recipientFilter: { type: 'all-interested-in-session', sessionId },
+          skipSenderConnection: skipConnection,
         });
-        log.debug('[v3] published event', { sessionId, traceId: trace?.tid });
+        log.debug('[v3] published event', {
+          sessionId,
+          userId,
+          messageId: message.id,
+          seq: message.seq,
+          traceId: trace?.tid,
+          elapsed: Date.now() - requestStart,
+        });
       }
+
+      log.info('[v3] send messages complete', {
+        sessionId,
+        userId,
+        requestedCount: messages.length,
+        createdCount: txResult.createdMessages.length,
+        elapsed: Date.now() - requestStart,
+      });
 
       return reply.send({
         messages: txResult.responseMessages.map(toSendResponseMessage),

@@ -1,5 +1,6 @@
 import { Socket } from 'socket.io';
 import { eventRouter } from '@/app/events/eventRouter';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import type { WireTrace } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/api/socket/rpcHandler');
@@ -35,7 +36,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
       // log.info(`RPC method registered: ${method} on socket ${socket.id} (user: ${userId})`);
       // log.info(`Active RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
     } catch (error) {
-      log.error(`Error in rpc-register: ${error}`);
+      log.error('Error in rpc-register', undefined, { userId, method: data?.method, error: safeStringify(error) });
       socket.emit('rpc-error', { type: 'register', error: 'Internal error' });
     }
   });
@@ -66,7 +67,7 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
 
       socket.emit('rpc-unregistered', { method });
     } catch (error) {
-      log.error(`Error in rpc-unregister: ${error}`);
+      log.error('Error in rpc-unregister', undefined, { userId, method: data?.method, error: safeStringify(error) });
       socket.emit('rpc-error', { type: 'unregister', error: 'Internal error' });
     }
   });
@@ -136,14 +137,13 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
         }
       } catch (error) {
         const duration = Date.now() - startTime;
-        const errorMsg = error instanceof Error ? error.message : 'RPC call failed';
-        // log.info(`RPC call failed: ${method} - ${errorMsg} (${duration}ms)`);
+        log.error('RPC call failed', error instanceof Error ? error : new Error(safeStringify(error)), { method, duration });
 
-        // Timeout or error occurred
+        // Timeout or error occurred — send generic message to client (no internal details)
         if (callback) {
           callback({
             ok: false,
-            error: errorMsg,
+            error: error instanceof Error && error.message.includes('timeout') ? 'RPC call timed out' : 'RPC call failed',
           });
         }
       }

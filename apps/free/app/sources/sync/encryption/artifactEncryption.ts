@@ -1,10 +1,11 @@
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+import { wireEncode, wireDecode } from '@saaskit-dev/agentbridge/encryption';
+import { config } from '@/config';
 import * as Random from 'expo-crypto';
 import { ArtifactHeader, ArtifactBody } from '../artifactTypes';
+import { AES256Encryption } from './encryptor';
 
 const logger = new Logger('app/sync/encryption/artifact');
-import { AES256Encryption } from './encryptor';
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 
 export class ArtifactEncryption {
   private encryptor: AES256Encryption;
@@ -24,8 +25,7 @@ export class ArtifactEncryption {
    * Encrypt artifact header
    */
   async encryptHeader(header: ArtifactHeader): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([header]);
-    return encodeBase64(encrypted[0], 'base64');
+    return wireEncode(header, this.encryptor, !!config.isDev);
   }
 
   /**
@@ -33,21 +33,16 @@ export class ArtifactEncryption {
    */
   async decryptHeader(encryptedHeader: string): Promise<ArtifactHeader | null> {
     try {
-      const encryptedData = decodeBase64(encryptedHeader, 'base64');
-      const decrypted = await this.encryptor.decrypt([encryptedData]);
-      if (!decrypted[0]) {
+      const decrypted = await wireDecode(encryptedHeader, this.encryptor);
+      if (!decrypted || typeof decrypted !== 'object') {
         return null;
       }
-      // Validate structure
-      const header = decrypted[0] as any;
-      if (typeof header !== 'object' || header === null) {
-        return null;
-      }
+      const header = decrypted as any;
       return {
         title: typeof header.title === 'string' ? header.title : null,
       };
     } catch (error) {
-      logger.error('Failed to decrypt artifact header:', error);
+      logger.error('Failed to decrypt artifact header:', toError(error));
       return null;
     }
   }
@@ -56,8 +51,7 @@ export class ArtifactEncryption {
    * Encrypt artifact body
    */
   async encryptBody(body: ArtifactBody): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([body]);
-    return encodeBase64(encrypted[0], 'base64');
+    return wireEncode(body, this.encryptor, !!config.isDev);
   }
 
   /**
@@ -65,21 +59,16 @@ export class ArtifactEncryption {
    */
   async decryptBody(encryptedBody: string): Promise<ArtifactBody | null> {
     try {
-      const encryptedData = decodeBase64(encryptedBody, 'base64');
-      const decrypted = await this.encryptor.decrypt([encryptedData]);
-      if (!decrypted[0]) {
+      const decrypted = await wireDecode(encryptedBody, this.encryptor);
+      if (!decrypted || typeof decrypted !== 'object') {
         return null;
       }
-      // Validate structure
-      const body = decrypted[0] as any;
-      if (typeof body !== 'object' || body === null) {
-        return null;
-      }
+      const body = decrypted as any;
       return {
         body: typeof body.body === 'string' ? body.body : null,
       };
     } catch (error) {
-      logger.error('Failed to decrypt artifact body:', error);
+      logger.error('Failed to decrypt artifact body:', toError(error));
       return null;
     }
   }

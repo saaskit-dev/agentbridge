@@ -27,7 +27,6 @@ export function getEnvironmentInfo(): Record<string, any> {
     FREE_SERVER_URL: process.env.FREE_SERVER_URL,
     FREE_PROJECT_ROOT: process.env.FREE_PROJECT_ROOT,
     NODE_ENV: process.env.NODE_ENV,
-    DEBUG: process.env.DEBUG,
     workingDirectory: process.cwd(),
     processArgv: process.argv,
     freeDir: configuration?.freeHomeDir,
@@ -81,8 +80,12 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
   // For 'all' filter, show everything. For 'daemon', only show daemon-related info
   if (filter === 'all') {
     // Version and basic info
+    const { readBuildMeta } = await import('@/utils/buildMeta');
+    const buildMeta = readBuildMeta();
     console.log(chalk.bold('📋 Basic Information'));
     console.log(`Free CLI Version: ${chalk.green(packageJson.version)}`);
+    if (buildMeta.hash) console.log(`Build Hash: ${chalk.green(buildMeta.hash.substring(0, 8))}`);
+    if (buildMeta.time) console.log(`Build Time: ${chalk.green(buildMeta.time)}`);
     console.log(`Platform: ${chalk.green(process.platform)} ${process.arch}`);
     console.log(`Node.js Version: ${chalk.green(process.version)}`);
     console.log('');
@@ -114,7 +117,6 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
     console.log(
       `FREE_SERVER_URL: ${env.FREE_SERVER_URL ? chalk.green(env.FREE_SERVER_URL) : chalk.gray('not set')}`
     );
-    console.log(`DEBUG: ${env.DEBUG ? chalk.green(env.DEBUG) : chalk.gray('not set')}`);
     console.log(`NODE_ENV: ${env.NODE_ENV ? chalk.green(env.NODE_ENV) : chalk.gray('not set')}`);
 
     // Settings
@@ -149,8 +151,14 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
     if (daemonCheck.status === 'running') {
       console.log(chalk.green('✓ Daemon is running'));
       console.log(`  PID: ${daemonCheck.pid}`);
-      console.log(`  Started: ${new Date(daemonCheck.startTime).toLocaleString()}`);
+      console.log(`  Started: ${daemonCheck.startTime}`);
       console.log(`  CLI Version: ${daemonCheck.version}`);
+      if (daemonCheck.buildHash) {
+        console.log(`  Build Hash: ${daemonCheck.buildHash.substring(0, 8)}`);
+      }
+      if (daemonCheck.buildTime) {
+        console.log(`  Build Time: ${daemonCheck.buildTime}`);
+      }
       if (daemonCheck.httpPort) {
         console.log(`  HTTP Port: ${daemonCheck.httpPort}`);
       }

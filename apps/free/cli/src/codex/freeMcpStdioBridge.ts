@@ -11,6 +11,7 @@
  * Note: This process must not print to stdout as it would break MCP STDIO.
  */
 
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -84,7 +85,7 @@ async function main() {
           content: [
             {
               type: 'text',
-              text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Failed to change chat title: ${safeStringify(error)}`,
             },
           ],
           isError: true,
@@ -101,7 +102,7 @@ async function main() {
 // Start and surface fatal errors to stderr only
 main().catch(err => {
   try {
-    process.stderr.write(`[free-mcp] Fatal: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`[free-mcp] Fatal: ${safeStringify(err)}\n`);
   } finally {
     process.exit(1);
   }

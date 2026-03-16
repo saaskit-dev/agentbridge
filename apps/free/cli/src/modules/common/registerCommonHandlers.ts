@@ -8,6 +8,7 @@ import { validatePath } from './pathSecurity';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('modules/common/registerCommonHandlers');
 
 const execAsync = promisify(exec);
@@ -120,25 +121,16 @@ export interface SpawnSessionOptions {
   machineId?: string;
   directory: string;
   sessionId?: string;
+  startedBy?: 'cli' | 'daemon' | 'app';
   /** Session tag to use when creating/finding session. Enables test sessions to be shared with daemon. */
   sessionTag?: string;
   /** Claude Code session ID to resume (passed as --resume-session-id). Only applies to claude agent. */
-  resumeClaudeSessionId?: string;
+  resumeAgentSessionId?: string;
   approvedNewDirectoryCreation?: boolean;
-  agent?: 'claude' | 'codex' | 'gemini' | 'opencode';
+  agent?: 'claude' | 'claude-acp' | 'codex' | 'codex-acp' | 'gemini' | 'opencode';
+  model?: string;
+  mode?: string;
   token?: string; // OAuth token for authentication
-  environmentVariables?: {
-    ANTHROPIC_BASE_URL?: string; // Custom API endpoint (overrides default)
-    ANTHROPIC_AUTH_TOKEN?: string; // API authentication token
-    ANTHROPIC_MODEL?: string; // Model to use (e.g., claude-3-5-sonnet-20241022)
-
-    // Tmux session management environment variables
-    // Based on tmux(1) manual and common tmux usage patterns
-    TMUX_SESSION_NAME?: string; // Name for tmux session (creates/attaches to named session)
-    TMUX_TMPDIR?: string; // Temporary directory for tmux server socket files
-    // Note: TMUX_TMPDIR is used by tmux to store socket files when default /tmp is not suitable
-    // Common use case: When /tmp has limited space or different permissions
-  };
 }
 
 export type SpawnSessionResult =
@@ -151,11 +143,17 @@ export type SpawnSessionResult =
  */
 export function registerCommonHandlers(
   rpcHandlerManager: RpcHandlerManager,
-  workingDirectory: string
+  workingDirectory: string,
+  machineId?: string
 ) {
+  const log = {
+    debug: (msg: string, data?: Record<string, unknown>) =>
+      logger.debug(msg, machineId ? { machineId, ...data } : data),
+  };
+
   // Shell command handler - executes commands in the default shell
   rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async data => {
-    logger.debug('Shell command request:', data.command);
+    log.debug('Shell command request', { command: data.command });
 
     // Validate cwd if provided
     // Special case: "/" means "use shell's default cwd" (used by CLI detection)
@@ -176,9 +174,9 @@ export function registerCommonHandlers(
         timeout: data.timeout || 30000, // Default 30 seconds timeout
       };
 
-      logger.debug('Shell command executing...', { cwd: options.cwd, timeout: options.timeout });
+      log.debug('Shell command executing', { cwd: options.cwd, timeout: options.timeout });
       const { stdout, stderr } = await execAsync(data.command, options);
-      logger.debug('Shell command executed, processing result...');
+      log.debug('Shell command executed, processing result...');
 
       const result = {
         success: true,
@@ -186,7 +184,7 @@ export function registerCommonHandlers(
         stderr: stderr ? stderr.toString() : '',
         exitCode: 0,
       };
-      logger.debug('Shell command result:', {
+      log.debug('Shell command result', {
         success: true,
         exitCode: 0,
         stdoutLen: result.stdout.length,
@@ -210,7 +208,7 @@ export function registerCommonHandlers(
           exitCode: typeof execError.code === 'number' ? execError.code : -1,
           error: 'Command timed out',
         };
-        logger.debug('Shell command timed out:', {
+        log.debug('Shell command timed out', {
           success: false,
           exitCode: result.exitCode,
           error: 'Command timed out',
@@ -228,7 +226,7 @@ export function registerCommonHandlers(
         exitCode: typeof execError.code === 'number' ? execError.code : 1,
         error: execError.message || 'Command failed',
       };
-      logger.debug('Shell command failed:', {
+      log.debug('Shell command failed', {
         success: false,
         exitCode: result.exitCode,
         error: result.error,
@@ -241,7 +239,7 @@ export function registerCommonHandlers(
 
   // Read file handler - returns base64 encoded content
   rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>('readFile', async data => {
-    logger.debug('Read file request:', data.path);
+    log.debug('Read file request', { path: data.path });
 
     // Validate path is within working directory
     const validation = validatePath(data.path, workingDirectory);
@@ -254,10 +252,10 @@ export function registerCommonHandlers(
       const content = buffer.toString('base64');
       return { success: true, content };
     } catch (error) {
-      logger.debug('Failed to read file:', error);
+      log.debug('Failed to read file', { path: data.path, error: safeStringify(error) });
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to read file',
+        error: safeStringify(error),
       };
     }
   });
@@ -266,7 +264,7 @@ export function registerCommonHandlers(
   rpcHandlerManager.registerHandler<WriteFileRequest, WriteFileResponse>(
     'writeFile',
     async data => {
-      logger.debug('Write file request:', data.path);
+      log.debug('Write file request', { path: data.path });
 
       // Validate path is within working directory
       const validation = validatePath(data.path, workingDirectory);
@@ -325,10 +323,10 @@ export function registerCommonHandlers(
 
         return { success: true, hash };
       } catch (error) {
-        logger.debug('Failed to write file:', error);
+        log.debug('Failed to write file', { path: data.path, error: safeStringify(error) });
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to write file',
+          error: safeStringify(error),
         };
       }
     }
@@ -338,7 +336,7 @@ export function registerCommonHandlers(
   rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>(
     'listDirectory',
     async data => {
-      logger.debug('List directory request:', data.path);
+      log.debug('List directory request', { path: data.path });
 
       // Validate path is within working directory
       const validation = validatePath(data.path, workingDirectory);
@@ -368,7 +366,7 @@ export function registerCommonHandlers(
               modified = stats.mtime.getTime();
             } catch (error) {
               // Ignore stat errors for individual files
-              logger.debug(`Failed to stat ${fullPath}:`, error);
+              log.debug('Failed to stat entry', { path: fullPath, error: safeStringify(error) });
             }
 
             return {
@@ -389,10 +387,10 @@ export function registerCommonHandlers(
 
         return { success: true, entries: directoryEntries };
       } catch (error) {
-        logger.debug('Failed to list directory:', error);
+        log.debug('Failed to list directory', { path: data.path, error: safeStringify(error) });
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to list directory',
+          error: safeStringify(error),
         };
       }
     }
@@ -402,7 +400,7 @@ export function registerCommonHandlers(
   rpcHandlerManager.registerHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>(
     'getDirectoryTree',
     async data => {
-      logger.debug(`Get directory tree request: ${data.path} maxDepth: ${data.maxDepth}`);
+      log.debug('Get directory tree request', { path: data.path, maxDepth: data.maxDepth });
 
       // Validate path is within working directory
       const validation = validatePath(data.path, workingDirectory);
@@ -438,7 +436,7 @@ export function registerCommonHandlers(
               entries.map(async entry => {
                 // Skip symbolic links completely
                 if (entry.isSymbolicLink()) {
-                  logger.debug(`Skipping symlink: ${join(path, entry.name)}`);
+                  log.debug('Skipping symlink', { path: join(path, entry.name) });
                   return;
                 }
 
@@ -463,10 +461,7 @@ export function registerCommonHandlers(
           return node;
         } catch (error) {
           // Log error but continue traversal
-          logger.debug(
-            `Failed to process ${path}:`,
-            error instanceof Error ? error.message : String(error)
-          );
+          log.debug('Failed to process path', { path, error: safeStringify(error) });
           return null;
         }
       }
@@ -489,10 +484,10 @@ export function registerCommonHandlers(
 
         return { success: true, tree };
       } catch (error) {
-        logger.debug('Failed to get directory tree:', error);
+        log.debug('Failed to get directory tree', { path: data.path, error: safeStringify(error) });
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to get directory tree',
+          error: safeStringify(error),
         };
       }
     }
@@ -500,7 +495,7 @@ export function registerCommonHandlers(
 
   // Ripgrep handler - raw interface to ripgrep
   rpcHandlerManager.registerHandler<RipgrepRequest, RipgrepResponse>('ripgrep', async data => {
-    logger.debug(`Ripgrep request with args: ${JSON.stringify(data.args)} cwd: ${data.cwd}`);
+    log.debug('Ripgrep request', { args: data.args, cwd: data.cwd });
 
     // Validate cwd if provided
     if (data.cwd) {
@@ -519,10 +514,10 @@ export function registerCommonHandlers(
         stderr: result.stderr.toString(),
       };
     } catch (error) {
-      logger.debug('Failed to run ripgrep:', error);
+      log.debug('Failed to run ripgrep', { error: safeStringify(error) });
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to run ripgrep',
+        error: safeStringify(error),
       };
     }
   });
@@ -531,7 +526,7 @@ export function registerCommonHandlers(
   rpcHandlerManager.registerHandler<DifftasticRequest, DifftasticResponse>(
     'difftastic',
     async data => {
-      logger.debug(`Difftastic request with args: ${JSON.stringify(data.args)} cwd: ${data.cwd}`);
+      log.debug('Difftastic request', { args: data.args, cwd: data.cwd });
 
       // Validate cwd if provided
       if (data.cwd) {
@@ -550,10 +545,10 @@ export function registerCommonHandlers(
           stderr: result.stderr.toString(),
         };
       } catch (error) {
-        logger.debug('Failed to run difftastic:', error);
+        log.debug('Failed to run difftastic', { error: safeStringify(error) });
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to run difftastic',
+          error: safeStringify(error),
         };
       }
     }

@@ -8,7 +8,7 @@ import { VoiceBars } from './VoiceBars';
 import { Typography } from '@/constants/Typography';
 import { stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/VoiceAssistantStatusBar');
 
 interface VoiceAssistantStatusBarProps {
@@ -74,7 +74,7 @@ export const VoiceAssistantStatusBar = React.memo(
         try {
           await stopRealtimeSession();
         } catch (error) {
-          logger.error('Error stopping voice session:', error);
+          logger.error('Error stopping voice session:', toError(error));
         }
       }
     };

@@ -21,7 +21,7 @@ describe('getProjectPath', () => {
     process.env.CLAUDE_CONFIG_DIR = '/test/home/.claude';
     const workingDir = '/Users/user/projects/my-app';
     const result = getProjectPath(workingDir);
-    expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-steve-projects-my-app'));
+    expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-user-projects-my-app'));
   });
 
   it('should replace dots with hyphens in the project path', () => {
@@ -29,7 +29,7 @@ describe('getProjectPath', () => {
     const workingDir = '/Users/user/projects/app.test.js';
     const result = getProjectPath(workingDir);
     expect(result).toBe(
-      join('/test/home/.claude', 'projects', '-Users-steve-projects-app-test-js')
+      join('/test/home/.claude', 'projects', '-Users-user-projects-app-test-js')
     );
   });
 
@@ -77,7 +77,7 @@ describe('getProjectPath', () => {
       const workingDir = '/Users/user/projects/app (copy)';
       const result = getProjectPath(workingDir);
       expect(result).toBe(
-        join('/test/home/.claude', 'projects', '-Users-steve-projects-app--copy-')
+        join('/test/home/.claude', 'projects', '-Users-user-projects-app--copy-')
       );
     });
 
@@ -86,7 +86,7 @@ describe('getProjectPath', () => {
       const workingDir = '/Users/user/projects/[2024] my-project';
       const result = getProjectPath(workingDir);
       expect(result).toBe(
-        join('/test/home/.claude', 'projects', '-Users-steve-projects--2024--my-project')
+        join('/test/home/.claude', 'projects', '-Users-user-projects--2024--my-project')
       );
     });
 
@@ -94,21 +94,21 @@ describe('getProjectPath', () => {
       process.env.CLAUDE_CONFIG_DIR = '/test/home/.claude';
       const workingDir = '/Users/user/projects/~backup';
       const result = getProjectPath(workingDir);
-      expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-steve-projects--backup'));
+      expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-user-projects--backup'));
     });
 
     it('should replace plus signs with hyphens', () => {
       process.env.CLAUDE_CONFIG_DIR = '/test/home/.claude';
       const workingDir = '/Users/user/projects/c++';
       const result = getProjectPath(workingDir);
-      expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-steve-projects-c--'));
+      expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-user-projects-c--'));
     });
 
     it('should replace hash symbols with hyphens', () => {
       process.env.CLAUDE_CONFIG_DIR = '/test/home/.claude';
       const workingDir = '/Users/user/projects/c#-app';
       const result = getProjectPath(workingDir);
-      expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-steve-projects-c--app'));
+      expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-user-projects-c--app'));
     });
 
     it('should replace equals and ampersand with hyphens', () => {
@@ -116,7 +116,7 @@ describe('getProjectPath', () => {
       const workingDir = '/Users/user/projects/key=value&foo';
       const result = getProjectPath(workingDir);
       expect(result).toBe(
-        join('/test/home/.claude', 'projects', '-Users-steve-projects-key-value-foo')
+        join('/test/home/.claude', 'projects', '-Users-user-projects-key-value-foo')
       );
     });
 
@@ -124,7 +124,7 @@ describe('getProjectPath', () => {
       process.env.CLAUDE_CONFIG_DIR = '/test/home/.claude';
       const workingDir = '/Users/user/projects/a,b;c';
       const result = getProjectPath(workingDir);
-      expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-steve-projects-a-b-c'));
+      expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-user-projects-a-b-c'));
     });
 
     it('should replace single quotes and exclamation marks with hyphens', () => {
@@ -132,7 +132,7 @@ describe('getProjectPath', () => {
       const workingDir = "/Users/user/projects/it's-done!";
       const result = getProjectPath(workingDir);
       expect(result).toBe(
-        join('/test/home/.claude', 'projects', '-Users-steve-projects-it-s-done-')
+        join('/test/home/.claude', 'projects', '-Users-user-projects-it-s-done-')
       );
     });
   });
@@ -143,7 +143,7 @@ describe('getProjectPath', () => {
       const workingDir = '/Users/user/projects/my-app';
       const result = getProjectPath(workingDir);
       expect(result).toContain('projects');
-      expect(result).toContain('-Users-steve-projects-my-app');
+      expect(result).toContain('-Users-user-projects-my-app');
     });
 
     it('should use CLAUDE_CONFIG_DIR when set', () => {
@@ -151,7 +151,7 @@ describe('getProjectPath', () => {
       const workingDir = '/Users/user/projects/my-app';
       const result = getProjectPath(workingDir);
       expect(result).toBe(
-        join('/custom/claude/config', 'projects', '-Users-steve-projects-my-app')
+        join('/custom/claude/config', 'projects', '-Users-user-projects-my-app')
       );
     });
 
@@ -159,7 +159,7 @@ describe('getProjectPath', () => {
       process.env.CLAUDE_CONFIG_DIR = './config/claude';
       const workingDir = '/Users/user/projects/my-app';
       const result = getProjectPath(workingDir);
-      expect(result).toBe(join('./config/claude', 'projects', '-Users-steve-projects-my-app'));
+      expect(result).toBe(join('./config/claude', 'projects', '-Users-user-projects-my-app'));
     });
 
     it('should fallback to default when CLAUDE_CONFIG_DIR is empty string', () => {
@@ -168,7 +168,7 @@ describe('getProjectPath', () => {
       const result = getProjectPath(workingDir);
       // With empty CLAUDE_CONFIG_DIR, it uses homedir()/.claude
       expect(result).toContain('projects');
-      expect(result).toContain('-Users-steve-projects-my-app');
+      expect(result).toContain('-Users-user-projects-my-app');
     });
 
     it('should handle CLAUDE_CONFIG_DIR with trailing slash', () => {
@@ -176,7 +176,7 @@ describe('getProjectPath', () => {
       const workingDir = '/Users/user/projects/my-app';
       const result = getProjectPath(workingDir);
       expect(result).toBe(
-        join('/custom/claude/config/', 'projects', '-Users-steve-projects-my-app')
+        join('/custom/claude/config/', 'projects', '-Users-user-projects-my-app')
       );
     });
   });

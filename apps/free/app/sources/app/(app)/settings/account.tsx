@@ -121,15 +121,15 @@ export default React.memo(() => {
           />
           <Item
             title={t('settingsAccount.anonymousId')}
-            detail={sync.anonID || t('settingsAccount.notAvailable')}
+            detail={sync.anonId || t('settingsAccount.notAvailable')}
             showChevron={false}
-            copy={!!sync.anonID}
+            copy={!!sync.anonId}
           />
           <Item
             title={t('settingsAccount.publicId')}
-            detail={sync.serverID || t('settingsAccount.notAvailable')}
+            detail={sync.accountId || t('settingsAccount.notAvailable')}
             showChevron={false}
-            copy={!!sync.serverID}
+            copy={!!sync.accountId}
           />
           {Platform.OS !== 'web' && (
             <Item

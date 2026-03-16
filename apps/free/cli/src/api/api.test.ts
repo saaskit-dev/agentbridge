@@ -23,6 +23,8 @@ vi.mock('./encryption', () => ({
   encodeBase64: vi.fn((data: any) => data),
   decrypt: vi.fn((data: any) => data),
   encrypt: vi.fn((data: any) => data),
+  encryptToWireString: vi.fn((_key: any, _variant: any, data: any) => JSON.stringify(data)),
+  decryptFromWireString: vi.fn((_key: any, _variant: any, wireStr: string) => JSON.parse(wireStr)),
 }));
 
 // Mock configuration

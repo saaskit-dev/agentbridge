@@ -223,6 +223,15 @@ export class MessageQueue2<T> {
   }
 
   /**
+   * Non-blocking: return the next batch if queue has messages, null otherwise.
+   * Used by the local/remote loop: remote mode only processes already-queued messages.
+   */
+  tryGet(): { message: string; mode: T; hash: string; isolate: boolean } | null {
+    if (this.queue.length === 0) return null;
+    return this.collectBatch();
+  }
+
+  /**
    * Wait for messages and return all messages with the same mode as a single string
    * Returns { message: string, mode: T } or null if aborted/closed
    */

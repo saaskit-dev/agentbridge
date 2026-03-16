@@ -13,7 +13,7 @@ import { Typography } from '@/constants/Typography';
 import { encodeBase64 } from '@/encryption/base64';
 import { t } from '@/text';
 import { useIsLandscape } from '@/utils/responsive';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/index');
 
 export default function Home() {
@@ -43,7 +43,7 @@ function NotAuthenticated() {
         await auth.login(token, encodeBase64(secret, 'base64url'));
       }
     } catch (error) {
-      logger.error('Error creating account', error);
+      logger.error('Error creating account', toError(error));
     }
   };
 

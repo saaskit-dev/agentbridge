@@ -7,11 +7,9 @@ const serverConfigStorage = new MMKV({ id: 'server-config' });
 const SERVER_KEY = 'custom-server-url';
 const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
 
-// __DEV__ = true  → Debug build (连 Metro / localhost)
-// __DEV__ = false → Release build (连生产服务器)
-const DEFAULT_SERVER_URL = __DEV__
-  ? (Constants.expoConfig?.extra?.app?.serverUrl || PRODUCTION_SERVER_URL)
-  : PRODUCTION_SERVER_URL;
+// 由 app.config.js 按 APP_ENV 决定：development → localhost, production → 生产服务器
+const DEFAULT_SERVER_URL: string =
+  Constants.expoConfig?.extra?.app?.serverUrl ?? PRODUCTION_SERVER_URL;
 
 export function getServerUrl(): string {
   return serverConfigStorage.getString(SERVER_KEY) || DEFAULT_SERVER_URL;

@@ -1,6 +1,5 @@
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import { randomUUID } from 'expo-crypto';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import {
@@ -9,22 +8,19 @@ import {
   Platform,
   Pressable,
   useWindowDimensions,
-  ScrollView,
-  TextInput,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { AgentInput } from '@/components/AgentInput';
-import { Item } from '@/components/Item';
-import { ItemGroup } from '@/components/ItemGroup';
+import { ChatFooter } from '@/components/ChatFooter';
 import { Typography } from '@/constants/Typography';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { machineListSupportedAgents, machineSpawnNewSession } from '@/sync/ops';
 import {
   useAllMachines,
   storage,
+  useLocalSetting,
   useSetting,
-  useSettingMutable,
   useSessions,
 } from '@/sync/storage';
 import { layout } from '@/components/layout';
@@ -32,64 +28,41 @@ import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { createWorktree } from '@/utils/createWorktree';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { useHeaderHeight } from '@/utils/responsive';
 import { Modal } from '@/modal';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
-import {
-  PermissionMode,
-  ModelMode,
-  PermissionModeSelector,
-} from '@/components/PermissionModeSelector';
-import {
-  AIBackendProfile,
-  getProfileEnvironmentVariables,
-  validateProfileForAgent,
-} from '@/sync/settings';
-import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
+import { ModelMode } from '@/components/PermissionModeSelector';
 import { StyleSheet } from 'react-native-unistyles';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
-import {
-  useEnvironmentVariables,
-  resolveEnvVarSubstitution,
-  extractEnvVarReferences,
-} from '@/hooks/useEnvironmentVariables';
-import { MultiTextInput } from '@/components/MultiTextInput';
-import { StatusDot } from '@/components/StatusDot';
-import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import {
+  coerceAgentType,
+  getAgentDescription,
+  getAgentDisplayName,
+  isAcpAgent,
+  isExperimentalAgent,
+  type AppAgentFlavor,
+} from '@/sync/agentFlavor';
+import { hydrateCachedCapabilities, loadCachedCapabilities } from '@/sync/sessionCapabilitiesCache';
+import {
+  getConfigOptionByCategory,
+  getLatestCapabilitiesForAgent,
+  PermissionMode,
+  resolveDraftCapabilities,
+  usesDiscoveredCapabilitiesOnly,
+} from '@/sync/sessionCapabilities';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/new');
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => {};
-let onProfileSaved: (profile: AIBackendProfile) => void = () => {};
 
 export const callbacks = {
   onMachineSelected: (machineId: string) => {
     onMachineSelected(machineId);
   },
-  onProfileSaved: (profile: AIBackendProfile) => {
-    onProfileSaved(profile);
-  },
-};
-
-// Optimized profile lookup utility
-const useProfileMap = (profiles: AIBackendProfile[]) => {
-  return React.useMemo(() => new Map(profiles.map(p => [p.id, p])), [profiles]);
-};
-
-// Environment variable transformation helper
-// Returns ALL profile environment variables - daemon will use them as-is
-const transformProfileToEnvironmentVars = (
-  profile: AIBackendProfile,
-  agentType: 'claude' | 'codex' | 'gemini' | 'opencode' = 'claude'
-) => {
-  // getProfileEnvironmentVariables already returns ALL env vars from profile
-  // including custom environmentVariables array and provider-specific configs
-  return getProfileEnvironmentVariables(profile);
 };
 
 // Helper function to get the most recent path for a machine
@@ -125,130 +98,13 @@ const getRecentPathForMachine = (
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
-const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 character spaces at 11px font
+const DEV_INVALID_MODEL_ID = 'dev-invalid-model';
 
 const styles = StyleSheet.create((theme, rt) => ({
   container: {
     flex: 1,
     justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
     paddingTop: Platform.OS === 'web' ? 0 : 40,
-  },
-  scrollContainer: {
-    flex: 1,
-  },
-  contentContainer: {
-    width: '100%',
-    alignSelf: 'center',
-    paddingTop: rt.insets.top,
-    paddingBottom: 16,
-  },
-  wizardContainer: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 16,
-    marginHorizontal: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionHeader: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 8,
-    marginTop: 12,
-    ...Typography.default('semiBold'),
-  },
-  sectionDescription: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-    marginBottom: 12,
-    lineHeight: 18,
-    ...Typography.default(),
-  },
-  profileListItem: {
-    backgroundColor: theme.colors.input.background,
-    borderRadius: 12,
-    padding: 8,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  profileListItemSelected: {
-    borderWidth: 2,
-    borderColor: theme.colors.text,
-  },
-  profileIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: theme.colors.button.primary.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  profileListName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.text,
-    ...Typography.default('semiBold'),
-  },
-  profileListDetails: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-    marginTop: 2,
-    ...Typography.default(),
-  },
-  addProfileButton: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addProfileButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.button.secondary.tint,
-    marginLeft: 8,
-    ...Typography.default('semiBold'),
-  },
-  selectorButton: {
-    backgroundColor: theme.colors.input.background,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: theme.colors.divider,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  selectorButtonText: {
-    color: theme.colors.text,
-    fontSize: 13,
-    flex: 1,
-    ...Typography.default(),
-  },
-  advancedHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-  },
-  advancedHeaderText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: theme.colors.textSecondary,
-    ...Typography.default(),
-  },
-  permissionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 16,
   },
   permissionButton: {
     width: '48%',
@@ -293,11 +149,13 @@ function NewSessionWizard() {
     dataId,
     machineId: machineIdParam,
     path: pathParam,
+    agent: agentParam,
   } = useLocalSearchParams<{
     prompt?: string;
     dataId?: string;
     machineId?: string;
     path?: string;
+    agent?: string;
   }>();
 
   // Try to get data from temporary store first
@@ -315,75 +173,43 @@ function NewSessionWizard() {
   const recentMachinePaths = useSetting('recentMachinePaths');
   const lastUsedAgent = useSetting('lastUsedAgent');
 
-  // A/B Test Flag - determines which wizard UI to show
-  // Control A (false): Simpler AgentInput-driven layout
-  // Variant B (true): Enhanced profile-first wizard with sections
-  const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
+  const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
   const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
   const defaultPermissionMode = useSetting('defaultPermissionMode');
   const lastUsedModelMode = useSetting('lastUsedModelMode');
+  const lastUsedAgentMode = useSetting('lastUsedAgentMode');
   const experimentsEnabled = useSetting('experiments');
-  const [profiles, setProfiles] = useSettingMutable('profiles');
-  const lastUsedProfile = useSetting('lastUsedProfile');
-  const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
-  const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
-  const [dismissedCLIWarnings, setDismissedCLIWarnings] = useSettingMutable('dismissedCLIWarnings');
-
-  // Combined profiles (built-in + custom)
-  const allProfiles = React.useMemo(() => {
-    const builtInProfiles = DEFAULT_PROFILES.map(bp => getBuiltInProfile(bp.id)!);
-    return [...builtInProfiles, ...profiles];
-  }, [profiles]);
-
-  const profileMap = useProfileMap(allProfiles);
   const machines = useAllMachines();
   const sessions = useSessions();
 
   // Wizard state
-  const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
-    if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
-      return lastUsedProfile;
-    }
-    return 'anthropic'; // Default to Anthropic
-  });
-  const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini' | 'opencode'>(
+  const [agentType, setAgentType] = React.useState<AppAgentFlavor>(
     () => {
       // Check if agent type was provided in temp data
       if (tempSessionData?.agentType) {
-        // Only allow gemini/opencode if experiments are enabled
-        if (tempSessionData.agentType === 'gemini' && !experimentsEnabled) {
-          return 'claude';
+        const requestedAgentType = coerceAgentType(tempSessionData.agentType);
+        if (isExperimentalAgent(requestedAgentType) && !experimentsEnabled) {
+          return 'claude-acp';
         }
-        if (tempSessionData.agentType === 'opencode' && !experimentsEnabled) {
-          return 'claude';
+        return requestedAgentType;
+      }
+      if (typeof lastUsedAgent === 'string') {
+        const savedAgentType = coerceAgentType(lastUsedAgent);
+        if (!isExperimentalAgent(savedAgentType) || experimentsEnabled) {
+          return savedAgentType;
         }
-        return tempSessionData.agentType;
       }
-      if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
-        return lastUsedAgent;
-      }
-      // Only allow gemini/opencode if experiments are enabled
-      if (lastUsedAgent === 'gemini' && experimentsEnabled) {
-        return lastUsedAgent;
-      }
-      if (lastUsedAgent === 'opencode' && experimentsEnabled) {
-        return lastUsedAgent;
-      }
-      return 'claude';
+      return 'claude-acp';
     }
   );
-
-  // Agent cycling handler (for cycling through claude -> codex -> gemini -> opencode)
-  // Note: Does NOT persist immediately - persistence is handled by useEffect below
-  const handleAgentClick = React.useCallback(() => {
-    setAgentType(prev => {
-      // Cycle: claude -> codex -> gemini (if experiments) -> opencode (if experiments) -> claude
-      if (prev === 'claude') return 'codex';
-      if (prev === 'codex') return experimentsEnabled ? 'gemini' : 'claude';
-      if (prev === 'gemini') return experimentsEnabled ? 'opencode' : 'claude';
-      return 'claude'; // opencode -> claude
-    });
-  }, [experimentsEnabled]);
+  const [supportedAgentTypes, setSupportedAgentTypes] = React.useState<AppAgentFlavor[]>([
+    'claude-acp',
+    'codex-acp',
+    'gemini',
+    'opencode',
+    'claude',
+    'codex',
+  ]);
 
   // Persist agent selection changes (separate from setState to avoid race condition)
   // This runs after agentType state is updated, ensuring the value is stable
@@ -400,50 +226,6 @@ function NewSessionWizard() {
     return storage.getState().settings.defaultPermissionMode ?? 'accept-edits';
   });
 
-  // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below (lines ~670-681)
-  // which intelligently resets only when the current mode is invalid for the new agent type.
-  // A duplicate unconditional reset here was removed to prevent race conditions.
-
-  const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
-    const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-    const validCodexModes: ModelMode[] = [
-      'gpt-5-codex-high',
-      'gpt-5-codex-medium',
-      'gpt-5-codex-low',
-      'gpt-5-minimal',
-      'gpt-5-low',
-      'gpt-5-medium',
-      'gpt-5-high',
-    ];
-    // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-    const validGeminiModes: ModelMode[] = [
-      'gemini-2.5-pro',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
-    ];
-
-    if (lastUsedModelMode) {
-      if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
-        return lastUsedModelMode as ModelMode;
-      } else if (
-        agentType === 'claude' &&
-        validClaudeModes.includes(lastUsedModelMode as ModelMode)
-      ) {
-        return lastUsedModelMode as ModelMode;
-      } else if (
-        agentType === 'gemini' &&
-        validGeminiModes.includes(lastUsedModelMode as ModelMode)
-      ) {
-        return lastUsedModelMode as ModelMode;
-      }
-    }
-    return agentType === 'codex'
-      ? 'gpt-5-codex-high'
-      : agentType === 'gemini'
-        ? 'gemini-2.5-pro'
-        : 'default';
-  });
-
   // Session details state
   const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
     if (machines.length > 0) {
@@ -458,6 +240,132 @@ function NewSessionWizard() {
     }
     return null;
   });
+  const [cachedCapabilities, setCachedCapabilities] = React.useState(() =>
+    loadCachedCapabilities(selectedMachineId, agentType)
+  );
+
+  // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below.
+  React.useEffect(() => {
+    setCachedCapabilities(loadCachedCapabilities(selectedMachineId, agentType));
+
+    let cancelled = false;
+    void hydrateCachedCapabilities(selectedMachineId, agentType).then(capabilities => {
+      if (!cancelled && capabilities) {
+        setCachedCapabilities(capabilities);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMachineId, agentType]);
+
+  const draftCapabilities = React.useMemo(
+    () => {
+      const latestCapabilities = getLatestCapabilitiesForAgent(
+        sessions as any[],
+        selectedMachineId,
+        agentType
+      );
+      return resolveDraftCapabilities({
+        agentType,
+        cachedCapabilities,
+        latestCapabilities,
+      });
+    },
+    [cachedCapabilities, sessions, selectedMachineId, agentType]
+  );
+  const displayCapabilities = React.useMemo(() => {
+    if (
+      !devModeEnabled ||
+      !usesDiscoveredCapabilitiesOnly(agentType) ||
+      !draftCapabilities.models
+    ) {
+      return draftCapabilities;
+    }
+
+    const hasDevInvalidModel = draftCapabilities.models.available.some(
+      model => model.id === DEV_INVALID_MODEL_ID
+    );
+    if (hasDevInvalidModel) {
+      return draftCapabilities;
+    }
+
+    return {
+      ...draftCapabilities,
+      models: {
+        ...draftCapabilities.models,
+        available: [
+          ...draftCapabilities.models.available,
+          {
+            id: DEV_INVALID_MODEL_ID,
+            name: 'Dev Invalid Model',
+            description: 'Developer-only test model that should trigger fallback on first send',
+          },
+        ],
+      },
+    };
+  }, [agentType, devModeEnabled, draftCapabilities]);
+  const availableModelIds = React.useMemo(
+    () => displayCapabilities.models?.available.map(model => model.id) ?? ['default'],
+    [displayCapabilities]
+  );
+  const defaultModelId = displayCapabilities.models?.current ?? 'default';
+
+  const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
+    if (lastUsedModelMode && availableModelIds.includes(lastUsedModelMode)) {
+      return lastUsedModelMode;
+    }
+    return defaultModelId;
+  });
+  const [draftAgentMode, setDraftAgentMode] = React.useState<string | null>(
+    () => lastUsedAgentMode ?? null
+  );
+  const shouldShowCapabilityDiscoveryNotice = React.useMemo(
+    () =>
+      usesDiscoveredCapabilitiesOnly(agentType) &&
+      !displayCapabilities.models &&
+      !displayCapabilities.modes &&
+      !(displayCapabilities.configOptions?.length ?? 0) &&
+      !(displayCapabilities.commands?.length ?? 0),
+    [agentType, displayCapabilities]
+  );
+  const displayCapabilitiesWithDraftMode = React.useMemo(() => {
+    if (!draftAgentMode || !displayCapabilities.modes) {
+      return displayCapabilities;
+    }
+    if (!displayCapabilities.modes.available.some(mode => mode.id === draftAgentMode)) {
+      return displayCapabilities;
+    }
+    return {
+      ...displayCapabilities,
+      modes: {
+        ...displayCapabilities.modes,
+        current: draftAgentMode,
+      },
+    };
+  }, [displayCapabilities, draftAgentMode]);
+  React.useEffect(() => {
+    if (!draftAgentMode) {
+      return;
+    }
+    const availableModes = displayCapabilities.modes?.available;
+    // Don't clear draftAgentMode if modes haven't loaded yet —
+    // wait until we have actual mode data before deciding if the saved mode is invalid
+    if (!availableModes) {
+      return;
+    }
+    if (!availableModes.some(mode => mode.id === draftAgentMode)) {
+      setDraftAgentMode(null);
+    }
+  }, [displayCapabilities.modes, draftAgentMode]);
+
+  // Persist agent mode selection
+  React.useEffect(() => {
+    if (draftAgentMode) {
+      sync.applySettings({ lastUsedAgentMode: draftAgentMode });
+    }
+  }, [draftAgentMode]);
 
   const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
     setPermissionMode(mode);
@@ -475,7 +383,6 @@ function NewSessionWizard() {
     return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
   });
   const [isCreating, setIsCreating] = React.useState(false);
-  const [showAdvanced, setShowAdvanced] = React.useState(false);
 
   // Handle machineId route param from picker screens (main's navigation pattern)
   React.useEffect(() => {
@@ -503,17 +410,59 @@ function NewSessionWizard() {
     }
   }, [pathParam, selectedPath]);
 
-  // Path selection state - initialize with formatted selected path
-
-  // Refs for scrolling to sections
-  const scrollViewRef = React.useRef<ScrollView>(null);
-  const profileSectionRef = React.useRef<View>(null);
-  const machineSectionRef = React.useRef<View>(null);
-  const pathSectionRef = React.useRef<View>(null);
-  const permissionSectionRef = React.useRef<View>(null);
+  React.useEffect(() => {
+    if (typeof agentParam !== 'string') {
+      return;
+    }
+    const nextAgentType = coerceAgentType(agentParam);
+    if (nextAgentType !== agentType) {
+      setAgentType(nextAgentType);
+    }
+  }, [agentParam, agentType]);
 
   // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
   const cliAvailability = useCLIDetection(selectedMachineId);
+
+  React.useEffect(() => {
+    if (!selectedMachineId) {
+      return;
+    }
+    let cancelled = false;
+    void machineListSupportedAgents(selectedMachineId).then(agentTypes => {
+      if (cancelled || agentTypes.length === 0) {
+        return;
+      }
+      const discoveredAgentTypes = agentTypes.map(agentType => coerceAgentType(agentType));
+      setSupportedAgentTypes(discoveredAgentTypes);
+      if (!discoveredAgentTypes.includes(agentType)) {
+        setAgentType(discoveredAgentTypes[0] ?? 'claude-acp');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMachineId, agentType]);
+
+  const isAgentAvailable = React.useCallback(
+    (candidate: string): boolean => {
+      if (candidate === 'claude') return cliAvailability.claude !== false;
+      if (candidate === 'claude-acp') return cliAvailability.claudeAcp !== false;
+      if (candidate === 'codex') return cliAvailability.codex !== false;
+      if (candidate === 'codex-acp') return cliAvailability.codexAcp !== false;
+      if (candidate === 'gemini') return experimentsEnabled && cliAvailability.gemini !== false;
+      if (candidate === 'opencode') return experimentsEnabled && cliAvailability.opencode !== false;
+      return true;
+    },
+    [
+      cliAvailability.claude,
+      cliAvailability.claudeAcp,
+      cliAvailability.codex,
+      cliAvailability.codexAcp,
+      cliAvailability.gemini,
+      cliAvailability.opencode,
+      experimentsEnabled,
+    ]
+  );
 
   // Auto-correct invalid agent selection after CLI detection completes
   // This handles the case where lastUsedAgent was 'codex' but codex is not installed
@@ -522,20 +471,12 @@ function NewSessionWizard() {
     if (cliAvailability.timestamp === 0) return;
 
     // Check if currently selected agent is available
-    const agentAvailable = cliAvailability[agentType];
+    const agentAvailable = isAgentAvailable(agentType);
 
     if (agentAvailable === false) {
       // Current agent not available - find first available
-      const availableAgent: 'claude' | 'codex' | 'gemini' | 'opencode' =
-        cliAvailability.claude === true
-          ? 'claude'
-          : cliAvailability.codex === true
-            ? 'codex'
-            : cliAvailability.gemini === true && experimentsEnabled
-              ? 'gemini'
-              : cliAvailability.opencode === true && experimentsEnabled
-                ? 'opencode'
-                : 'claude'; // Fallback to claude (will fail at spawn with clear error)
+      const availableAgent =
+        supportedAgentTypes.find(candidate => isAgentAvailable(candidate)) ?? 'claude';
 
       logger.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
       setAgentType(availableAgent);
@@ -543,164 +484,27 @@ function NewSessionWizard() {
   }, [
     cliAvailability.timestamp,
     cliAvailability.claude,
+    cliAvailability.claudeAcp,
     cliAvailability.codex,
+    cliAvailability.codexAcp,
     cliAvailability.gemini,
     cliAvailability.opencode,
     agentType,
     experimentsEnabled,
+    isAgentAvailable,
+    supportedAgentTypes,
   ]);
 
-  // Extract all ${VAR} references from profiles to query daemon environment
-  const envVarRefs = React.useMemo(() => {
-    const refs = new Set<string>();
-    allProfiles.forEach(profile => {
-      extractEnvVarReferences(profile.environmentVariables || []).forEach(ref => refs.add(ref));
-    });
-    return Array.from(refs);
-  }, [allProfiles]);
-
-  // Query daemon environment for ${VAR} resolution
-  const { variables: daemonEnv } = useEnvironmentVariables(selectedMachineId, envVarRefs);
-
-  // Temporary banner dismissal (X button) - resets when component unmounts or machine changes
-  const [hiddenBanners, setHiddenBanners] = React.useState<{
-    claude: boolean;
-    codex: boolean;
-    gemini: boolean;
-  }>({ claude: false, codex: false, gemini: false });
-
-  // Helper to check if CLI warning has been dismissed (checks both global and per-machine)
-  const isWarningDismissed = React.useCallback(
-    (cli: 'claude' | 'codex' | 'gemini'): boolean => {
-      // Check global dismissal first
-      if (dismissedCLIWarnings.global?.[cli] === true) return true;
-      // Check per-machine dismissal
-      if (!selectedMachineId) return false;
-      return dismissedCLIWarnings.perMachine?.[selectedMachineId]?.[cli] === true;
-    },
-    [selectedMachineId, dismissedCLIWarnings]
+  // Visible agent types (filtered by experiments setting)
+  const visibleAgentTypes = React.useMemo(
+    () => supportedAgentTypes.filter(a => experimentsEnabled || !isExperimentalAgent(a)),
+    [supportedAgentTypes, experimentsEnabled]
   );
-
-  // Unified dismiss handler for all three button types (easy to use correctly, hard to use incorrectly)
-  const handleCLIBannerDismiss = React.useCallback(
-    (cli: 'claude' | 'codex' | 'gemini', type: 'temporary' | 'machine' | 'global') => {
-      if (type === 'temporary') {
-        // X button: Hide for current session only (not persisted)
-        setHiddenBanners(prev => ({ ...prev, [cli]: true }));
-      } else if (type === 'global') {
-        // [any machine] button: Permanent dismissal across all machines
-        setDismissedCLIWarnings({
-          ...dismissedCLIWarnings,
-          global: {
-            ...dismissedCLIWarnings.global,
-            [cli]: true,
-          },
-        });
-      } else {
-        // [this machine] button: Permanent dismissal for current machine only
-        if (!selectedMachineId) return;
-        const machineWarnings = dismissedCLIWarnings.perMachine?.[selectedMachineId] || {};
-        setDismissedCLIWarnings({
-          ...dismissedCLIWarnings,
-          perMachine: {
-            ...dismissedCLIWarnings.perMachine,
-            [selectedMachineId]: {
-              ...machineWarnings,
-              [cli]: true,
-            },
-          },
-        });
-      }
-    },
-    [selectedMachineId, dismissedCLIWarnings, setDismissedCLIWarnings]
-  );
-
-  // Helper to check if profile is available (compatible + CLI detected)
-  const isProfileAvailable = React.useCallback(
-    (profile: AIBackendProfile): { available: boolean; reason?: string } => {
-      // Check profile compatibility with selected agent type
-      if (!validateProfileForAgent(profile, agentType)) {
-        // Build list of agents this profile supports (excluding current)
-        // Uses Object.entries to iterate over compatibility flags - scales automatically with new agents
-        const supportedAgents = (Object.entries(profile.compatibility) as [string, boolean][])
-          .filter(([agent, supported]) => supported && agent !== agentType)
-          .map(([agent]) => agent.charAt(0).toUpperCase() + agent.slice(1)); // 'claude' -> 'Claude'
-        const required = supportedAgents.join(' or ') || 'another agent';
-        return {
-          available: false,
-          reason: `requires-agent:${required}`,
-        };
-      }
-
-      // Check if required CLI is detected on machine (only if detection completed)
-      // Determine required CLI: if profile supports exactly one CLI, that CLI is required
-      // Uses Object.entries to iterate - scales automatically when new agents are added
-      const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
-        .filter(([, supported]) => supported)
-        .map(([agent]) => agent);
-      const requiredCLI =
-        supportedCLIs.length === 1 ? (supportedCLIs[0] as 'claude' | 'codex' | 'gemini') : null;
-
-      if (requiredCLI && cliAvailability[requiredCLI] === false) {
-        return {
-          available: false,
-          reason: `cli-not-detected:${requiredCLI}`,
-        };
-      }
-
-      // Optimistic: If detection hasn't completed (null) or profile supports both, assume available
-      return { available: true };
-    },
-    [agentType, cliAvailability]
-  );
-
-  // Computed values
-  const compatibleProfiles = React.useMemo(() => {
-    return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
-  }, [allProfiles, agentType]);
-
-  const selectedProfile = React.useMemo(() => {
-    if (!selectedProfileId) {
-      return null;
-    }
-    // Check custom profiles first
-    if (profileMap.has(selectedProfileId)) {
-      return profileMap.get(selectedProfileId)!;
-    }
-    // Check built-in profiles
-    return getBuiltInProfile(selectedProfileId);
-  }, [selectedProfileId, profileMap]);
 
   const selectedMachine = React.useMemo(() => {
     if (!selectedMachineId) return null;
     return machines.find(m => m.id === selectedMachineId);
   }, [selectedMachineId, machines]);
-
-  // Get recent paths for the selected machine
-  // Recent machines computed from sessions (for inline machine selection)
-  const recentMachines = React.useMemo(() => {
-    const machineIds = new Set<string>();
-    const machinesWithTimestamp: Array<{ machine: (typeof machines)[0]; timestamp: number }> = [];
-
-    sessions?.forEach(item => {
-      if (typeof item === 'string') return; // Skip section headers
-      const session = item as any;
-      if (session.metadata?.machineId && !machineIds.has(session.metadata.machineId)) {
-        const machine = machines.find(m => m.id === session.metadata.machineId);
-        if (machine) {
-          machineIds.add(machine.id);
-          machinesWithTimestamp.push({
-            machine,
-            timestamp: session.updatedAt || session.createdAt,
-          });
-        }
-      }
-    });
-
-    return machinesWithTimestamp
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .map(item => item.machine);
-  }, [sessions, machines]);
 
   const recentPaths = React.useMemo(() => {
     if (!selectedMachineId) return [];
@@ -747,294 +551,17 @@ function NewSessionWizard() {
 
   // Validation
   const canCreate = React.useMemo(() => {
-    return selectedProfileId !== null && selectedMachineId !== null && selectedPath.trim() !== '';
-  }, [selectedProfileId, selectedMachineId, selectedPath]);
-
-  const selectProfile = React.useCallback(
-    (profileId: string) => {
-      setSelectedProfileId(profileId);
-      // Check both custom profiles and built-in profiles
-      const profile = profileMap.get(profileId) || getBuiltInProfile(profileId);
-      if (profile) {
-        // Auto-select agent based on profile's EXCLUSIVE compatibility
-        // Only switch if profile supports exactly one CLI - scales automatically with new agents
-        const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
-          .filter(([, supported]) => supported)
-          .map(([agent]) => agent);
-
-        if (supportedCLIs.length === 1) {
-          const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini';
-          // Check if this agent is available and allowed
-          const isAvailable = cliAvailability[requiredAgent] !== false;
-          const isAllowed = requiredAgent !== 'gemini' || experimentsEnabled;
-
-          if (isAvailable && isAllowed) {
-            setAgentType(requiredAgent);
-          }
-          // If the required CLI is unavailable or not allowed, keep current agent (profile will show as unavailable)
-        }
-        // If supportedCLIs.length > 1, profile supports multiple CLIs - don't force agent switch
-
-        // Set session type from profile's default
-        if (profile.defaultSessionType) {
-          setSessionType(profile.defaultSessionType);
-        }
-        // Set permission mode from profile's default
-        if (profile.defaultPermissionMode) {
-          setPermissionMode(profile.defaultPermissionMode as PermissionMode);
-        }
-      }
-    },
-    [
-      profileMap,
-      cliAvailability.claude,
-      cliAvailability.codex,
-      cliAvailability.gemini,
-      cliAvailability.opencode,
-      experimentsEnabled,
-    ]
-  );
+    return selectedMachineId !== null && selectedPath.trim() !== '';
+  }, [selectedMachineId, selectedPath]);
 
   // Permission modes are now unified across all agents - no reset needed on agent type change
 
   // Reset model mode when agent type changes to appropriate default
   React.useEffect(() => {
-    const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-    const validCodexModes: ModelMode[] = [
-      'gpt-5-codex-high',
-      'gpt-5-codex-medium',
-      'gpt-5-codex-low',
-      'gpt-5-minimal',
-      'gpt-5-low',
-      'gpt-5-medium',
-      'gpt-5-high',
-    ];
-    // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-    const validGeminiModes: ModelMode[] = [
-      'gemini-2.5-pro',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
-    ];
-    // OpenCode uses 'default' - model is configured through OpenCode's own settings
-    const validOpenCodeModes: ModelMode[] = ['default'];
-
-    let isValidForCurrentAgent = false;
-    if (agentType === 'codex') {
-      isValidForCurrentAgent = validCodexModes.includes(modelMode);
-    } else if (agentType === 'gemini') {
-      isValidForCurrentAgent = validGeminiModes.includes(modelMode);
-    } else if (agentType === 'opencode') {
-      isValidForCurrentAgent = validOpenCodeModes.includes(modelMode);
-    } else {
-      isValidForCurrentAgent = validClaudeModes.includes(modelMode);
+    if (!modelMode || !availableModelIds.includes(modelMode)) {
+      setModelMode(defaultModelId);
     }
-
-    if (!isValidForCurrentAgent) {
-      // Set appropriate default for each agent type
-      if (agentType === 'codex') {
-        setModelMode('gpt-5-codex-high');
-      } else if (agentType === 'gemini') {
-        setModelMode('gemini-2.5-pro');
-      } else {
-        setModelMode('default');
-      }
-    }
-  }, [agentType, modelMode]);
-  // Scroll to section helpers - for AgentInput button clicks
-  const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
-    if (!ref.current || !scrollViewRef.current) return;
-
-    // Use requestAnimationFrame to ensure layout is painted before measuring
-    requestAnimationFrame(() => {
-      if (ref.current && scrollViewRef.current) {
-        ref.current.measureLayout(
-          scrollViewRef.current as any,
-          (x, y) => {
-            scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
-          },
-          () => {
-            logger.warn('measureLayout failed');
-          }
-        );
-      }
-    });
-  }, []);
-
-  const handleAgentInputProfileClick = React.useCallback(() => {
-    scrollToSection(profileSectionRef);
-  }, [scrollToSection]);
-
-  const handleAgentInputMachineClick = React.useCallback(() => {
-    scrollToSection(machineSectionRef);
-  }, [scrollToSection]);
-
-  const handleAgentInputPathClick = React.useCallback(() => {
-    scrollToSection(pathSectionRef);
-  }, [scrollToSection]);
-
-  const handleAgentInputPermissionChange = React.useCallback(
-    (mode: PermissionMode) => {
-      setPermissionMode(mode);
-      scrollToSection(permissionSectionRef);
-    },
-    [scrollToSection]
-  );
-
-  const handleAgentInputAgentClick = React.useCallback(() => {
-    scrollToSection(profileSectionRef); // Agent tied to profile section
-  }, [scrollToSection]);
-
-  const handleAddProfile = React.useCallback(() => {
-    const newProfile: AIBackendProfile = {
-      id: randomUUID(),
-      name: '',
-      anthropicConfig: {},
-      environmentVariables: [],
-      compatibility: { claude: true, codex: true, gemini: true, opencode: true },
-      isBuiltIn: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      version: '1.0.0',
-    };
-    const profileData = encodeURIComponent(JSON.stringify(newProfile));
-    router.push(`/new/pick/profile-edit?profileData=${profileData}`);
-  }, [router]);
-
-  const handleEditProfile = React.useCallback(
-    (profile: AIBackendProfile) => {
-      const profileData = encodeURIComponent(JSON.stringify(profile));
-      const machineId = selectedMachineId || '';
-      router.push(`/new/pick/profile-edit?profileData=${profileData}&machineId=${machineId}`);
-    },
-    [router, selectedMachineId]
-  );
-
-  const handleDuplicateProfile = React.useCallback(
-    (profile: AIBackendProfile) => {
-      const duplicatedProfile: AIBackendProfile = {
-        ...profile,
-        id: randomUUID(),
-        name: `${profile.name} (Copy)`,
-        isBuiltIn: false,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      const profileData = encodeURIComponent(JSON.stringify(duplicatedProfile));
-      router.push(`/new/pick/profile-edit?profileData=${profileData}`);
-    },
-    [router]
-  );
-
-  // Helper to get meaningful subtitle text for profiles
-  const getProfileSubtitle = React.useCallback(
-    (profile: AIBackendProfile): string => {
-      const parts: string[] = [];
-      const availability = isProfileAvailable(profile);
-
-      // Add "Built-in" indicator first for built-in profiles
-      if (profile.isBuiltIn) {
-        parts.push('Built-in');
-      }
-
-      // Add CLI type second (before warnings/availability)
-      if (profile.compatibility.claude && profile.compatibility.codex) {
-        parts.push('Claude & Codex CLI');
-      } else if (profile.compatibility.claude) {
-        parts.push('Claude CLI');
-      } else if (profile.compatibility.codex) {
-        parts.push('Codex CLI');
-      }
-
-      // Add availability warning if unavailable
-      if (!availability.available && availability.reason) {
-        if (availability.reason.startsWith('requires-agent:')) {
-          const required = availability.reason.split(':')[1];
-          parts.push(`⚠️ This profile uses ${required} CLI only`);
-        } else if (availability.reason.startsWith('cli-not-detected:')) {
-          const cli = availability.reason.split(':')[1];
-          const cliName = cli === 'claude' ? 'Claude' : 'Codex';
-          parts.push(`⚠️ ${cliName} CLI not detected (this profile needs it)`);
-        }
-      }
-
-      // Get model name - check both anthropicConfig and environmentVariables
-      let modelName: string | undefined;
-      if (profile.anthropicConfig?.model) {
-        // User set in GUI - literal value, no evaluation needed
-        modelName = profile.anthropicConfig.model;
-      } else if (profile.openaiConfig?.model) {
-        modelName = profile.openaiConfig.model;
-      } else {
-        // Check environmentVariables - may need ${VAR} evaluation
-        const modelEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_MODEL');
-        if (modelEnvVar) {
-          const resolved = resolveEnvVarSubstitution(modelEnvVar.value, daemonEnv);
-          if (resolved) {
-            // Show as "VARIABLE: value" when evaluated from ${VAR}
-            const varName = modelEnvVar.value.match(/^\$\{(.+)\}$/)?.[1];
-            modelName = varName ? `${varName}: ${resolved}` : resolved;
-          } else {
-            // Show raw ${VAR} if not resolved (machine not selected or var not set)
-            modelName = modelEnvVar.value;
-          }
-        }
-      }
-
-      if (modelName) {
-        parts.push(modelName);
-      }
-
-      // Add base URL if exists in environmentVariables
-      const baseUrlEnvVar = profile.environmentVariables?.find(
-        ev => ev.name === 'ANTHROPIC_BASE_URL'
-      );
-      if (baseUrlEnvVar) {
-        const resolved = resolveEnvVarSubstitution(baseUrlEnvVar.value, daemonEnv);
-        if (resolved) {
-          // Extract hostname and show with variable name
-          const varName = baseUrlEnvVar.value.match(/^\$\{([A-Z_][A-Z0-9_]*)/)?.[1];
-          try {
-            const url = new URL(resolved);
-            const display = varName ? `${varName}: ${url.hostname}` : url.hostname;
-            parts.push(display);
-          } catch {
-            // Not a valid URL, show as-is with variable name
-            parts.push(varName ? `${varName}: ${resolved}` : resolved);
-          }
-        } else {
-          // Show raw ${VAR} if not resolved (machine not selected or var not set)
-          parts.push(baseUrlEnvVar.value);
-        }
-      }
-
-      return parts.join(', ');
-    },
-    [agentType, isProfileAvailable, daemonEnv]
-  );
-
-  const handleDeleteProfile = React.useCallback(
-    (profile: AIBackendProfile) => {
-      Modal.alert(
-        t('profiles.delete.title'),
-        t('profiles.delete.message', { name: profile.name }),
-        [
-          { text: t('profiles.delete.cancel'), style: 'cancel' },
-          {
-            text: t('profiles.delete.confirm'),
-            style: 'destructive',
-            onPress: () => {
-              const updatedProfiles = profiles.filter(p => p.id !== profile.id);
-              setProfiles(updatedProfiles); // Use mutable setter for persistence
-              if (selectedProfileId === profile.id) {
-                setSelectedProfileId('anthropic'); // Default to Anthropic
-              }
-            },
-          },
-        ]
-      );
-    },
-    [profiles, selectedProfileId, setProfiles]
-  );
+  }, [agentType, modelMode, availableModelIds, defaultModelId]);
 
   // Handle machine and path selection callbacks
   React.useEffect(() => {
@@ -1051,44 +578,6 @@ function NewSessionWizard() {
       onMachineSelected = () => {};
     };
   }, [recentMachinePaths]);
-
-  React.useEffect(() => {
-    const handler = (savedProfile: AIBackendProfile) => {
-      // Handle saved profile from profile-edit screen
-
-      // Check if this is a built-in profile being edited
-      const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === savedProfile.id);
-      let profileToSave = savedProfile;
-
-      // For built-in profiles, create a new custom profile instead of modifying the built-in
-      if (isBuiltIn) {
-        profileToSave = {
-          ...savedProfile,
-          id: randomUUID(), // Generate new UUID for custom profile
-          isBuiltIn: false,
-        };
-      }
-
-      const existingIndex = profiles.findIndex(p => p.id === profileToSave.id);
-      let updatedProfiles: AIBackendProfile[];
-
-      if (existingIndex >= 0) {
-        // Update existing profile
-        updatedProfiles = [...profiles];
-        updatedProfiles[existingIndex] = profileToSave;
-      } else {
-        // Add new profile
-        updatedProfiles = [...profiles, profileToSave];
-      }
-
-      setProfiles(updatedProfiles); // Use mutable setter for persistence
-      setSelectedProfileId(profileToSave.id);
-    };
-    onProfileSaved = handler;
-    return () => {
-      onProfileSaved = () => {};
-    };
-  }, [profiles, setProfiles]);
 
   const handleMachineClick = React.useCallback(() => {
     router.push('/new/pick/machine');
@@ -1150,29 +639,22 @@ function NewSessionWizard() {
       sync.applySettings({
         recentMachinePaths: updatedPaths,
         lastUsedAgent: agentType,
-        lastUsedProfile: selectedProfileId,
         lastUsedPermissionMode: permissionMode,
         lastUsedModelMode: modelMode,
+        lastUsedAgentMode: displayCapabilitiesWithDraftMode.modes?.current ?? null,
       });
-
-      // Get environment variables from selected profile
-      let environmentVariables = undefined;
-      if (selectedProfileId) {
-        const selectedProfile = profileMap.get(selectedProfileId);
-        if (selectedProfile) {
-          environmentVariables = transformProfileToEnvironmentVars(selectedProfile, agentType);
-        }
-      }
 
       const result = await machineSpawnNewSession({
         machineId: selectedMachineId,
         directory: actualPath,
         approvedNewDirectoryCreation: true,
         agent: agentType,
-        environmentVariables,
+        model: modelMode && modelMode !== 'default' ? modelMode : undefined,
+        mode: displayCapabilitiesWithDraftMode.modes?.current || undefined,
       });
 
       if ('sessionId' in result && result.sessionId) {
+        const modelConfigOption = getConfigOptionByCategory(displayCapabilities, 'model');
         // Clear draft state on successful session creation
         clearNewSessionDraft();
 
@@ -1180,13 +662,19 @@ function NewSessionWizard() {
 
         // Set permission mode and model mode on the session
         storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-        if (agentType === 'gemini' && modelMode && modelMode !== 'default') {
+        if (displayCapabilitiesWithDraftMode.modes?.current) {
           storage
             .getState()
-            .updateSessionModelMode(
-              result.sessionId,
-              modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite'
-            );
+            .updateSessionDesiredAgentMode(result.sessionId, displayCapabilitiesWithDraftMode.modes.current);
+        }
+        if (modelMode && modelMode !== 'default') {
+          if (modelConfigOption) {
+            storage
+              .getState()
+              .updateSessionDesiredConfigOption(result.sessionId, modelConfigOption.id, modelMode);
+          } else {
+            storage.getState().updateSessionModelMode(result.sessionId, modelMode);
+          }
         }
 
         // Send initial message if provided
@@ -1203,16 +691,13 @@ function NewSessionWizard() {
         throw new Error('Session spawning failed - no session ID returned.');
       }
     } catch (error) {
-      logger.error('Failed to start session', error);
-      let errorMessage =
-        'Failed to start session. Make sure the daemon is running on the target machine.';
-      if (error instanceof Error) {
-        if (error.message.includes('timeout')) {
-          errorMessage =
-            'Session startup timed out. The machine may be slow or the daemon may not be responding.';
-        } else if (error.message.includes('Socket not connected')) {
-          errorMessage = 'Not connected to server. Check your internet connection.';
-        }
+      logger.error('Failed to start session', toError(error));
+      let errorMessage = t('newSession.failedToStart');
+      const errMsg = safeStringify(error);
+      if (errMsg.includes('timeout')) {
+        errorMessage = t('newSession.sessionTimeout');
+      } else if (errMsg.includes('Socket not connected')) {
+        errorMessage = t('newSession.notConnectedToServer');
       }
       Modal.alert(t('common.error'), errorMessage);
       setIsCreating(false);
@@ -1224,11 +709,9 @@ function NewSessionWizard() {
     sessionType,
     experimentsEnabled,
     agentType,
-    selectedProfileId,
     permissionMode,
     modelMode,
     recentMachinePaths,
-    profileMap,
     router,
   ]);
 
@@ -1248,12 +731,14 @@ function NewSessionWizard() {
       dotColor: isOnline ? theme.colors.success : theme.colors.textDestructive,
       isPulsing: isOnline,
       cliStatus: includeCLI
-        ? {
-            claude: cliAvailability.claude,
-            codex: cliAvailability.codex,
-            ...(experimentsEnabled && {
-              gemini: cliAvailability.gemini,
-              opencode: cliAvailability.opencode,
+          ? {
+              claude: cliAvailability.claude,
+              'claude-acp': cliAvailability.claudeAcp,
+              codex: cliAvailability.codex,
+              'codex-acp': cliAvailability.codexAcp,
+              ...(experimentsEnabled && {
+                gemini: cliAvailability.gemini,
+                opencode: cliAvailability.opencode,
             }),
           }
         : undefined,
@@ -1285,12 +770,7 @@ function NewSessionWizard() {
     };
   }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
 
-  // ========================================================================
-  // CONTROL A: Simpler AgentInput-driven layout (flag OFF)
-  // Shows machine/path selection via chips that navigate to picker screens
-  // ========================================================================
-  if (!useEnhancedSessionWizard) {
-    return (
+  return (
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={
@@ -1316,21 +796,27 @@ function NewSessionWizard() {
             }}
           >
             <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+              {shouldShowCapabilityDiscoveryNotice && (
+                <ChatFooter notice={t('newSession.capabilityDiscoveryNotice')} />
+              )}
               <AgentInput
                 value={sessionPrompt}
                 onChangeText={setSessionPrompt}
                 onSend={handleCreateSession}
                 isSendDisabled={!canCreate}
                 isSending={isCreating}
-                placeholder="What would you like to work on?"
+                placeholder={t('newSession.inputPlaceholder')}
                 autocompletePrefixes={[]}
                 autocompleteSuggestions={async () => []}
                 agentType={agentType}
-                onAgentClick={handleAgentClick}
+                availableAgentTypes={visibleAgentTypes}
+                onAgentChange={setAgentType}
                 permissionMode={permissionMode}
                 onPermissionModeChange={handlePermissionModeChange}
                 modelMode={modelMode}
                 onModelModeChange={setModelMode}
+                capabilities={displayCapabilitiesWithDraftMode}
+                onAgentModeChange={setDraftAgentMode}
                 connectionStatus={connectionStatus}
                 machineName={
                   selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host
@@ -1343,1172 +829,6 @@ function NewSessionWizard() {
           </View>
         </View>
       </KeyboardAvoidingView>
-    );
-  }
-
-  // ========================================================================
-  // VARIANT B: Enhanced profile-first wizard (flag ON)
-  // Full wizard with numbered sections, profile management, CLI detection
-  // ========================================================================
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={
-        Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0
-      }
-      style={styles.container}
-    >
-      <View style={{ flex: 1 }}>
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.scrollContainer}
-          contentContainerStyle={styles.contentContainer}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={[{ paddingHorizontal: screenWidth > 700 ? 16 : 8 }]}>
-            <View
-              style={[{ maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }]}
-            >
-              <View ref={profileSectionRef} style={styles.wizardContainer}>
-                {/* CLI Detection Status Banner - shows after detection completes */}
-                {selectedMachineId &&
-                  cliAvailability.timestamp > 0 &&
-                  selectedMachine &&
-                  connectionStatus && (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.surfacePressed,
-                        borderRadius: 10,
-                        padding: 10,
-                        paddingRight: 18,
-                        marginBottom: 12,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: STATUS_ITEM_GAP,
-                      }}
-                    >
-                      <Ionicons
-                        name="desktop-outline"
-                        size={16}
-                        color={theme.colors.textSecondary}
-                      />
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: STATUS_ITEM_GAP,
-                          flexWrap: 'wrap',
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: theme.colors.textSecondary,
-                            ...Typography.default(),
-                          }}
-                        >
-                          {selectedMachine.metadata?.displayName ||
-                            selectedMachine.metadata?.host ||
-                            'Machine'}
-                          :
-                        </Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <StatusDot
-                            color={connectionStatus.dotColor}
-                            isPulsing={connectionStatus.isPulsing}
-                            size={6}
-                          />
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: connectionStatus.color,
-                              ...Typography.default(),
-                            }}
-                          >
-                            {connectionStatus.text}
-                          </Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: cliAvailability.claude
-                                ? theme.colors.success
-                                : theme.colors.textDestructive,
-                              ...Typography.default(),
-                            }}
-                          >
-                            {cliAvailability.claude ? '✓' : '✗'}
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: cliAvailability.claude
-                                ? theme.colors.success
-                                : theme.colors.textDestructive,
-                              ...Typography.default(),
-                            }}
-                          >
-                            claude
-                          </Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: cliAvailability.codex
-                                ? theme.colors.success
-                                : theme.colors.textDestructive,
-                              ...Typography.default(),
-                            }}
-                          >
-                            {cliAvailability.codex ? '✓' : '✗'}
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: cliAvailability.codex
-                                ? theme.colors.success
-                                : theme.colors.textDestructive,
-                              ...Typography.default(),
-                            }}
-                          >
-                            codex
-                          </Text>
-                        </View>
-                        {experimentsEnabled && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                color: cliAvailability.gemini
-                                  ? theme.colors.success
-                                  : theme.colors.textDestructive,
-                                ...Typography.default(),
-                              }}
-                            >
-                              {cliAvailability.gemini ? '✓' : '✗'}
-                            </Text>
-                            <Text
-                              style={{
-                                fontSize: 11,
-                                color: cliAvailability.gemini
-                                  ? theme.colors.success
-                                  : theme.colors.textDestructive,
-                                ...Typography.default(),
-                              }}
-                            >
-                              gemini
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  )}
-
-                {/* Section 1: Profile Management */}
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 8,
-                    marginBottom: 8,
-                    marginTop: 12,
-                  }}
-                >
-                  <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
-                  <Ionicons name="person-outline" size={18} color={theme.colors.text} />
-                  <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                    Choose AI Profile
-                  </Text>
-                </View>
-                <Text style={styles.sectionDescription}>
-                  Choose which AI backend runs your session (Claude or Codex). Create custom
-                  profiles for alternative APIs.
-                </Text>
-
-                {/* Missing CLI Installation Banners */}
-                {selectedMachineId &&
-                  cliAvailability.claude === false &&
-                  !isWarningDismissed('claude') &&
-                  !hiddenBanners.claude && (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.box.warning.background,
-                        borderRadius: 10,
-                        padding: 12,
-                        marginBottom: 12,
-                        borderWidth: 1,
-                        borderColor: theme.colors.box.warning.border,
-                      }}
-                    >
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'flex-start',
-                          justifyContent: 'space-between',
-                          marginBottom: 6,
-                        }}
-                      >
-                        <View
-                          style={{
-                            flex: 1,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: 6,
-                            marginRight: 16,
-                          }}
-                        >
-                          <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              fontWeight: '600',
-                              color: theme.colors.text,
-                              ...Typography.default('semiBold'),
-                            }}
-                          >
-                            Claude CLI Not Detected
-                          </Text>
-                          <View style={{ flex: 1, minWidth: 20 }} />
-                          <Text
-                            style={{
-                              fontSize: 10,
-                              color: theme.colors.textSecondary,
-                              ...Typography.default(),
-                            }}
-                          >
-                            Don't show this popup for
-                          </Text>
-                          <Pressable
-                            onPress={() => handleCLIBannerDismiss('claude', 'machine')}
-                            style={{
-                              borderRadius: 4,
-                              borderWidth: 1,
-                              borderColor: theme.colors.textSecondary,
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 10,
-                                color: theme.colors.textSecondary,
-                                ...Typography.default(),
-                              }}
-                            >
-                              this machine
-                            </Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleCLIBannerDismiss('claude', 'global')}
-                            style={{
-                              borderRadius: 4,
-                              borderWidth: 1,
-                              borderColor: theme.colors.textSecondary,
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 10,
-                                color: theme.colors.textSecondary,
-                                ...Typography.default(),
-                              }}
-                            >
-                              any machine
-                            </Text>
-                          </Pressable>
-                        </View>
-                        <Pressable
-                          onPress={() => handleCLIBannerDismiss('claude', 'temporary')}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                        </Pressable>
-                      </View>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          flexWrap: 'wrap',
-                          gap: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: theme.colors.textSecondary,
-                            ...Typography.default(),
-                          }}
-                        >
-                          Install: npm install -g @anthropic-ai/claude-code •
-                        </Text>
-                        <Pressable
-                          onPress={() => {
-                            if (Platform.OS === 'web') {
-                              window.open(
-                                'https://docs.anthropic.com/en/docs/claude-code/installation',
-                                '_blank'
-                              );
-                            }
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: theme.colors.textLink,
-                              ...Typography.default(),
-                            }}
-                          >
-                            View Installation Guide →
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  )}
-
-                {selectedMachineId &&
-                  cliAvailability.codex === false &&
-                  !isWarningDismissed('codex') &&
-                  !hiddenBanners.codex && (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.box.warning.background,
-                        borderRadius: 10,
-                        padding: 12,
-                        marginBottom: 12,
-                        borderWidth: 1,
-                        borderColor: theme.colors.box.warning.border,
-                      }}
-                    >
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'flex-start',
-                          justifyContent: 'space-between',
-                          marginBottom: 6,
-                        }}
-                      >
-                        <View
-                          style={{
-                            flex: 1,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: 6,
-                            marginRight: 16,
-                          }}
-                        >
-                          <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              fontWeight: '600',
-                              color: theme.colors.text,
-                              ...Typography.default('semiBold'),
-                            }}
-                          >
-                            Codex CLI Not Detected
-                          </Text>
-                          <View style={{ flex: 1, minWidth: 20 }} />
-                          <Text
-                            style={{
-                              fontSize: 10,
-                              color: theme.colors.textSecondary,
-                              ...Typography.default(),
-                            }}
-                          >
-                            Don't show this popup for
-                          </Text>
-                          <Pressable
-                            onPress={() => handleCLIBannerDismiss('codex', 'machine')}
-                            style={{
-                              borderRadius: 4,
-                              borderWidth: 1,
-                              borderColor: theme.colors.textSecondary,
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 10,
-                                color: theme.colors.textSecondary,
-                                ...Typography.default(),
-                              }}
-                            >
-                              this machine
-                            </Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleCLIBannerDismiss('codex', 'global')}
-                            style={{
-                              borderRadius: 4,
-                              borderWidth: 1,
-                              borderColor: theme.colors.textSecondary,
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 10,
-                                color: theme.colors.textSecondary,
-                                ...Typography.default(),
-                              }}
-                            >
-                              any machine
-                            </Text>
-                          </Pressable>
-                        </View>
-                        <Pressable
-                          onPress={() => handleCLIBannerDismiss('codex', 'temporary')}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                        </Pressable>
-                      </View>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          flexWrap: 'wrap',
-                          gap: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: theme.colors.textSecondary,
-                            ...Typography.default(),
-                          }}
-                        >
-                          Install: npm install -g codex-cli •
-                        </Text>
-                        <Pressable
-                          onPress={() => {
-                            if (Platform.OS === 'web') {
-                              window.open('https://github.com/openai/openai-codex', '_blank');
-                            }
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: theme.colors.textLink,
-                              ...Typography.default(),
-                            }}
-                          >
-                            View Installation Guide →
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  )}
-
-                {selectedMachineId &&
-                  cliAvailability.gemini === false &&
-                  experimentsEnabled &&
-                  !isWarningDismissed('gemini') &&
-                  !hiddenBanners.gemini && (
-                    <View
-                      style={{
-                        backgroundColor: theme.colors.box.warning.background,
-                        borderRadius: 10,
-                        padding: 12,
-                        marginBottom: 12,
-                        borderWidth: 1,
-                        borderColor: theme.colors.box.warning.border,
-                      }}
-                    >
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'flex-start',
-                          justifyContent: 'space-between',
-                          marginBottom: 6,
-                        }}
-                      >
-                        <View
-                          style={{
-                            flex: 1,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: 6,
-                            marginRight: 16,
-                          }}
-                        >
-                          <Ionicons name="warning" size={16} color={theme.colors.warning} />
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              fontWeight: '600',
-                              color: theme.colors.text,
-                              ...Typography.default('semiBold'),
-                            }}
-                          >
-                            Gemini CLI Not Detected
-                          </Text>
-                          <View style={{ flex: 1, minWidth: 20 }} />
-                          <Text
-                            style={{
-                              fontSize: 10,
-                              color: theme.colors.textSecondary,
-                              ...Typography.default(),
-                            }}
-                          >
-                            Don't show this popup for
-                          </Text>
-                          <Pressable
-                            onPress={() => handleCLIBannerDismiss('gemini', 'machine')}
-                            style={{
-                              borderRadius: 4,
-                              borderWidth: 1,
-                              borderColor: theme.colors.textSecondary,
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 10,
-                                color: theme.colors.textSecondary,
-                                ...Typography.default(),
-                              }}
-                            >
-                              this machine
-                            </Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleCLIBannerDismiss('gemini', 'global')}
-                            style={{
-                              borderRadius: 4,
-                              borderWidth: 1,
-                              borderColor: theme.colors.textSecondary,
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 10,
-                                color: theme.colors.textSecondary,
-                                ...Typography.default(),
-                              }}
-                            >
-                              any machine
-                            </Text>
-                          </Pressable>
-                        </View>
-                        <Pressable
-                          onPress={() => handleCLIBannerDismiss('gemini', 'temporary')}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                        </Pressable>
-                      </View>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          flexWrap: 'wrap',
-                          gap: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 11,
-                            color: theme.colors.textSecondary,
-                            ...Typography.default(),
-                          }}
-                        >
-                          Install gemini CLI if available •
-                        </Text>
-                        <Pressable
-                          onPress={() => {
-                            if (Platform.OS === 'web') {
-                              window.open(
-                                'https://ai.google.dev/gemini-api/docs/get-started',
-                                '_blank'
-                              );
-                            }
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: theme.colors.textLink,
-                              ...Typography.default(),
-                            }}
-                          >
-                            View Gemini Docs →
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  )}
-
-                {/* Custom profiles - show first */}
-                {profiles.map(profile => {
-                  const availability = isProfileAvailable(profile);
-
-                  return (
-                    <Pressable
-                      key={profile.id}
-                      style={[
-                        styles.profileListItem,
-                        selectedProfileId === profile.id && styles.profileListItemSelected,
-                        !availability.available && { opacity: 0.5 },
-                      ]}
-                      onPress={() => availability.available && selectProfile(profile.id)}
-                      disabled={!availability.available}
-                    >
-                      <View
-                        style={[
-                          styles.profileIcon,
-                          { backgroundColor: theme.colors.button.secondary.tint },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 16,
-                            color: theme.colors.button.primary.tint,
-                            ...Typography.default(),
-                          }}
-                        >
-                          {profile.compatibility.claude && profile.compatibility.codex
-                            ? '✳꩜'
-                            : profile.compatibility.claude
-                              ? '✳'
-                              : '꩜'}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.profileListName}>{profile.name}</Text>
-                        <Text style={styles.profileListDetails}>{getProfileSubtitle(profile)}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                        {selectedProfileId === profile.id && (
-                          <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                        )}
-                        <Pressable
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          onPress={e => {
-                            e.stopPropagation();
-                            handleDeleteProfile(profile);
-                          }}
-                        >
-                          <Ionicons
-                            name="trash-outline"
-                            size={20}
-                            color={theme.colors.deleteAction}
-                          />
-                        </Pressable>
-                        <Pressable
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          onPress={e => {
-                            e.stopPropagation();
-                            handleDuplicateProfile(profile);
-                          }}
-                        >
-                          <Ionicons
-                            name="copy-outline"
-                            size={20}
-                            color={theme.colors.button.secondary.tint}
-                          />
-                        </Pressable>
-                        <Pressable
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          onPress={e => {
-                            e.stopPropagation();
-                            handleEditProfile(profile);
-                          }}
-                        >
-                          <Ionicons
-                            name="create-outline"
-                            size={20}
-                            color={theme.colors.button.secondary.tint}
-                          />
-                        </Pressable>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-
-                {/* Built-in profiles - show after custom */}
-                {DEFAULT_PROFILES.map(profileDisplay => {
-                  const profile = getBuiltInProfile(profileDisplay.id);
-                  if (!profile) return null;
-
-                  const availability = isProfileAvailable(profile);
-
-                  return (
-                    <Pressable
-                      key={profile.id}
-                      style={[
-                        styles.profileListItem,
-                        selectedProfileId === profile.id && styles.profileListItemSelected,
-                        !availability.available && { opacity: 0.5 },
-                      ]}
-                      onPress={() => availability.available && selectProfile(profile.id)}
-                      disabled={!availability.available}
-                    >
-                      <View style={styles.profileIcon}>
-                        <Text
-                          style={{
-                            fontSize: 16,
-                            color: theme.colors.button.primary.tint,
-                            ...Typography.default(),
-                          }}
-                        >
-                          {profile.compatibility.claude && profile.compatibility.codex
-                            ? '✳꩜'
-                            : profile.compatibility.claude
-                              ? '✳'
-                              : '꩜'}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.profileListName}>{profile.name}</Text>
-                        <Text style={styles.profileListDetails}>{getProfileSubtitle(profile)}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                        {selectedProfileId === profile.id && (
-                          <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                        )}
-                        <Pressable
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          onPress={e => {
-                            e.stopPropagation();
-                            handleEditProfile(profile);
-                          }}
-                        >
-                          <Ionicons
-                            name="create-outline"
-                            size={20}
-                            color={theme.colors.button.secondary.tint}
-                          />
-                        </Pressable>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-
-                {/* Profile Action Buttons */}
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                  <Pressable
-                    style={[styles.addProfileButton, { flex: 1 }]}
-                    onPress={handleAddProfile}
-                  >
-                    <Ionicons
-                      name="add-circle-outline"
-                      size={20}
-                      color={theme.colors.button.secondary.tint}
-                    />
-                    <Text style={styles.addProfileButtonText}>Add</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.addProfileButton,
-                      { flex: 1 },
-                      !selectedProfile && { opacity: 0.4 },
-                    ]}
-                    onPress={() => selectedProfile && handleDuplicateProfile(selectedProfile)}
-                    disabled={!selectedProfile}
-                  >
-                    <Ionicons
-                      name="copy-outline"
-                      size={20}
-                      color={theme.colors.button.secondary.tint}
-                    />
-                    <Text style={styles.addProfileButtonText}>Duplicate</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.addProfileButton,
-                      { flex: 1 },
-                      (!selectedProfile || selectedProfile.isBuiltIn) && { opacity: 0.4 },
-                    ]}
-                    onPress={() =>
-                      selectedProfile &&
-                      !selectedProfile.isBuiltIn &&
-                      handleDeleteProfile(selectedProfile)
-                    }
-                    disabled={!selectedProfile || selectedProfile.isBuiltIn}
-                  >
-                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                    <Text
-                      style={[styles.addProfileButtonText, { color: theme.colors.deleteAction }]}
-                    >
-                      Delete
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* Section 2: Machine Selection */}
-                <View ref={machineSectionRef}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8,
-                      marginBottom: 8,
-                      marginTop: 12,
-                    }}
-                  >
-                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                      2.
-                    </Text>
-                    <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
-                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                      Select Machine
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={{ marginBottom: 24 }}>
-                  <SearchableListSelector<(typeof machines)[0]>
-                    config={{
-                      getItemId: machine => machine.id,
-                      getItemTitle: machine =>
-                        machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                      getItemSubtitle: undefined,
-                      getItemIcon: machine => (
-                        <Ionicons
-                          name="desktop-outline"
-                          size={24}
-                          color={theme.colors.textSecondary}
-                        />
-                      ),
-                      getRecentItemIcon: machine => (
-                        <Ionicons
-                          name="time-outline"
-                          size={24}
-                          color={theme.colors.textSecondary}
-                        />
-                      ),
-                      getItemStatus: machine => {
-                        const offline = !isMachineOnline(machine);
-                        return {
-                          text: offline ? 'offline' : 'online',
-                          color: offline
-                            ? theme.colors.status.disconnected
-                            : theme.colors.status.connected,
-                          dotColor: offline
-                            ? theme.colors.status.disconnected
-                            : theme.colors.status.connected,
-                          isPulsing: !offline,
-                        };
-                      },
-                      formatForDisplay: machine =>
-                        machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                      parseFromDisplay: text => {
-                        return (
-                          machines.find(
-                            m =>
-                              m.metadata?.displayName === text ||
-                              m.metadata?.host === text ||
-                              m.id === text
-                          ) || null
-                        );
-                      },
-                      filterItem: (machine, searchText) => {
-                        const displayName = (machine.metadata?.displayName || '').toLowerCase();
-                        const host = (machine.metadata?.host || '').toLowerCase();
-                        const search = searchText.toLowerCase();
-                        return displayName.includes(search) || host.includes(search);
-                      },
-                      searchPlaceholder: 'Type to filter machines...',
-                      recentSectionTitle: 'Recent Machines',
-                      favoritesSectionTitle: 'Favorite Machines',
-                      noItemsMessage: 'No machines available',
-                      showFavorites: true,
-                      showRecent: true,
-                      showSearch: true,
-                      allowCustomInput: false,
-                      compactItems: true,
-                    }}
-                    items={machines}
-                    recentItems={recentMachines}
-                    favoriteItems={machines.filter(m => favoriteMachines.includes(m.id))}
-                    selectedItem={selectedMachine || null}
-                    onSelect={machine => {
-                      setSelectedMachineId(machine.id);
-                      const bestPath = getRecentPathForMachine(machine.id, recentMachinePaths);
-                      setSelectedPath(bestPath);
-                    }}
-                    onToggleFavorite={machine => {
-                      const isInFavorites = favoriteMachines.includes(machine.id);
-                      if (isInFavorites) {
-                        setFavoriteMachines(favoriteMachines.filter(id => id !== machine.id));
-                      } else {
-                        setFavoriteMachines([...favoriteMachines, machine.id]);
-                      }
-                    }}
-                  />
-                </View>
-
-                {/* Section 3: Working Directory */}
-                <View ref={pathSectionRef}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8,
-                      marginBottom: 8,
-                      marginTop: 12,
-                    }}
-                  >
-                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                      3.
-                    </Text>
-                    <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
-                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>
-                      Select Working Directory
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={{ marginBottom: 24 }}>
-                  <SearchableListSelector<string>
-                    config={{
-                      getItemId: path => path,
-                      getItemTitle: path =>
-                        formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
-                      getItemSubtitle: undefined,
-                      getItemIcon: path => (
-                        <Ionicons
-                          name="folder-outline"
-                          size={24}
-                          color={theme.colors.textSecondary}
-                        />
-                      ),
-                      getRecentItemIcon: path => (
-                        <Ionicons
-                          name="time-outline"
-                          size={24}
-                          color={theme.colors.textSecondary}
-                        />
-                      ),
-                      getFavoriteItemIcon: path => (
-                        <Ionicons
-                          name={
-                            path === selectedMachine?.metadata?.homeDir
-                              ? 'home-outline'
-                              : 'star-outline'
-                          }
-                          size={24}
-                          color={theme.colors.textSecondary}
-                        />
-                      ),
-                      canRemoveFavorite: path => path !== selectedMachine?.metadata?.homeDir,
-                      formatForDisplay: path =>
-                        formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
-                      parseFromDisplay: text => {
-                        if (selectedMachine?.metadata?.homeDir) {
-                          return resolveAbsolutePath(text, selectedMachine.metadata.homeDir);
-                        }
-                        return null;
-                      },
-                      filterItem: (path, searchText) => {
-                        const displayPath = formatPathRelativeToHome(
-                          path,
-                          selectedMachine?.metadata?.homeDir
-                        );
-                        return displayPath.toLowerCase().includes(searchText.toLowerCase());
-                      },
-                      searchPlaceholder: 'Type to filter or enter custom directory...',
-                      recentSectionTitle: 'Recent Directories',
-                      favoritesSectionTitle: 'Favorite Directories',
-                      noItemsMessage: 'No recent directories',
-                      showFavorites: true,
-                      showRecent: true,
-                      showSearch: true,
-                      allowCustomInput: true,
-                      compactItems: true,
-                    }}
-                    items={recentPaths}
-                    recentItems={recentPaths}
-                    favoriteItems={(() => {
-                      if (!selectedMachine?.metadata?.homeDir) return [];
-                      const homeDir = selectedMachine.metadata.homeDir;
-                      // Include home directory plus user favorites
-                      return [
-                        homeDir,
-                        ...favoriteDirectories.map(fav => resolveAbsolutePath(fav, homeDir)),
-                      ];
-                    })()}
-                    selectedItem={selectedPath}
-                    onSelect={path => {
-                      setSelectedPath(path);
-                    }}
-                    onToggleFavorite={path => {
-                      const homeDir = selectedMachine?.metadata?.homeDir;
-                      if (!homeDir) return;
-
-                      // Don't allow removing home directory (handled by canRemoveFavorite)
-                      if (path === homeDir) return;
-
-                      // Convert to relative format for storage
-                      const relativePath = formatPathRelativeToHome(path, homeDir);
-
-                      // Check if already in favorites
-                      const isInFavorites = favoriteDirectories.some(
-                        fav => resolveAbsolutePath(fav, homeDir) === path
-                      );
-
-                      if (isInFavorites) {
-                        // Remove from favorites
-                        setFavoriteDirectories(
-                          favoriteDirectories.filter(
-                            fav => resolveAbsolutePath(fav, homeDir) !== path
-                          )
-                        );
-                      } else {
-                        // Add to favorites
-                        setFavoriteDirectories([...favoriteDirectories, relativePath]);
-                      }
-                    }}
-                    context={{ homeDir: selectedMachine?.metadata?.homeDir }}
-                  />
-                </View>
-
-                {/* Section 4: Permission Mode */}
-                <View ref={permissionSectionRef}>
-                  <Text style={styles.sectionHeader}>4. Permission Mode</Text>
-                </View>
-                <ItemGroup title="">
-                  {(
-                    [
-                      {
-                        value: 'read-only' as PermissionMode,
-                        label: 'Read Only',
-                        description: 'No writes allowed',
-                        icon: 'eye-outline',
-                      },
-                      {
-                        value: 'accept-edits' as PermissionMode,
-                        label: 'Accept Edits',
-                        description: 'Auto-approve file edits',
-                        icon: 'checkmark-outline',
-                      },
-                      {
-                        value: 'yolo' as PermissionMode,
-                        label: 'YOLO',
-                        description: 'Skip all permissions',
-                        icon: 'flash-outline',
-                      },
-                    ] as const
-                  ).map((option, index, array) => (
-                    <Item
-                      key={option.value}
-                      title={option.label}
-                      subtitle={option.description}
-                      leftElement={
-                        <Ionicons
-                          name={option.icon as any}
-                          size={24}
-                          color={
-                            permissionMode === option.value
-                              ? theme.colors.button.primary.tint
-                              : theme.colors.textSecondary
-                          }
-                        />
-                      }
-                      rightElement={
-                        permissionMode === option.value ? (
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={20}
-                            color={theme.colors.button.primary.tint}
-                          />
-                        ) : null
-                      }
-                      onPress={() => setPermissionMode(option.value)}
-                      showChevron={false}
-                      selected={permissionMode === option.value}
-                      showDivider={index < array.length - 1}
-                      style={
-                        permissionMode === option.value
-                          ? {
-                              borderWidth: 2,
-                              borderColor: theme.colors.button.primary.tint,
-                              borderRadius: Platform.select({ ios: 10, default: 16 }),
-                            }
-                          : undefined
-                      }
-                    />
-                  ))}
-                </ItemGroup>
-
-                {/* Section 5: Advanced Options (Collapsible) */}
-                {experimentsEnabled && (
-                  <>
-                    <Pressable
-                      style={styles.advancedHeader}
-                      onPress={() => setShowAdvanced(!showAdvanced)}
-                    >
-                      <Text style={styles.advancedHeaderText}>Advanced Options</Text>
-                      <Ionicons
-                        name={showAdvanced ? 'chevron-up' : 'chevron-down'}
-                        size={20}
-                        color={theme.colors.text}
-                      />
-                    </Pressable>
-
-                    {showAdvanced && (
-                      <View style={{ marginBottom: 12 }}>
-                        <SessionTypeSelector value={sessionType} onChange={setSessionType} />
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-            </View>
-          </View>
-        </ScrollView>
-
-        {/* Section 5: AgentInput - Sticky at bottom */}
-        <View
-          style={{
-            paddingHorizontal: screenWidth > 700 ? 16 : 8,
-            paddingBottom: Math.max(16, safeArea.bottom),
-          }}
-        >
-          <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-            <AgentInput
-              value={sessionPrompt}
-              onChangeText={setSessionPrompt}
-              onSend={handleCreateSession}
-              isSendDisabled={!canCreate}
-              isSending={isCreating}
-              placeholder="What would you like to work on?"
-              autocompletePrefixes={[]}
-              autocompleteSuggestions={async () => []}
-              agentType={agentType}
-              onAgentClick={handleAgentInputAgentClick}
-              permissionMode={permissionMode}
-              onPermissionModeChange={handleAgentInputPermissionChange}
-              modelMode={modelMode}
-              onModelModeChange={setModelMode}
-              connectionStatus={connectionStatus}
-              machineName={
-                selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host
-              }
-              onMachineClick={handleAgentInputMachineClick}
-              currentPath={selectedPath}
-              onPathClick={handleAgentInputPathClick}
-              profileId={selectedProfileId}
-              onProfileClick={handleAgentInputProfileClick}
-            />
-          </View>
-        </View>
-      </View>
-    </KeyboardAvoidingView>
   );
 }
 

@@ -23,8 +23,9 @@ import {
   type PermissionResult,
   AbortError,
 } from './types';
-import { getDefaultClaudeCodePath, logDebug, streamToStdin } from './utils';
+import { getDefaultClaudeCodePath, streamToStdin } from './utils';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('claude/sdk/query');
 
 /**
@@ -181,7 +182,7 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
    */
   private async handleControlRequest(request: CanUseToolControlRequest): Promise<void> {
     if (!this.childStdin) {
-      logDebug('Cannot handle control request - no stdin available');
+      logger.debug('[SDK] Cannot handle control request - no stdin available');
       return;
     }
 
@@ -205,7 +206,7 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
         response: {
           subtype: 'error',
           request_id: request.request_id,
-          error: error instanceof Error ? error.message : String(error),
+          error: safeStringify(error),
         },
       };
       this.childStdin.write(JSON.stringify(controlErrorResponse) + '\n');
@@ -355,9 +356,7 @@ export function query(config: { prompt: QueryPrompt; options?: QueryOptions }): 
   // "cannot launch inside another Claude Code session" guard.
   const spawnEnv = { ...process.env };
   delete spawnEnv.CLAUDECODE;
-  logDebug(
-    `Spawning Claude Code process: ${spawnCommand} ${spawnArgs.join(' ')}`
-  );
+  logger.debug(`[SDK] Spawning Claude Code process: ${spawnCommand} ${spawnArgs.join(' ')}`);
 
   const child = spawn(spawnCommand, spawnArgs, {
     cwd,
@@ -377,18 +376,21 @@ export function query(config: { prompt: QueryPrompt; options?: QueryOptions }): 
     childStdin = child.stdin;
   }
 
-  // Handle stderr in debug mode
-  if (process.env.DEBUG) {
-    child.stderr.on('data', data => {
-      logger.debug('Claude Code stderr:', { stderr: data.toString() });
-    });
-  }
+  child.stderr.on('data', data => {
+    logger.debug('Claude Code stderr:', { stderr: data.toString() });
+  });
+
+  let cleanupStartedAt: number | null = null;
 
   // Setup cleanup
   const cleanup = () => {
-    if (!child.killed) {
-      child.kill('SIGTERM');
-    }
+    if (child.killed) return;
+    cleanupStartedAt = Date.now();
+    logger.info('[SDK] abort cleanup: sending SIGTERM to Claude Code child', {
+      pid: child.pid,
+      cwd,
+    });
+    try { child.kill('SIGTERM'); } catch { /* ignore */ }
   };
 
   config.options?.abort?.addEventListener('abort', cleanup, { once: true });
@@ -396,7 +398,15 @@ export function query(config: { prompt: QueryPrompt; options?: QueryOptions }): 
 
   // Handle process exit
   const processExitPromise = new Promise<void>(resolve => {
-    child.on('close', code => {
+    child.on('close', (code, signal) => {
+      logger.info('[SDK] Claude Code child closed', {
+        pid: child.pid,
+        cwd,
+        code,
+        signal,
+        cleanupElapsed: cleanupStartedAt ? Date.now() - cleanupStartedAt : undefined,
+        aborted: Boolean(config.options?.abort?.aborted),
+      });
       if (config.options?.abort?.aborted) {
         query.setError(new AbortError('Claude Code process aborted by user'));
       }

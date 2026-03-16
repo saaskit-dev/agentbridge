@@ -16,7 +16,7 @@ import { ru } from './translations/ru';
 import { zhHans } from './translations/zh-Hans';
 import { zhHant } from './translations/zh-Hant';
 import { loadSettings } from '@/sync/persistence';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/text');
 
 /**
@@ -212,7 +212,7 @@ export function t<K extends TranslationKey>(
     logger.warn(`Invalid translation value type for key: ${key}`);
     return key;
   } catch (error) {
-    logger.error(`Translation error for key: ${key}`, error);
+    logger.error(`Translation error for key: ${key}`, toError(error));
     return key;
   }
 }

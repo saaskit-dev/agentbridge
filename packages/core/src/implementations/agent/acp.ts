@@ -10,6 +10,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { Readable, Writable } from 'node:stream';
+import { inspect } from 'node:util';
 import type {
   IAgentBackend,
   AgentMessage,
@@ -20,6 +21,7 @@ import type {
 import type { ITransportHandler, StderrContext, ToolNameContext } from '../../interfaces/transport';
 import type { AcpAgentConfig, AcpPermissionHandler } from '../../types/agent';
 import { Logger } from '../../telemetry/index.js';
+import { safeStringify, toError } from '../../utils/stringify.js';
 import {
   type SessionUpdate,
   type HandlerContext,
@@ -31,9 +33,10 @@ import {
   handleAgentThoughtChunk,
   handleToolCallUpdate,
   handleToolCall,
-  handleLegacyMessageChunk,
-  handlePlanUpdate,
-  handleThinkingUpdate,
+      handleLegacyMessageChunk,
+      handlePlanUpdate,
+      handleThinkingUpdate,
+      shouldLogUnhandledSessionUpdate,
 } from './sessionUpdateHandlers';
 
 // Types from @agentclientprotocol/sdk (duplicated here to avoid import issues when SDK not installed)
@@ -65,6 +68,26 @@ interface NewSessionRequest {
   }>;
 }
 
+interface NewSessionResponse {
+  sessionId: string;
+  models?: unknown;
+  modes?: unknown;
+  configOptions?: unknown;
+}
+
+interface SetSessionModeResponse {
+  [key: string]: unknown;
+}
+
+interface SetSessionModelResponse {
+  [key: string]: unknown;
+}
+
+interface SetSessionConfigOptionResponse {
+  configOptions?: unknown;
+  [key: string]: unknown;
+}
+
 interface PromptRequest {
   sessionId: string;
   prompt: Array<{ type: string; text: string }>;
@@ -84,6 +107,21 @@ type ClientSideConnectionType = {
   newSession(request: NewSessionRequest): Promise<{ sessionId: string }>;
   prompt(request: PromptRequest): Promise<void>;
   cancel(request: { sessionId: string }): Promise<void>;
+  setSessionMode?(request: { sessionId: string; modeId: string }): Promise<SetSessionModeResponse>;
+  unstable_setSessionModel?(request: {
+    sessionId: string;
+    modelId: string;
+  }): Promise<SetSessionModelResponse>;
+  setSessionConfigOption?(request: {
+    sessionId: string;
+    configId: string;
+    value: string;
+  }): Promise<SetSessionConfigOptionResponse>;
+  loadSession?(request: {
+    sessionId: string;
+    cwd: string;
+    mcpServers?: unknown;
+  }): Promise<void>;
 };
 
 type NdJsonStreamType = (
@@ -202,11 +240,29 @@ type ExtendedSessionNotification = SessionNotification & {
  */
 const logger = new Logger('agent/acp');
 
+type StreamLogHooks = {
+  onClientWrite?: (chunk: string) => void;
+  onAgentStdoutChunk?: (chunk: string) => void;
+};
+
 /**
  * Delay helper
  */
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+function serializeForLog(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return inspect(value, { depth: 8, breakLength: 120 });
+  }
+}
+
+function summarizeEnvKeys(env?: Record<string, string>): string[] {
+  return Object.keys(env ?? {}).sort();
 }
 
 /**
@@ -228,7 +284,7 @@ async function withRetry<T>(
     try {
       return await operation();
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      lastError = toError(error);
 
       if (attempt < options.maxAttempts) {
         // Calculate delay with exponential backoff
@@ -255,12 +311,15 @@ async function withRetry<T>(
  */
 function nodeToWebStreams(
   stdin: Writable,
-  stdout: Readable
+  stdout: Readable,
+  hooks?: StreamLogHooks
 ): { writable: WritableStream<Uint8Array>; readable: ReadableStream<Uint8Array> } {
+  const decoder = new TextDecoder();
   // Convert Node writable to Web WritableStream
   const writable = new WritableStream<Uint8Array>({
     write(chunk) {
       return new Promise((resolve, reject) => {
+        hooks?.onClientWrite?.(decoder.decode(chunk));
         const ok = stdin.write(chunk, err => {
           if (err) {
             logger.debug(`[AcpBackend] Error writing to stdin:`, err);
@@ -280,7 +339,7 @@ function nodeToWebStreams(
       });
     },
     abort(reason) {
-      stdin.destroy(reason instanceof Error ? reason : new Error(String(reason)));
+      stdin.destroy(toError(reason));
     },
   });
 
@@ -288,6 +347,7 @@ function nodeToWebStreams(
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {
       stdout.on('data', (chunk: Buffer) => {
+        hooks?.onAgentStdoutChunk?.(chunk.toString());
         controller.enqueue(new Uint8Array(chunk));
       });
       stdout.on('end', () => {
@@ -311,8 +371,11 @@ function nodeToWebStreams(
  */
 export class AcpBackend implements IAgentBackend {
   private listeners: AgentMessageHandler[] = [];
+  private sessionStartedListeners: Array<(response: NewSessionResponse) => void> = [];
+  private sessionUpdateListeners: Array<(update: SessionUpdate) => void> = [];
   private process: ChildProcess | null = null;
   private connection: ClientSideConnectionType | null = null;
+  private localSessionId: string | null = null;
   private acpSessionId: string | null = null;
   private agentCapabilities: { loadSession?: boolean } | null = null;
   private disposed = false;
@@ -358,6 +421,62 @@ export class AcpBackend implements IAgentBackend {
     this.hasChangeTitleInstruction = config.hasChangeTitleInstruction;
   }
 
+  private logAcpRequest(method: string, payload: unknown, extra?: Record<string, unknown>): void {
+    logger.debug('[AcpBackend] ACP request', {
+      method,
+      agentName: this.config.agentName,
+      localSessionId: this.localSessionId,
+      acpSessionId: this.acpSessionId,
+      childPid: this.process?.pid ?? null,
+      payload: serializeForLog(payload),
+      ...extra,
+    });
+  }
+
+  private logAcpResponse(method: string, payload: unknown, extra?: Record<string, unknown>): void {
+    logger.debug('[AcpBackend] ACP response', {
+      method,
+      agentName: this.config.agentName,
+      localSessionId: this.localSessionId,
+      acpSessionId: this.acpSessionId,
+      childPid: this.process?.pid ?? null,
+      payload: serializeForLog(payload),
+      ...extra,
+    });
+  }
+
+  private logAcpNotification(
+    method: string,
+    payload: unknown,
+    extra?: Record<string, unknown>
+  ): void {
+    logger.debug('[AcpBackend] ACP notification', {
+      method,
+      agentName: this.config.agentName,
+      localSessionId: this.localSessionId,
+      acpSessionId: this.acpSessionId,
+      childPid: this.process?.pid ?? null,
+      payload: serializeForLog(payload),
+      ...extra,
+    });
+  }
+
+  private logWire(
+    direction: 'outbound' | 'inbound' | 'stderr',
+    payload: string,
+    extra?: Record<string, unknown>
+  ): void {
+    logger.debug('[AcpBackend] ACP wire', {
+      direction,
+      agentName: this.config.agentName,
+      localSessionId: this.localSessionId,
+      acpSessionId: this.acpSessionId,
+      childPid: this.process?.pid ?? null,
+      payload,
+      ...extra,
+    });
+  }
+
   onMessage(handler: AgentMessageHandler): void {
     this.listeners.push(handler);
   }
@@ -369,6 +488,14 @@ export class AcpBackend implements IAgentBackend {
     }
   }
 
+  onSessionStarted(handler: (response: NewSessionResponse) => void): void {
+    this.sessionStartedListeners.push(handler);
+  }
+
+  onSessionUpdate(handler: (update: SessionUpdate) => void): void {
+    this.sessionUpdateListeners.push(handler);
+  }
+
   private emit(msg: AgentMessage): void {
     if (this.disposed) return;
     for (const listener of this.listeners) {
@@ -376,6 +503,30 @@ export class AcpBackend implements IAgentBackend {
         listener(msg);
       } catch (error) {
         logger.warn('[AcpBackend] Error in message handler:', error);
+      }
+    }
+  }
+
+  private emitSessionStarted(response: NewSessionResponse): void {
+    this.logAcpNotification('session/started', response);
+    for (const listener of this.sessionStartedListeners) {
+      try {
+        listener(response);
+      } catch (error) {
+        logger.warn('[AcpBackend] Error in session started handler:', error);
+      }
+    }
+  }
+
+  private emitSessionUpdate(update: SessionUpdate): void {
+    this.logAcpNotification('session/update', update, {
+      sessionUpdate: update.sessionUpdate ?? null,
+    });
+    for (const listener of this.sessionUpdateListeners) {
+      try {
+        listener(update);
+      } catch (error) {
+        logger.warn('[AcpBackend] Error in session update handler:', error);
       }
     }
   }
@@ -392,6 +543,7 @@ export class AcpBackend implements IAgentBackend {
     }
 
     const sessionId = randomUUID();
+    this.localSessionId = sessionId;
     this.emit({ type: 'status', status: 'starting' });
 
     try {
@@ -399,6 +551,16 @@ export class AcpBackend implements IAgentBackend {
 
       // Spawn the ACP agent process
       const args = this.config.args || [];
+      logger.debug('[AcpBackend] Spawning ACP agent process', {
+        localSessionId: sessionId,
+        agentName: this.config.agentName,
+        command: this.config.command,
+        args,
+        cwd: this.config.cwd,
+        envKeys: summarizeEnvKeys(this.config.env),
+        hasPermissionHandler: this.permissionHandler != null,
+        mcpServerNames: Object.keys(this.config.mcpServers ?? {}),
+      });
 
       // On Windows, spawn via cmd.exe to handle .cmd files and PATH resolution
       if (process.platform === 'win32') {
@@ -420,11 +582,17 @@ export class AcpBackend implements IAgentBackend {
       if (!this.process.stdin || !this.process.stdout || !this.process.stderr) {
         throw new Error('Failed to create stdio pipes');
       }
+      logger.debug('[AcpBackend] ACP agent process spawned', {
+        agentName: this.config.agentName,
+        localSessionId: this.localSessionId,
+        childPid: this.process.pid ?? null,
+      });
 
       // Handle stderr output via transport handler
       this.process.stderr.on('data', (data: Buffer) => {
         const text = data.toString();
         if (!text.trim()) return;
+        this.logWire('stderr', text, { agentName: this.config.agentName });
 
         // Build context for transport handler
         const hasActiveInvestigation = this.transport.isInvestigationTool
@@ -460,7 +628,14 @@ export class AcpBackend implements IAgentBackend {
       });
 
       // Create Web Streams from Node streams
-      const streams = nodeToWebStreams(this.process.stdin, this.process.stdout);
+      const streams = nodeToWebStreams(this.process.stdin, this.process.stdout, {
+        onClientWrite: chunk => {
+          this.logWire('outbound', chunk, { agentName: this.config.agentName });
+        },
+        onAgentStdoutChunk: chunk => {
+          this.logWire('inbound', chunk, { agentName: this.config.agentName });
+        },
+      });
       const writable = streams.writable;
       const readable = streams.readable;
 
@@ -481,6 +656,17 @@ export class AcpBackend implements IAgentBackend {
                 // Flush any remaining buffer
                 if (buffer.trim()) {
                   const filtered = transport.filterStdoutLine?.(buffer);
+                  const action =
+                    filtered === undefined ? 'pass' : filtered === null ? 'filter' : 'transform';
+                  logger.debug('[AcpBackend] ACP stdout line', {
+                    agentName: transport.agentName,
+                    action,
+                    line: buffer,
+                    transformedLine:
+                      filtered !== undefined && filtered !== null && filtered !== buffer
+                        ? filtered
+                        : undefined,
+                  });
                   if (filtered === undefined) {
                     controller.enqueue(encoder.encode(buffer));
                   } else if (filtered !== null) {
@@ -510,6 +696,17 @@ export class AcpBackend implements IAgentBackend {
 
                 // Use transport handler to filter lines
                 const filtered = transport.filterStdoutLine?.(line);
+                const action =
+                  filtered === undefined ? 'pass' : filtered === null ? 'filter' : 'transform';
+                logger.debug('[AcpBackend] ACP stdout line', {
+                  agentName: transport.agentName,
+                  action,
+                  line,
+                  transformedLine:
+                    filtered !== undefined && filtered !== null && filtered !== line
+                      ? filtered
+                      : undefined,
+                });
                 if (filtered === undefined) {
                   // Method not implemented, pass through
                   controller.enqueue(encoder.encode(line + '\n'));
@@ -537,11 +734,13 @@ export class AcpBackend implements IAgentBackend {
       // Create Client implementation
       const client: Client = {
         sessionUpdate: async (params: SessionNotification) => {
+          this.logAcpNotification('session/update', params);
           this.handleSessionUpdate(params);
         },
         requestPermission: async (
           params: RequestPermissionRequest
         ): Promise<RequestPermissionResponse> => {
+          this.logAcpRequest('request_permission', params);
           const extendedParams = params as ExtendedRequestPermissionRequest;
           const toolCall = extendedParams.toolCall;
           let toolName =
@@ -573,7 +772,7 @@ export class AcpBackend implements IAgentBackend {
           const options = extendedParams.options || [];
 
           logger.debug(
-            `[AcpBackend] Permission request: tool=${toolName}, toolCallId=${toolCallId}`
+            `[AcpBackend] Permission request: tool=${toolName}, toolCallId=${toolCallId}, hasPermissionHandler=${this.permissionHandler ? 'yes' : 'no'}, options=${options.length}`
           );
 
           // Emit permission request event for UI/mobile handling
@@ -602,6 +801,9 @@ export class AcpBackend implements IAgentBackend {
                 toolCallId,
                 toolName,
                 input
+              );
+              logger.debug(
+                `[AcpBackend] Permission handler decision: tool=${toolName}, toolCallId=${toolCallId}, decision=${result.decision}`
               );
 
               // Map permission decision to ACP response
@@ -653,10 +855,27 @@ export class AcpBackend implements IAgentBackend {
                 });
               }
 
-              return { outcome: { outcome: 'selected', optionId } };
+              const acpResponse = { outcome: { outcome: 'selected', optionId } };
+              this.logAcpResponse('request_permission', acpResponse, {
+                toolCallId,
+                toolName,
+                decision: result.decision,
+              });
+              return acpResponse;
             } catch (error) {
-              logger.debug('[AcpBackend] Error in permission handler:', error);
-              return { outcome: { outcome: 'selected', optionId: 'cancel' } };
+              logger.warn('[AcpBackend] Error in permission handler', {
+                toolName,
+                toolCallId,
+                error: safeStringify(error),
+              });
+              const acpResponse = { outcome: { outcome: 'selected', optionId: 'cancel' } };
+              this.logAcpResponse('request_permission', acpResponse, {
+                toolCallId,
+                toolName,
+                decision: 'error',
+                error: safeStringify(error),
+              });
+              return acpResponse;
             }
           }
 
@@ -670,7 +889,23 @@ export class AcpBackend implements IAgentBackend {
           const defaultOptionId =
             proceedOnceOption?.optionId ||
             (options.length > 0 && firstOpt?.optionId ? firstOpt.optionId : 'proceed_once');
-          return { outcome: { outcome: 'selected', optionId: defaultOptionId } };
+          logger.warn('[AcpBackend] No permission handler attached, auto-approving permission request', {
+            toolName,
+            toolCallId,
+            selectedOptionId: defaultOptionId,
+            options: options.map((opt: { optionId?: string; name?: string; kind?: string }) => ({
+              optionId: opt.optionId ?? null,
+              name: opt.name ?? null,
+              kind: opt.kind ?? null,
+            })),
+          });
+          const acpResponse = { outcome: { outcome: 'selected', optionId: defaultOptionId } };
+          this.logAcpResponse('request_permission', acpResponse, {
+            toolCallId,
+            toolName,
+            decision: 'auto-approve',
+          });
+          return acpResponse;
         },
       };
 
@@ -695,6 +930,7 @@ export class AcpBackend implements IAgentBackend {
 
       const initTimeout = this.transport.getInitTimeout();
       logger.debug(`[AcpBackend] Initializing connection (timeout: ${initTimeout}ms)...`);
+      this.logAcpRequest('initialize', initRequest, { timeoutMs: initTimeout });
 
       // Initialize the connection with timeout and retry
       const initResult = await withRetry(
@@ -733,6 +969,7 @@ export class AcpBackend implements IAgentBackend {
           maxDelayMs: RETRY_CONFIG.maxDelayMs,
         }
       );
+      this.logAcpResponse('initialize', initResult, { timeoutMs: initTimeout });
 
       // Save agent capabilities for later use (e.g., loadSession)
       if (initResult && typeof initResult === 'object') {
@@ -764,13 +1001,14 @@ export class AcpBackend implements IAgentBackend {
       };
 
       logger.debug(`[AcpBackend] Creating new session...`);
+      this.logAcpRequest('new_session', newSessionRequest);
 
       const sessionResponse = await withRetry(
         async () => {
           let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
           try {
             const result = await Promise.race([
-              this.connection!.newSession(newSessionRequest).then((res: { sessionId: string }) => {
+              this.connection!.newSession(newSessionRequest).then((res: NewSessionResponse) => {
                 if (timeoutHandle) {
                   clearTimeout(timeoutHandle);
                   timeoutHandle = null;
@@ -802,25 +1040,27 @@ export class AcpBackend implements IAgentBackend {
         }
       );
       this.acpSessionId = sessionResponse.sessionId;
+      this.logAcpResponse('new_session', sessionResponse);
       logger.debug(`[AcpBackend] Session created: ${this.acpSessionId}`);
+      this.emitSessionStarted(sessionResponse);
 
       this.emitIdleStatus();
 
       // Send initial prompt if provided
       if (initialPrompt) {
         this.sendPrompt(sessionId, initialPrompt).catch(error => {
-          logger.error('[ACP] Initial prompt send failed', undefined, { agent: this.transport.agentName, error: String(error) });
-          this.emit({ type: 'status', status: 'error', detail: String(error) });
+          logger.error('[ACP] Initial prompt send failed', undefined, { agent: this.transport.agentName, error: safeStringify(error) });
+          this.emit({ type: 'status', status: 'error', detail: safeStringify(error) });
         });
       }
 
       return { sessionId };
     } catch (error) {
-      logger.error('[ACP] Session start failed', error instanceof Error ? error : undefined, { agent: this.transport.agentName, error: String(error) });
+      logger.error('[ACP] Session start failed', toError(error), { agent: this.transport.agentName, error: safeStringify(error) });
       this.emit({
         type: 'status',
         status: 'error',
-        detail: error instanceof Error ? error.message : String(error),
+        detail: safeStringify(error),
       });
       throw error;
     }
@@ -883,9 +1123,14 @@ export class AcpBackend implements IAgentBackend {
         cwd,
         mcpServers: acpMcpServers,
       };
+      this.logAcpRequest('load_session', loadSessionRequest);
 
       // The agent will replay history via session/update notifications
-      await (this.connection as any).loadSession(loadSessionRequest);
+      if (!this.connection.loadSession) {
+        throw new Error('ACP session/load is not supported by this SDK connection');
+      }
+      await this.connection.loadSession(loadSessionRequest);
+      this.logAcpResponse('load_session', { ok: true });
 
       // Store the session ID
       this.acpSessionId = sessionId;
@@ -894,11 +1139,11 @@ export class AcpBackend implements IAgentBackend {
 
       return { sessionId };
     } catch (error) {
-      logger.error('[ACP] Session load failed', error instanceof Error ? error : undefined, { agent: this.transport.agentName, error: String(error) });
+      logger.error('[ACP] Session load failed', toError(error), { agent: this.transport.agentName, error: safeStringify(error) });
       this.emit({
         type: 'status',
         status: 'error',
-        detail: error instanceof Error ? error.message : String(error),
+        detail: safeStringify(error),
       });
       throw error;
     }
@@ -965,6 +1210,7 @@ export class AcpBackend implements IAgentBackend {
     }
 
     const ctx = this.createHandlerContext();
+    this.emitSessionUpdate(update as SessionUpdate);
 
     // Dispatch to appropriate handler based on update type
     if (sessionUpdateType === 'agent_message_chunk') {
@@ -997,20 +1243,7 @@ export class AcpBackend implements IAgentBackend {
 
     // Log unhandled session update types for debugging
     const updateTypeStr = sessionUpdateType as string;
-    const handledTypes = [
-      'agent_message_chunk',
-      'tool_call_update',
-      'agent_thought_chunk',
-      'tool_call',
-    ];
-    const extendedUpdate = update as { messageChunk?: unknown; plan?: unknown; thinking?: unknown };
-    if (
-      updateTypeStr &&
-      !handledTypes.includes(updateTypeStr) &&
-      !extendedUpdate.messageChunk &&
-      !extendedUpdate.plan &&
-      !extendedUpdate.thinking
-    ) {
+    if (shouldLogUnhandledSessionUpdate(update as SessionUpdate)) {
       logger.debug(
         `[AcpBackend] Unhandled session update type: ${updateTypeStr}`,
         JSON.stringify(update, null, 2)
@@ -1066,38 +1299,25 @@ export class AcpBackend implements IAgentBackend {
         prompt: [contentBlock],
       };
 
+      this.logAcpRequest('prompt', promptRequest, {
+        promptLength: prompt.length,
+      });
       await this.connection.prompt(promptRequest);
+      this.logAcpResponse('prompt', { ok: true }, {
+        promptLength: prompt.length,
+      });
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
 
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
       // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
     } catch (error) {
-      logger.error('[ACP] Prompt send failed', error instanceof Error ? error : undefined, { agent: this.transport.agentName, error: String(error) });
+      logger.error('[ACP] Prompt send failed', toError(error), { agent: this.transport.agentName, error: safeStringify(error) });
       this.waitingForResponse = false;
-
-      // Extract error details for better error handling
-      let errorDetail: string;
-      if (error instanceof Error) {
-        errorDetail = error.message;
-      } else if (typeof error === 'object' && error !== null) {
-        const errObj = error as Record<string, unknown>;
-        const fallbackMessage =
-          (typeof errObj.message === 'string' ? errObj.message : undefined) || String(error);
-        if (errObj.code !== undefined) {
-          errorDetail = JSON.stringify({ code: errObj.code, message: fallbackMessage });
-        } else if (typeof errObj.message === 'string') {
-          errorDetail = errObj.message;
-        } else {
-          errorDetail = String(error);
-        }
-      } else {
-        errorDetail = String(error);
-      }
 
       this.emit({
         type: 'status',
         status: 'error',
-        detail: errorDetail,
+        detail: safeStringify(error),
       });
       throw error;
     }
@@ -1153,7 +1373,10 @@ export class AcpBackend implements IAgentBackend {
     }
     
     try {
-      await this.connection.cancel({ sessionId: this.acpSessionId });
+      const cancelRequest = { sessionId: this.acpSessionId };
+      this.logAcpRequest('cancel', cancelRequest, { reason: 'response-timeout' });
+      await this.connection.cancel(cancelRequest);
+      this.logAcpResponse('cancel', { ok: true }, { reason: 'response-timeout' });
       this.emit({ type: 'status', status: 'stopped', detail: 'Response timed out after inactivity' });
     } catch (error) {
       logger.debug('[AcpBackend] Error cancelling turn on timeout:', error);
@@ -1221,11 +1444,73 @@ export class AcpBackend implements IAgentBackend {
     }
 
     try {
-      await this.connection.cancel({ sessionId: this.acpSessionId });
+      const cancelRequest = { sessionId: this.acpSessionId };
+      this.logAcpRequest('cancel', cancelRequest, { requestedSessionId: _sessionId });
+      await this.connection.cancel(cancelRequest);
+      this.logAcpResponse('cancel', { ok: true }, { requestedSessionId: _sessionId });
       this.emit({ type: 'status', status: 'stopped', detail: 'Cancelled by user' });
     } catch (error) {
       logger.debug('[AcpBackend] Error cancelling:', error);
     }
+  }
+
+  async setSessionMode(_sessionId: SessionId, modeId: string): Promise<SetSessionModeResponse> {
+    if (!this.connection || !this.acpSessionId) {
+      throw new Error('Session not started');
+    }
+    if (!this.connection.setSessionMode) {
+      throw new Error('ACP session/set_mode is not supported by this SDK connection');
+    }
+    const request = {
+      sessionId: this.acpSessionId,
+      modeId,
+    };
+    this.logAcpRequest('set_mode', request, { requestedSessionId: _sessionId });
+    const response = await this.connection.setSessionMode(request);
+    this.logAcpResponse('set_mode', response, { requestedSessionId: _sessionId });
+    return response;
+  }
+
+  async setSessionModel(
+    _sessionId: SessionId,
+    modelId: string
+  ): Promise<SetSessionModelResponse> {
+    if (!this.connection || !this.acpSessionId) {
+      throw new Error('Session not started');
+    }
+    if (!this.connection.unstable_setSessionModel) {
+      throw new Error('ACP unstable_setSessionModel is not supported by this SDK connection');
+    }
+    const request = {
+      sessionId: this.acpSessionId,
+      modelId,
+    };
+    this.logAcpRequest('set_model', request, { requestedSessionId: _sessionId });
+    const response = await this.connection.unstable_setSessionModel(request);
+    this.logAcpResponse('set_model', response, { requestedSessionId: _sessionId });
+    return response;
+  }
+
+  async setSessionConfigOption(
+    _sessionId: SessionId,
+    configId: string,
+    value: string
+  ): Promise<SetSessionConfigOptionResponse> {
+    if (!this.connection || !this.acpSessionId) {
+      throw new Error('Session not started');
+    }
+    if (!this.connection.setSessionConfigOption) {
+      throw new Error('ACP session/set_config_option is not supported by this SDK connection');
+    }
+    const request = {
+      sessionId: this.acpSessionId,
+      configId,
+      value,
+    };
+    this.logAcpRequest('set_config_option', request, { requestedSessionId: _sessionId });
+    const response = await this.connection.setSessionConfigOption(request);
+    this.logAcpResponse('set_config_option', response, { requestedSessionId: _sessionId });
+    return response;
   }
 
   /**
@@ -1255,10 +1540,12 @@ export class AcpBackend implements IAgentBackend {
     if (this.connection && this.acpSessionId) {
       try {
         // Send cancel to stop any ongoing work
+        this.logAcpRequest('cancel', { sessionId: this.acpSessionId }, { reason: 'dispose' });
         await Promise.race([
           this.connection.cancel({ sessionId: this.acpSessionId }),
           new Promise(resolve => setTimeout(resolve, 2000)), // 2s timeout for graceful shutdown
         ]);
+        this.logAcpResponse('cancel', { ok: true }, { reason: 'dispose' });
       } catch (error) {
         logger.debug('[AcpBackend] Error during graceful shutdown:', error);
       }

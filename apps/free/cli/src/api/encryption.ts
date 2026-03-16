@@ -1,5 +1,11 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import tweetnacl from 'tweetnacl';
+import { configuration } from '@/configuration';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify, toError, wireEncode, wireDecode } from '@saaskit-dev/agentbridge';
+import type { Cipher } from '@saaskit-dev/agentbridge';
+
+const logger = new Logger('cli/api/encryption');
 
 /**
  * Encode a Uint8Array to base64 string
@@ -184,6 +190,9 @@ export function decryptWithDataKey(bundle: Uint8Array, dataKey: Uint8Array): any
 }
 
 export function encrypt(key: Uint8Array, variant: 'legacy' | 'dataKey', data: any): Uint8Array {
+  if (configuration.isDev) {
+    return Buffer.from(JSON.stringify(data));
+  }
   if (variant === 'legacy') {
     return encryptLegacy(data, key);
   } else {
@@ -196,6 +205,15 @@ export function decrypt(
   variant: 'legacy' | 'dataKey',
   data: Uint8Array
 ): any | null {
+  // Plain JSON from a dev-mode sender: '{' (0x7b) is never a valid first byte
+  // of NaCl nonce or AES-GCM ciphertext (version byte 0x00), so the heuristic is safe.
+  if (data[0] === 0x7b) {
+    try {
+      return JSON.parse(Buffer.from(data).toString('utf-8'));
+    } catch {
+      // Fall through to normal decryption
+    }
+  }
   if (variant === 'legacy') {
     return decryptLegacy(data, key);
   } else {
@@ -204,8 +222,58 @@ export function decrypt(
 }
 
 /**
- * Generate authentication challenge response
+ * Create a Cipher adapter that wraps the sync encrypt/decrypt functions
+ * into the async Cipher interface expected by core's wire encode/decode.
  */
+export function createCipher(key: Uint8Array, variant: 'legacy' | 'dataKey'): Cipher {
+  return {
+    encrypt(data: unknown[]): Promise<Uint8Array[]> {
+      return Promise.resolve(data.map(item => {
+        if (variant === 'legacy') {
+          return encryptLegacy(item, key);
+        } else {
+          return encryptWithDataKey(item, key);
+        }
+      }));
+    },
+    decrypt(data: Uint8Array[]): Promise<(unknown | null)[]> {
+      return Promise.resolve(data.map(item => {
+        if (variant === 'legacy') {
+          return decryptLegacy(item, key);
+        } else {
+          return decryptWithDataKey(item, key);
+        }
+      }));
+    },
+  };
+}
+
+/**
+ * Encrypt data and encode to a wire string for server transmission.
+ * In dev mode, skips both encryption and base64 — returns plain JSON.
+ */
+export async function encryptToWireString(key: Uint8Array, variant: 'legacy' | 'dataKey', data: any): Promise<string> {
+  const format = configuration.isDev ? 'plaintext-json' : `base64-${variant}`;
+  logger.debug('[encryption] encryptToWireString', { variant, format });
+  return wireEncode(data, createCipher(key, variant), configuration.isDev);
+}
+
+/**
+ * Decode and decrypt a wire string received from the server.
+ * Auto-detects plaintext JSON regardless of local isDev.
+ */
+export async function decryptFromWireString(key: Uint8Array, variant: 'legacy' | 'dataKey', wireStr: string): Promise<any | null> {
+  const isPlaintext = wireStr.length > 0 && wireStr[0] === '{';
+  const format = isPlaintext ? 'plaintext-json' : `base64-${variant}`;
+  logger.debug('[encryption] decryptFromWireString', { variant, format, wireStrLength: wireStr.length });
+  try {
+    return await wireDecode(wireStr, createCipher(key, variant));
+  } catch (e) {
+    logger.error('[encryption] decryptFromWireString: decryption failed', toError(e), { variant, format });
+    return null;
+  }
+}
+
 export function authChallenge(secret: Uint8Array): {
   challenge: Uint8Array;
   publicKey: Uint8Array;

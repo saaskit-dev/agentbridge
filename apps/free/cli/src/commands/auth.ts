@@ -11,6 +11,7 @@ import {
 import { readCredentials, clearCredentials, clearMachineId, readSettings } from '@/persistence';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 
 const logger = new Logger('commands/auth');
@@ -159,12 +160,12 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     } catch (error) {
       // Non-fatal: system service installation failed, daemon still works
       console.log(chalk.yellow('⚠️  Could not install system service (non-critical)'));
-      console.log(chalk.gray(`   ${error instanceof Error ? error.message : 'Unknown error'}`));
+      console.log(chalk.gray(`   ${safeStringify(error)}`));
     }
   } catch (error) {
     console.error(
       chalk.red('Authentication failed:'),
-      error instanceof Error ? error.message : 'Unknown error'
+      safeStringify(error)
     );
     process.exit(1);
   }
@@ -213,7 +214,7 @@ async function handleAuthLogout(): Promise<void> {
       console.log(chalk.gray('  Run "free auth login" to authenticate again'));
     } catch (error) {
       throw new Error(
-        `Failed to logout: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to logout: ${safeStringify(error)}`
       );
     }
   } else {

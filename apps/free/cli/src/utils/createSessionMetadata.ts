@@ -18,7 +18,13 @@ import { projectPath } from '@/projectPath';
 /**
  * Backend flavor identifier for session metadata.
  */
-export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode';
+export type BackendFlavor =
+  | 'claude'
+  | 'claude-acp'
+  | 'codex'
+  | 'codex-acp'
+  | 'gemini'
+  | 'opencode';
 
 /**
  * Options for creating session metadata.
@@ -29,7 +35,7 @@ export interface CreateSessionMetadataOptions {
   /** Machine ID for server identification */
   machineId: string;
   /** How the session was started */
-  startedBy?: 'daemon' | 'terminal';
+  startedBy?: 'cli' | 'daemon' | 'app';
   /** Active sandbox config for the session, or undefined when not used */
   sandbox?: SandboxConfig;
   /** Whether the backend runs with "dangerously skip permissions" behavior */
@@ -83,7 +89,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
     freeToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
     startedFromDaemon: opts.startedBy === 'daemon',
     hostPid: process.pid,
-    startedBy: opts.startedBy || 'terminal',
+    startedBy: opts.startedBy || 'cli',
     lifecycleState: 'running',
     lifecycleStateSince: Date.now(),
     flavor: opts.flavor,

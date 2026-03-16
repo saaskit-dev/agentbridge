@@ -18,7 +18,7 @@ import { Modal } from '@/modal';
 import { useArtifact } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/artifacts/edit');
 
 const stylesheet = StyleSheet.create(theme => ({
@@ -131,7 +131,7 @@ export default function EditArtifactScreen() {
           setBody(artifact.body || '');
         }
       } catch (err) {
-        logger.error('Failed to load artifact for editing:', err);
+        logger.error('Failed to load artifact for editing:', toError(err));
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -171,7 +171,7 @@ export default function EditArtifactScreen() {
       // Navigate back
       router.back();
     } catch (err) {
-      logger.error('Failed to update artifact:', err);
+      logger.error('Failed to update artifact:', toError(err));
       await Modal.alert(t('common.error'), t('artifacts.updateError'));
       setIsSaving(false);
     }

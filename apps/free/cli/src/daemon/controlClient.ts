@@ -3,13 +3,15 @@
  * Used by CLI commands to interact with running daemon
  */
 
-import { existsSync, readFileSync } from 'fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
-import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
+import type { AgentType } from '@/daemon/sessions/types';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('daemon/controlClient');
 
 /**
@@ -41,6 +43,14 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
     };
   }
 
+  if (!state.controlToken) {
+    const errorMessage = 'Daemon state missing controlToken — daemon may need restart';
+    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
+    return {
+      error: errorMessage,
+    };
+  }
+
   try {
     process.kill(state.pid, 0);
   } catch (error) {
@@ -57,7 +67,10 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
       : 10_000;
     const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${state.controlToken}`,
+      },
       body: JSON.stringify(body || {}),
       // Mostly increased for stress test
       signal: AbortSignal.timeout(timeout),
@@ -73,7 +86,7 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
 
     return await response.json();
   } catch (error) {
-    const errorMessage = `Request failed: ${path}, ${error instanceof Error ? error.message : 'Unknown error'}`;
+    const errorMessage = `Request failed: ${path}, ${safeStringify(error)}`;
     logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
     return {
       error: errorMessage,
@@ -81,19 +94,9 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
   }
 }
 
-export async function notifyDaemonSessionStarted(
-  sessionId: string,
-  metadata: Metadata
-): Promise<{ error?: string } | any> {
-  return await daemonPost('/session-started', {
-    sessionId,
-    metadata,
-  });
-}
-
 export async function listDaemonSessions(): Promise<any[]> {
   const result = await daemonPost('/list');
-  return result.children || [];
+  return result.sessions || [];
 }
 
 export async function stopDaemonSession(sessionId: string): Promise<boolean> {
@@ -101,8 +104,13 @@ export async function stopDaemonSession(sessionId: string): Promise<boolean> {
   return result.success || false;
 }
 
-export async function spawnDaemonSession(directory: string, sessionId?: string, sessionTag?: string): Promise<any> {
-  const result = await daemonPost('/spawn-session', { directory, sessionId, sessionTag });
+export async function spawnDaemonSession(
+  directory: string,
+  sessionId?: string,
+  sessionTag?: string,
+  agent?: AgentType
+): Promise<any> {
+  const result = await daemonPost('/spawn-session', { directory, sessionId, sessionTag, agent });
   return result;
 }
 
@@ -117,7 +125,7 @@ export async function stopDaemonHttp(): Promise<void> {
  * - not_running: no state file found
  */
 export type DaemonRunningState =
-  | { status: 'running'; pid: number; startTime: string; version: string; httpPort?: number }
+  | { status: 'running'; pid: number; startTime: string; version: string; httpPort?: number; buildHash?: string; buildTime?: string }
   | { status: 'stale'; pid: number }
   | { status: 'not_running' };
 
@@ -142,6 +150,8 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<Daemon
       startTime: state.startTime,
       version: state.startedWithCliVersion,
       httpPort: state.httpPort,
+      buildHash: state.buildHash,
+      buildTime: state.buildTime,
     };
   } catch {
     logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up stale state');
@@ -166,6 +176,38 @@ export async function isDaemonRunningCurrentlyInstalledFreeVersion(): Promise<bo
   }
 
   try {
+    // Read build hash from dist/.hash file
+    const buildHashPath = join(projectPath(), 'dist', '.hash');
+    let currentBuildHash: string | undefined;
+    if (existsSync(buildHashPath)) {
+      currentBuildHash = readFileSync(buildHashPath, 'utf-8').trim();
+    }
+
+    // Fallback: compute hash from dist directory if .hash file doesn't exist
+    if (!currentBuildHash) {
+      const distPath = join(projectPath(), 'dist');
+      const files = readdirSync(distPath).filter(f => f.endsWith('.mjs') || f.endsWith('.cjs'));
+      const hash = createHash('md5');
+      for (const file of files) {
+        const filePath = join(distPath, file);
+        const content = readFileSync(filePath);
+        hash.update(content);
+      }
+      currentBuildHash = hash.digest('hex');
+    }
+
+    logger.debug(
+      `[DAEMON CONTROL] Current build hash: ${currentBuildHash?.substring(0, 8)}, Daemon hash: ${daemonState.buildHash?.substring(0, 8) ?? 'not set'}`
+    );
+
+    // Compare build hashes
+    if (daemonState.buildHash && currentBuildHash && daemonState.buildHash !== currentBuildHash) {
+      logger.debug(
+        `[DAEMON CONTROL] Build hash mismatch (daemon: ${daemonState.buildHash?.substring(0, 8)}, current: ${currentBuildHash.substring(0, 8)})`
+      );
+      return false;
+    }
+
     // Read package.json on demand from disk - so we are guaranteed to get the latest version
     const packageJsonPath = join(projectPath(), 'package.json');
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
@@ -174,7 +216,7 @@ export async function isDaemonRunningCurrentlyInstalledFreeVersion(): Promise<bo
     logger.debug(
       `[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${daemonState.version}`
     );
-    return currentCliVersion === daemonState.version;
+    return currentCliVersion === daemonState.version && daemonState.buildHash === currentBuildHash;
   } catch (error) {
     logger.debug('[DAEMON CONTROL] Error checking daemon version', error);
     return false;

@@ -18,7 +18,7 @@ import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
-import { Logger, continueTrace, type TraceContext } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, continueTrace, toError, type TraceContext } from '@saaskit-dev/agentbridge/telemetry';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
@@ -41,15 +41,16 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { registerGetMachineEncryption } from './ops';
+import { persistCachedCapabilities } from './sessionCapabilitiesCache';
 import { storage, registerApplySettingsCallback, registerAssumeUsersCallback } from './storage';
 import { Session, Machine } from './storageTypes';
 import { AuthCredentials } from '@/auth/tokenStorage';
-import type { PermissionMode } from '@/components/PermissionModeSelector';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { apiSocket } from '@/sync/apiSocket';
 import { setSessionTrace, getSessionTrace, clearSessionTrace } from '@/sync/appTraceStore';
 import { Encryption } from '@/sync/encryption/encryption';
 import { InvalidateSync } from '@/utils/sync';
+import type { PermissionMode } from './sessionCapabilities';
 
 const logger = new Logger('app/sync');
 
@@ -69,7 +70,6 @@ type V3PostSessionMessagesResponse = {
   messages: Array<{
     id: string;
     seq: number;
-    localId: string | null;
     createdAt: number;
     updatedAt: number;
   }>;
@@ -91,7 +91,7 @@ function makeWireTrace(sessionId: string): WireTrace {
 }
 
 type OutboxMessage = {
-  localId: string;
+  id: string;
   content: string;
   _trace?: WireTrace;
 };
@@ -99,8 +99,8 @@ type OutboxMessage = {
 class Sync {
   private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
   encryption!: Encryption;
-  serverID!: string;
-  anonID!: string;
+  accountId!: string;
+  anonId!: string;
   private credentials!: AuthCredentials;
   public encryptionCache = new EncryptionCache();
   private sessionsSync: InvalidateSync;
@@ -203,8 +203,9 @@ class Sync {
   async create(credentials: AuthCredentials, encryption: Encryption) {
     this.credentials = credentials;
     this.encryption = encryption;
-    this.anonID = encryption.anonID;
-    this.serverID = parseToken(credentials.token);
+    this.anonId = encryption.anonId;
+    this.accountId = parseToken(credentials.token);
+    logger.info('[sync] create', { accountId: this.accountId });
     await this.#init();
 
     // Await settings sync to have fresh settings
@@ -222,8 +223,9 @@ class Sync {
     // Purchases sync is invalidated in #init() and will complete asynchronously
     this.credentials = credentials;
     this.encryption = encryption;
-    this.anonID = encryption.anonID;
-    this.serverID = parseToken(credentials.token);
+    this.anonId = encryption.anonId;
+    this.accountId = parseToken(credentials.token);
+    logger.info('[sync] restore', { accountId: this.accountId });
     await this.#init();
   }
 
@@ -246,18 +248,26 @@ class Sync {
     this.feedSync.invalidate();
     logger.debug('🔄 #init: All syncs invalidated, including artifacts');
 
-    // Wait for both sessions and machines to load, then mark as ready
+    // Wait for both sessions and machines to load, then mark as ready.
+    // Mark ready even on failure — the app should not stay stuck on loading screen.
     Promise.all([this.sessionsSync.awaitQueue(), this.machinesSync.awaitQueue()])
       .then(() => {
         storage.getState().applyReady();
       })
       .catch(error => {
-        logger.error('Failed to load initial data:', error);
+        logger.error('Failed to load initial data:', toError(error));
+        storage.getState().applyReady();
       });
   }
 
   onSessionVisible = (sessionId: string) => {
-    this.getMessagesSync(sessionId).invalidate();
+    logger.debug('[sync] onSessionVisible', { sessionId });
+
+    // Only fetch messages if we haven't loaded any yet for this session.
+    // Once loaded, the WS fast path handles incremental updates.
+    if (!this.sessionLastSeq.has(sessionId)) {
+      this.getMessagesSync(sessionId).invalidate();
+    }
 
     // Also invalidate git status sync for this session
     gitStatusSync.getSync(sessionId).invalidate();
@@ -292,6 +302,8 @@ class Sync {
       return;
     }
 
+    logger.debug('enqueueMessages', { sessionId, count: messages.length });
+
     let queue = this.sessionMessageQueue.get(sessionId);
     if (!queue) {
       queue = [];
@@ -311,6 +323,7 @@ class Sync {
         break;
       }
       const batch = pending.splice(0, pending.length);
+      logger.debug('enqueueMessages: processing batch', { sessionId, batchSize: batch.length });
       this.applyMessages(sessionId, batch);
     }
   }
@@ -425,7 +438,6 @@ class Sync {
       this.enqueueMessages(sessionId, [
         {
           id: randomUUID(),
-          localId: null,
           createdAt: now,
           role: 'event',
           isSidechain: false,
@@ -482,12 +494,13 @@ class Sync {
     const modelMode =
       session.modelMode || (isGemini ? 'gemini-2.5-pro' : isOpenCode ? 'default' : 'default');
 
-    // Generate local ID and per-message trace context.
+    // Generate message ID and per-message trace context.
     // The trace travels App → Server → CLI so all layers log with the same traceId.
-    const localId = randomUUID();
+    const id = randomUUID();
     const trace = makeWireTrace(sessionId);
     // Update session trace store so subsequent RPC calls on this session carry the same trace (RFC §7.1)
     setSessionTrace(sessionId, trace);
+    logger.info('[App] sending message', { userId: this.accountId, sessionId, id, traceId: trace.tid, preview: text.slice(0, 100) });
 
     // Determine sentFrom based on platform
     let sentFrom: string;
@@ -506,10 +519,11 @@ class Sync {
       sentFrom = 'web'; // fallback
     }
 
-    // Model settings - for Gemini, we pass the selected model; for others, CLI handles it
+    // Runtime capability switching is handled over session RPC.
+    // Keep per-message model overrides only as a compatibility fallback for sessions
+    // that still do not have a capability snapshot yet.
     let model: string | null = null;
-    if (isGemini && modelMode !== 'default') {
-      // For Gemini ACP, pass the selected model to CLI
+    if (isGemini && !session.capabilities && modelMode !== 'default') {
       model = modelMode;
     }
     const fallbackModel: string | null = null;
@@ -534,7 +548,7 @@ class Sync {
 
     // Add to messages - normalize the raw record
     const createdAt = Date.now();
-    const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
+    const normalizedMessage = normalizeRawMessage(id, createdAt, content);
     if (normalizedMessage) {
       this.enqueueMessages(sessionId, [normalizedMessage]);
     }
@@ -545,7 +559,7 @@ class Sync {
       this.pendingOutbox.set(sessionId, pending);
     }
     pending.push({
-      localId,
+      id,
       content: encryptedRawRecord,
       _trace: trace,
     });
@@ -688,7 +702,7 @@ class Sync {
           const profile = await getUserProfile(this.credentials!, id);
           return { id, profile }; // profile is null if 404
         } catch (error) {
-          logger.error(`Failed to fetch user ${id}:`, error);
+          logger.error(`Failed to fetch user ${id}:`, toError(error));
           return { id, profile: null }; // Treat errors as 404
         }
       })
@@ -745,6 +759,8 @@ class Sync {
       metadataVersion: number;
       agentState: string | null;
       agentStateVersion: number;
+      capabilities?: string | null;
+      capabilitiesVersion?: number;
       dataEncryptionKey: string | null;
       active: boolean;
       activeAt: number;
@@ -790,6 +806,10 @@ class Sync {
         session.agentStateVersion,
         session.agentState
       );
+      const capabilities = await sessionEncryption.decryptCapabilities(
+        session.capabilitiesVersion ?? 0,
+        session.capabilities
+      );
 
       // Put it all together
       // Preserve the current thinking state for existing sessions to avoid a
@@ -805,12 +825,31 @@ class Sync {
         thinkingAt: 0,
         metadata,
         agentState,
+        capabilities,
+        capabilitiesVersion: session.capabilitiesVersion ?? 0,
       };
       decryptedSessions.push(processedSession);
     }
 
     // Apply to storage
     this.applySessions(decryptedSessions);
+    void Promise.allSettled(
+      decryptedSessions.map(session =>
+        persistCachedCapabilities({
+          machineId: session.metadata?.machineId,
+          agentType:
+            session.metadata?.flavor === 'claude' ||
+            session.metadata?.flavor === 'codex' ||
+            session.metadata?.flavor === 'gemini' ||
+            session.metadata?.flavor === 'opencode'
+              ? session.metadata.flavor
+              : null,
+          capabilities: session.capabilities,
+          credentials: this.credentials,
+          updatedAt: session.updatedAt,
+        })
+      )
+    );
     logger.debug(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
   };
 
@@ -874,7 +913,7 @@ class Sync {
             isDecrypted: !!header,
           });
         } catch (err) {
-          logger.error(`Failed to decrypt artifact ${artifact.id}:`, err);
+          logger.error(`Failed to decrypt artifact ${artifact.id}:`, toError(err));
           // Add with decryption failed flag
           decryptedArtifacts.push({
             id: artifact.id,
@@ -896,7 +935,7 @@ class Sync {
       logger.debug('📦 fetchArtifactsList: Artifacts applied to storage');
     } catch (error) {
       logger.debug(`📦 fetchArtifactsList: Error fetching artifacts: ${error}`);
-      logger.error('Failed to fetch artifacts:', error);
+      logger.error('Failed to fetch artifacts:', toError(error));
       throw error;
     }
   };
@@ -938,7 +977,7 @@ class Sync {
         isDecrypted: !!header,
       };
     } catch (error) {
-      logger.error(`Failed to fetch artifact ${artifactId}:`, error);
+      logger.error(`Failed to fetch artifact ${artifactId}:`, toError(error));
       return null;
     }
   }
@@ -1003,7 +1042,7 @@ class Sync {
 
       return artifactId;
     } catch (error) {
-      logger.error('Failed to create artifact:', error);
+      logger.error('Failed to create artifact:', toError(error));
       throw error;
     }
   }
@@ -1110,7 +1149,7 @@ class Sync {
 
       storage.getState().updateArtifact(updatedArtifact);
     } catch (error) {
-      logger.error('Failed to update artifact:', error);
+      logger.error('Failed to update artifact:', toError(error));
       throw error;
     }
   }
@@ -1204,7 +1243,7 @@ class Sync {
           daemonStateVersion: machine.daemonStateVersion || 0,
         });
       } catch (error) {
-        logger.error(`Failed to decrypt machine ${machine.id}:`, error);
+        logger.error(`Failed to decrypt machine ${machine.id}:`, toError(error));
         // Still add the machine with null metadata
         decryptedMachines.push({
           id: machine.id,
@@ -1235,7 +1274,7 @@ class Sync {
       storage.getState().applyFriends(friendsList);
       logger.debug(`👥 fetchFriends completed - processed ${friendsList.length} friends`);
     } catch (error) {
-      logger.error('Failed to fetch friends:', error);
+      logger.error('Failed to fetch friends:', toError(error));
       // Silently handle error - UI will show appropriate state
     }
   };
@@ -1331,7 +1370,7 @@ class Sync {
         `📰 fetchFeed completed - loaded ${compatibleItems.length} compatible items (${allItems.length - compatibleItems.length} filtered)`
       );
     } catch (error) {
-      logger.error('Failed to fetch feed:', error);
+      logger.error('Failed to fetch feed:', toError(error));
     }
   };
 
@@ -1566,7 +1605,7 @@ class Sync {
         // Initialize with the public ID as user ID
         RevenueCat.configure({
           apiKey,
-          appUserID: this.serverID, // In server this is a CUID, which we can assume is globaly unique even between servers
+          appUserID: this.accountId, // In server this is a CUID, which we can assume is globaly unique even between servers
           useAmazon: false,
         });
 
@@ -1583,7 +1622,7 @@ class Sync {
       // Apply to storage (storage handles the transformation)
       storage.getState().applyPurchases(customerInfo);
     } catch (error) {
-      logger.error('Failed to sync purchases:', error);
+      logger.error('Failed to sync purchases:', toError(error));
       // Don't throw - purchases are optional
     }
   };
@@ -1600,6 +1639,7 @@ class Sync {
     }
 
     const batch = pending.slice();
+    logger.debug('flushOutbox: sending batch', { sessionId, batchSize: batch.length });
     const controller = new AbortController();
     this.sendAbortControllers.set(sessionId, controller);
     try {
@@ -1607,7 +1647,7 @@ class Sync {
         method: 'POST',
         body: JSON.stringify({
           messages: batch.map(message => ({
-            localId: message.localId,
+            id: message.id,
             content: message.content,
             ...(message._trace ? { _trace: message._trace } : {}),
           })),
@@ -1624,6 +1664,7 @@ class Sync {
       }
 
       const data = (await response.json()) as V3PostSessionMessagesResponse;
+      logger.debug('flushOutbox: batch sent successfully', { sessionId, batchSize: batch.length });
       pending.splice(0, batch.length);
       if (Array.isArray(data.messages) && data.messages.length > 0) {
         const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
@@ -1636,6 +1677,7 @@ class Sync {
         this.sessionLastSeq.set(sessionId, maxSeq);
       }
     } catch (error) {
+      logger.error('flushOutbox: failed to send batch', toError(error), { sessionId, batchSize: batch.length });
       this.maybeStartBackgroundSendWatchdog();
       throw error;
     } finally {
@@ -1696,7 +1738,6 @@ class Sync {
         }
         const normalized = normalizeRawMessage(
           decrypted.id,
-          decrypted.localId,
           decrypted.createdAt,
           decrypted.content
         );
@@ -1782,15 +1823,11 @@ class Sync {
       this.friendsSync.invalidate();
       this.friendRequestsSync.invalidate();
       this.feedSync.invalidate();
-      const sessionsData = storage.getState().sessionsData;
-      if (sessionsData) {
-        for (const item of sessionsData) {
-          if (typeof item !== 'string') {
-            this.getMessagesSync(item.id).invalidate();
-            // Also invalidate git status on reconnection
-            gitStatusSync.invalidate(item.id);
-          }
-        }
+      // Only re-fetch messages for sessions that were already loaded (have a lastSeq).
+      // Unloaded sessions will fetch on demand when the user navigates to them.
+      for (const [sessionId] of this.sessionLastSeq) {
+        this.getMessagesSync(sessionId).invalidate();
+        gitStatusSync.invalidate(sessionId);
       }
       for (const sync of this.sendSync.values()) {
         sync.invalidate();
@@ -1842,7 +1879,6 @@ class Sync {
         if (decrypted) {
           lastMessage = normalizeRawMessage(
             decrypted.id,
-            decrypted.localId,
             decrypted.createdAt,
             decrypted.content
           );
@@ -1853,12 +1889,14 @@ class Sync {
             role?: string;
             content?: {
               type?: string;
+              state?: string;
               data?: {
                 type?: string;
                 ev?: { t?: string };
               };
             };
           } | null;
+          const role = rawContent?.role;
           const contentType = rawContent?.content?.type;
           const dataType = rawContent?.content?.data?.type;
           const sessionEventType = rawContent?.content?.data?.ev?.t;
@@ -1869,21 +1907,35 @@ class Sync {
             dataType === 'turn_aborted' ||
             dataType === 'task_started' ||
             sessionEventType === 'turn-start' ||
-            sessionEventType === 'turn-end'
+            sessionEventType === 'turn-end' ||
+            (role === 'event' && (contentType === 'status' || contentType === 'error'))
           ) {
             logger.debug(
-              `🔄 [Sync] Lifecycle event detected: contentType=${contentType}, dataType=${dataType}, sessionEventType=${sessionEventType}`
+              `🔄 [Sync] Lifecycle event detected: role=${role}, contentType=${contentType}, dataType=${dataType}, sessionEventType=${sessionEventType}`
             );
           }
+
+          // Agent event: { role: 'event', content: { type: 'status', state: 'idle' } }
+          // or { role: 'event', content: { type: 'error', ... } }
+          const isAgentEventIdle =
+            role === 'event' &&
+            ((contentType === 'status' && rawContent?.content?.state === 'idle') ||
+              contentType === 'error');
+          const isAgentEventWorking =
+            role === 'event' &&
+            contentType === 'status' &&
+            rawContent?.content?.state === 'working';
 
           const isTaskComplete =
             (contentType === 'acp' &&
               (dataType === 'task_complete' || dataType === 'turn_aborted')) ||
-            (contentType === 'session' && sessionEventType === 'turn-end');
+            (contentType === 'session' && sessionEventType === 'turn-end') ||
+            isAgentEventIdle;
 
           const isTaskStarted =
             (contentType === 'acp' && dataType === 'task_started') ||
-            (contentType === 'session' && sessionEventType === 'turn-start');
+            (contentType === 'session' && sessionEventType === 'turn-start') ||
+            isAgentEventWorking;
 
           if (isTaskComplete || isTaskStarted) {
             logger.debug(
@@ -1937,9 +1989,6 @@ class Sync {
           }
         }
       }
-
-      // Ping session
-      this.onSessionVisible(updateData.body.sid);
     } else if (updateData.body.t === 'new-session') {
       logger.debug('🆕 New session update received');
       this.sessionsSync.invalidate();
@@ -1952,6 +2001,7 @@ class Sync {
 
       // Remove encryption keys from memory
       this.encryption.removeSessionEncryption(sessionId);
+      this.sessionDataKeys.delete(sessionId);
 
       // Remove from project manager
       projectManager.removeSession(sessionId);
@@ -1993,6 +2043,13 @@ class Sync {
                 updateData.body.metadata.value
               )
             : session.metadata;
+        const capabilities =
+          updateData.body.capabilities && sessionEncryption
+            ? await sessionEncryption.decryptCapabilities(
+                updateData.body.capabilities.version,
+                updateData.body.capabilities.value
+              )
+            : session.capabilities;
 
         this.applySessions([
           {
@@ -2005,10 +2062,30 @@ class Sync {
             metadataVersion: updateData.body.metadata
               ? updateData.body.metadata.version
               : session.metadataVersion,
+            capabilities,
+            capabilitiesVersion: updateData.body.capabilities
+              ? updateData.body.capabilities.version
+              : session.capabilitiesVersion,
             updatedAt: updateData.createdAt,
             seq: updateData.seq,
           },
         ]);
+        // Only persist capabilities to KV when the server actually sent a new version
+        if (updateData.body.capabilities) {
+          void persistCachedCapabilities({
+            machineId: metadata?.machineId,
+            agentType:
+              metadata?.flavor === 'claude' ||
+              metadata?.flavor === 'codex' ||
+              metadata?.flavor === 'gemini' ||
+              metadata?.flavor === 'opencode'
+                ? metadata.flavor
+                : null,
+            capabilities,
+            credentials: this.credentials,
+            updatedAt: updateData.createdAt,
+          });
+        }
 
         // Invalidate git status when agent state changes (files may have been modified)
         if (updateData.body.agentState) {
@@ -2080,7 +2157,7 @@ class Sync {
             `📋 Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`
           );
         } catch (error) {
-          logger.error('❌ Failed to process settings update:', error);
+          logger.error('❌ Failed to process settings update:', toError(error));
           // Don't crash on settings sync errors, just log
         }
       }
@@ -2121,7 +2198,7 @@ class Sync {
           updatedMachine.metadata = metadata;
           updatedMachine.metadataVersion = metadataUpdate.version;
         } catch (error) {
-          logger.error(`Failed to decrypt machine metadata for ${machineId}:`, error);
+          logger.error(`Failed to decrypt machine metadata for ${machineId}:`, toError(error));
         }
       }
 
@@ -2136,7 +2213,7 @@ class Sync {
           updatedMachine.daemonState = daemonState;
           updatedMachine.daemonStateVersion = daemonStateUpdate.version;
         } catch (error) {
-          logger.error(`Failed to decrypt machine daemonState for ${machineId}:`, error);
+          logger.error(`Failed to decrypt machine daemonState for ${machineId}:`, toError(error));
         }
       }
 
@@ -2208,7 +2285,7 @@ class Sync {
         storage.getState().addArtifact(decryptedArtifact);
         logger.debug(`📦 Added new artifact ${artifactId} to storage`);
       } catch (error) {
-        logger.error(`Failed to process new artifact ${artifactId}:`, error);
+        logger.error(`Failed to process new artifact ${artifactId}:`, toError(error));
       }
     } else if (updateData.body.t === 'update-artifact') {
       logger.debug('📦 Received update-artifact update');
@@ -2262,7 +2339,7 @@ class Sync {
         storage.getState().updateArtifact(updatedArtifact);
         logger.debug(`📦 Updated artifact ${artifactId} in storage`);
       } catch (error) {
-        logger.error(`Failed to process artifact update ${artifactId}:`, error);
+        logger.error(`Failed to process artifact update ${artifactId}:`, toError(error));
       }
     } else if (updateData.body.t === 'delete-artifact') {
       logger.debug('📦 Received delete-artifact update');
@@ -2387,7 +2464,7 @@ class Sync {
       try {
         callback(updateData);
       } catch (error) {
-        logger.error('Error in ephemeral update callback:', error);
+        logger.error('Error in ephemeral update callback:', toError(error));
       }
     });
   };
@@ -2398,6 +2475,19 @@ class Sync {
 
   private applyMessages = (sessionId: string, messages: NormalizedMessage[]) => {
     const result = storage.getState().applyMessages(sessionId, messages);
+    if (result.latestStatus) {
+      const session = storage.getState().sessions[sessionId];
+      if (session) {
+        const thinking = result.latestStatus === 'working';
+        this.applySessions([
+          {
+            ...session,
+            thinking,
+            thinkingAt: Date.now(),
+          },
+        ]);
+      }
+    }
     const m: Message[] = [];
     for (const messageId of result.changed) {
       const message = storage.getState().sessionMessages[sessionId].messagesMap[messageId];
@@ -2429,11 +2519,13 @@ class Sync {
     const isActive = new Set(newActive.map(s => s.id));
     for (const s of active) {
       if (!isActive.has(s.id)) {
+        logger.info('session offline', { sessionId: s.id });
         voiceHooks.onSessionOffline(s.id, s.metadata ?? undefined);
       }
     }
     for (const s of newActive) {
       if (!wasActive.has(s.id)) {
+        logger.info('session online', { sessionId: s.id });
         voiceHooks.onSessionOnline(s.id, s.metadata ?? undefined);
       }
     }

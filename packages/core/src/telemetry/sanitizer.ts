@@ -1,4 +1,5 @@
 import type { LogEntry } from './types.js'
+import { safeStringify } from '../utils/stringify.js'
 
 const DEFAULT_SENSITIVE_KEYS = new Set([
   'token', 'key', 'secret', 'password', 'credential', 'authorization',
@@ -83,7 +84,7 @@ export class Sanitizer {
     if (typeof value === 'object') {
       return this.redactObject(value as Record<string, unknown>, depth + 1)
     }
-    return String(value)
+    return safeStringify(value)
   }
   private isSensitiveKey(key: string): boolean {
     const lower = key.toLowerCase()

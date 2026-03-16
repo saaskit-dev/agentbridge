@@ -21,7 +21,6 @@ describe('reducerTracer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'msg1',
-          localId: null,
           createdAt: 1000,
           role: 'user',
           isSidechain: false,
@@ -29,7 +28,6 @@ describe('reducerTracer', () => {
         },
         {
           id: 'msg2',
-          localId: null,
           createdAt: 2000,
           role: 'agent',
           isSidechain: false,
@@ -50,7 +48,6 @@ describe('reducerTracer', () => {
       const messages: NormalizedMessage[] = [
         {
           id: 'msg1',
-          localId: null,
           createdAt: 1000,
           role: 'agent',
           isSidechain: false,
@@ -84,7 +81,6 @@ describe('reducerTracer', () => {
       // First, process a Task tool
       const taskMessage: NormalizedMessage = {
         id: 'task1',
-        localId: null,
         createdAt: 1000,
         role: 'agent',
         isSidechain: false,
@@ -106,7 +102,6 @@ describe('reducerTracer', () => {
       // Then process the sidechain root
       const sidechainRoot: NormalizedMessage = {
         id: 'sidechain1',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: true,
@@ -133,7 +128,6 @@ describe('reducerTracer', () => {
       const setup: NormalizedMessage[] = [
         {
           id: 'task1',
-          localId: null,
           createdAt: 1000,
           role: 'agent',
           isSidechain: false,
@@ -151,7 +145,6 @@ describe('reducerTracer', () => {
         },
         {
           id: 'sidechain1',
-          localId: null,
           createdAt: 2000,
           role: 'agent',
           isSidechain: true,
@@ -170,7 +163,6 @@ describe('reducerTracer', () => {
       // Process child of sidechain
       const sidechainChild: NormalizedMessage = {
         id: 'child1',
-        localId: null,
         createdAt: 3000,
         role: 'agent',
         isSidechain: true,
@@ -196,7 +188,6 @@ describe('reducerTracer', () => {
 
       const parentToolMessage: NormalizedMessage = {
         id: 'parent-msg',
-        localId: null,
         createdAt: 1000,
         role: 'agent',
         isSidechain: false,
@@ -217,7 +208,6 @@ describe('reducerTracer', () => {
 
       const subagentMessage: NormalizedMessage = {
         id: 'child-msg',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: true,
@@ -242,7 +232,6 @@ describe('reducerTracer', () => {
       // Setup: Task
       const task: NormalizedMessage = {
         id: 'task1',
-        localId: null,
         createdAt: 1000,
         role: 'agent',
         isSidechain: false,
@@ -264,7 +253,6 @@ describe('reducerTracer', () => {
       // Process orphan (parent not yet seen)
       const orphan: NormalizedMessage = {
         id: 'orphan1',
-        localId: null,
         createdAt: 3000,
         role: 'agent',
         isSidechain: true,
@@ -287,7 +275,6 @@ describe('reducerTracer', () => {
       // Process parent
       const parent: NormalizedMessage = {
         id: 'sidechain1',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: true,
@@ -319,7 +306,6 @@ describe('reducerTracer', () => {
       // Setup: Task
       const task: NormalizedMessage = {
         id: 'task1',
-        localId: null,
         createdAt: 1000,
         role: 'agent',
         isSidechain: false,
@@ -341,7 +327,6 @@ describe('reducerTracer', () => {
       // Process multiple orphans in reverse order
       const orphan2: NormalizedMessage = {
         id: 'orphan2',
-        localId: null,
         createdAt: 4000,
         role: 'agent',
         isSidechain: true,
@@ -357,7 +342,6 @@ describe('reducerTracer', () => {
 
       const orphan1: NormalizedMessage = {
         id: 'orphan1',
-        localId: null,
         createdAt: 3000,
         role: 'agent',
         isSidechain: true,
@@ -381,7 +365,6 @@ describe('reducerTracer', () => {
       // Process root
       const root: NormalizedMessage = {
         id: 'sidechain1',
-        localId: null,
         createdAt: 2000,
         role: 'agent',
         isSidechain: true,
@@ -416,7 +399,6 @@ describe('reducerTracer', () => {
 
       const orphanSubagent: NormalizedMessage = {
         id: 'subagent-child',
-        localId: null,
         createdAt: 1500,
         role: 'agent',
         isSidechain: true,
@@ -441,7 +423,6 @@ describe('reducerTracer', () => {
       const state = createTracer();
       const message: NormalizedMessage = {
         id: 'msg1',
-        localId: null,
         createdAt: 1000,
         role: 'user',
         isSidechain: false,

@@ -12,25 +12,11 @@ import { projectPath } from '@/projectPath';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('claude/utils/generateHookSettings');
 
-/**
- * Generate a temporary settings file with SessionStart hook configuration
- *
- * @param port - The port where Free server is listening
- * @returns Path to the generated settings file
- */
-export function generateHookSettingsFile(port: number): string {
-  const hooksDir = join(configuration.freeHomeDir, 'tmp', 'hooks');
-  mkdirSync(hooksDir, { recursive: true });
-
-  // Unique filename per process to avoid conflicts
-  const filename = `session-hook-${process.pid}.json`;
-  const filepath = join(hooksDir, filename);
-
-  // Path to the hook forwarder script
+function buildSettings(port: number): Record<string, unknown> {
+  // Path to hook scripts
   const forwarderScript = resolve(projectPath(), 'scripts', 'session_hook_forwarder.cjs');
-  const hookCommand = `node "${forwarderScript}" ${port}`;
 
-  const settings = {
+  const settings: Record<string, unknown> = {
     hooks: {
       SessionStart: [
         {
@@ -38,7 +24,7 @@ export function generateHookSettingsFile(port: number): string {
           hooks: [
             {
               type: 'command',
-              command: hookCommand,
+              command: `node "${forwarderScript}" ${port}`,
             },
           ],
         },
@@ -46,10 +32,36 @@ export function generateHookSettingsFile(port: number): string {
     },
   };
 
-  writeFileSync(filepath, JSON.stringify(settings, null, 2));
+  return settings;
+}
+
+/**
+ * Generate a temporary settings file with SessionStart hook configuration
+ *
+ * @param port - The port where Free server is listening
+ * @returns Path to the generated settings file
+ */
+export function generateHookSettingsFile(port: number): string {
+  const hooksDir = configuration.hooksDir;
+  mkdirSync(hooksDir, { recursive: true });
+
+  // Unique filename per process to avoid conflicts
+  const filename = `session-hook-${process.pid}.json`;
+  const filepath = join(hooksDir, filename);
+
+  writeFileSync(filepath, JSON.stringify(buildSettings(port), null, 2));
   logger.debug(`[generateHookSettings] Created hook settings file: ${filepath}`);
 
   return filepath;
+}
+
+/**
+ * Update an existing hook settings file in-place. Useful when the hook server
+ * is created before the Free MCP server URL is known.
+ */
+export function updateHookSettingsFile(filepath: string, port: number): void {
+  writeFileSync(filepath, JSON.stringify(buildSettings(port), null, 2));
+  logger.debug(`[generateHookSettings] Updated hook settings file: ${filepath}`);
 }
 
 /**

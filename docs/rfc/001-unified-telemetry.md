@@ -1,7 +1,8 @@
 # RFC-001: Unified Telemetry System
 
-- **Status**: Draft
+- **Status**: Implemented ✅（全部 Phase 完成，139/139 测试通过）
 - **Created**: 2026-03-06
+- **Implemented**: 2026-03-08
 - **Author**: AgentBridge Team
 - **Package**: `@agentbridge/core/telemetry`
 
@@ -3195,3 +3196,69 @@ POST /logs-combined-from-cli-and-mobile-for-simple-ai-debugging → 删除，无
 | Telemetry consent mechanism | 21.2 | 24.6 |
 | doctor.ts migration conflict | 12 Phase 4 | 24.7 |
 | Old endpoint replacement | 11.3 | 24.8 |
+
+---
+
+## 实现归档（2026-03-16）
+
+### 完成状态
+
+全部 Phase 已完成，139/139 单元测试通过，App/CLI/Server 零 TS 错误。
+
+### 实现文件结构
+
+```
+packages/core/src/telemetry/
+├── types.ts           TraceContext, LogEntry, Level, WireTrace, LogFilter
+├── context.ts         createTrace, continueTrace, resumeTrace, injectTrace, extractTrace
+├── logger.ts          Logger class
+├── span.ts            Span class（无 child() 方法，遵循 §17.6 简化）
+├── collector.ts       LogCollector + initTelemetry() + getCollector()
+├── sanitizer.ts       Sanitizer（extraSensitiveKeys 支持）
+├── exporter.ts        exportDiagnostic()（ZIP: logs.jsonl + environment.json）
+├── cleanup.ts         cleanupOldLogs()（RFC 未详述，额外实现）
+├── node.ts            Node.js 平台特定导出（FileSink, exporter, cleanup）
+├── index.ts           公共导出（平台无关核心）
+│
+├── sinks/
+│   ├── types.ts       LogSink interface
+│   ├── file.ts        FileSink（按小时轮转，非 RFC 的按秒+PID）
+│   ├── memory.ts      MemorySink（含 AsyncStorage 持久化，§17.3）
+│   ├── remote.ts      RemoteSink（backend 抽象层，非直接 endpoint）
+│   └── console.ts     ConsoleSink
+│
+└── sinks/backends/    （RFC 未设计，额外实现）
+    ├── types.ts       RemoteBackend, DeviceMetadata
+    ├── config.ts      createRemoteBackend, setTelemetryToken
+    ├── serverRelay.ts ServerRelayBackend
+    ├── axiom.ts       AxiomBackend
+    ├── newrelic.ts    NewRelicBackend
+    └── index.ts
+```
+
+### 核心 API 与 RFC 一致性
+
+| API | RFC 设计 | 实现 | 一致性 |
+|-----|---------|------|--------|
+| Logger constructor / debug / info / warn / error | §4.1 | ✅ 完全匹配 | ✅ |
+| Logger.withContext() → ScopedLogger | §4.2 | ✅ 完全匹配 | ✅ |
+| Span（无 child()，§17.6 简化） | §4.3 | ✅ 完全匹配 | ✅ |
+| createTrace / continueTrace / resumeTrace | §4.4, §19.3 | ✅ 完全匹配 | ✅ |
+| injectTrace / extractTrace（WireTrace 短字段名） | §4.4 | ✅ 完全匹配 | ✅ |
+| LogEntry 数据模型 | §3.2 | ✅ 完全匹配（额外有 userId） | ✅ |
+| LogCollector + initTelemetry | §5.1 | ✅ 核心匹配 | ✅ |
+| Sanitizer 敏感关键字列表 | §6.1 | ✅ 完全匹配 | ✅ |
+| MemorySink（ring buffer + query + onChange） | §5.4 | ✅ 完全匹配 + AsyncStorage 持久化 | ✅ |
+| ConsoleSink | §5.6 | ✅ 完全匹配 | ✅ |
+
+### 与原始设计的偏差
+
+1. **FileSink 文件轮转**：RFC 设计按秒+PID 分文件（`{prefix}-{YYYY-MM-DD}-{HH-MM-SS}-{pid}.jsonl`），实际按小时轮转（`{prefix}-{YYYY-MM-DD}-{HH}.jsonl`），减少文件碎片。额外支持 `bufferFlushMs` 异步 buffer（server 模式）
+2. **RemoteSink 架构**：RFC 设计直接接收 `endpoint` + `authToken`，实际抽象为 `RemoteBackend` 接口 + 多后端实现（ServerRelay / Axiom / NewRelic）。`minLevel` 默认值为 `'debug'`（RFC §22.1 修订为 `'info'`，实际代码未完全对齐）
+3. **Exporter 输出**：RFC 描述 `timeline.json`，实际输出 `environment.json`
+4. **额外功能**：`componentLevels`（按组件级别过滤）、`setGlobalContextProvider()`（全局 trace provider）、`setIdGenerator()`（自定义 ID 策略）、`isCollectorReady()`、`cleanupOldLogs()` — RFC 未提，均为实现中发现的实际需求
+5. **Layer 类型**：RFC §3.3 定义封闭 union `'app' | 'server' | 'cli' | 'daemon' | 'agent'`，§17.8 修正为 `string`，实现遵循修正
+
+### 全栈迁移
+
+App ~70 个文件 + Server storage/main.ts + CLI 调试日志全部从 `console.log` 迁移至 `Logger`。用户终端输出（chalk/doctor/install/auth CLI 命令）保留 `console`。验证：`grep -r "sources/log\|ui/logger\|DANGEROUSLY_LOG" . --include="*.ts"` 返回 0 结果。

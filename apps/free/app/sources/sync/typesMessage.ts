@@ -25,7 +25,6 @@ export type ToolCall = {
 export type UserTextMessage = {
   kind: 'user-text';
   id: string;
-  localId: string | null;
   createdAt: number;
   text: string;
   displayText?: string; // Optional text to display in UI instead of actual text
@@ -44,7 +43,7 @@ export type ModeSwitchMessage = {
 export type AgentTextMessage = {
   kind: 'agent-text';
   id: string;
-  localId: string | null;
+  sourceId?: string | null;
   createdAt: number;
   text: string;
   isThinking?: boolean;
@@ -55,7 +54,6 @@ export type AgentTextMessage = {
 export type ToolCallMessage = {
   kind: 'tool-call';
   id: string;
-  localId: string | null;
   createdAt: number;
   tool: ToolCall;
   children: Message[];

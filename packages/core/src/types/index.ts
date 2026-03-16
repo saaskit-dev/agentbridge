@@ -31,6 +31,7 @@ export type {
   AgentTransport,
   McpServerConfig,
   AgentBackendConfig,
+  AcpPermissionHandler,
   AcpAgentConfig,
 } from './agent';
 

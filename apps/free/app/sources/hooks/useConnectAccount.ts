@@ -8,6 +8,7 @@ import { encryptBox } from '@/encryption/libsodium';
 import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/hooks/useConnectAccount');
 
@@ -43,7 +44,7 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
         ]);
         return true;
       } catch (e) {
-        logger.error('Failed to link device', undefined, { error: String(e) });
+        logger.error('Failed to link device', undefined, { error: safeStringify(e) });
         Modal.alert(t('common.error'), t('modals.failedToLinkDevice'), [{ text: t('common.ok') }]);
         options?.onError?.(e);
         return false;

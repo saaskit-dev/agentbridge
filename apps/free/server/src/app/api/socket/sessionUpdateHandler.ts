@@ -11,6 +11,7 @@ import { activityCache } from '@/app/presence/sessionCache';
 import { db } from '@/storage/db';
 import { allocateSessionSeq, allocateUserSeq } from '@/storage/seq';
 import { AsyncLock } from '@/utils/lock';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import type { WireTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
@@ -42,11 +43,16 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         where: { id: sid, accountId: userId },
       });
       if (!session) {
+        log.debug('[update-metadata] session not found', { userId, sid });
+        if (callback) {
+          callback({ result: 'error' });
+        }
         return;
       }
 
       // Check version
       if (session.metadataVersion !== expectedVersion) {
+        log.debug('[update-metadata] version mismatch', { userId, sid, expected: expectedVersion, actual: session.metadataVersion });
         callback({
           result: 'version-mismatch',
           version: session.metadataVersion,
@@ -55,21 +61,30 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         return null;
       }
 
-      // Update metadata
+      // Update metadata (accountId in WHERE prevents cross-account writes)
       const { count } = await db.session.updateMany({
-        where: { id: sid, metadataVersion: expectedVersion },
+        where: { id: sid, accountId: userId, metadataVersion: expectedVersion },
         data: {
           metadata: metadata,
           metadataVersion: expectedVersion + 1,
         },
       });
       if (count === 0) {
+        // Re-fetch latest to return accurate version after concurrent update
+        const current = await db.session.findFirst({
+          where: { id: sid, accountId: userId },
+          select: { metadataVersion: true, metadata: true },
+        });
+        if (!current) {
+          if (callback) callback({ result: 'error' });
+          return;
+        }
         callback({
           result: 'version-mismatch',
-          version: session.metadataVersion,
-          metadata: session.metadata,
+          version: current.metadataVersion,
+          metadata: current.metadata,
         });
-        return null;
+        return;
       }
 
       // Generate session metadata update
@@ -94,8 +109,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
       // Send success response with new version via callback
       callback({ result: 'success', version: expectedVersion + 1, metadata: metadata });
+      log.debug('[update-metadata] success', { userId, sid, version: expectedVersion + 1 });
     } catch (error) {
-      log.error(`Error in update-metadata: ${error}`);
+      log.error('Error in update-metadata', undefined, { userId, sid: data?.sid, error: safeStringify(error) });
       if (callback) {
         callback({ result: 'error' });
       }
@@ -127,12 +143,14 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         },
       });
       if (!session) {
+        log.debug('[update-state] session not found', { userId, sid });
         callback({ result: 'error' });
         return null;
       }
 
       // Check version
       if (session.agentStateVersion !== expectedVersion) {
+        log.debug('[update-state] version mismatch', { userId, sid, expected: expectedVersion, actual: session.agentStateVersion });
         callback({
           result: 'version-mismatch',
           version: session.agentStateVersion,
@@ -141,21 +159,30 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         return null;
       }
 
-      // Update agent state
+      // Update agent state (accountId in WHERE prevents cross-account writes)
       const { count } = await db.session.updateMany({
-        where: { id: sid, agentStateVersion: expectedVersion },
+        where: { id: sid, accountId: userId, agentStateVersion: expectedVersion },
         data: {
           agentState: agentState,
           agentStateVersion: expectedVersion + 1,
         },
       });
       if (count === 0) {
+        // Re-fetch latest to return accurate version after concurrent update
+        const current = await db.session.findFirst({
+          where: { id: sid, accountId: userId },
+          select: { agentStateVersion: true, agentState: true },
+        });
+        if (!current) {
+          if (callback) callback({ result: 'error' });
+          return;
+        }
         callback({
           result: 'version-mismatch',
-          version: session.agentStateVersion,
-          agentState: session.agentState,
+          version: current.agentStateVersion,
+          agentState: current.agentState,
         });
-        return null;
+        return;
       }
 
       // Generate session agent state update
@@ -180,11 +207,111 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
       // Send success response with new version via callback
       callback({ result: 'success', version: expectedVersion + 1, agentState: agentState });
+      log.debug('[update-state] success', { userId, sid, version: expectedVersion + 1 });
     } catch (error) {
-      log.error(`Error in update-state: ${error}`);
+      log.error('Error in update-state', undefined, { userId, sid: data?.sid, error: safeStringify(error) });
       if (callback) {
         callback({ result: 'error' });
       }
+    }
+  });
+
+  socket.on('update-capabilities', async (data: any, callback: (response: any) => void) => {
+    try {
+      const { sid, capabilities, expectedVersion } = data;
+      const trace = extractWireTrace(data);
+
+      if (
+        !sid ||
+        (typeof capabilities !== 'string' && capabilities !== null) ||
+        typeof expectedVersion !== 'number'
+      ) {
+        callback({ result: 'error' });
+        return;
+      }
+
+      const session = await db.session.findUnique({
+        where: { id: sid, accountId: userId },
+      });
+      if (!session) {
+        log.debug('[update-capabilities] session not found', { userId, sid });
+        callback({ result: 'error' });
+        return;
+      }
+
+      if (session.capabilitiesVersion !== expectedVersion) {
+        log.debug('[update-capabilities] version mismatch', {
+          userId,
+          sid,
+          expected: expectedVersion,
+          actual: session.capabilitiesVersion,
+        });
+        callback({
+          result: 'version-mismatch',
+          version: session.capabilitiesVersion,
+          capabilities: session.capabilities,
+        });
+        return;
+      }
+
+      const { count } = await db.session.updateMany({
+        where: { id: sid, accountId: userId, capabilitiesVersion: expectedVersion },
+        data: {
+          capabilities,
+          capabilitiesVersion: expectedVersion + 1,
+        },
+      });
+      if (count === 0) {
+        // Re-fetch latest to return accurate version after concurrent update
+        const current = await db.session.findFirst({
+          where: { id: sid, accountId: userId },
+          select: { capabilitiesVersion: true, capabilities: true },
+        });
+        if (!current) {
+          callback({ result: 'error' });
+          return;
+        }
+        callback({
+          result: 'version-mismatch',
+          version: current.capabilitiesVersion,
+          capabilities: current.capabilities,
+        });
+        return;
+      }
+
+      const updSeq = await allocateUserSeq(userId);
+      const capabilitiesUpdate = {
+        value: capabilities,
+        version: expectedVersion + 1,
+      };
+      const updatePayload = buildUpdateSessionUpdate(
+        sid,
+        updSeq,
+        randomKeyNaked(12),
+        undefined,
+        undefined,
+        trace,
+        capabilitiesUpdate
+      );
+      eventRouter.emitUpdate({
+        userId,
+        payload: updatePayload,
+        recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
+      });
+
+      callback({
+        result: 'success',
+        version: expectedVersion + 1,
+        capabilities,
+      });
+      log.debug('[update-capabilities] success', { userId, sid, version: expectedVersion + 1 });
+    } catch (error) {
+      log.error('Error in update-capabilities', undefined, {
+        userId,
+        sid: data?.sid,
+        error: safeStringify(error),
+      });
+      callback({ result: 'error' });
     }
   });
   socket.on('session-alive', async (data: { sid: string; time: number; thinking?: boolean }) => {
@@ -197,7 +324,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       if (!data || typeof data.time !== 'number' || !data.sid) {
         return;
       }
-      log.debug('[session-alive] received', { sid: data.sid, thinking: data.thinking ?? false });
+      log.debug('[session-alive] received', { userId, sid: data.sid, thinking: data.thinking ?? false });
 
       let t = data.time;
       if (t > Date.now()) {
@@ -225,9 +352,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         payload: sessionActivity,
         recipientFilter: { type: 'user-scoped-only' },
       });
-      log.debug('[session-alive] activity ephemeral emitted', { sid, thinking: thinking || false });
+      log.debug('[session-alive] activity ephemeral emitted', { userId, sid, thinking: thinking || false });
     } catch (error) {
-      log.error(`Error in session-alive: ${error}`);
+      log.error('Error in session-alive', undefined, { userId, sid: data?.sid, error: safeStringify(error) });
     }
   });
 
@@ -236,20 +363,29 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
     await receiveMessageLock.inLock(async () => {
       try {
         websocketEventsCounter.inc({ event_type: 'message' });
-        const { sid, message, localId } = data;
+        const { sid, message, id } = data;
         const trace = extractWireTrace(data);
 
-        log.info(`Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`
-        );
+        // Validate message size (1MB limit prevents OOM from malicious payloads)
+        if (typeof message !== 'string' || message.length > 1_000_000) {
+          log.warn('[message] invalid or oversized message rejected', { userId, sid, size: typeof message === 'string' ? message.length : 0 });
+          return;
+        }
+        if (typeof id !== 'string' || !id) {
+          log.warn('[message] missing message id', { userId, sid });
+          return;
+        }
+
+        log.info('Received message', { userId, sid, messageLength: message.length, connectionType: connection.connectionType });
 
         // Resolve session
         const session = await db.session.findUnique({
           where: { id: sid, accountId: userId },
         });
         if (!session) {
+          log.debug('[message] session not found', { userId, sid });
           return;
         }
-        const useLocalId = typeof localId === 'string' ? localId : null;
 
         // Create encrypted message
         const msgContent: PrismaJson.SessionMessageContent = {
@@ -261,23 +397,22 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         const updSeq = await allocateUserSeq(userId);
         const msgSeq = await allocateSessionSeq(sid);
 
-        // Check if message already exists
-        if (useLocalId) {
-          const existing = await db.sessionMessage.findFirst({
-            where: { sessionId: sid, localId: useLocalId },
-          });
-          if (existing) {
-            return { msg: existing, update: null };
-          }
+        // Check if message already exists (dedup by client-provided id)
+        const existing = await db.sessionMessage.findUnique({
+          where: { id },
+        });
+        if (existing) {
+          log.debug('[message] duplicate skipped', { userId, sid, id });
+          return;
         }
 
         // Create message
         const msg = await db.sessionMessage.create({
           data: {
+            id,
             sessionId: sid,
             seq: msgSeq,
             content: msgContent,
-            localId: useLocalId,
             traceId: trace?.tid ?? null,
           },
         });
@@ -291,7 +426,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
           skipSenderConnection: connection,
         });
       } catch (error) {
-        log.error(`Error in message handler: ${error}`);
+        log.error('Error in message handler', undefined, { userId, sid: data?.sid, error: safeStringify(error) });
       }
     });
   });
@@ -299,7 +434,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
   socket.on('session-end', async (data: { sid: string; time: number }) => {
     try {
       const { sid, time } = data;
-      log.debug('[session-end] received', { sid });
+      log.info('[session-end] received', { userId, sid });
       let t = time;
       if (typeof t !== 'number') {
         return;
@@ -317,12 +452,13 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         where: { id: sid, accountId: userId },
       });
       if (!session) {
+        log.debug('[session-end] session not found', { userId, sid });
         return;
       }
 
-      // Update last active at
-      await db.session.update({
-        where: { id: sid },
+      // Update last active at (use updateMany with accountId to prevent cross-account writes)
+      await db.session.updateMany({
+        where: { id: sid, accountId: userId },
         data: { lastActiveAt: new Date(t), active: false },
       });
 
@@ -333,9 +469,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         payload: sessionActivity,
         recipientFilter: { type: 'user-scoped-only' },
       });
-      log.debug('[session-end] activity ephemeral emitted (active=false)', { sid });
+      log.info('[session-end] session archived (active=false)', { userId, sid });
     } catch (error) {
-      log.error(`Error in session-end: ${error}`);
+      log.error('Error in session-end', undefined, { userId, sid: data?.sid, error: safeStringify(error) });
     }
   });
 }

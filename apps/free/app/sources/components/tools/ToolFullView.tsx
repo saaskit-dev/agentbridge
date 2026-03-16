@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { Text, View, ScrollView, useWindowDimensions } from 'react-native';
 import { CodeView } from '../CodeView';
+import { resultToString } from './ToolError';
 import { toolFullViewStyles } from './toolFullViewStyles';
 import { getToolFullViewComponent } from './views/_all';
 import { useLocalSetting } from '@/sync/storage';
@@ -79,7 +80,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                   <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.error')}</Text>
                 </View>
                 <View style={toolFullViewStyles.errorContainer}>
-                  <Text style={toolFullViewStyles.errorText}>{String(tool.result)}</Text>
+                  <Text style={toolFullViewStyles.errorText}>{resultToString(tool.result)}</Text>
                 </View>
               </View>
             )}

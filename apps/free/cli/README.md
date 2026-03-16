@@ -1,111 +1,58 @@
-# Free CLI
+# @saaskit-dev/free
 
-多智能体命令行工具 - 随时随地指挥 AI Agent，全流程增强，更智能的自动化体验
+[![npm version](https://img.shields.io/npm/v/@saaskit-dev/free.svg)](https://www.npmjs.com/package/@saaskit-dev/free)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Multi-Agent CLI - Command AI agents anytime, anywhere with enhanced workflows.
+Multi-Agent CLI - Command AI agents (Claude, Gemini, Codex, OpenCode) anytime, anywhere with enhanced workflows and remote control via mobile app.
 
-## 安装
-
-**一键安装（推荐）：**
+## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash
+npm install -g @saaskit-dev/free
 ```
 
-**或通过 npm：**
+## Quick Start
 
 ```bash
-npm install -g @free/cli
-```
-
-## Run From Source
-
-From a repo checkout:
-
-```bash
-# repository root
-yarn cli --help
-
-# package directory
-yarn cli --help
-```
-
-## 使用
-
-### Claude（默认）
-
-```bash
+# Start Claude Code session (default)
 free
-```
 
-这会：
-
-1. 启动 Claude Code 会话
-2. 显示二维码，可用移动端扫码连接
-3. 支持移动端实时监控和干预
-
-### Gemini
-
-```bash
+# Start with specific agent
 free gemini
+free codex
+free opencode
+
+# Authenticate
+free auth
+
+# Check system health
+free doctor
 ```
 
-启动 Gemini CLI 会话，支持远程控制。
-
-**First time setup:**
-
-```bash
-# Authenticate with Google
-free connect gemini
-```
+On launch, a QR code is displayed for connecting the [Free mobile app](https://github.com/saaskit-dev/agentbridge) for real-time monitoring and control.
 
 ## Commands
 
-### Main Commands
+### Agent Sessions
 
-- `free` – Start Claude Code session (default)
-- `free gemini` – Start Gemini CLI session
-- `free codex` – Start Codex mode
+| Command | Description |
+|---|---|
+| `free` | Start Claude Code session (default) |
+| `free gemini` | Start Gemini CLI session |
+| `free codex` | Start Codex session |
+| `free opencode` | Start OpenCode session |
 
-### Utility Commands
+### Management
 
-- `free auth` – Manage authentication
-- `free connect` – Store AI vendor API keys in Free cloud
-- `free sandbox` – Configure sandbox runtime restrictions
-- `free notify` – Send a push notification to your devices
-- `free daemon` – Manage background service
-- `free doctor` – System diagnostics & troubleshooting
-
-### Connect Subcommands
-
-```bash
-free connect gemini     # Authenticate with Google for Gemini
-free connect claude     # Authenticate with Anthropic
-free connect codex      # Authenticate with OpenAI
-free connect status     # Show connection status for all vendors
-```
-
-### Gemini Subcommands
-
-```bash
-free gemini                      # Start Gemini session
-free gemini model set <model>    # Set default model
-free gemini model get            # Show current model
-free gemini project set <id>     # Set Google Cloud Project ID (for Workspace accounts)
-free gemini project get          # Show current Google Cloud Project ID
-```
-
-**Available models:** `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
-
-### Sandbox Subcommands
-
-```bash
-free sandbox configure  # Interactive sandbox setup wizard
-free sandbox status     # Show current sandbox configuration
-free sandbox disable    # Disable sandboxing
-```
-
-## Options
+| Command | Description |
+|---|---|
+| `free auth` | Manage authentication |
+| `free connect [vendor]` | Store AI vendor API keys (gemini, claude, codex) |
+| `free connect status` | Show connection status for all vendors |
+| `free daemon start\|stop\|status` | Manage background daemon |
+| `free doctor` | System diagnostics & troubleshooting |
+| `free sandbox configure\|status\|disable` | Configure sandbox runtime |
+| `free notify` | Send push notification to your devices |
 
 ### Claude Options
 
@@ -118,70 +65,45 @@ free sandbox disable    # Disable sandboxing
 
 - `-h, --help` - Show help
 - `-v, --version` - Show version
-- `--no-sandbox` - Disable sandbox for the current Claude/Codex run
+- `--no-sandbox` - Disable sandbox for the current run
 
 ## Environment Variables
 
-### Free Configuration
+| Variable | Description | Default |
+|---|---|---|
+| `FREE_SERVER_URL` | Custom server URL | `https://free-server.saaskit.app` |
+| `FREE_WEBAPP_URL` | Custom web app URL | `https://free-server.saaskit.app` |
+| `FREE_HOME_DIR` | Custom home directory for Free data | `~/.free` |
+| `FREE_DISABLE_CAFFEINATE` | Disable macOS sleep prevention | - |
+| `FREE_EXPERIMENTAL` | Enable experimental features | - |
+| `GEMINI_MODEL` | Override default Gemini model | - |
+| `GOOGLE_CLOUD_PROJECT` | Google Cloud Project ID (for Workspace accounts) | - |
 
-- `FREE_SERVER_URL` - Custom server URL (default: https://free-server.saaskit.app)
-- `FREE_WEBAPP_URL` - Custom web app URL (default: https://free-server.saaskit.app)
-- `FREE_HOME_DIR` - Custom home directory for Free data (default: ~/.free)
-- `FREE_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
-- `FREE_EXPERIMENTAL` - Enable experimental features (set to `true`, `1`, or `yes`)
+## Architecture
 
-### Gemini Configuration
+Free CLI wraps AI agent CLIs (Claude Code, Gemini CLI, Codex, OpenCode) with:
 
-- `GEMINI_MODEL` - Override default Gemini model
-- `GOOGLE_CLOUD_PROJECT` - Google Cloud Project ID (required for Workspace accounts)
+- **Daemon process** — Persistent background service that owns agent processes; CLI crash doesn't interrupt agents
+- **End-to-end encryption** — All communications encrypted with TweetNaCl before leaving the device
+- **Real-time sync** — WebSocket-based session streaming to mobile app and web client
+- **MCP bridge** — Model Context Protocol permission server for remote approval/denial
+- **Multi-agent ACP** — Unified Agent Client Protocol backend for all supported agents
 
-## Gemini Authentication
+## Bundled Tools
 
-### Personal Google Account
+The package includes platform-specific binaries (downloaded on `postinstall`):
 
-Personal Gmail accounts work out of the box:
+- **difftastic** — Structural diff tool
+- **ripgrep** — Fast code search
 
-```bash
-free connect gemini
-free gemini
-```
-
-### Google Workspace Account
-
-Google Workspace (organization) accounts require a Google Cloud Project:
-
-1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable the Gemini API
-3. Set the project ID:
-
-```bash
-free gemini project set your-project-id
-```
-
-Or use environment variable:
-
-```bash
-GOOGLE_CLOUD_PROJECT=your-project-id free gemini
-```
-
-**Guide:** https://goo.gle/gemini-cli-auth-docs#workspace-gca
-
-## Contributing
-
-Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+Supported platforms: macOS (arm64/x64), Linux (arm64/x64), Windows (x64/arm64).
 
 ## Requirements
 
 - Node.js >= 20.0.0
-
-### For Claude
-
-- Claude CLI installed & logged in (`claude` command available in PATH)
-
-### For Gemini
-
-- Gemini CLI installed (`npm install -g @google/gemini-cli`)
-- Google account authenticated via `free connect gemini`
+- For Claude: Claude CLI installed & logged in (`claude` in PATH)
+- For Gemini: Gemini CLI installed (`npm install -g @google/gemini-cli`) + `free connect gemini`
+- For Codex: Codex CLI installed
 
 ## License
 

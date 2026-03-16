@@ -37,10 +37,6 @@
  *                     └─► startHookServer receives it
  *                             │
  *                             └─► onSessionHook(sessionId, data)
- *                                     │
- *                                     ├─► Updates Session.sessionId
- *                                     ├─► Updates API metadata
- *                                     └─► Notifies SessionScanner
  * ```
  *
  * ### Triggered By
@@ -97,7 +93,6 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
 
   return new Promise((resolve, reject) => {
     const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-      // Only handle POST to /hook/session-start
       if (req.method === 'POST' && req.url === '/hook/session-start') {
         // Set timeout to prevent hanging if Claude doesn't close stdin
         const timeout = setTimeout(() => {

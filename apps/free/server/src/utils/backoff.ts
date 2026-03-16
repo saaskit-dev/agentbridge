@@ -1,5 +1,6 @@
 import { AbortedExeption } from './aborted';
 import { delay } from './delay';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const log = new Logger('utils/backoff');
@@ -37,7 +38,7 @@ export function createBackoff(opts?: {
         if (AbortedExeption.isAborted(e)) {
           throw e;
         }
-        log.warn(`Backoff retry after error: ${e instanceof Error ? e.message : String(e)}`);
+        log.warn(`Backoff retry after error: ${safeStringify(e)}`);
         const waitForRequest = exponentialRandomizedBackoffDelay(
           currentFailureCount,
           minDelay,

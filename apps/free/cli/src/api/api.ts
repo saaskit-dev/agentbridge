@@ -8,8 +8,8 @@ import {
   decodeBase64,
   encodeBase64,
   getRandomBytes,
-  encrypt,
-  decrypt,
+  encryptToWireString,
+  decryptFromWireString,
   libsodiumEncryptForPublicKey,
   libsodiumPublicKeyFromSecretKey,
 } from './encryption';
@@ -26,6 +26,7 @@ import type {
 import { configuration } from '@/configuration';
 import { Credentials } from '@/persistence';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { connectionState, isNetworkError } from '@/utils/serverConnectionErrors';
 
 const logger = new Logger('api/api');
@@ -113,9 +114,9 @@ export class ApiClient {
         `${configuration.serverUrl}/v1/sessions`,
         {
           tag: opts.tag,
-          metadata: encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.metadata)),
+          metadata: await encryptToWireString(encryptionKey, encryptionVariant, opts.metadata),
           agentState: opts.state
-            ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.state))
+            ? await encryptToWireString(encryptionKey, encryptionVariant, opts.state)
             : null,
           dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : null,
         },
@@ -133,12 +134,16 @@ export class ApiClient {
       const session: Session = {
         id: raw.id,
         seq: raw.seq,
-        metadata: decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.metadata)),
+        metadata: await decryptFromWireString(encryptionKey, encryptionVariant, raw.metadata),
         metadataVersion: raw.metadataVersion,
         agentState: raw.agentState
-          ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.agentState))
+          ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.agentState)
           : null,
         agentStateVersion: raw.agentStateVersion,
+        capabilities: raw.capabilities
+          ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.capabilities)
+          : null,
+        capabilitiesVersion: raw.capabilitiesVersion ?? 0,
         encryptionKey: encryptionKey,
         encryptionVariant: encryptionVariant,
       };
@@ -152,9 +157,9 @@ export class ApiClient {
           // Also re-decrypt metadata/agentState, since the initial decrypt above used the
           // wrong ephemeral key (which only works for sessions we created ourselves).
           session.encryptionKey = recovered;
-          session.metadata = decrypt(recovered, encryptionVariant, decodeBase64(raw.metadata));
+          session.metadata = await decryptFromWireString(recovered, encryptionVariant, raw.metadata);
           if (raw.agentState) {
-            session.agentState = decrypt(recovered, encryptionVariant, decodeBase64(raw.agentState));
+            session.agentState = await decryptFromWireString(recovered, encryptionVariant, raw.agentState);
           }
         }
       }
@@ -207,7 +212,7 @@ export class ApiClient {
       }
 
       throw new Error(
-        `Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to get or create session: ${safeStringify(error)}`
       );
     }
   }
@@ -259,9 +264,9 @@ export class ApiClient {
         `${configuration.serverUrl}/v1/machines`,
         {
           id: opts.machineId,
-          metadata: encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.metadata)),
+          metadata: await encryptToWireString(encryptionKey, encryptionVariant, opts.metadata),
           daemonState: opts.daemonState
-            ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.daemonState))
+            ? await encryptToWireString(encryptionKey, encryptionVariant, opts.daemonState)
             : undefined,
           dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : undefined,
         },
@@ -283,11 +288,11 @@ export class ApiClient {
         encryptionKey: encryptionKey,
         encryptionVariant: encryptionVariant,
         metadata: raw.metadata
-          ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.metadata))
+          ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.metadata)
           : null,
         metadataVersion: raw.metadataVersion || 0,
         daemonState: raw.daemonState
-          ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.daemonState))
+          ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.daemonState)
           : null,
         daemonStateVersion: raw.daemonStateVersion || 0,
       };
@@ -411,7 +416,7 @@ export class ApiClient {
     } catch (error) {
       logger.debug(`[API] [ERROR] Failed to register vendor token:`, error);
       throw new Error(
-        `Failed to register vendor token: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to register vendor token: ${safeStringify(error)}`
       );
     }
   }

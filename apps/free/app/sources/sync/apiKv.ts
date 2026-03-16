@@ -1,5 +1,6 @@
 import { getServerUrl } from './serverConfig';
 import { AuthCredentials } from '@/auth/tokenStorage';
+import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { backoff } from '@/utils/time';
 
 //
@@ -59,6 +60,25 @@ export interface KvMutateErrorResponse {
 
 export type KvMutateResponse = KvMutateSuccessResponse | KvMutateErrorResponse;
 
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+/**
+ * KV values are always base64-encoded on the wire.
+ *
+ * This is a transport-level contract with the server KV API, not an encryption
+ * boundary. In development we may store other sync payloads as plaintext JSON,
+ * but KV HTTP requests/responses still use base64 so arbitrary bytes can be
+ * transported safely.
+ */
+function encodeKvValue(value: string): string {
+  return encodeBase64(textEncoder.encode(value));
+}
+
+function decodeKvValue(value: string): string {
+  return textDecoder.decode(decodeBase64(value));
+}
+
 //
 // API Functions
 //
@@ -85,7 +105,10 @@ export async function kvGet(credentials: AuthCredentials, key: string): Promise<
     }
 
     const data = (await response.json()) as KvItem;
-    return data;
+    return {
+      ...data,
+      value: decodeKvValue(data.value),
+    };
   });
 }
 
@@ -122,7 +145,12 @@ export async function kvList(
     }
 
     const data = (await response.json()) as KvListResponse;
-    return data;
+    return {
+      items: data.items.map(item => ({
+        ...item,
+        value: decodeKvValue(item.value),
+      })),
+    };
   });
 }
 
@@ -158,7 +186,12 @@ export async function kvBulkGet(
     }
 
     const data = (await response.json()) as KvBulkGetResponse;
-    return data;
+    return {
+      values: data.values.map(item => ({
+        ...item,
+        value: decodeKvValue(item.value),
+      })),
+    };
   });
 }
 
@@ -188,12 +221,23 @@ export async function kvMutate(
         Authorization: `Bearer ${credentials.token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ mutations }),
+      body: JSON.stringify({
+        mutations: mutations.map(mutation => ({
+          ...mutation,
+          value: mutation.value === null ? null : encodeKvValue(mutation.value),
+        })),
+      }),
     });
 
     if (response.status === 409) {
       const data = (await response.json()) as KvMutateErrorResponse;
-      return data;
+      return {
+        ...data,
+        errors: data.errors.map(error => ({
+          ...error,
+          value: error.value === null ? null : decodeKvValue(error.value),
+        })),
+      };
     }
 
     if (!response.ok) {

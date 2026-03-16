@@ -5,6 +5,7 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/sync/appConfig');
 
 export interface AppConfig {
+  isDev?: boolean;
   revenueCatAppleKey?: string;
   revenueCatGoogleKey?: string;
   revenueCatStripeKey?: string;

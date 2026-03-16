@@ -148,7 +148,23 @@ if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     echo ""
 fi
 
-# ── Install daemon as background service ────────────────────────────────────
+# ── Restart daemon ──────────────────────────────────────────────────────────
+
+# Stop any running daemon so the LaunchAgent/systemd starts the new binary
+FREE_HOME="${FREE_HOME_DIR:-$HOME/.free}"
+DAEMON_STATE="$FREE_HOME/daemon.state.json"
+if [ -f "$DAEMON_STATE" ]; then
+    OLD_PID=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$DAEMON_STATE','utf-8')).pid)}catch{}" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        info "Stopping old daemon (pid $OLD_PID)..."
+        kill "$OLD_PID" 2>/dev/null || true
+        # Wait briefly for graceful shutdown
+        for i in $(seq 1 20); do
+            kill -0 "$OLD_PID" 2>/dev/null || break
+            sleep 0.25
+        done
+    fi
+fi
 
 info "Installing daemon as background service..."
 if "$BIN_DIR/free" daemon install 2>/dev/null; then

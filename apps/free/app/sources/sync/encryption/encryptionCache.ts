@@ -1,5 +1,6 @@
 import { AgentState, Metadata, MachineMetadata } from '../storageTypes';
 import { DecryptedMessage } from '../storageTypes';
+import { SessionCapabilities } from '../sessionCapabilities';
 
 interface CacheEntry<T> {
   data: T;
@@ -14,6 +15,7 @@ interface CacheEntry<T> {
 export class EncryptionCache {
   private agentStateCache = new Map<string, CacheEntry<AgentState>>();
   private metadataCache = new Map<string, CacheEntry<Metadata>>();
+  private capabilitiesCache = new Map<string, CacheEntry<SessionCapabilities>>();
   private messageCache = new Map<string, CacheEntry<DecryptedMessage>>();
   private machineMetadataCache = new Map<string, CacheEntry<MachineMetadata>>();
   private daemonStateCache = new Map<string, CacheEntry<any>>();
@@ -21,6 +23,7 @@ export class EncryptionCache {
   // Configuration
   private readonly maxAgentStates = 1000;
   private readonly maxMetadata = 1000;
+  private readonly maxCapabilities = 1000;
   private readonly maxMessages = 1000;
   private readonly maxMachineMetadata = 500;
   private readonly maxDaemonStates = 500;
@@ -77,6 +80,26 @@ export class EncryptionCache {
 
     // Evict if over limit
     this.evictOldest(this.metadataCache, this.maxMetadata);
+  }
+
+  getCachedCapabilities(sessionId: string, version: number): SessionCapabilities | null {
+    const key = `${sessionId}:${version}`;
+    const entry = this.capabilitiesCache.get(key);
+    if (entry) {
+      entry.accessTime = Date.now();
+      return entry.data;
+    }
+    return null;
+  }
+
+  setCachedCapabilities(sessionId: string, version: number, data: SessionCapabilities): void {
+    const key = `${sessionId}:${version}`;
+    this.capabilitiesCache.set(key, {
+      data,
+      accessTime: Date.now(),
+    });
+
+    this.evictOldest(this.capabilitiesCache, this.maxCapabilities);
   }
 
   /**
@@ -193,6 +216,12 @@ export class EncryptionCache {
       }
     }
 
+    for (const key of this.capabilitiesCache.keys()) {
+      if (key.startsWith(`${sessionId}:`)) {
+        this.capabilitiesCache.delete(key);
+      }
+    }
+
     // Note: We don't clear messages as they're immutable and session-agnostic
   }
 
@@ -202,6 +231,7 @@ export class EncryptionCache {
   clearAll(): void {
     this.agentStateCache.clear();
     this.metadataCache.clear();
+    this.capabilitiesCache.clear();
     this.messageCache.clear();
     this.machineMetadataCache.clear();
     this.daemonStateCache.clear();
@@ -214,12 +244,14 @@ export class EncryptionCache {
     return {
       agentStates: this.agentStateCache.size,
       metadata: this.metadataCache.size,
+      capabilities: this.capabilitiesCache.size,
       messages: this.messageCache.size,
       machineMetadata: this.machineMetadataCache.size,
       daemonStates: this.daemonStateCache.size,
       totalEntries:
         this.agentStateCache.size +
         this.metadataCache.size +
+        this.capabilitiesCache.size +
         this.messageCache.size +
         this.machineMetadataCache.size +
         this.daemonStateCache.size,

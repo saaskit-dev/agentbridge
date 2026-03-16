@@ -18,8 +18,9 @@ export { SocketIoClient, SocketIoServer, SocketIoSocket } from './websocket';
 export { NodeProcess, NodeProcessManager } from './process';
 
 // Agent
-export { AcpBackend, createAcpBackendFactory, ClaudeBackend } from './agent';
+export { AcpBackend, createAcpBackendFactory, createAcpBackend, ClaudeBackend } from './agent';
 export {
+  type CreateAcpBackendOptions,
   createGeminiBackend,
   createCodexBackend,
   createClaudeAcpBackend,

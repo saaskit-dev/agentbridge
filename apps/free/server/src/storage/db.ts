@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('server/storage/db');
 import { PGlite } from '@electric-sql/pglite';
@@ -74,7 +74,7 @@ export async function closePGlite(): Promise<void> {
       await pgliteInstance.close();
       logger.debug('[DB] PGLite closed successfully');
     } catch (error) {
-      logger.error('[DB] Error closing PGLite:', error);
+      logger.error('[DB] Error closing PGLite:', toError(error));
     }
     pgliteInstance = null;
     prismaClient = null;

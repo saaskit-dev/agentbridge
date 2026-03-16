@@ -6,6 +6,7 @@ import { Typography } from '@/constants/Typography';
 
 interface ChatFooterProps {
   controlledByUser?: boolean;
+  notice?: string | null;
 }
 
 export const ChatFooter = React.memo((props: ChatFooterProps) => {
@@ -33,11 +34,12 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
   };
   return (
     <View style={containerStyle}>
-      {props.controlledByUser && (
+      {(props.controlledByUser || props.notice) && (
         <View style={warningContainerStyle}>
           <Ionicons name="information-circle" size={16} color={theme.colors.box.warning.text} />
           <Text style={warningTextStyle}>
-            Permissions shown in terminal only. Reset or send a message to control from app.
+            {props.notice ||
+              'Permissions shown in terminal only. Reset or send a message to control from app.'}
           </Text>
         </View>
       )}

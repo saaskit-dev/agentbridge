@@ -4,6 +4,7 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as React from 'react';
 import { View, Text, FlatList, Pressable, ScrollView, Platform } from 'react-native';
+import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import type { LogEntry, Level } from '@saaskit-dev/agentbridge/telemetry';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -115,7 +116,7 @@ export default function LogsScreen() {
         Modal.alert('Exported', `Saved to: ${file.uri}`);
       }
     } catch (err: unknown) {
-      Modal.alert('Export Failed', err instanceof Error ? err.message : String(err));
+      Modal.alert('Export Failed', safeStringify(err));
     }
   };
 

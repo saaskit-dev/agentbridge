@@ -32,6 +32,8 @@ export function sessionRoutes(app: Fastify) {
           metadataVersion: true,
           agentState: true,
           agentStateVersion: true,
+          capabilities: true,
+          capabilitiesVersion: true,
           dataEncryptionKey: true,
           active: true,
           lastActiveAt: true,
@@ -48,6 +50,8 @@ export function sessionRoutes(app: Fastify) {
           // }
         },
       });
+
+      log.debug('[sessions] list', { userId, count: sessions.length });
 
       return reply.send({
         sessions: sessions.map(v => {
@@ -66,6 +70,8 @@ export function sessionRoutes(app: Fastify) {
             metadataVersion: v.metadataVersion,
             agentState: v.agentState,
             agentStateVersion: v.agentStateVersion,
+            capabilities: v.capabilities,
+            capabilitiesVersion: v.capabilitiesVersion,
             dataEncryptionKey: v.dataEncryptionKey, // Already base64 string
             lastMessage: null,
           };
@@ -108,11 +114,15 @@ export function sessionRoutes(app: Fastify) {
           metadataVersion: true,
           agentState: true,
           agentStateVersion: true,
+          capabilities: true,
+          capabilitiesVersion: true,
           dataEncryptionKey: true,
           active: true,
           lastActiveAt: true,
         },
       });
+
+      log.debug('[sessions] listActive', { userId, count: sessions.length });
 
       return reply.send({
         sessions: sessions.map(v => ({
@@ -126,6 +136,8 @@ export function sessionRoutes(app: Fastify) {
           metadataVersion: v.metadataVersion,
           agentState: v.agentState,
           agentStateVersion: v.agentStateVersion,
+          capabilities: v.capabilities,
+          capabilitiesVersion: v.capabilitiesVersion,
           dataEncryptionKey: v.dataEncryptionKey, // Already base64 string
         })),
       });
@@ -194,6 +206,8 @@ export function sessionRoutes(app: Fastify) {
           metadataVersion: true,
           agentState: true,
           agentStateVersion: true,
+          capabilities: true,
+          capabilitiesVersion: true,
           dataEncryptionKey: true,
           active: true,
           lastActiveAt: true,
@@ -203,6 +217,8 @@ export function sessionRoutes(app: Fastify) {
       // Check if there are more results
       const hasNext = sessions.length > limit;
       const resultSessions = hasNext ? sessions.slice(0, limit) : sessions;
+
+      log.debug('[sessions] listPaginated', { userId, count: resultSessions.length, hasNext });
 
       // Generate next cursor - simple ID-based cursor
       let nextCursor: string | null = null;
@@ -223,6 +239,8 @@ export function sessionRoutes(app: Fastify) {
           metadataVersion: v.metadataVersion,
           agentState: v.agentState,
           agentStateVersion: v.agentStateVersion,
+          capabilities: v.capabilities,
+          capabilitiesVersion: v.capabilitiesVersion,
           dataEncryptionKey: v.dataEncryptionKey, // Already base64 string
         })),
         nextCursor,
@@ -248,6 +266,7 @@ export function sessionRoutes(app: Fastify) {
     async (request, reply) => {
       const userId = request.userId;
       const { tag, metadata, dataEncryptionKey } = request.body;
+      const traceId = request.headers['x-trace-id'] as string | undefined;
 
       const session = await db.session.findFirst({
         where: {
@@ -256,7 +275,7 @@ export function sessionRoutes(app: Fastify) {
         },
       });
       if (session) {
-        log.info(`Found existing session: ${session.id} for tag ${tag}`, { sessionId: session.id, userId, tag });
+        log.info(`Found existing session: ${session.id} for tag ${tag}`, { sessionId: session.id, userId, tag, traceId });
         return reply.send({
           session: {
             id: session.id,
@@ -265,6 +284,8 @@ export function sessionRoutes(app: Fastify) {
             metadataVersion: session.metadataVersion,
             agentState: session.agentState,
             agentStateVersion: session.agentStateVersion,
+            capabilities: session.capabilities,
+            capabilitiesVersion: session.capabilitiesVersion,
             dataEncryptionKey: session.dataEncryptionKey, // Already base64 string
             active: session.active,
             activeAt: session.lastActiveAt.getTime(),
@@ -278,7 +299,7 @@ export function sessionRoutes(app: Fastify) {
         const updSeq = await allocateUserSeq(userId);
 
         // Create session
-        log.info(`Creating new session for user ${userId} with tag ${tag}`, { userId, tag });
+        log.info(`Creating new session for user ${userId} with tag ${tag}`, { userId, tag, traceId });
         const session = await db.session.create({
           data: {
             accountId: userId,
@@ -287,11 +308,11 @@ export function sessionRoutes(app: Fastify) {
             dataEncryptionKey: dataEncryptionKey || undefined, // Now stored as base64 string
           },
         });
-        log.info(`Session created: ${session.id}`, { sessionId: session.id, userId });
+        log.info(`Session created: ${session.id}`, { sessionId: session.id, userId, traceId });
 
         // Emit new session update
         const updatePayload = buildNewSessionUpdate(session, updSeq, randomKeyNaked(12));
-        log.info('Emitting new-session update to user-scoped connections', { userId, sessionId: session.id });
+        log.info('Emitting new-session update to user-scoped connections', { userId, sessionId: session.id, traceId });
         eventRouter.emitUpdate({
           userId,
           payload: updatePayload,
@@ -306,6 +327,8 @@ export function sessionRoutes(app: Fastify) {
             metadataVersion: session.metadataVersion,
             agentState: session.agentState,
             agentStateVersion: session.agentStateVersion,
+            capabilities: session.capabilities,
+            capabilitiesVersion: session.capabilitiesVersion,
             dataEncryptionKey: session.dataEncryptionKey, // Already base64 string
             active: session.active,
             activeAt: session.lastActiveAt.getTime(),
@@ -341,6 +364,7 @@ export function sessionRoutes(app: Fastify) {
       });
 
       if (!session) {
+        log.debug('[sessions] messages: session not found', { userId, sessionId });
         return reply.code(404).send({ error: 'Session not found' });
       }
 
@@ -357,6 +381,8 @@ export function sessionRoutes(app: Fastify) {
           updatedAt: true,
         },
       });
+
+      log.debug('[sessions] messages fetched', { userId, sessionId, count: messages.length });
 
       return reply.send({
         messages: messages.map(v => ({
@@ -386,9 +412,12 @@ export function sessionRoutes(app: Fastify) {
       const userId = request.userId;
       const { sessionId } = request.params;
 
+      log.debug('[sessions] delete requested', { userId, sessionId });
+
       const deleted = await sessionDelete({ uid: userId }, sessionId);
 
       if (!deleted) {
+        log.debug('[sessions] delete: not found', { userId, sessionId });
         return reply.code(404).send({ error: 'Session not found or not owned by user' });
       }
 

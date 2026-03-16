@@ -253,10 +253,33 @@ async function unpackTools() {
 // Export for use as module
 module.exports = { unpackTools, getPlatformDir, getToolsDir };
 
+/**
+ * Fix node-pty spawn-helper executable permission.
+ * pnpm strips +x from prebuilt binaries on install, causing posix_spawnp to fail.
+ */
+function fixNodePtyPermissions() {
+    if (os.platform() === 'win32') return;
+    const arch = os.arch();
+    const platform = os.platform();
+    const helperPath = path.resolve(
+        __dirname, '..', '..', '..', '..', // apps/free/cli/scripts → repo root
+        'node_modules', '.pnpm', 'node-pty@1.1.0', 'node_modules', 'node-pty',
+        'prebuilds', `${platform}-${arch}`, 'spawn-helper'
+    );
+    if (fs.existsSync(helperPath)) {
+        try {
+            fs.chmodSync(helperPath, 0o755);
+        } catch {
+            // Ignore — may not have permission or path may change
+        }
+    }
+}
+
 // Run if executed directly
 if (require.main === module) {
     unpackTools()
         .then(result => {
+            fixNodePtyPermissions();
             process.exit(0);
         })
         .catch(error => {

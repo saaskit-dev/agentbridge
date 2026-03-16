@@ -16,6 +16,52 @@ import {
   DefaultTransport,
 } from '../transport/default';
 
+const CODEX_ACP_VERSION = '0.9.5';
+
+function getCodexAcpPlatformPackage(): string | null {
+  const platform = process.platform;
+  const arch = process.arch;
+
+  if (platform === 'darwin' && arch === 'arm64') {
+    return '@zed-industries/codex-acp-darwin-arm64';
+  }
+  if (platform === 'darwin' && arch === 'x64') {
+    return '@zed-industries/codex-acp-darwin-x64';
+  }
+  if (platform === 'linux' && arch === 'arm64') {
+    return '@zed-industries/codex-acp-linux-arm64';
+  }
+  if (platform === 'linux' && arch === 'x64') {
+    return '@zed-industries/codex-acp-linux-x64';
+  }
+  if (platform === 'win32' && arch === 'arm64') {
+    return '@zed-industries/codex-acp-win32-arm64';
+  }
+  if (platform === 'win32' && arch === 'x64') {
+    return '@zed-industries/codex-acp-win32-x64';
+  }
+
+  return null;
+}
+
+function getCodexAcpCommandArgs(): string[] {
+  const mainPackage = `@zed-industries/codex-acp@${CODEX_ACP_VERSION}`;
+  const platformPackage = getCodexAcpPlatformPackage();
+
+  if (!platformPackage) {
+    return ['-y', mainPackage, 'codex-acp'];
+  }
+
+  return [
+    '-y',
+    '-p',
+    mainPackage,
+    '-p',
+    `${platformPackage}@${CODEX_ACP_VERSION}`,
+    'codex-acp',
+  ];
+}
+
 // ============================================================================
 // Generic ACP Backend Factory
 // ============================================================================
@@ -169,7 +215,7 @@ export interface CodexBackendOptions {
 /**
  * Create a Codex backend using ACP.
  *
- * The Codex CLI must be installed and available in PATH.
+ * Uses the official Zed ACP adapter for Codex.
  */
 export function createCodexBackend(options: CodexBackendOptions): IAgentBackend {
   const apiKey = options.apiKey || process.env.OPENAI_API_KEY;
@@ -178,8 +224,10 @@ export function createCodexBackend(options: CodexBackendOptions): IAgentBackend 
     cwd: options.cwd,
     agentName: 'codex-acp',
     transport: 'acp',
-    command: 'codex',
-    args: ['--experimental-acp'],
+    command: 'npx',
+    // Work around upstream Zed release/install issues by explicitly installing
+    // both the launcher package and the current platform binary package.
+    args: getCodexAcpCommandArgs(),
     env: {
       ...options.env,
       ...(apiKey ? { OPENAI_API_KEY: apiKey } : {}),
@@ -213,15 +261,15 @@ export interface ClaudeAcpBackendOptions {
 /**
  * Create a Claude backend using ACP.
  *
- * The Claude CLI must be installed and available in PATH.
+ * Uses the official Zed ACP adapter for Claude Agent SDK.
  */
 export function createClaudeAcpBackend(options: ClaudeAcpBackendOptions): IAgentBackend {
   const config: AcpAgentConfig = {
     cwd: options.cwd,
     agentName: 'claude-acp',
     transport: 'acp',
-    command: 'claude',
-    args: ['--experimental-acp'],
+    command: 'npx',
+    args: ['-y', '@zed-industries/claude-agent-acp'],
     env: options.env,
     mcpServers: options.mcpServers,
     permissionHandler: options.permissionHandler,

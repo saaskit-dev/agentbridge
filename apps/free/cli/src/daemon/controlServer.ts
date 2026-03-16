@@ -3,87 +3,81 @@
  * Provides endpoints for listing sessions, stopping sessions, and daemon shutdown
  */
 
-import fastify, { FastifyInstance } from 'fastify';
+import fastify from 'fastify';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { TrackedSession } from './types';
-import { Metadata } from '@/api/types';
-import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import type { SessionSummary } from '@/daemon/sessions/types';
+import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('daemon/controlServer');
+const AgentTypeSchema = z.enum([
+  'claude',
+  'claude-acp',
+  'codex',
+  'codex-acp',
+  'gemini',
+  'opencode',
+]);
 
 export function startDaemonControlServer({
-  getChildren,
+  getSessions,
   stopSession,
   spawnSession,
   requestShutdown,
-  onFreeSessionWebhook,
+  controlToken,
 }: {
-  getChildren: () => TrackedSession[];
+  getSessions: () => SessionSummary[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
-  onFreeSessionWebhook: (sessionId: string, metadata: Metadata) => void;
+  controlToken: string;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve, reject) => {
     const app = fastify({
-      logger: false, // We use our own logger
-      connectionTimeout: 10000, // 10 seconds connection timeout
-      keepAliveTimeout: 5000, // 5 seconds keep-alive timeout
-      bodyLimit: 1048576, // 1MB body limit
-      forceCloseConnections: true, // Force close connections on shutdown
+      logger: false,
+      connectionTimeout: 10000,
+      keepAliveTimeout: 5000,
+      bodyLimit: 1048576,
+      forceCloseConnections: true,
     });
 
-    // Global error handler
-    app.setErrorHandler((error, request, reply) => {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    app.setErrorHandler((error, _request, reply) => {
+      const errorMessage = safeStringify(error);
       logger.debug(`[CONTROL SERVER] Error handling request: ${errorMessage}`);
       reply.code(500).send({ error: 'Internal server error' });
     });
 
-    // Set up Zod type provider
+    // Authenticate all requests with the control token
+    app.addHook('onRequest', (request, reply, done) => {
+      const authHeader = request.headers.authorization;
+      if (authHeader !== `Bearer ${controlToken}`) {
+        logger.debug('[CONTROL SERVER] Unauthorized request rejected');
+        reply.code(401).send({ error: 'Unauthorized' });
+        return;
+      }
+      done();
+    });
+
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
 
-    // Session reports itself after creation
-    typed.post(
-      '/session-started',
-      {
-        schema: {
-          body: z.object({
-            sessionId: z.string(),
-            metadata: z.any(), // Metadata type from API
-          }),
-          response: {
-            200: z.object({
-              status: z.literal('ok'),
-            }),
-          },
-        },
-      },
-      async request => {
-        const { sessionId, metadata } = request.body;
-
-        logger.debug(`[CONTROL SERVER] Session started: ${sessionId}`);
-        onFreeSessionWebhook(sessionId, metadata);
-
-        return { status: 'ok' as const };
-      }
-    );
-
-    // List all tracked sessions
+    // List all active sessions
     typed.post(
       '/list',
       {
         schema: {
           response: {
             200: z.object({
-              children: z.array(
+              sessions: z.array(
                 z.object({
+                  sessionId: z.string(),
+                  agentType: z.string(),
+                  cwd: z.string(),
+                  state: z.string(),
+                  startedAt: z.string(),
                   startedBy: z.string(),
-                  freeSessionId: z.string(),
-                  pid: z.number(),
                 })
               ),
             }),
@@ -91,17 +85,9 @@ export function startDaemonControlServer({
         },
       },
       async () => {
-        const children = getChildren();
-        logger.debug(`[CONTROL SERVER] Listing ${children.length} sessions`);
-        return {
-          children: children
-            .filter(child => child.freeSessionId !== undefined)
-            .map(child => ({
-              startedBy: child.startedBy,
-              freeSessionId: child.freeSessionId!,
-              pid: child.pid,
-            })),
-        };
+        const sessions = getSessions();
+        logger.debug(`[CONTROL SERVER] Listing ${sessions.length} sessions`);
+        return { sessions };
       }
     );
 
@@ -122,7 +108,6 @@ export function startDaemonControlServer({
       },
       async request => {
         const { sessionId } = request.body;
-
         logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId}`);
         const success = stopSession(sessionId);
         return { success };
@@ -138,6 +123,7 @@ export function startDaemonControlServer({
             directory: z.string(),
             sessionId: z.string().optional(),
             sessionTag: z.string().optional(),
+            agent: AgentTypeSchema.optional(),
           }),
           response: {
             200: z.object({
@@ -159,31 +145,22 @@ export function startDaemonControlServer({
         },
       },
       async (request, reply) => {
-        const { directory, sessionId, sessionTag } = request.body;
-
+        const { directory, sessionId, sessionTag, agent } = request.body;
         logger.debug(
-          `[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}`
+          `[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}`
         );
-        const result = await spawnSession({ directory, sessionId, sessionTag });
+        const result = await spawnSession({ directory, sessionId, sessionTag, agent });
 
         switch (result.type) {
           case 'success':
-            // Check if sessionId exists, if not return error
             if (!result.sessionId) {
               reply.code(500);
-              return {
-                success: false,
-                error: 'Failed to spawn session: no session ID returned',
-              };
+              return { success: false, error: 'Failed to spawn session: no session ID returned' };
             }
-            return {
-              success: true,
-              sessionId: result.sessionId,
-              approvedNewDirectoryCreation: true,
-            };
+            return { success: true, sessionId: result.sessionId, approvedNewDirectoryCreation: true };
 
           case 'requestToApproveDirectoryCreation':
-            reply.code(409); // Conflict - user input needed
+            reply.code(409);
             return {
               success: false,
               requiresUserApproval: true,
@@ -193,10 +170,7 @@ export function startDaemonControlServer({
 
           case 'error':
             reply.code(500);
-            return {
-              success: false,
-              error: result.errorMessage,
-            };
+            return { success: false, error: result.errorMessage };
         }
       }
     );
@@ -207,21 +181,16 @@ export function startDaemonControlServer({
       {
         schema: {
           response: {
-            200: z.object({
-              status: z.string(),
-            }),
+            200: z.object({ status: z.string() }),
           },
         },
       },
       async () => {
         logger.debug('[CONTROL SERVER] Stop daemon request received');
-
-        // Give time for response to arrive
         setTimeout(() => {
           logger.debug('[CONTROL SERVER] Triggering daemon shutdown');
           requestShutdown();
         }, 50);
-
         return { status: 'stopping' };
       }
     );
@@ -232,10 +201,8 @@ export function startDaemonControlServer({
         reject(err);
         return;
       }
-
       const port = parseInt(address.split(':').pop()!);
       logger.debug(`[CONTROL SERVER] Started on port ${port}`);
-
       resolve({
         port,
         stop: async () => {

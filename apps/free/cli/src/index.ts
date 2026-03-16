@@ -40,20 +40,166 @@ import { authAndSetupMachineIfNeeded } from './ui/auth';
 import { getLatestDaemonLog } from './utils/daemonLogs';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { exportDiagnostic } from '@saaskit-dev/agentbridge/telemetry/node';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { configuration } from '@/configuration';
 import { extractNoSandboxFlag } from './utils/sandboxFlags';
-import { runClaude, StartOptions } from '@/claude/runClaude';
+import { runWithDaemonIPC } from '@/client/CLIClient';
+import { IPCClient } from '@/daemon/ipc/IPCClient';
+import type { IPCServerMessage } from '@/daemon/ipc/protocol';
+import { resolveInitialClaudePermissionMode, applySandboxPermissionPolicy } from '@/claude/utils/permissionMode';
+import type { PermissionMode } from '@/api/types';
+
+interface StartOptions {
+  model?: string;
+  permissionMode?: PermissionMode;
+  startingMode?: 'local' | 'remote';
+  claudeEnvVars?: Record<string, string>;
+  claudeArgs?: string[];
+  startedBy?: 'cli' | 'daemon' | 'app';
+  noSandbox?: boolean;
+  jsRuntime?: 'node' | 'bun';
+  resumeSessionId?: string;
+  attachSessionId?: string;
+}
 
 const logger = new Logger('index');
 // Flush telemetry before exit (beforeExit fires for async, exit is sync-only)
 process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
+
+/**
+ * Ensure the daemon is running and matches our CLI version.
+ *
+ * If a LaunchAgent is installed, it's already managing the daemon lifecycle
+ * (KeepAlive will restart on crash). We just wait for it to become ready.
+ * Otherwise, spawn start-sync directly with current env (FREE_HOME_DIR, APP_ENV).
+ */
+async function ensureDaemonRunning(): Promise<void> {
+  logger.debug('checking if daemon is running with current version...');
+  if (await isDaemonRunningCurrentlyInstalledFreeVersion()) {
+    logger.debug('daemon already running with matching version');
+    return;
+  }
+
+  const launchAgentInstalled = isDaemonServiceInstalled();
+  logger.debug('daemon not running/version mismatch', { launchAgentInstalled });
+
+  // Only spawn directly if no LaunchAgent is managing the daemon.
+  // If LaunchAgent is installed, it's already trying to start the daemon
+  // via KeepAlive — spawning a second process would cause a race.
+  if (!launchAgentInstalled) {
+    logger.debug('no LaunchAgent installed, spawning daemon directly...');
+    const daemonProcess = spawnFreeCLI(['daemon', 'start-sync'], {
+      detached: true,
+      stdio: 'ignore',
+      env: process.env,
+    });
+    daemonProcess.unref();
+  }
+
+  // Wait for daemon to start (up to 10s — daemon needs time for auth + IPC init)
+  logger.debug('waiting for daemon to become ready (up to 10s)...');
+  for (let i = 0; i < 100; i++) {
+    if (await isDaemonRunningCurrentlyInstalledFreeVersion()) {
+      logger.debug('daemon ready', { waitMs: i * 100 });
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // If service file exists but daemon didn't start, the service may be unloaded
+  // (e.g. after `free daemon stop` or system restart). Try reloading it, then
+  // fall back to a direct spawn if it still doesn't come up.
+  if (launchAgentInstalled) {
+    logger.debug('service file exists but daemon not running, attempting service reload...');
+    const result = await startDaemonService();
+    logger.debug('service reload result', { success: result.success, message: result.message });
+
+    // Give the service manager a few seconds to start the daemon
+    for (let i = 0; i < 50; i++) {
+      if (await isDaemonRunningCurrentlyInstalledFreeVersion()) {
+        logger.debug('daemon ready after service reload', { waitMs: i * 100 });
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // Service reload failed — fall back to direct spawn as last resort
+    logger.warn('service reload did not start daemon, falling back to direct spawn...');
+    const daemonProcess = spawnFreeCLI(['daemon', 'start-sync'], {
+      detached: true,
+      stdio: 'ignore',
+      env: process.env,
+    });
+    daemonProcess.unref();
+
+    // Final wait
+    for (let i = 0; i < 50; i++) {
+      if (await isDaemonRunningCurrentlyInstalledFreeVersion()) {
+        logger.debug('daemon ready after fallback spawn', { waitMs: i * 100 });
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  logger.warn('daemon did not become ready within timeout, proceeding anyway');
+}
+
+/**
+ * Query the daemon for truly orphaned sessions (active but no CLI clients attached)
+ * and return the most recent one's ID, or undefined if none exist.
+ *
+ * Only sessions with attachedClients === 0 are considered orphans.
+ * Sessions that already have a CLI attached (e.g. another terminal) are NOT
+ * candidates — attaching to them would steal another terminal's session
+ * and make concurrent sessions impossible.
+ */
+async function discoverOrphanSession(): Promise<string | undefined> {
+  let ipc: IPCClient | undefined;
+  try {
+    ipc = new IPCClient();
+    await ipc.connect(configuration.daemonSocketPath);
+    const sessions = await new Promise<Array<{ sessionId: string; state: string; startedAt: string; attachedClients?: number }>>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ipc!.off('session_list', handler);
+        reject(new Error('list_sessions timeout'));
+      }, 5_000);
+      const handler = (msg: IPCServerMessage) => {
+        if (msg.type !== 'session_list') return;
+        clearTimeout(timeout);
+        ipc!.off('session_list', handler);
+        resolve(msg.sessions as Array<{ sessionId: string; state: string; startedAt: string; attachedClients?: number }>);
+      };
+      ipc!.on('session_list', handler);
+      ipc!.send({ type: 'list_sessions' });
+    });
+
+    // Only consider sessions that are active AND have zero attached CLI clients.
+    // This prevents hijacking sessions already being used in another terminal.
+    const orphanSessions = sessions.filter(
+      s => s.state !== 'archived' && (s.attachedClients ?? 0) === 0
+    );
+    if (orphanSessions.length > 0) {
+      orphanSessions.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+      const target = orphanSessions[0];
+      console.log(chalk.yellow(`Found ${orphanSessions.length} orphan session(s). Re-attaching to ${target.sessionId}...`));
+      return target.sessionId;
+    }
+    return undefined;
+  } catch {
+    logger.debug('orphan session discovery failed, proceeding with new session');
+    return undefined;
+  } finally {
+    ipc?.disconnect();
+  }
+}
 
 (async () => {
   const args = process.argv.slice(2);
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
-    logger.debug('Starting free CLI with args: ', process.argv);
+    logger.info('Starting free CLI with args: ', process.argv);
   }
 
   // Check if first argument is a subcommand
@@ -80,10 +226,8 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
     try {
       await handleAuthCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
     return;
@@ -92,10 +236,8 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
     try {
       await handleConnectCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
     return;
@@ -103,10 +245,8 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
     try {
       await handleSandboxCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
     return;
@@ -114,57 +254,50 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
     try {
       await handleAnalyticsCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
     return;
   } else if (subcommand === 'codex') {
     // Handle codex command
     try {
-      const { runCodex } = await import('@/codex/runCodex');
-
-      // Parse startedBy argument
-      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      let resumeSessionId: string | undefined = undefined;
       const codexArgs = extractNoSandboxFlag(args.slice(1));
+      let resumeSessionId: string | undefined;
       for (let i = 0; i < codexArgs.args.length; i++) {
-        if (codexArgs.args[i] === '--started-by') {
-          startedBy = codexArgs.args[++i] as 'daemon' | 'terminal';
-        } else if (codexArgs.args[i] === '--resume-session-id') {
+        if (codexArgs.args[i] === '--resume-session-id' && i + 1 < codexArgs.args.length) {
           resumeSessionId = codexArgs.args[++i];
         }
       }
 
-      const { credentials } = await authAndSetupMachineIfNeeded();
+      await authAndSetupMachineIfNeeded();
 
-      // Auto-start daemon for codex (same as claude/gemini)
-      logger.debug('Ensuring Free background service is running & matches our version...');
-      if (!(await isDaemonRunningCurrentlyInstalledFreeVersion())) {
-        logger.debug('Starting Free background service...');
-        const daemonProcess = spawnFreeCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env,
-        });
-        daemonProcess.unref();
+      await ensureDaemonRunning();
 
-        // Wait for daemon to start (up to 3 seconds)
-        for (let i = 0; i < 30; i++) {
-          if (await isDaemonRunningCurrentlyInstalledFreeVersion()) break;
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
+      const settings = await readSettings();
+      const sandboxEnabled = Boolean(settings.sandboxConfig?.enabled && !codexArgs.noSandbox);
+      const permissionMode = applySandboxPermissionPolicy(
+        resolveInitialClaudePermissionMode(undefined, []),
+        sandboxEnabled
+      );
 
-      await runCodex({ credentials, startedBy, noSandbox: codexArgs.noSandbox, resumeSessionId });
-      // Do not force exit here; allow instrumentation to show lingering handles
+      const codexAttachSessionId = resumeSessionId
+        ? undefined
+        : await discoverOrphanSession();
+
+      await runWithDaemonIPC({
+        spawnOpts: {
+          agent: 'codex',
+          directory: process.cwd(),
+          resumeAgentSessionId: resumeSessionId,
+          permissionMode,
+          startedBy: 'cli',
+        },
+        attachSessionId: codexAttachSessionId,
+      });
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
     return;
@@ -350,88 +483,69 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
       process.exit(0);
     }
 
-    // Handle gemini command (ACP-based agent)
+    // Handle gemini command (daemon-owned ACP backend)
     try {
-      const { runGemini } = await import('@/gemini/runGemini');
-
-      // Parse startedBy and resume-session-id arguments
-      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      let resumeSessionId: string | undefined = undefined;
+      let resumeSessionId: string | undefined;
       for (let i = 1; i < args.length; i++) {
-        if (args[i] === '--started-by') {
-          startedBy = args[++i] as 'daemon' | 'terminal';
-        } else if (args[i] === '--resume-session-id') {
+        if (args[i] === '--resume-session-id' && i + 1 < args.length) {
           resumeSessionId = args[++i];
         }
       }
 
-      const { credentials } = await authAndSetupMachineIfNeeded();
+      await authAndSetupMachineIfNeeded();
 
-      // Auto-start daemon for gemini (same as claude)
-      logger.debug('Ensuring Free background service is running & matches our version...');
-      if (!(await isDaemonRunningCurrentlyInstalledFreeVersion())) {
-        logger.debug('Starting Free background service...');
-        const daemonProcess = spawnFreeCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env,
-        });
-        daemonProcess.unref();
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+      await ensureDaemonRunning();
 
-      await runGemini({ credentials, startedBy, resumeSessionId });
+      const geminiAttachSessionId = resumeSessionId
+        ? undefined
+        : await discoverOrphanSession();
+
+      await runWithDaemonIPC({
+        spawnOpts: {
+          agent: 'gemini',
+          directory: process.cwd(),
+          resumeAgentSessionId: resumeSessionId,
+          startedBy: 'cli',
+        },
+        attachSessionId: geminiAttachSessionId,
+      });
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
     return;
   } else if (subcommand === 'opencode') {
     // Handle opencode command
     try {
-      const { runOpenCode } = await import('@/opencode/runOpenCode');
-
-      // Parse startedBy and resume-session-id arguments
-      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
-      let resumeSessionId: string | undefined = undefined;
+      let resumeSessionId: string | undefined;
       const opencodeArgs = args.slice(1);
       for (let i = 0; i < opencodeArgs.length; i++) {
-        if (opencodeArgs[i] === '--started-by') {
-          startedBy = opencodeArgs[++i] as 'daemon' | 'terminal';
-        } else if (opencodeArgs[i] === '--resume-session-id') {
+        if (opencodeArgs[i] === '--resume-session-id' && i + 1 < opencodeArgs.length) {
           resumeSessionId = opencodeArgs[++i];
         }
       }
 
-      const { credentials } = await authAndSetupMachineIfNeeded();
+      await authAndSetupMachineIfNeeded();
 
-      // Auto-start daemon for opencode (same as claude/gemini/codex)
-      logger.debug('Ensuring Free background service is running & matches our version...');
-      if (!(await isDaemonRunningCurrentlyInstalledFreeVersion())) {
-        logger.debug('Starting Free background service...');
-        const daemonProcess = spawnFreeCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env,
-        });
-        daemonProcess.unref();
+      await ensureDaemonRunning();
 
-        // Wait for daemon to start (up to 3 seconds)
-        for (let i = 0; i < 30; i++) {
-          if (await isDaemonRunningCurrentlyInstalledFreeVersion()) break;
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
+      const opencodeAttachSessionId = resumeSessionId
+        ? undefined
+        : await discoverOrphanSession();
 
-      await runOpenCode({ credentials, startedBy, resumeSessionId });
+      await runWithDaemonIPC({
+        spawnOpts: {
+          agent: 'opencode',
+          directory: process.cwd(),
+          resumeAgentSessionId: resumeSessionId,
+          startedBy: 'cli',
+        },
+        attachSessionId: opencodeAttachSessionId,
+      });
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
     return;
@@ -443,10 +557,8 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
     try {
       await handleAuthCommand(['logout']);
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
     return;
@@ -455,10 +567,8 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
     try {
       await handleNotifyCommand(args.slice(1));
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
     return;
@@ -497,19 +607,14 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
       }
       return;
     } else if (daemonSubcommand === 'start') {
-      // Check if daemon service is installed
-      if (!(await isDaemonServiceInstalled())) {
-        console.log(
-          chalk.yellow('Daemon service not installed. Run "free daemon install" first.')
-        );
-        process.exit(1);
-      }
-
-      const result = await startDaemonService();
-      if (result.success) {
-        console.log(chalk.green('✓ ') + result.message);
-      } else {
-        console.log(chalk.red('✗ ') + result.message);
+      // Re-install to sync environment variables (FREE_HOME_DIR, APP_ENV, PATH)
+      // installUserAgent() handles unload → write plist → load
+      try {
+        await install();
+        const variantLabel = configuration.variant === 'dev' ? ' (dev)' : '';
+        console.log(chalk.green('✓ ') + `Daemon${variantLabel} started via system service`);
+      } catch (error) {
+        console.log(chalk.red('✗ ') + safeStringify(error));
         process.exit(1);
       }
       process.exit(0);
@@ -545,7 +650,7 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
       } catch (error) {
         console.error(
           chalk.red('Error:'),
-          error instanceof Error ? error.message : 'Unknown error'
+          safeStringify(error)
         );
         process.exit(1);
       }
@@ -555,7 +660,7 @@ process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
       } catch (error) {
         console.error(
           chalk.red('Error:'),
-          error instanceof Error ? error.message : 'Unknown error'
+          safeStringify(error)
         );
         process.exit(1);
       }
@@ -628,7 +733,7 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('free doctor cl
         });
         console.log(chalk.green(`✓ Created ${result.outputPath} (${result.entriesCount} entries)`));
       } catch (err) {
-        console.error(chalk.red('Error:'), err instanceof Error ? err.message : String(err));
+        console.error(chalk.red('Error:'), safeStringify(err));
         process.exit(1);
       }
     } else {
@@ -716,7 +821,7 @@ ${chalk.bold('Log directory:')} ${configuration.logsDir}
       if (count === 0) console.log(chalk.gray('No matching log entries found.'));
       else console.error(chalk.gray(`\n${count} entries`));
     } catch (err) {
-      console.error(chalk.red('Error reading logs:'), err instanceof Error ? err.message : String(err));
+      console.error(chalk.red('Error reading logs:'), safeStringify(err));
       process.exit(1);
     }
     return;
@@ -746,17 +851,17 @@ ${chalk.bold('Log directory:')} ${configuration.logsDir}
         unknownArgs.push(arg);
       } else if (arg === '-v' || arg === '--version') {
         showVersion = true;
-        // Also pass through to claude (will show after our version)
-        unknownArgs.push(arg);
       } else if (arg === '--free-starting-mode') {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i]);
       } else if (arg === '--yolo') {
         // Shortcut for --dangerously-skip-permissions
         unknownArgs.push('--dangerously-skip-permissions');
       } else if (arg === '--started-by') {
-        options.startedBy = args[++i] as 'daemon' | 'terminal';
+        options.startedBy = args[++i] as 'cli' | 'daemon' | 'app';
       } else if (arg === '--resume-session-id') {
         options.resumeSessionId = args[++i];
+      } else if (arg === '--attach-session') {
+        options.attachSessionId = args[++i];
       } else if (arg === '--js-runtime') {
         const runtime = args[++i];
         if (runtime !== 'node' && runtime !== 'bun') {
@@ -859,9 +964,9 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 `);
 
       // Run claude --help and display its output
-      // Use execFileSync directly with claude CLI for runtime-agnostic compatibility
+      // claudeCliPath is a .cjs script, so we must run it via node
       try {
-        const claudeHelp = execFileSync(claudeCliPath, ['--help'], { encoding: 'utf8' });
+        const claudeHelp = execFileSync(process.execPath, [claudeCliPath, '--help'], { encoding: 'utf8' });
         console.log(claudeHelp);
       } catch (e) {
         console.log(chalk.yellow('Could not retrieve claude help. Make sure claude is installed.'));
@@ -872,42 +977,75 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
     // Show version
     if (showVersion) {
-      console.log(`free version: ${packageJson.version}`);
-      // Don't exit - continue to pass --version to Claude Code
+      const { readBuildMeta } = await import('./utils/buildMeta');
+      const meta = readBuildMeta();
+      const parts = [`free version: ${packageJson.version}`];
+      if (meta.hash) parts.push(`build: ${meta.hash.substring(0, 8)}`);
+      if (meta.time) parts.push(`(${new Date(meta.time).toLocaleString()})`);
+      console.log(parts.join('  '));
+      process.exit(0);
+    }
+
+    // --attach-session mode: skip auth/daemon startup, daemon must already be running.
+    if (options.attachSessionId) {
+      logger.debug('attach-session mode', { attachSessionId: options.attachSessionId });
+      try {
+        await runWithDaemonIPC({
+          spawnOpts: {
+            agent: 'claude',
+            directory: process.cwd(),
+            startedBy: 'cli',
+          },
+          attachSessionId: options.attachSessionId,
+        });
+      } catch (error) {
+        console.error(chalk.red('Error:'), safeStringify(error));
+        logger.info('Command failed', { error: safeStringify(error) });
+        process.exit(1);
+      }
+      process.exit(0);
     }
 
     // Normal flow - auth and machine setup
+    logger.debug('step 1/4: authenticating...');
     const { credentials } = await authAndSetupMachineIfNeeded();
+    logger.debug('step 1/4: auth OK');
 
-    // Always auto-start daemon for simplicity
-    logger.debug('Ensuring Free background service is running & matches our version...');
+    logger.debug('step 2/4: ensuring daemon is running...');
+    await ensureDaemonRunning();
+    logger.debug('step 2/4: daemon OK');
 
-    if (!(await isDaemonRunningCurrentlyInstalledFreeVersion())) {
-      logger.debug('Starting Free background service...');
+    // Resolve permission mode from CLI args
+    const sandboxEnabled = Boolean(settings.sandboxConfig?.enabled && !options.noSandbox);
+    const permissionMode = applySandboxPermissionPolicy(
+      resolveInitialClaudePermissionMode(options.permissionMode, options.claudeArgs),
+      sandboxEnabled
+    );
 
-      // Use the built binary to spawn daemon
-      const daemonProcess = spawnFreeCLI(['daemon', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env,
-      });
-      daemonProcess.unref();
+    // Discover orphan sessions: if active sessions exist, auto-attach to the most recent one.
+    // Skip when user explicitly wants to resume a specific Claude session (--resume-session-id).
+    const attachSessionId = options.resumeSessionId
+      ? undefined
+      : await discoverOrphanSession();
 
-      // Wait for daemon to start (up to 3 seconds)
-      for (let i = 0; i < 30; i++) {
-        if (await isDaemonRunningCurrentlyInstalledFreeVersion()) break;
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-
-    // Start the CLI
+    // Start the CLI via daemon IPC
+    logger.debug('step 3/4: connecting to daemon IPC...');
     try {
-      await runClaude(credentials, options);
+      await runWithDaemonIPC({
+        spawnOpts: {
+          agent: 'claude',
+          directory: process.cwd(),
+          resumeAgentSessionId: options.resumeSessionId,
+          permissionMode,
+          model: options.model,
+          sessionTag: process.env.FREE_SESSION_TAG,
+          startedBy: 'cli',
+        },
+        attachSessionId,
+      });
     } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error');
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
+      console.error(chalk.red('Error:'), safeStringify(error));
+      logger.info('Command failed', { error: safeStringify(error) });
       process.exit(1);
     }
   }

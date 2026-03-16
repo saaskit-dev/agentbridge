@@ -40,6 +40,19 @@ import { projectPath } from '@/projectPath';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('utils/spawnFreeCLI');
 
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function waitForEntrypointSync(entrypoint: string, timeoutMs = 10_000): boolean {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (existsSync(entrypoint)) return true;
+    sleepSync(100);
+  }
+  return existsSync(entrypoint);
+}
+
 /**
  * Spawn the Free CLI with the given arguments in a cross-platform way.
  *
@@ -72,7 +85,7 @@ export function spawnFreeCLI(args: string[], options: SpawnOptions = {}): ChildP
   const nodeArgs = ['--no-warnings', '--no-deprecation', entrypoint, ...args];
 
   // Sanity check of the entrypoint path exists
-  if (!existsSync(entrypoint)) {
+  if (!waitForEntrypointSync(entrypoint)) {
     const errorMessage = `Entrypoint ${entrypoint} does not exist`;
     logger.debug(`[SPAWN FREE CLI] ${errorMessage}`);
     throw new Error(errorMessage);

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { UsageSchema } from '@/claude/types';
 import type { SandboxConfig } from '@/persistence';
+import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
 
 /**
  * Unified permission mode type across all agents.
@@ -42,7 +43,7 @@ export type UpdateBody = z.infer<typeof UpdateBodySchema>;
 
 export const UpdateSessionBodySchema = z.object({
   t: z.literal('update-session'),
-  sid: z.string(),
+  id: z.string(),
   metadata: z
     .object({
       version: z.number(),
@@ -53,6 +54,12 @@ export const UpdateSessionBodySchema = z.object({
     .object({
       version: z.number(),
       value: z.string(),
+    })
+    .nullish(),
+  capabilities: z
+    .object({
+      version: z.number(),
+      value: z.string().nullable(),
     })
     .nullish(),
 });
@@ -179,6 +186,25 @@ export interface ClientToServerEvents {
           }
     ) => void
   ) => void;
+  'update-capabilities': (
+    data: { sid: string; expectedVersion: number; capabilities: string | null; _trace?: WireTrace },
+    cb: (
+      answer:
+        | {
+            result: 'error';
+          }
+        | {
+            result: 'version-mismatch';
+            version: number;
+            capabilities: string | null;
+          }
+        | {
+            result: 'success';
+            version: number;
+            capabilities: string | null;
+          }
+    ) => void
+  ) => void;
   ping: (callback: () => void) => void;
   'rpc-register': (data: { method: string }) => void;
   'rpc-unregister': (data: { method: string }) => void;
@@ -238,6 +264,8 @@ export type Session = {
   metadataVersion: number;
   agentState: AgentState | null;
   agentStateVersion: number;
+  capabilities?: SessionCapabilities | null;
+  capabilitiesVersion?: number;
 };
 
 /**
@@ -331,6 +359,8 @@ export const CreateSessionResponseSchema = z.object({
     metadataVersion: z.number(),
     agentState: z.string().nullable(),
     agentStateVersion: z.number(),
+    capabilities: z.string().nullable().optional(),
+    capabilitiesVersion: z.number().optional(),
     dataEncryptionKey: z.string().nullable().optional(),
   }),
 });
@@ -375,7 +405,9 @@ export type Metadata = {
     updatedAt: number;
   };
   machineId?: string;
-  claudeSessionId?: string; // Claude Code session ID
+  agentSessionId?: string; // Agent backend's internal session ID (e.g. Claude Code session UUID)
+  /** @deprecated Use agentSessionId. Kept for backward compat with existing encrypted metadata. */
+  claudeSessionId?: string;
   tools?: string[];
   slashCommands?: string[];
   homeDir: string;
@@ -384,7 +416,7 @@ export type Metadata = {
   freeToolsDir: string;
   startedFromDaemon?: boolean;
   hostPid?: number;
-  startedBy?: 'daemon' | 'terminal';
+  startedBy?: 'cli' | 'daemon' | 'app';
   // Lifecycle state management
   lifecycleState?: 'running' | 'archiveRequested' | 'archived' | string;
   lifecycleStateSince?: number;

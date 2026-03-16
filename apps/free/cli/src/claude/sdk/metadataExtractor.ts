@@ -6,6 +6,7 @@
 import { query } from './query';
 import type { SDKSystemMessage } from './types';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('claude/sdk/metadataExtractor');
 
 export interface SDKMetadata {
@@ -60,7 +61,7 @@ export async function extractSDKMetadata(): Promise<SDKMetadata> {
       logger.debug('[metadataExtractor] SDK query aborted after capturing metadata');
       return {};
     }
-    logger.debug('[metadataExtractor] Error extracting SDK metadata:', { error: String(error) });
+    logger.debug('[metadataExtractor] Error extracting SDK metadata:', { error: safeStringify(error) });
     return {};
   }
 }

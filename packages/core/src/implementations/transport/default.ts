@@ -449,10 +449,35 @@ export class CodexTransport extends DefaultTransport {
   }
 
   /**
-   * Codex needs ~30s init timeout
+   * Codex cold starts can exceed 30s when the ACP package is fetched or warmed up.
    */
   getInitTimeout(): number {
-    return 30_000;
+    return 120_000;
+  }
+
+  handleStderr(text: string, _context: StderrContext): StderrResult {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return { message: null, suppress: true };
+    }
+
+    const missingBinary =
+      trimmed.includes('Failed to locate @zed-industries/codex-acp-') ||
+      trimmed.includes('Cannot find package \'@zed-industries/codex-acp-') ||
+      trimmed.includes('Cannot find package "@zed-industries/codex-acp-') ||
+      trimmed.includes('Error resolving package:');
+
+    if (missingBinary) {
+      return {
+        message: {
+          type: 'status',
+          status: 'error',
+          detail: `Codex ACP failed to start: ${trimmed}`,
+        },
+      };
+    }
+
+    return { message: null };
   }
 
   /**

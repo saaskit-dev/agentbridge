@@ -19,9 +19,11 @@ import {
   RemoteSink,
   ServerRelayBackend,
   continueTrace,
+  createTrace,
   setGlobalContextProvider,
   type TraceContext,
 } from '@saaskit-dev/agentbridge/telemetry';
+import { getLoggedInUserIdSync } from '@/persistence';
 import { FileSink, cleanupOldLogs } from '@saaskit-dev/agentbridge/telemetry/node';
 import { isAnalyticsEnabledSync } from '@/api/analyticsHeaderSync';
 // Install axios interceptor to sync analyticsEnabled from server responses
@@ -91,7 +93,7 @@ export function initCliTelemetry(): void {
     layer,
     sinks,
     minLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'debug',
-    sanitize: process.env.DEBUG ? false : true,
+    sanitize: process.env.APP_ENV !== 'development',
   });
 
   // Wire global trace context provider so all Logger instances in this process
@@ -100,6 +102,8 @@ export function initCliTelemetry(): void {
 
   // Non-blocking log cleanup — 7-day / 500 MB retention
   setImmediate(() => cleanupOldLogs({ dir: configuration.logsDir }));
+
+  const userId = getLoggedInUserIdSync();
 
   // If spawned as a child of the daemon, inherit the trace context.
   const envTraceId = process.env.FREE_TRACE_ID;
@@ -110,7 +114,11 @@ export function initCliTelemetry(): void {
       spanId: envSpanId,
       sessionId: process.env.FREE_SESSION_ID || undefined,
       machineId: process.env.FREE_MACHINE_ID || undefined,
+      userId,
     });
+  } else {
+    // Standalone CLI process — create a fresh trace context with userId.
+    processTraceCtx = createTrace({ userId });
   }
 }
 

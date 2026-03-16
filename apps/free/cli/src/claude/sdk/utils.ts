@@ -140,14 +140,6 @@ export function getDefaultClaudeCodePath(): string {
   return globalPath;
 }
 
-/**
- * Log debug message
- */
-export function logDebug(message: string): void {
-  if (process.env.DEBUG) {
-    logger.debug(message);
-  }
-}
 
 /**
  * Stream async messages to stdin

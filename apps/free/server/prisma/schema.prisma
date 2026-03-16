@@ -95,6 +95,8 @@ model Session {
   metadataVersion   Int              @default(0)
   agentState        String?
   agentStateVersion Int              @default(0)
+  capabilities      String?
+  capabilitiesVersion Int            @default(0)
   dataEncryptionKey String? // Base64 encoded, changed from Bytes for PGlite compatibility
   seq               Int              @default(0)
   active            Boolean          @default(true)
@@ -110,10 +112,9 @@ model Session {
 }
 
 model SessionMessage {
-  id        String   @id @default(cuid())
+  id        String   @id
   sessionId String
   session   Session  @relation(fields: [sessionId], references: [id])
-  localId   String?
   seq       Int
   /// [SessionMessageContent]
   content   Json
@@ -122,7 +123,6 @@ model SessionMessage {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([sessionId, localId])
   @@index([sessionId, seq])
 }
 

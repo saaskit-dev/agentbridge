@@ -6,6 +6,7 @@ import React from 'react';
 import tweetnacl from 'tweetnacl';
 import { AuthSelector, AuthMethod } from './ink/AuthSelector';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { safeStringify } from '@saaskit-dev/agentbridge';
 import { displayQRCode } from './qrcode';
 import { decodeBase64, encodeBase64, encodeBase64Url } from '@/api/encryption';
 import { generateWebAuthUrl } from '@/api/webAuth';
@@ -38,25 +39,17 @@ export async function doAuth(): Promise<Credentials | null> {
 
   // Create a new authentication request
   try {
-    if (process.env.DEBUG) {
-      console.log(
-        `[AUTH DEBUG] Sending auth request to: ${configuration.serverUrl}/v1/auth/request`
-      );
-      console.log(
-        `[AUTH DEBUG] Public key: ${encodeBase64(keypair.publicKey).substring(0, 20)}...`
-      );
-    }
+    logger.debug('[AUTH] Sending auth request', {
+      url: `${configuration.serverUrl}/v1/auth/request`,
+      publicKey: `${encodeBase64(keypair.publicKey).substring(0, 20)}...`,
+    });
     await axios.post(`${configuration.serverUrl}/v1/auth/request`, {
       publicKey: encodeBase64(keypair.publicKey),
       supportsV2: true,
     });
-    if (process.env.DEBUG) {
-      console.log(`[AUTH DEBUG] Auth request sent successfully`);
-    }
+    logger.debug('[AUTH] Auth request sent successfully');
   } catch (error) {
-    if (process.env.DEBUG) {
-      console.log(`[AUTH DEBUG] Failed to send auth request:`, error);
-    }
+    logger.debug('[AUTH] Failed to send auth request', { error: safeStringify(error) });
     console.log('Failed to create authentication request, please try again later.');
     return null;
   }

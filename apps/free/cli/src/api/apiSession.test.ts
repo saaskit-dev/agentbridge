@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiSessionClient } from './apiSession';
-import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
+import { createCipher, encryptToWireString, decryptFromWireString } from './encryption';
 import type { Update } from './types';
 
 const { mockIo, mockAxiosGet, mockAxiosPost, mockBackoff, mockDelay } = vi.hoisted(() => ({
@@ -79,8 +79,8 @@ function makeSession() {
   };
 }
 
-function encryptContent(session: ReturnType<typeof makeSession>, content: unknown): string {
-  return encodeBase64(encrypt(session.encryptionKey, session.encryptionVariant, content));
+async function encryptContent(session: ReturnType<typeof makeSession>, content: unknown): Promise<string> {
+  return encryptToWireString(session.encryptionKey, session.encryptionVariant, content);
 }
 
 function createNewMessageUpdate(seq: number, encryptedContent: string): Update {
@@ -175,7 +175,6 @@ describe('ApiSessionClient v3 messages API migration', () => {
           {
             id: 'msg-1',
             seq: 1,
-            localId: 'local-1',
             createdAt: 1,
             updatedAt: 1,
           },
@@ -191,14 +190,14 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     const payload = mockAxiosPost.mock.calls[0][1];
     expect(payload.messages).toHaveLength(1);
-    expect(typeof payload.messages[0].localId).toBe('string');
+    expect(typeof payload.messages[0].id).toBe('string');
     expect((client as any).pendingOutbox).toHaveLength(0);
     expect((client as any).lastSeq).toBe(1);
 
-    const decrypted = decrypt(
+    const decrypted = await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
-      decodeBase64(payload.messages[0].content)
+      payload.messages[0].content
     );
     expect(decrypted).toEqual({
       role: 'agent',
@@ -220,7 +219,6 @@ describe('ApiSessionClient v3 messages API migration', () => {
         messages: Array<{
           id: string;
           seq: number;
-          localId: string;
           createdAt: number;
           updatedAt: number;
         }>;
@@ -237,8 +235,8 @@ describe('ApiSessionClient v3 messages API migration', () => {
       .mockResolvedValueOnce({
         data: {
           messages: [
-            { id: 'msg-2', seq: 2, localId: 'local-2', createdAt: 2, updatedAt: 2 },
-            { id: 'msg-3', seq: 3, localId: 'local-3', createdAt: 3, updatedAt: 3 },
+            { id: 'msg-2', seq: 2, createdAt: 2, updatedAt: 2 },
+            { id: 'msg-3', seq: 3, createdAt: 3, updatedAt: 3 },
           ],
         },
       });
@@ -253,7 +251,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     resolveFirstPost({
       data: {
-        messages: [{ id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 }],
+        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
       },
     });
 
@@ -272,7 +270,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     mockAxiosPost.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce({
       data: {
-        messages: [{ id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 }],
+        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
       },
     });
 
@@ -286,11 +284,11 @@ describe('ApiSessionClient v3 messages API migration', () => {
     expect((client as any).lastSeq).toBe(1);
   });
 
-  it('sends claude session messages through enqueueMessage with expected wrapped content', async () => {
+  it('sends claude session messages as direct normalized messages', async () => {
     const client = new ApiSessionClient('fake-token', session);
     mockAxiosPost.mockResolvedValueOnce({
       data: {
-        messages: [{ id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 }],
+        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
       },
     });
 
@@ -306,25 +304,74 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     const payload = mockAxiosPost.mock.calls[0][1];
-    const decrypted = decrypt(
+    const decrypted = await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
-      decodeBase64(payload.messages[0].content)
+      payload.messages[0].content
     );
 
-    // sendClaudeSessionMessage now maps through session protocol envelopes
     expect(decrypted).toMatchObject({
       role: 'user',
+      isSidechain: false,
       content: {
-        type: 'session',
-        data: {
-          role: 'user',
-          ev: { t: 'text', text: 'hi there' },
-        },
+        type: 'text',
+        text: 'hi there',
       },
-      meta: {
-        sentFrom: 'cli',
+    });
+    expect(typeof decrypted.id).toBe('string');
+    expect(typeof decrypted.createdAt).toBe('number');
+  });
+
+  it('sends claude assistant blocks as normalized agent messages', async () => {
+    const client = new ApiSessionClient('fake-token', session);
+    mockAxiosPost.mockResolvedValueOnce({
+      data: {
+        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
       },
+    });
+    mockAxiosPost.mockResolvedValueOnce({
+      data: {
+        messages: [{ id: 'msg-2', seq: 2, createdAt: 2, updatedAt: 2 }],
+      },
+    });
+
+    client.sendClaudeSessionMessage({
+      type: 'assistant',
+      uuid: 'assistant-1',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'working...' },
+          { type: 'thinking', thinking: 'internal' },
+        ],
+      },
+    } as any);
+
+    await waitForCheck(() => {
+      expect(mockAxiosPost).toHaveBeenCalledTimes(2);
+    });
+
+    const sentMessages = mockAxiosPost.mock.calls.flatMap(call => call[1].messages);
+    expect(sentMessages).toHaveLength(2);
+
+    const first = await decryptFromWireString(
+      session.encryptionKey,
+      session.encryptionVariant,
+      sentMessages[0].content
+    );
+    const second = await decryptFromWireString(
+      session.encryptionKey,
+      session.encryptionVariant,
+      sentMessages[1].content
+    );
+
+    expect(first).toMatchObject({
+      role: 'agent',
+      content: [{ type: 'text', text: 'working...' }],
+    });
+    expect(second).toMatchObject({
+      role: 'agent',
+      content: [{ type: 'thinking', thinking: 'internal' }],
     });
   });
 
@@ -332,7 +379,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     const client = new ApiSessionClient('fake-token', session);
     mockAxiosPost.mockResolvedValueOnce({
       data: {
-        messages: [{ id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 }],
+        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
       },
     });
 
@@ -350,10 +397,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     const payload = mockAxiosPost.mock.calls[0][1];
-    const decrypted = decrypt(
+    const decrypted = await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
-      decodeBase64(payload.messages[0].content)
+      payload.messages[0].content
     );
 
     expect(decrypted).toEqual({
@@ -372,7 +419,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     const client = new ApiSessionClient('fake-token', session);
     mockAxiosPost.mockResolvedValueOnce({
       data: {
-        messages: [{ id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 }],
+        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
       },
     });
 
@@ -386,10 +433,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     const payload = mockAxiosPost.mock.calls[0][1];
-    const decrypted = decrypt(
+    const decrypted = await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
-      decodeBase64(payload.messages[0].content)
+      payload.messages[0].content
     );
 
     expect(decrypted).toEqual({
@@ -408,11 +455,11 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
   });
 
-  it('sends session events through enqueueMessage', async () => {
+  it('sends session events as direct normalized messages', async () => {
     const client = new ApiSessionClient('fake-token', session);
     mockAxiosPost.mockResolvedValueOnce({
       data: {
-        messages: [{ id: 'msg-1', seq: 1, localId: 'local-1', createdAt: 1, updatedAt: 1 }],
+        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
       },
     });
 
@@ -423,21 +470,66 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     const payload = mockAxiosPost.mock.calls[0][1];
-    const decrypted = decrypt(
+    const decrypted = await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
-      decodeBase64(payload.messages[0].content)
+      payload.messages[0].content
     );
 
-    expect(decrypted).toEqual({
-      role: 'agent',
+    expect(decrypted).toMatchObject({
+      id: 'event-1',
+      role: 'event',
+      isSidechain: false,
       content: {
-        id: 'event-1',
-        type: 'event',
-        data: {
-          type: 'ready',
-        },
+        type: 'ready',
       },
+    });
+    expect(typeof decrypted.createdAt).toBe('number');
+  });
+
+  it('closes claude turn as a normalized ready event', async () => {
+    const client = new ApiSessionClient('fake-token', session);
+    mockAxiosPost.mockResolvedValueOnce({
+      data: {
+        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
+      },
+    });
+
+    client.sendClaudeSessionMessage({
+      type: 'assistant',
+      uuid: 'assistant-turn',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'hello' }],
+      },
+    } as any);
+
+    await waitForCheck(() => {
+      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+    });
+
+    mockAxiosPost.mockResolvedValueOnce({
+      data: {
+        messages: [{ id: 'msg-2', seq: 2, createdAt: 2, updatedAt: 2 }],
+      },
+    });
+
+    client.closeClaudeSessionTurn('completed');
+
+    await waitForCheck(() => {
+      expect(mockAxiosPost).toHaveBeenCalledTimes(2);
+    });
+
+    const payload = mockAxiosPost.mock.calls[1][1];
+    const decrypted = await decryptFromWireString(
+      session.encryptionKey,
+      session.encryptionVariant,
+      payload.messages[0].content
+    );
+
+    expect(decrypted).toMatchObject({
+      role: 'event',
+      content: { type: 'ready' },
     });
   });
 
@@ -462,9 +554,8 @@ describe('ApiSessionClient v3 messages API migration', () => {
             seq: 1,
             content: {
               t: 'encrypted',
-              c: encryptContent(session, userMessage),
+              c: await encryptContent(session, userMessage),
             },
-            localId: null,
             createdAt: 1000,
             updatedAt: 1000,
           },
@@ -510,8 +601,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
             {
               id: 'msg-3',
               seq: 3,
-              content: { t: 'encrypted', c: encryptContent(session, message3) },
-              localId: null,
+              content: { t: 'encrypted', c: await encryptContent(session, message3) },
               createdAt: 3000,
               updatedAt: 3000,
             },
@@ -525,8 +615,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
             {
               id: 'msg-4',
               seq: 4,
-              content: { t: 'encrypted', c: encryptContent(session, message4) },
-              localId: null,
+              content: { t: 'encrypted', c: await encryptContent(session, message4) },
               createdAt: 4000,
               updatedAt: 4000,
             },
@@ -589,16 +678,14 @@ describe('ApiSessionClient v3 messages API migration', () => {
           {
             id: 'msg-1',
             seq: 1,
-            content: { t: 'encrypted', c: encryptContent(session, userMessage) },
-            localId: null,
+            content: { t: 'encrypted', c: await encryptContent(session, userMessage) },
             createdAt: 1000,
             updatedAt: 1000,
           },
           {
             id: 'msg-2',
             seq: 2,
-            content: { t: 'encrypted', c: encryptContent(session, agentMessage) },
-            localId: null,
+            content: { t: 'encrypted', c: await encryptContent(session, agentMessage) },
             createdAt: 2000,
             updatedAt: 2000,
           },
@@ -615,7 +702,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     expect(onMessage).toHaveBeenCalledWith(agentMessage);
   });
 
-  it('applies consecutive new-message updates directly (fast path)', () => {
+  it('applies consecutive new-message updates directly (fast path)', async () => {
     const client = new ApiSessionClient('fake-token', session);
     const onUserMessage = vi.fn();
     client.onUserMessage(onUserMessage);
@@ -626,9 +713,11 @@ describe('ApiSessionClient v3 messages API migration', () => {
       content: { type: 'text', text: 'fast-path' },
     };
 
-    emitSocketEvent('update', createNewMessageUpdate(2, encryptContent(session, userMessage)));
+    emitSocketEvent('update', createNewMessageUpdate(2, await encryptContent(session, userMessage)));
 
-    expect(onUserMessage).toHaveBeenCalledTimes(1);
+    await waitForCheck(() => {
+      expect(onUserMessage).toHaveBeenCalledTimes(1);
+    });
     expect(onUserMessage).toHaveBeenCalledWith(userMessage);
     expect((client as any).lastSeq).toBe(2);
     expect(mockAxiosGet).not.toHaveBeenCalled();
@@ -649,7 +738,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       'update',
       createNewMessageUpdate(
         3,
-        encryptContent(session, {
+        await encryptContent(session, {
           role: 'user',
           content: { type: 'text', text: 'gap' },
         })
@@ -676,7 +765,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       'update',
       createNewMessageUpdate(
         1,
-        encryptContent(session, {
+        await encryptContent(session, {
           role: 'user',
           content: { type: 'text', text: 'first' },
         })
@@ -704,7 +793,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       'update',
       createNewMessageUpdate(
         5,
-        encryptContent(session, {
+        await encryptContent(session, {
           role: 'user',
           content: { type: 'text', text: 'duplicate' },
         })
@@ -714,7 +803,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       'update',
       createNewMessageUpdate(
         4,
-        encryptContent(session, {
+        await encryptContent(session, {
           role: 'user',
           content: { type: 'text', text: 'stale' },
         })
@@ -734,7 +823,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     mockAxiosPost.mockResolvedValueOnce({
       data: {
-        messages: [{ id: 'msg-9', seq: 9, localId: 'l9', createdAt: 9, updatedAt: 9 }],
+        messages: [{ id: 'msg-9', seq: 9, createdAt: 9, updatedAt: 9 }],
       },
     });
 
@@ -746,7 +835,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     mockAxiosPost.mockResolvedValueOnce({
       data: {
-        messages: [{ id: 'msg-11', seq: 11, localId: 'l11', createdAt: 11, updatedAt: 11 }],
+        messages: [{ id: 'msg-11', seq: 11, createdAt: 11, updatedAt: 11 }],
       },
     });
 
@@ -812,7 +901,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       'update',
       createNewMessageUpdate(
         1,
-        encryptContent(session, {
+        await encryptContent(session, {
           role: 'user',
           content: { type: 'text', text: 'after-close' },
         })

@@ -152,9 +152,7 @@ export function formatClaudeMessageForInk(
     }
 
     default: {
-      if (process.env.DEBUG) {
-        messageBuffer.addMessage(`[Unknown message type: ${message.type}]`, 'status');
-      }
+      logger.debug(`[Unknown message type: ${message.type}]`);
     }
   }
 }

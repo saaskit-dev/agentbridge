@@ -9,6 +9,7 @@ import { storage } from './storage';
 export interface CommandItem {
   command: string; // The command without slash (e.g., "compact")
   description?: string; // Optional description of what the command does
+  commandId?: string; // Runtime command identifier for capability-discovered commands
 }
 
 interface SearchOptions {
@@ -103,7 +104,40 @@ function getCommandsFromSession(sessionId: string): CommandItem[] {
     }
   }
 
+  if (session.capabilities?.commands) {
+    for (const command of session.capabilities.commands) {
+      const normalizedName = command.name.replace(/^\//, '').trim();
+      if (!normalizedName || IGNORED_COMMANDS.includes(normalizedName)) continue;
+
+      const existing = commands.find(item => item.command === normalizedName);
+      if (existing) {
+        if (!existing.commandId) {
+          existing.commandId = command.id;
+        }
+        if (!existing.description && command.description) {
+          existing.description = command.description;
+        }
+        continue;
+      }
+
+      commands.push({
+        command: normalizedName,
+        commandId: command.id,
+        description: command.description || COMMAND_DESCRIPTIONS[normalizedName],
+      });
+    }
+  }
+
   return commands;
+}
+
+export function resolveCommandInput(sessionId: string, input: string): CommandItem | null {
+  const normalized = input.trim().replace(/^\//, '');
+  if (!normalized) {
+    return null;
+  }
+
+  return getCommandsFromSession(sessionId).find(command => command.command === normalized) ?? null;
 }
 
 // Main export: search commands with fuzzy matching
