@@ -1,28 +1,31 @@
 const { version } = require('./package.json');
+const os = require('os');
 
-// 三个变体：
+// 两个变体：
 //
-//   development        本地开发   .dev bundleId      debug 签名    连 localhost
-//   development-preview 内测分发  .preview bundleId  release 签名  连生产服务器  (EAS internal)
-//   production         线上用户   app.saaskit.freecode             App Store / Google Play
+//   development   本地开发   .dev bundleId   debug 签名   连局域网 dev server
+//   production    线上+公测  app.saaskit.freecode          App Store / TestFlight
 const variant = process.env.APP_ENV || 'development';
 
 const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
+
+/** 自动发现本机局域网 IP（取第一个非 internal 的 IPv4 地址） */
+function getLanIp() {
+  for (const addrs of Object.values(os.networkInterfaces())) {
+    for (const addr of addrs) {
+      if (addr.family === 'IPv4' && !addr.internal) return addr.address;
+    }
+  }
+  return 'localhost';
+}
 
 const configs = {
   development: {
     name: 'Free (dev)',
     bundleId: 'app.saaskit.freecode.dev',
-    serverUrl: process.env.EXPO_PUBLIC_FREE_SERVER_URL || 'http://localhost:3000',
+    serverUrl: process.env.EXPO_PUBLIC_FREE_SERVER_URL || `http://${getLanIp()}:3000`,
     googleServicesFile:
       process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.development.plist',
-  },
-  'development-preview': {
-    name: 'Free (preview)',
-    bundleId: 'app.saaskit.freecode.preview',
-    serverUrl: PRODUCTION_SERVER_URL,
-    googleServicesFile:
-      process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.preview.plist',
   },
   production: {
     name: 'Free',
@@ -111,7 +114,6 @@ export default {
     plugins: [
       require('./plugins/withVersionSync.js'), // 自动同步版本到原生项目
       require('./plugins/withDevelopmentTeam.js'), // 自动写入 DEVELOPMENT_TEAM，防止 prebuild 后丢失
-      require('./plugins/withDevReleaseBundleId.js'), // Debug→.dev / Release→.preview (仅 APP_ENV=development)
       require('./plugins/withXcodeDefaults.js'), // Scheme Run→Release + App Category→Developer Tools
       require('./plugins/withPushNotificationEntitlements.js'), // 自动配置推送 entitlements
       require('./plugins/withEinkCompatibility.js'),
