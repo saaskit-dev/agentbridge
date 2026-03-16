@@ -1,4 +1,7 @@
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { backoff } from '@/utils/time';
+
+const logger = new Logger('cli/utils/sync');
 
 export class InvalidateSync {
   private _invalidated = false;
@@ -52,12 +55,18 @@ export class InvalidateSync {
   };
 
   private _doSync = async () => {
-    await backoff(async () => {
-      if (this._stopped) {
-        return;
-      }
-      await this._command();
-    });
+    try {
+      await backoff(async () => {
+        if (this._stopped) {
+          return;
+        }
+        await this._command();
+      });
+    } catch (e) {
+      logger.error('[InvalidateSync] backoff exhausted, will retry on next invalidate', undefined, {
+        error: String(e),
+      });
+    }
     if (this._stopped) {
       this._notifyPendings();
       return;

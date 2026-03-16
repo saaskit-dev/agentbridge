@@ -24,16 +24,23 @@ export function createBackoff(opts?: {
   minDelay?: number;
   maxDelay?: number;
   maxFailureCount?: number;
+  /** Maximum wall-clock duration (ms) before giving up and re-throwing. Default: 60 000. Set 0 to disable. */
+  maxDuration?: number;
 }): BackoffFunc {
   return async <T>(callback: () => Promise<T>): Promise<T> => {
     let currentFailureCount = 0;
+    const startedAt = Date.now();
     const minDelay = opts && opts.minDelay !== undefined ? opts.minDelay : 250;
     const maxDelay = opts && opts.maxDelay !== undefined ? opts.maxDelay : 1000;
     const maxFailureCount = opts && opts.maxFailureCount !== undefined ? opts.maxFailureCount : 50;
+    const maxDuration = opts && opts.maxDuration !== undefined ? opts.maxDuration : 60_000;
     while (true) {
       try {
         return await callback();
       } catch (e) {
+        if (maxDuration > 0 && Date.now() - startedAt >= maxDuration) {
+          throw e;
+        }
         if (currentFailureCount < maxFailureCount) {
           currentFailureCount++;
         }

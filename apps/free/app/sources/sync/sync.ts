@@ -177,11 +177,19 @@ class Sync {
         this.clearBackgroundSendWatchdog();
         if (shouldFailAfterResume) {
           void this.notifyMessageSendFailed();
-          this.failPendingOutboxMessages(
-            'Message failed to send in background after 30s. Please retry.'
-          );
+          // Abort in-flight requests (iOS has already frozen them) but keep
+          // messages in the outbox so they retry automatically now that
+          // the app is back in foreground.
+          for (const controller of this.sendAbortControllers.values()) {
+            controller.abort();
+          }
+          this.sendAbortControllers.clear();
         }
         logger.debug('📱 App became active');
+        // Re-trigger send sync for any sessions with pending outbox messages
+        for (const sessionId of this.pendingOutbox.keys()) {
+          this.getSendSync(sessionId).invalidate();
+        }
         this.purchasesSync.invalidate();
         this.profileSync.invalidate();
         this.machinesSync.invalidate();
@@ -417,39 +425,6 @@ class Sync {
     }
   }
 
-  private failPendingOutboxMessages(reasonText: string) {
-    for (const controller of this.sendAbortControllers.values()) {
-      controller.abort();
-    }
-    this.sendAbortControllers.clear();
-
-    const now = Date.now();
-    const sessionIds: string[] = [];
-    for (const [sessionId, pending] of this.pendingOutbox) {
-      if (pending.length === 0) {
-        continue;
-      }
-      pending.length = 0;
-      this.pendingOutbox.delete(sessionId);
-      sessionIds.push(sessionId);
-    }
-
-    for (const sessionId of sessionIds) {
-      this.enqueueMessages(sessionId, [
-        {
-          id: randomUUID(),
-          createdAt: now,
-          role: 'event',
-          isSidechain: false,
-          content: {
-            type: 'message',
-            message: reasonText,
-          },
-        },
-      ]);
-    }
-  }
-
   private async handleBackgroundSendTimeout() {
     if (!this.hasPendingOutboxMessages()) {
       await this.cancelBackgroundSendTimeoutNotification();
@@ -459,7 +434,11 @@ class Sync {
 
     await this.cancelBackgroundSendTimeoutNotification();
     await this.notifyMessageSendFailed();
-    this.failPendingOutboxMessages('Message failed to send in background after 30s. Please retry.');
+    // Abort in-flight requests but keep messages in outbox for retry on foreground resume.
+    for (const controller of this.sendAbortControllers.values()) {
+      controller.abort();
+    }
+    this.sendAbortControllers.clear();
     this.backgroundSendStartedAt = null;
   }
 
