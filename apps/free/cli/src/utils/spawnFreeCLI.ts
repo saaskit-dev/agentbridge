@@ -37,6 +37,7 @@ import { spawn, SpawnOptions, type ChildProcess } from 'child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { projectPath } from '@/projectPath';
+import { configuration } from '@/configuration';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('utils/spawnFreeCLI');
 
@@ -82,7 +83,8 @@ export function spawnFreeCLI(args: string[], options: SpawnOptions = {}): ChildP
   logger.debug(`[SPAWN FREE CLI] Spawning: ${fullCommand} in ${directory}`);
 
   // Use the same Node.js flags that the wrapper script uses
-  const nodeArgs = ['--no-warnings', '--no-deprecation', entrypoint, ...args];
+  // Inject --variant so spawned processes are identifiable by environment (dev vs production)
+  const nodeArgs = ['--no-warnings', '--no-deprecation', entrypoint, '--variant', configuration.variant, ...args];
 
   // Sanity check of the entrypoint path exists
   if (!waitForEntrypointSync(entrypoint)) {

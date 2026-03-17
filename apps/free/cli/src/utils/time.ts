@@ -1,5 +1,9 @@
-export async function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+export async function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+  });
 }
 
 export function exponentialBackoffDelay(

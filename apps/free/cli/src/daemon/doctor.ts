@@ -7,8 +7,13 @@
 
 import spawn from 'cross-spawn';
 import psList from 'ps-list';
+import { configuration } from '@/configuration';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/doctor');
+
+function isDevProcess(cmd: string): boolean {
+  return cmd.includes('--variant development') || cmd.includes('tsx');
+}
 
 /**
  * Find all Free CLI processes (including current process)
@@ -35,21 +40,23 @@ export async function findAllFreeProcesses(): Promise<
       if (!isFree) continue;
 
       // Classify process type
+      // Use --variant flag (injected by spawnFreeCLI / plist / systemd) or fall back to tsx detection
+      const isDev = isDevProcess(cmd);
       let type = 'unknown';
       if (proc.pid === process.pid) {
         type = 'current';
       } else if (cmd.includes('--version')) {
-        type = cmd.includes('tsx') ? 'dev-daemon-version-check' : 'daemon-version-check';
+        type = isDev ? 'dev-daemon-version-check' : 'daemon-version-check';
       } else if (cmd.includes('daemon start-sync') || cmd.includes('daemon start')) {
-        type = cmd.includes('tsx') ? 'dev-daemon' : 'daemon';
+        type = isDev ? 'dev-daemon' : 'daemon';
       } else if (cmd.includes('--started-by daemon')) {
-        type = cmd.includes('tsx') ? 'dev-daemon-spawned' : 'daemon-spawned-session';
+        type = isDev ? 'dev-daemon-spawned' : 'daemon-spawned-session';
       } else if (cmd.includes('doctor')) {
-        type = cmd.includes('tsx') ? 'dev-doctor' : 'doctor';
+        type = isDev ? 'dev-doctor' : 'doctor';
       } else if (cmd.includes('--yolo')) {
         type = 'dev-session';
       } else {
-        type = cmd.includes('tsx') ? 'dev-related' : 'user-session';
+        type = isDev ? 'dev-related' : 'user-session';
       }
 
       allProcesses.push({ pid: proc.pid, command: cmd || name, type });
@@ -67,18 +74,19 @@ export async function findAllFreeProcesses(): Promise<
 export async function findRunawayFreeProcesses(): Promise<Array<{ pid: number; command: string }>> {
   const allProcesses = await findAllFreeProcesses();
 
-  // Filter to just runaway processes (excluding current process)
+  // Use configuration.variant to scope cleanup to the current environment.
+  // curl install and npm global are both 'production' — they manage each other's processes.
+  // dev (APP_ENV=development) is isolated.
+  const allowedTypes = configuration.variant === 'development'
+    ? ['dev-daemon-spawned', 'dev-daemon-version-check']
+    : ['daemon-spawned-session', 'daemon-version-check'];
+
+  // Filter to just runaway processes:
+  // - Exclude current process
+  // - Exclude daemon itself (use `free daemon stop` to stop it)
+  // - Only match processes from the same environment (dev or production)
   return allProcesses
-    .filter(
-      p =>
-        p.pid !== process.pid &&
-        (p.type === 'daemon' ||
-          p.type === 'dev-daemon' ||
-          p.type === 'daemon-spawned-session' ||
-          p.type === 'dev-daemon-spawned' ||
-          p.type === 'daemon-version-check' ||
-          p.type === 'dev-daemon-version-check')
-    )
+    .filter(p => p.pid !== process.pid && allowedTypes.includes(p.type))
     .map(p => ({ pid: p.pid, command: p.command }));
 }
 

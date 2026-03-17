@@ -15,7 +15,7 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/linux/installUser');
 
 // SERVICE_NAME and SERVICE_FILE are derived from configuration at call time
-// so that dev and stable variants get separate systemd services
+// so that dev and production variants get separate systemd services
 
 export async function installUserAgent(): Promise<void> {
   const SERVICE_NAME = configuration.daemonSystemdServiceName;
@@ -43,12 +43,12 @@ export async function installUserAgent(): Promise<void> {
 
     // Create systemd service file
     const serviceContent = `[Unit]
-Description=Free CLI Daemon${configuration.variant === 'dev' ? ' (dev)' : ''}
+Description=Free CLI Daemon${configuration.variant === 'development' ? ' (dev)' : ''}
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=${freePath} --no-warnings --no-deprecation ${scriptPath} daemon start-sync
+ExecStart=${freePath} --no-warnings --no-deprecation ${scriptPath} --variant ${configuration.variant} daemon start-sync
 WorkingDirectory=${homedir()}
 Restart=always
 RestartSec=5

@@ -109,7 +109,7 @@ export async function claudeRemote(opts: {
   // Get initial message
   const initial = await opts.nextMessage();
   if (!initial) {
-    // No initial message - exit
+    logger.info('[claudeRemote] no initial message, exiting', { sessionId: opts.sessionId, path: opts.path });
     return;
   }
 
@@ -316,6 +316,13 @@ export async function claudeRemote(opts: {
       });
       // Ignore
     } else {
+      logger.error('[claudeRemote] unexpected error, rethrowing', e instanceof Error ? e : undefined, {
+        sessionId: opts.sessionId,
+        path: opts.path,
+        traceId: getProcessTraceContext()?.traceId,
+        remoteElapsed: Date.now() - remoteStart,
+        error: String(e),
+      });
       throw e;
     }
   } finally {
