@@ -82,7 +82,10 @@ echo "/* /index.html 200" > "$DIST_DIR/_redirects"
 
 echo ""
 echo "📤 部署到 Cloudflare Pages..."
-wrangler pages deploy "$DIST_DIR" --project-name="$PROJECT_NAME" --commit-dirty=true
+# --commit-message: Cloudflare API rejects non-ASCII commit messages (code 8000111),
+# so we override with a safe ASCII string derived from the git short hash.
+COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "manual")
+wrangler pages deploy "$DIST_DIR" --project-name="$PROJECT_NAME" --commit-dirty=true --commit-message="deploy ${COMMIT_HASH}"
 
 echo ""
 echo "✅ 部署完成! (环境: $APP_ENV)"
