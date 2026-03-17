@@ -217,6 +217,12 @@ export class ApiSessionClient extends EventEmitter {
       withCredentials: true,
       autoConnect: false,
     });
+    logger.info('[apiSession] socket created', {
+      sessionId: this.sessionId,
+      serverUrl: configuration.serverUrl,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+    });
 
     //
     // Handlers
@@ -246,6 +252,16 @@ export class ApiSessionClient extends EventEmitter {
     this.socket.on('connect_error', error => {
       logger.error('[CLI] Session connect failed', undefined, { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId, error: error.message });
       this.rpcHandlerManager.onSocketDisconnect();
+    });
+
+    // Server-driven archive fallback: DB is the source of truth.
+    // If the server detects that the session is already archived (active=false)
+    // during a keepAlive check, it emits this event so the daemon can shut down.
+    this.socket.on('session-archived', (data: { sid: string }) => {
+      if (data?.sid === this.sessionId) {
+        logger.info('[CLI] Server notified session archived in DB', { userId: this.userId, sessionId: this.sessionId });
+        this.emit('archived');
+      }
     });
 
     // Server events
@@ -532,7 +548,7 @@ export class ApiSessionClient extends EventEmitter {
     // Drain in batches — server schema limits each POST to 100 messages.
     while (this.pendingOutbox.length > 0) {
       if (!this.socket.connected) {
-        logger.debug('[apiSession] socket disconnected mid-flush, will resume later', {
+        logger.warn('[apiSession] socket disconnected mid-flush, will resume later', {
           sessionId: this.sessionId,
           remaining: this.pendingOutbox.length,
         });

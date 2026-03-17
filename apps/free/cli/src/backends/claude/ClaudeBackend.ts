@@ -25,6 +25,7 @@
  *     TODO Phase 5: wire up live permission requests over IPC)
  */
 
+import os from 'node:os';
 import * as pty from 'node-pty';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
@@ -37,7 +38,7 @@ import { claudeCliPath } from '@/claude/claudeLocal';
 import type { EnhancedMode } from '@/claude/sessionTypes';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { PermissionHandler } from '@/claude/utils/permissionHandler';
-import type { AgentBackend, AgentStartOpts } from '@/daemon/sessions/AgentBackend';
+import type { AgentBackend, AgentStartOpts, BackendExitInfo } from '@/daemon/sessions/AgentBackend';
 import type { NormalizedMessage } from '@/daemon/sessions/types';
 import { createNormalizedEvent } from '@/daemon/sessions/types';
 import { mapSDKMessageToNormalized } from './mapSDKMessageToNormalized';
@@ -63,6 +64,7 @@ function mapPermissionMode(mode: PermissionMode): string {
 export class ClaudeBackend implements AgentBackend {
   readonly agentType = 'claude' as const;
   readonly output = new PushableAsyncIterable<NormalizedMessage>();
+  exitInfo?: BackendExitInfo;
 
   private innerQueue: MessageQueue2<EnhancedMode> | undefined;
   private abortController = new AbortController();
@@ -146,12 +148,16 @@ export class ClaudeBackend implements AgentBackend {
         logger.debug('[ClaudeBackend] Completion event', { message });
       },
     }).then(() => {
-      logger.debug('[ClaudeBackend] claudeRemote completed normally', { cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
+      logger.info('[ClaudeBackend] claudeRemote completed normally', { cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
+      this.exitInfo = { reason: 'claudeRemote completed normally' };
     }).catch((err) => {
       if (this.abortController.signal.aborted) {
         logger.debug('[ClaudeBackend] claudeRemote aborted', { cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
+        this.exitInfo = { reason: 'aborted' };
       } else {
-        logger.error('[ClaudeBackend] claudeRemote error', toError(err), { cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
+        const error = toError(err);
+        logger.error('[ClaudeBackend] claudeRemote error', error, { cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
+        this.exitInfo = { reason: `claudeRemote error: ${safeStringify(err)}`, error };
         // Push a user-visible error event instead of setError() — setError
         // causes the consumer's for-await to throw, which is not user-friendly.
         this.output.push(createNormalizedEvent({
@@ -253,7 +259,27 @@ export class ClaudeBackend implements AgentBackend {
 
     this.ptyExitPromise = new Promise((resolve) => {
       ptyProc.onExit(({ exitCode, signal }) => {
-        logger.debug('[ClaudeBackend] local PTY exited', { exitCode, signal, pid: ptyProc.pid, cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
+        const signalName = signal != null ? signalToName(signal) : undefined;
+        const uptime = Date.now() - this.localSpawnedAt;
+
+        // Store structured exit info for AgentSession crash diagnostics
+        this.exitInfo = {
+          exitCode: exitCode ?? undefined,
+          signal: signalName,
+          reason: exitCode === 0
+            ? 'exited normally'
+            : `PTY exited (code ${exitCode ?? 'null'}${signalName ? `, ${signalName}` : ''})`,
+        };
+
+        logger.info('[ClaudeBackend] local PTY exited', {
+          exitCode,
+          signal: signalName ?? signal,
+          pid: ptyProc.pid,
+          cwd: opts.cwd,
+          uptimeMs: uptime,
+          ptyChunksEmitted: ptyChunkCount,
+          traceId: getProcessTraceContext()?.traceId,
+        });
         this.ptyProcess = null;
 
         if (!this.output.done) {
@@ -262,7 +288,7 @@ export class ClaudeBackend implements AgentBackend {
           if (exitCode !== 0 && exitCode !== null) {
             this.output.push(createNormalizedEvent({
               type: 'error',
-              message: `Agent process exited unexpectedly (code ${exitCode}${signal ? `, signal ${signal}` : ''})`,
+              message: `Agent process exited unexpectedly (code ${exitCode}${signalName ? `, ${signalName}` : ''})`,
               retryable: false,
             }));
           }
@@ -368,4 +394,11 @@ export class ClaudeBackend implements AgentBackend {
       this.output.end();
     }
   }
+}
+
+/** Map numeric signal from node-pty to conventional POSIX name. */
+function signalToName(sig: number): string | undefined {
+  if (!sig) return undefined;
+  const entry = Object.entries(os.constants.signals).find(([, v]) => v === sig);
+  return entry ? entry[0] : `signal(${sig})`;
 }

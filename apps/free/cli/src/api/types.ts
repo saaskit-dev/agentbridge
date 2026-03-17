@@ -131,6 +131,7 @@ export interface ServerToClientEvents {
     activeAt: number;
     thinking: boolean;
   }) => void;
+  'session-archived': (data: { sid: string }) => void;
   auth: (data: { success: boolean; user: string }) => void;
   error: (data: { message: string }) => void;
 }
