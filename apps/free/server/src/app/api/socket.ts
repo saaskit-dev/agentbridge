@@ -114,7 +114,12 @@ export async function startSocket(app: Fastify) {
 
     const verified = await auth.verifyToken(token);
     if (!verified) {
-      log.debug(`Invalid token provided`);
+      log.warn('Socket auth failed — invalid token', {
+        clientType,
+        sessionId: sessionId ?? 'none',
+        machineId: machineId ?? 'none',
+        tokenSuffix: token.slice(-12),
+      });
       socket.emit('error', { message: 'Invalid authentication token' });
       socket.disconnect();
       return;

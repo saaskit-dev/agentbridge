@@ -55,19 +55,18 @@ if [ "$1" = "rollback" ]; then
     
     echo "🔙 Rolling back to image: ${PREVIOUS_HASH:0:12}"
     
-    # Stop and remove current container
-    docker rm -f $CONTAINER_NAME 2>/dev/null || true
+    # Gracefully stop then remove current container
+    docker stop --time 15 $CONTAINER_NAME 2>/dev/null || true
+    docker rm $CONTAINER_NAME 2>/dev/null || true
     
-    # Handle FREE_MASTER_SECRET
+    # Handle FREE_MASTER_SECRET — .secret file is the source of truth
     SECRET_FILE="$DATA_DIR/.secret"
-    if [ -z "$FREE_MASTER_SECRET" ]; then
-        if [ -f "$SECRET_FILE" ]; then
-            FREE_MASTER_SECRET=$(cat "$SECRET_FILE")
-            echo "📝 Using existing secret from $SECRET_FILE"
-        else
-            echo "❌ No secret found. Set FREE_MASTER_SECRET or ensure $SECRET_FILE exists."
-            exit 1
-        fi
+    if [ -f "$SECRET_FILE" ]; then
+        FREE_MASTER_SECRET=$(cat "$SECRET_FILE")
+        echo "📝 Using existing secret from $SECRET_FILE"
+    else
+        echo "❌ No secret found. Ensure $SECRET_FILE exists (created by initial deploy)."
+        exit 1
     fi
     
     # Start container with previous image
@@ -77,9 +76,12 @@ if [ "$1" = "rollback" ]; then
         -p "$PORT:3000"
         -v "$DATA_DIR:/app/data"
         -v "$FREE_HOME:/root/.free"
-        -e FREE_MASTER_SECRET="$FREE_MASTER_SECRET"
     )
     [ -f "$ENV_FILE" ] && DOCKER_ARGS+=(--env-file "$ENV_FILE")
+    DOCKER_ARGS+=(
+        -e FREE_MASTER_SECRET="$FREE_MASTER_SECRET"
+        -e APP_ENV="${APP_ENV:-production}"
+    )
     docker run -d "${DOCKER_ARGS[@]}" "$IMAGE_NAME@$PREVIOUS_HASH"
     
     echo "✅ Rollback complete!"
@@ -100,34 +102,55 @@ docker pull $IMAGE_NAME:latest
 
 echo "🔄 Restarting container..."
 
-# Stop and remove old container if exists
-docker rm -f $CONTAINER_NAME 2>/dev/null || true
+# Gracefully stop old container (SIGTERM → wait → SIGKILL) so PGlite can flush WAL,
+# then remove it. docker rm -f sends SIGKILL immediately and corrupts PGlite data.
+docker stop --time 15 $CONTAINER_NAME 2>/dev/null || true
+docker rm $CONTAINER_NAME 2>/dev/null || true
 
-# Handle FREE_MASTER_SECRET - generate once and persist
+# Handle FREE_MASTER_SECRET - the .secret file is the single source of truth.
+# If .env also sets FREE_MASTER_SECRET, the .secret file takes precedence to
+# prevent accidental token invalidation from env drift.
 SECRET_FILE="$DATA_DIR/.secret"
 
-if [ -z "$FREE_MASTER_SECRET" ]; then
-    if [ -f "$SECRET_FILE" ]; then
-        FREE_MASTER_SECRET=$(cat "$SECRET_FILE")
-        echo "📝 Using existing secret from $SECRET_FILE"
-    else
-        FREE_MASTER_SECRET=$(openssl rand -hex 32)
-        echo "$FREE_MASTER_SECRET" > "$SECRET_FILE"
-        chmod 600 "$SECRET_FILE"
-        echo "🔑 Generated new secret and saved to $SECRET_FILE"
+if [ -f "$SECRET_FILE" ]; then
+    # .secret file exists — always use it (overrides any value from .env)
+    PERSISTED_SECRET=$(cat "$SECRET_FILE")
+    if [ -n "$FREE_MASTER_SECRET" ] && [ "$FREE_MASTER_SECRET" != "$PERSISTED_SECRET" ]; then
+        echo "⚠️  WARNING: FREE_MASTER_SECRET from .env differs from $SECRET_FILE"
+        echo "   Using persisted secret from $SECRET_FILE to avoid token invalidation."
+        echo "   To intentionally rotate the secret, delete $SECRET_FILE first."
     fi
+    FREE_MASTER_SECRET="$PERSISTED_SECRET"
+    echo "📝 Using existing secret from $SECRET_FILE"
+elif [ -n "$FREE_MASTER_SECRET" ]; then
+    # No .secret file but env/cli provided a secret — persist it
+    echo "$FREE_MASTER_SECRET" > "$SECRET_FILE"
+    chmod 600 "$SECRET_FILE"
+    echo "📝 Persisted provided secret to $SECRET_FILE"
+else
+    # First deploy ever — generate and persist
+    FREE_MASTER_SECRET=$(openssl rand -hex 32)
+    echo "$FREE_MASTER_SECRET" > "$SECRET_FILE"
+    chmod 600 "$SECRET_FILE"
+    echo "🔑 Generated new secret and saved to $SECRET_FILE"
 fi
 
 # Start new container
+# Note: -e takes precedence over --env-file for same-name vars in Docker.
+# We put --env-file first and -e FREE_MASTER_SECRET last to make intent clear:
+# the .secret file is always authoritative.
 DOCKER_ARGS=(
     --name "$CONTAINER_NAME"
     --restart unless-stopped
     -p "$PORT:3000"
     -v "$DATA_DIR:/app/data"
     -v "$FREE_HOME:/root/.free"
-    -e FREE_MASTER_SECRET="$FREE_MASTER_SECRET"
 )
 [ -f "$ENV_FILE" ] && DOCKER_ARGS+=(--env-file "$ENV_FILE")
+DOCKER_ARGS+=(
+    -e FREE_MASTER_SECRET="$FREE_MASTER_SECRET"
+    -e APP_ENV="${APP_ENV:-production}"
+)
 docker run -d "${DOCKER_ARGS[@]}" "$IMAGE_NAME:latest"
 
 echo "✅ Done!"
