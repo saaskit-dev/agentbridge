@@ -369,6 +369,7 @@ export const en: TranslationStructure = {
 
   session: {
     inputPlaceholder: 'Type a message ...',
+    sendFailed: 'Send failed. Tap to retry.',
   },
 
   commandPalette: {

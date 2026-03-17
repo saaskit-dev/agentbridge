@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { AgentContentView } from '@/components/AgentContentView';
@@ -33,6 +33,7 @@ import {
   useLocalSetting,
   useRealtimeStatus,
   useSessionMessages,
+  useSessionSendError,
   useSessionUsage,
   useSetting,
 } from '@/sync/storage';
@@ -70,6 +71,7 @@ export const SessionView = React.memo((props: { id: string }) => {
   const headerHeight = useHeaderHeight();
   const realtimeStatus = useRealtimeStatus();
   const isTablet = useIsTablet();
+  const sendError = useSessionSendError(sessionId);
 
   // Compute header props based on session state
   const headerProps = useMemo(() => {
@@ -605,6 +607,20 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     ) : null;
 
   const input = (
+    <>
+    {sendError && (
+      <View style={[sendErrorStyles.container, { backgroundColor: theme.dark ? 'rgba(220,38,38,0.15)' : '#FEF2F2' }]}>
+        <Text style={[sendErrorStyles.text, { color: theme.dark ? '#FCA5A5' : '#991B1B' }]}>
+          {t('session.sendFailed')}
+        </Text>
+        <Pressable onPress={() => sync.retrySend(sessionId)} hitSlop={8}>
+          <Ionicons name="refresh" size={16} color={theme.dark ? '#FCA5A5' : '#991B1B'} />
+        </Pressable>
+        <Pressable onPress={() => sync.discardPendingMessages(sessionId)} hitSlop={8}>
+          <Ionicons name="close" size={16} color={theme.dark ? '#FCA5A5' : '#991B1B'} />
+        </Pressable>
+      </View>
+    )}
     <AgentInput
       placeholder={t('session.inputPlaceholder')}
       value={message}
@@ -693,6 +709,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       }
       alwaysShowContextSize={alwaysShowContextSize}
     />
+    </>
   );
 
   return (
@@ -815,3 +832,20 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     </>
   );
 }
+
+const sendErrorStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  text: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'center',
+  },
+});

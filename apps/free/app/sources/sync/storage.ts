@@ -139,6 +139,8 @@ interface StorageState {
   socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
   socketLastConnectedAt: number | null;
   socketLastDisconnectedAt: number | null;
+  sessionSendErrors: Record<string, { message: string; timestamp: number }>;
+  setSessionSendError: (sessionId: string, error: { message: string; timestamp: number } | null) => void;
   isDataReady: boolean;
   nativeUpdateStatus: { available: boolean; updateUrl?: string } | null;
   applySessions: (
@@ -348,6 +350,7 @@ export const storage = create<StorageState>()((set, get) => {
     socketStatus: 'disconnected',
     socketLastConnectedAt: null,
     socketLastDisconnectedAt: null,
+    sessionSendErrors: {},
     isDataReady: false,
     nativeUpdateStatus: null,
     isMutableToolCall: (sessionId: string, callId: string) => {
@@ -878,6 +881,16 @@ export const storage = create<StorageState>()((set, get) => {
           ...state,
           ...updates,
         };
+      }),
+    setSessionSendError: (sessionId: string, error: { message: string; timestamp: number } | null) =>
+      set(state => {
+        const next = { ...state.sessionSendErrors };
+        if (error) {
+          next[sessionId] = error;
+        } else {
+          delete next[sessionId];
+        }
+        return { ...state, sessionSendErrors: next };
       }),
     updateSessionDraft: (sessionId: string, draft: string | null) =>
       set(state => {
@@ -1603,4 +1616,8 @@ export function useRequestedFriends() {
       return Object.values(state.friends).filter(friend => friend.status === 'requested');
     })
   );
+}
+
+export function useSessionSendError(sessionId: string) {
+  return storage(state => state.sessionSendErrors[sessionId] ?? null);
 }

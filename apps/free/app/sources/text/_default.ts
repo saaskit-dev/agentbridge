@@ -354,6 +354,7 @@ export const en = {
 
   session: {
     inputPlaceholder: 'Type a message ...',
+    sendFailed: 'Send failed. Tap to retry.',
   },
 
   commandPalette: {

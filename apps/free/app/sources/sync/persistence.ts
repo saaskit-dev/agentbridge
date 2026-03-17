@@ -279,6 +279,37 @@ export function retrieveTempText(id: string): string | null {
   return null;
 }
 
+// ── Outbox persistence ──────────────────────────────────────────────
+
+type PersistedOutboxMessage = {
+  id: string;
+  content: string;
+  _trace?: { tid: string; sid: string; pid?: string; ses?: string; mid?: string };
+};
+
+const OUTBOX_KEY = 'pending-outbox-v1';
+
+export function loadPendingOutbox(): Record<string, PersistedOutboxMessage[]> {
+  const raw = mmkv.getString(OUTBOX_KEY);
+  if (raw) {
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      logger.error('Failed to parse pending outbox', toError(e));
+      return {};
+    }
+  }
+  return {};
+}
+
+export function savePendingOutbox(outbox: Record<string, PersistedOutboxMessage[]>) {
+  mmkv.set(OUTBOX_KEY, JSON.stringify(outbox));
+}
+
+export function clearPendingOutbox() {
+  mmkv.delete(OUTBOX_KEY);
+}
+
 export function clearPersistence() {
   mmkv.clearAll();
 }

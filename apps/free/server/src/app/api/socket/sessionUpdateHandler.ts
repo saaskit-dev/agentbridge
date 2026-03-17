@@ -336,9 +336,15 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
       const { sid, thinking } = data;
 
-      // Check session validity using cache
-      const isValid = await activityCache.isSessionValid(sid, userId);
-      if (!isValid) {
+      // Check session validity using cache (now returns 'valid' | 'archived' | 'invalid')
+      const validity = await activityCache.isSessionValid(sid, userId);
+      if (validity === 'archived') {
+        // DB says session is archived — tell the daemon to shut down
+        log.info('[session-alive] session archived in DB, notifying daemon', { userId, sid });
+        socket.emit('session-archived', { sid });
+        return;
+      }
+      if (validity !== 'valid') {
         return;
       }
 
@@ -461,6 +467,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         where: { id: sid, accountId: userId },
         data: { lastActiveAt: new Date(t), active: false },
       });
+
+      // Evict from activity cache so subsequent session-alive checks see the archived state
+      activityCache.evictSession(sid);
 
       // Emit session activity update
       const sessionActivity = buildSessionActivityEphemeral(sid, false, t, false);
