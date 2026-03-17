@@ -24,16 +24,23 @@ class AuthModule {
       return; // Already initialized
     }
 
-    log.info('Initializing auth module...');
+    const secretRaw = process.env.FREE_MASTER_SECRET ?? '';
+    // Log a prefix of the seed so we can diagnose cross-restart key mismatches without leaking the full secret
+    log.info('Initializing auth module', { seedPrefix: secretRaw.slice(0, 8), seedLen: secretRaw.length });
 
     const generator = await privacyKit.createPersistentTokenGenerator({
       service: 'free',
-      seed: process.env.FREE_MASTER_SECRET!,
+      seed: secretRaw,
     });
 
     const verifier = await privacyKit.createPersistentTokenVerifier({
       service: 'free',
       publicKey: Uint8Array.from(generator.publicKey),
+    });
+
+    // Log public key fingerprint for cross-deploy comparison (this is NOT secret)
+    log.info('Auth module key fingerprint', {
+      persistentPkHex: Buffer.from(generator.publicKey).toString('hex').slice(0, 16) + '...',
     });
 
     const githubGenerator = await privacyKit.createEphemeralTokenGenerator({
@@ -98,6 +105,7 @@ class AuthModule {
     try {
       const verified = await this.tokens.verifier.verify(token);
       if (!verified) {
+        log.warn('Token cryptographic verification returned null', { tokenPrefix: token.slice(-12) });
         return null;
       }
 
@@ -113,7 +121,7 @@ class AuthModule {
 
       return { userId, extras };
     } catch (error) {
-      log.error(`Token verification failed: ${error}`);
+      log.error('Token verification threw', { error: String(error), tokenPrefix: token.slice(-12) });
       return null;
     }
   }

@@ -18,7 +18,7 @@ export function enableAuthentication(app: Fastify) {
       const token = authHeader.substring(7);
       const verified = await auth.verifyToken(token);
       if (!verified) {
-        log.debug(`Auth failed - invalid token`);
+        log.warn('HTTP auth failed — invalid token', { path: request.url, tokenSuffix: token.slice(-12) });
         return reply.code(401).send({ error: 'Invalid token' });
       }
 
