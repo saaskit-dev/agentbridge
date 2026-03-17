@@ -71,7 +71,6 @@ export const SessionView = React.memo((props: { id: string }) => {
   const headerHeight = useHeaderHeight();
   const realtimeStatus = useRealtimeStatus();
   const isTablet = useIsTablet();
-  const sendError = useSessionSendError(sessionId);
 
   // Compute header props based on session state
   const headerProps = useMemo(() => {
@@ -226,6 +225,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const [message, setMessage] = React.useState('');
   const realtimeStatus = useRealtimeStatus();
   const { messages, isLoaded } = useSessionMessages(sessionId);
+  const sendError = useSessionSendError(sessionId);
   const [isSettingsBusy, setIsSettingsBusy] = React.useState(false);
   const [pendingCapabilityChange, setPendingCapabilityChange] = React.useState<{
     kind: 'model' | 'mode';
