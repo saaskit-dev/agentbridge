@@ -178,19 +178,25 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
       }
     }
 
-    // All Free processes
+    // All Free processes — scoped to the current variant so dev and production don't leak into each other
     const allProcesses = await findAllFreeProcesses();
-    if (allProcesses.length > 0) {
+    const isDev = configuration.variant === 'development';
+    const filteredProcesses = allProcesses.filter(p => {
+      if (p.type === 'current') return true; // always show self
+      // Show dev-* types only when running as dev, non-dev types only when running as production
+      return isDev ? p.type.startsWith('dev-') : !p.type.startsWith('dev-');
+    });
+    if (filteredProcesses.length > 0) {
       console.log(chalk.bold('\n🔍 All Free CLI Processes'));
 
       // Group by type
-      const grouped = allProcesses.reduce(
+      const grouped = filteredProcesses.reduce(
         (groups, process) => {
           if (!groups[process.type]) groups[process.type] = [];
           groups[process.type].push(process);
           return groups;
         },
-        {} as Record<string, typeof allProcesses>
+        {} as Record<string, typeof filteredProcesses>
       );
 
       // Display each group

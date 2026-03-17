@@ -12,7 +12,19 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('daemon/doctor');
 
 function isDevProcess(cmd: string): boolean {
-  return cmd.includes('--variant development') || cmd.includes('tsx');
+  return cmd.includes('--variant development') || cmd.includes('.free-dev');
+}
+
+/** Check if a command line belongs to a Free CLI process (not the server or other tooling). */
+function isFreeCLIProcess(name: string, cmd: string): boolean {
+  // Explicit Free CLI markers
+  if (cmd.includes('free-cli') || cmd.includes('@saaskit-dev/free')) return true;
+  // The compiled entrypoint lives at apps/free/cli/dist/cli.mjs — but we must
+  // exclude other cli.mjs files (e.g. tsx's own cli.mjs used by the server).
+  if (name === 'node' && cmd.includes('dist/cli.mjs') && !cmd.includes('tsx/dist/')) return true;
+  // Catch 'free' binary name (e.g. installed via npm/curl)
+  if (name === 'free') return true;
+  return false;
 }
 
 /**
@@ -29,15 +41,7 @@ export async function findAllFreeProcesses(): Promise<
       const cmd = proc.cmd || '';
       const name = proc.name || '';
 
-      // Check if it's a Free process
-      const isFree =
-        name.includes('free') ||
-        (name === 'node' && (cmd.includes('free-cli') || cmd.includes('dist/cli.mjs'))) ||
-        cmd.includes('cli.mjs') ||
-        cmd.includes('@saaskit-dev/free') ||
-        (cmd.includes('tsx') && cmd.includes('src/index.ts') && cmd.includes('free-cli'));
-
-      if (!isFree) continue;
+      if (!isFreeCLIProcess(name, cmd)) continue;
 
       // Classify process type
       // Use --variant flag (injected by spawnFreeCLI / plist / systemd) or fall back to tsx detection
