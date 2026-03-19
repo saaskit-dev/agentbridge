@@ -71,3 +71,4 @@ apps/free/server/data/
 # CLI tools archives (downloaded on install)
 apps/free/cli/tools/archives/
 apps/free/cli/tools/unpacked/
+scripts/vps-ssh.sh
