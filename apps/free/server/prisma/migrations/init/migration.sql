@@ -62,7 +62,6 @@ CREATE TABLE "AccountPushToken" (
 -- CreateTable
 CREATE TABLE "Session" (
     "id" TEXT NOT NULL,
-    "tag" TEXT NOT NULL,
     "accountId" TEXT NOT NULL,
     "metadata" TEXT NOT NULL,
     "metadataVersion" INTEGER NOT NULL DEFAULT 0,
@@ -292,9 +291,6 @@ CREATE UNIQUE INDEX "AccountPushToken_accountId_token_key" ON "AccountPushToken"
 
 -- CreateIndex
 CREATE INDEX "Session_accountId_updatedAt_idx" ON "Session"("accountId", "updatedAt" DESC);
-
--- CreateIndex
-CREATE UNIQUE INDEX "Session_accountId_tag_key" ON "Session"("accountId", "tag");
 
 -- CreateIndex
 CREATE INDEX "SessionMessage_sessionId_seq_idx" ON "SessionMessage"("sessionId", "seq");

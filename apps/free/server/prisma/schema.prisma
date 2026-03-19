@@ -86,28 +86,33 @@ model AccountPushToken {
 // Sessions
 //
 
-model Session {
-  id                String           @id @default(cuid())
-  tag               String
-  accountId         String
-  account           Account          @relation(fields: [accountId], references: [id])
-  metadata          String
-  metadataVersion   Int              @default(0)
-  agentState        String?
-  agentStateVersion Int              @default(0)
-  capabilities      String?
-  capabilitiesVersion Int            @default(0)
-  dataEncryptionKey String? // Base64 encoded, changed from Bytes for PGlite compatibility
-  seq               Int              @default(0)
-  active            Boolean          @default(true)
-  lastActiveAt      DateTime         @default(now())
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  messages          SessionMessage[]
-  usageReports      UsageReport[]
-  accessKeys        AccessKey[]
+enum SessionStatus {
+  active   // Daemon connected and running
+  offline  // Daemon disconnected or timed out — recoverable
+  archived // User explicitly ended — shown in app with "已归档" label
+  deleted  // Soft-deleted — hidden from all lists
+}
 
-  @@unique([accountId, tag])
+model Session {
+  id                  String        @id @default(cuid())
+  accountId           String
+  account             Account       @relation(fields: [accountId], references: [id])
+  metadata            String
+  metadataVersion     Int           @default(0)
+  agentState          String?
+  agentStateVersion   Int           @default(0)
+  capabilities        String?
+  capabilitiesVersion Int           @default(0)
+  dataEncryptionKey   String?       // Base64 encoded, changed from Bytes for PGlite compatibility
+  seq                 Int           @default(0)
+  status              SessionStatus @default(active)
+  lastActiveAt        DateTime      @default(now())
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  messages            SessionMessage[]
+  usageReports        UsageReport[]
+  accessKeys          AccessKey[]
+
   @@index([accountId, updatedAt(sort: Desc)])
 }
 

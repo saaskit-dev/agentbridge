@@ -2,7 +2,20 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const log = new Logger('utils/shutdown');
 
-const shutdownHandlers = new Map<string, Array<() => Promise<void>>>();
+/**
+ * Shutdown phases — lower numbers run first.
+ * Phase 0: Network (close listeners, disconnect clients)
+ * Phase 1: Application (background loops, caches, telemetry flush)
+ * Phase 2: Storage (database)
+ */
+export const SHUTDOWN_PHASE = { NETWORK: 0, APP: 1, STORAGE: 2 } as const;
+
+interface HandlerEntry {
+  phase: number;
+  callback: () => Promise<void>;
+}
+
+const shutdownHandlers = new Map<string, HandlerEntry[]>();
 const shutdownController = new AbortController();
 
 export const shutdownSignal = shutdownController.signal;
@@ -10,7 +23,7 @@ export const shutdownSignal = shutdownController.signal;
 let shutdownTriggered = false;
 let shutdownResolve: (() => void) | null = null;
 
-export function onShutdown(name: string, callback: () => Promise<void>): () => void {
+export function onShutdown(name: string, callback: () => Promise<void>, phase: number = SHUTDOWN_PHASE.APP): () => void {
   if (shutdownSignal.aborted) {
     // If already shutting down, execute immediately
     callback();
@@ -21,11 +34,12 @@ export function onShutdown(name: string, callback: () => Promise<void>): () => v
     shutdownHandlers.set(name, []);
   }
   const handlers = shutdownHandlers.get(name)!;
-  handlers.push(callback);
+  const entry: HandlerEntry = { phase, callback };
+  handlers.push(entry);
 
   // Return unsubscribe function
   return () => {
-    const index = handlers.indexOf(callback);
+    const index = handlers.indexOf(entry);
     if (index !== -1) {
       handlers.splice(index, 1);
       if (handlers.length === 0) {
@@ -79,35 +93,42 @@ export async function awaitShutdown() {
   await shutdownPromise;
   shutdownController.abort();
 
-  // Copy handlers to avoid race conditions
-  const handlersSnapshot = new Map<string, Array<() => Promise<void>>>();
-  for (const [name, handlers] of shutdownHandlers) {
-    handlersSnapshot.set(name, [...handlers]);
+  // Snapshot and group handlers by phase
+  const byPhase = new Map<number, Array<{ name: string; index: number; callback: () => Promise<void> }>>();
+  for (const [name, entries] of shutdownHandlers) {
+    for (let i = 0; i < entries.length; i++) {
+      const { phase, callback } = entries[i];
+      if (!byPhase.has(phase)) byPhase.set(phase, []);
+      byPhase.get(phase)!.push({ name, index: i, callback });
+    }
   }
 
-  // Execute all shutdown handlers concurrently
-  const allHandlers: Promise<void>[] = [];
+  // Run phases sequentially (lower phase first), handlers within a phase concurrently
+  const phases = [...byPhase.keys()].sort((a, b) => a - b);
+  const overallStart = Date.now();
   let totalHandlers = 0;
 
-  for (const [name, handlers] of handlersSnapshot) {
+  for (const phase of phases) {
+    const handlers = byPhase.get(phase)!;
     totalHandlers += handlers.length;
-    log.info(`Starting ${handlers.length} shutdown handlers for: ${name}`);
+    const names = handlers.map(h => h.name).join(', ');
+    log.info(`Phase ${phase}: running ${handlers.length} handlers [${names}]`);
 
-    handlers.forEach((handler, index) => {
-      const handlerPromise = handler().then(
-        () => {},
-        error => log.error(`Error in shutdown handler ${name}[${index}]`, error)
-      );
-      allHandlers.push(handlerPromise);
-    });
+    const phaseStart = Date.now();
+    await Promise.all(
+      handlers.map(h => {
+        const handlerStart = Date.now();
+        return h.callback().then(
+          () => log.info(`Phase ${phase} handler done: ${h.name} (${Date.now() - handlerStart}ms)`),
+          error => log.error(`Phase ${phase} handler error: ${h.name} (${Date.now() - handlerStart}ms)`, error)
+        );
+      })
+    );
+    log.info(`Phase ${phase} completed in ${Date.now() - phaseStart}ms`);
   }
 
   if (totalHandlers > 0) {
-    log.info(`Waiting for ${totalHandlers} shutdown handlers to complete...`);
-    const startTime = Date.now();
-    await Promise.all(allHandlers);
-    const duration = Date.now() - startTime;
-    log.info(`All ${totalHandlers} shutdown handlers completed in ${duration}ms`);
+    log.info(`All ${totalHandlers} shutdown handlers completed in ${Date.now() - overallStart}ms`);
   }
 }
 
@@ -119,8 +140,9 @@ export async function keepAlive<T>(name: string, callback: () => Promise<T>): Pr
   const promise = new Promise<void>(resolve => {
     const unsubscribe = onShutdown(`keepAlive:${name}`, async () => {
       if (!completed) {
-        log.info(`Waiting for keepAlive operation to complete: ${name}`);
+        log.info(`[keepAlive] waiting for: ${name}`);
         await promise;
+        log.info(`[keepAlive] completed: ${name}`);
       }
     });
 

@@ -205,16 +205,11 @@ async function serve() {
     process.exit(1);
   }
 
-  // Setup lock release on exit
+  // Release lock when process exits (fires on any exit path, synchronous)
   process.on('exit', releaseLock);
-  process.on('SIGINT', () => {
-    releaseLock();
-    process.exit(0);
-  });
-  process.on('SIGTERM', () => {
-    releaseLock();
-    process.exit(0);
-  });
+  // NOTE: Do NOT handle SIGINT/SIGTERM here — main.ts registers shutdown
+  // handlers (closePGlite, etc.) that must run before exit. Calling
+  // process.exit() here would skip those handlers and corrupt PGlite data.
 
   // Set PGLITE_DIR so db.ts picks it up
   if (!process.env.DATABASE_URL) {

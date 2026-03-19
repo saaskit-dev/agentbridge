@@ -3,14 +3,14 @@ import { db } from '@/storage/db';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const log = new Logger('app/presence/sessionCache');
 
-export type SessionValidationResult = 'valid' | 'archived' | 'invalid';
+export type SessionValidationResult = 'valid' | 'offline' | 'archived' | 'deleted' | 'invalid';
 
 interface SessionCacheEntry {
   validUntil: number;
   lastUpdateSent: number;
   pendingUpdate: number | null;
   userId: string;
-  active: boolean;
+  status: 'active' | 'offline' | 'archived' | 'deleted';
 }
 
 interface MachineCacheEntry {
@@ -57,7 +57,10 @@ class ActivityCache {
     // Check cache first
     if (cached && cached.validUntil > now && cached.userId === userId) {
       sessionCacheCounter.inc({ operation: 'session_validation', result: 'hit' });
-      return cached.active ? 'valid' : 'archived';
+      if (cached.status === 'active') return 'valid';
+      if (cached.status === 'offline') return 'offline';
+      if (cached.status === 'archived') return 'archived';
+      return 'deleted';
     }
 
     sessionCacheCounter.inc({ operation: 'session_validation', result: 'miss' });
@@ -69,15 +72,18 @@ class ActivityCache {
       });
 
       if (session) {
-        // Cache the result (including active status)
+        // Cache the result
         this.sessionCache.set(sessionId, {
           validUntil: now + this.CACHE_TTL,
           lastUpdateSent: session.lastActiveAt.getTime(),
           pendingUpdate: null,
           userId,
-          active: session.active,
+          status: session.status,
         });
-        return session.active ? 'valid' : 'archived';
+        if (session.status === 'active') return 'valid';
+        if (session.status === 'offline') return 'offline';
+        if (session.status === 'archived') return 'archived';
+        return 'deleted';
       }
 
       return 'invalid';
@@ -167,9 +173,9 @@ class ActivityCache {
     const sessionUpdates: { id: string; timestamp: number }[] = [];
     const machineUpdates: { id: string; timestamp: number; userId: string }[] = [];
 
-    // Collect session updates (skip archived sessions — don't flip active back to true)
+    // Collect session updates (only for active sessions)
     for (const [sessionId, entry] of this.sessionCache.entries()) {
-      if (entry.pendingUpdate && entry.active) {
+      if (entry.pendingUpdate && entry.status === 'active') {
         sessionUpdates.push({ id: sessionId, timestamp: entry.pendingUpdate });
         entry.lastUpdateSent = entry.pendingUpdate;
         entry.pendingUpdate = null;
@@ -196,7 +202,7 @@ class ActivityCache {
           sessionUpdates.map(update =>
             db.session.update({
               where: { id: update.id },
-              data: { lastActiveAt: new Date(update.timestamp), active: true },
+              data: { lastActiveAt: new Date(update.timestamp) },
             })
           )
         );

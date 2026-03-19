@@ -24,10 +24,15 @@ import {
 } from '@/app/events/eventRouter';
 import { Logger, continueTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { runWithTrace } from '@/utils/requestTrace';
-import { onShutdown } from '@/utils/shutdown';
+import { onShutdown, SHUTDOWN_PHASE } from '@/utils/shutdown';
 import { db } from '@/storage/db';
 
 const log = new Logger('app/api/socket');
+
+// Track in-flight disconnect DB operations so the APP phase can drain them
+// before the STORAGE phase closes PGlite.
+const inFlightDisconnects = new Set<Promise<void>>();
+
 export async function startSocket(app: Fastify) {
   const io = new Server(app.server, {
     cors: {
@@ -168,7 +173,7 @@ export async function startSocket(app: Fastify) {
       log.debug('[connect] machine online broadcast', { userId, machineId: machineId });
     }
 
-    socket.on('disconnect', async () => {
+    socket.on('disconnect', () => {
       websocketEventsCounter.inc({ event_type: 'disconnect' });
 
       // Cleanup connections
@@ -177,66 +182,74 @@ export async function startSocket(app: Fastify) {
 
       log.info(`User disconnected: ${userId}`);
 
-      // Broadcast daemon offline status and update database
-      if (connection.connectionType === 'machine-scoped') {
-        const now = Date.now();
-        // Update database
-        try {
-          await db.machine.update({
-            where: {
-              accountId_id: {
+      const work = (async () => {
+        const t0 = Date.now();
+        log.debug('[disconnect] db-write start', { userId, connectionType: connection.connectionType });
+
+        // Broadcast daemon offline status and update database
+        if (connection.connectionType === 'machine-scoped') {
+          const now = Date.now();
+          // Update database
+          try {
+            await db.machine.updateMany({
+              where: {
                 accountId: userId,
                 id: connection.machineId,
               },
-            },
-            data: { active: false, lastActiveAt: new Date(now) },
+              data: { active: false, lastActiveAt: new Date(now) },
+            });
+            log.debug('[disconnect] machine marked inactive', { userId, machineId: connection.machineId });
+          } catch (error) {
+            log.error(`[disconnect] error updating machine active status: ${error}`);
+          }
+          // Broadcast ephemeral event
+          const machineActivity = buildMachineActivityEphemeral(
+            connection.machineId,
+            false,
+            now
+          );
+          eventRouter.emitEphemeral({
+            userId,
+            payload: machineActivity,
+            recipientFilter: { type: 'user-scoped-only' },
           });
-          log.debug('[disconnect] machine marked inactive', { userId, machineId: connection.machineId });
-        } catch (error) {
-          log.error(`Error updating machine active status: ${error}`);
         }
-        // Broadcast ephemeral event
-        const machineActivity = buildMachineActivityEphemeral(
-          connection.machineId,
-          false,
-          now
-        );
-        eventRouter.emitEphemeral({
-          userId,
-          payload: machineActivity,
-          recipientFilter: { type: 'user-scoped-only' },
-        });
-      }
 
-      // Broadcast session offline status and update database
-      if (connection.connectionType === 'session-scoped') {
-        const now = Date.now();
-        // Update database
-        try {
-          await db.session.update({
-            where: {
-              id: connection.sessionId,
-              accountId: userId,
-            },
-            data: { active: false, lastActiveAt: new Date(now) },
+        // Broadcast session offline status and update database
+        if (connection.connectionType === 'session-scoped') {
+          const now = Date.now();
+          // Update database
+          try {
+            await db.session.updateMany({
+              where: {
+                id: connection.sessionId,
+                accountId: userId,
+              },
+              data: { status: 'offline', lastActiveAt: new Date(now) },
+            });
+            log.debug('[disconnect] session marked offline', { userId, sessionId: connection.sessionId });
+          } catch (error) {
+            log.error(`[disconnect] error updating session active status: ${error}`);
+          }
+          // Broadcast ephemeral event
+          const sessionActivity = buildSessionActivityEphemeral(
+            connection.sessionId,
+            false,
+            now,
+            false
+          );
+          eventRouter.emitEphemeral({
+            userId,
+            payload: sessionActivity,
+            recipientFilter: { type: 'user-scoped-only' },
           });
-          log.debug('[disconnect] session marked inactive', { userId, sessionId: connection.sessionId });
-        } catch (error) {
-          log.error(`Error updating session active status: ${error}`);
         }
-        // Broadcast ephemeral event
-        const sessionActivity = buildSessionActivityEphemeral(
-          connection.sessionId,
-          false,
-          now,
-          false
-        );
-        eventRouter.emitEphemeral({
-          userId,
-          payload: sessionActivity,
-          recipientFilter: { type: 'user-scoped-only' },
-        });
-      }
+
+        log.debug('[disconnect] db-write done', { userId, connectionType: connection.connectionType, ms: Date.now() - t0 });
+      })();
+
+      inFlightDisconnects.add(work);
+      work.finally(() => inFlightDisconnects.delete(work));
     });
 
     // Propagate _trace from incoming socket events into AsyncLocalStorage so every
@@ -275,7 +288,19 @@ export async function startSocket(app: Fastify) {
     log.info(`User connected: ${userId}`);
   });
 
-  onShutdown('api', async () => {
+  onShutdown('socket.io', async () => {
+    log.info('[shutdown] socket.io close: start');
     await io.close();
+    log.info('[shutdown] socket.io close: done');
+  }, SHUTDOWN_PHASE.NETWORK);
+
+  // Wait for all in-flight disconnect DB writes before DB closes (Phase 2).
+  onShutdown('socket.io-disconnect-drain', async () => {
+    const count = inFlightDisconnects.size;
+    log.info(`[shutdown] disconnect-drain: waiting for ${count} in-flight disconnect handlers`);
+    if (count > 0) {
+      await Promise.all([...inFlightDisconnects]);
+    }
+    log.info('[shutdown] disconnect-drain: done');
   });
 }

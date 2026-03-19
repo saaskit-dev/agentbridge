@@ -31,7 +31,7 @@ import { isLocalStorage, getLocalFilesDir } from '@/storage/files';
 import { Logger, continueTrace, resumeTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { createFastifyLogger } from '@/utils/fastifyLogger';
 import { runWithTrace } from '@/utils/requestTrace';
-import { onShutdown } from '@/utils/shutdown';
+import { onShutdown, SHUTDOWN_PHASE } from '@/utils/shutdown';
 
 const log = new Logger('app/api/api');
 export async function startApi() {
@@ -152,7 +152,12 @@ export async function startApi() {
   // Metrics endpoint (integrated into main server)
   app.get('/metrics', async (_request, reply) => {
     try {
-      const prismaMetrics = await (db as any).$metrics?.prometheus?.() ?? '';
+      let prismaMetrics = '';
+      try {
+        prismaMetrics = await (db as any).$metrics?.prometheus?.() ?? '';
+      } catch {
+        // Prisma metrics require the "metrics" preview feature — skip silently if unavailable
+      }
       const appMetrics = await register.metrics();
       const combinedMetrics = prismaMetrics + '\n' + appMetrics;
       reply.type('text/plain; version=0.0.4; charset=utf-8');
@@ -166,9 +171,11 @@ export async function startApi() {
   // Start HTTP
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   await app.listen({ port, host: '0.0.0.0' });
-  onShutdown('api', async () => {
+  onShutdown('http', async () => {
+    log.info('[shutdown] http close: start');
     await app.close();
-  });
+    log.info('[shutdown] http close: done');
+  }, SHUTDOWN_PHASE.NETWORK);
 
   // Start Socket
   await startSocket(typed);
