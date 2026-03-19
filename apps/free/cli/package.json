@@ -14,7 +14,9 @@
   },
   "bin": {
     "free": "./dist/cli.mjs",
-    "free-mcp": "./dist/mcp-bridge.mjs"
+    "free-mcp": "./dist/mcp-bridge.mjs",
+    "free-dev": "./dist/cli-dev.mjs",
+    "free-mcp-dev": "./dist/mcp-bridge-dev.mjs"
   },
   "main": "./dist/lib.cjs",
   "module": "./dist/lib.mjs",
@@ -38,6 +40,16 @@
     "./mcp-bridge": {
       "import": {
         "default": "./dist/mcp-bridge.mjs"
+      }
+    },
+    "./cli-dev": {
+      "import": {
+        "default": "./dist/cli-dev.mjs"
+      }
+    },
+    "./mcp-bridge-dev": {
+      "import": {
+        "default": "./dist/mcp-bridge-dev.mjs"
       }
     }
   },

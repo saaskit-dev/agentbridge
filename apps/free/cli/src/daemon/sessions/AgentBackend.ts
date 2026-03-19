@@ -55,6 +55,11 @@ export interface AgentStartOpts {
    * Not needed (and not provided) for SDK/remote mode or non-Claude agents.
    */
   broadcast?: (sessionId: string, msg: IPCServerMessage) => void;
+  /**
+   * Called by ACP backends once the agent-level session ID is resolved (new or resumed).
+   * AgentSession uses this to persist the ID for crash recovery.
+   */
+  onSessionIdResolved?: (sessionId: string) => void;
 }
 
 export interface AgentBackend {

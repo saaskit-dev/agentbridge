@@ -122,7 +122,6 @@ export function startDaemonControlServer({
           body: z.object({
             directory: z.string(),
             sessionId: z.string().optional(),
-            sessionTag: z.string().optional(),
             agent: AgentTypeSchema.optional(),
           }),
           response: {
@@ -145,11 +144,11 @@ export function startDaemonControlServer({
         },
       },
       async (request, reply) => {
-        const { directory, sessionId, sessionTag, agent } = request.body;
+        const { directory, sessionId, agent } = request.body;
         logger.debug(
           `[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}, agent=${agent || 'default'}`
         );
-        const result = await spawnSession({ directory, sessionId, sessionTag, agent });
+        const result = await spawnSession({ directory, sessionId, agent });
 
         switch (result.type) {
           case 'success':

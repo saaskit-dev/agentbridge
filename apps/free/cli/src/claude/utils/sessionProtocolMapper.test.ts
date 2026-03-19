@@ -350,4 +350,24 @@ describe('closeClaudeTurnWithStatus', () => {
     expect(result.envelopes).toHaveLength(1);
     expect(result.envelopes[0].ev).toEqual({ t: 'turn-end', status: 'cancelled' });
   });
+
+  it('flushes open tool calls as tool-call-end before turn-end', () => {
+    const state = {
+      currentTurnId: 'turn-1',
+      openToolCallIds: new Set(['call-a', 'call-b']),
+    };
+    const result = closeClaudeTurnWithStatus(state, 'cancelled');
+
+    // Expect 2 tool-call-end + 1 turn-end
+    expect(result.envelopes).toHaveLength(3);
+    const toolCallEnds = result.envelopes.filter(e => e.ev.t === 'tool-call-end');
+    expect(toolCallEnds).toHaveLength(2);
+    const calls = toolCallEnds.map(e => (e.ev as { t: 'tool-call-end'; call: string }).call);
+    expect(calls).toContain('call-a');
+    expect(calls).toContain('call-b');
+    expect(result.envelopes.at(-1)?.ev).toEqual({ t: 'turn-end', status: 'cancelled' });
+    // State is cleared
+    expect(state.openToolCallIds.size).toBe(0);
+    expect(result.currentTurnId).toBeNull();
+  });
 });

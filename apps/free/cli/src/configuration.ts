@@ -110,7 +110,8 @@ class Configuration {
     }
 
     // Visual indicator on CLI startup (only if not daemon process to avoid log clutter)
-    if (!this.isDaemonProcess && this.variant === 'development') {
+    // Also skip if --variant is missing — the bootstrap re-exec in index.ts will re-run us with it
+    if (!this.isDaemonProcess && this.variant === 'development' && process.argv.includes('--variant')) {
       console.log('\x1b[33m🔧 DEV MODE\x1b[0m - Data: ' + this.freeHomeDir);
     }
 

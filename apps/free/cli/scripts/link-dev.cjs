@@ -1,17 +1,12 @@
 #!/usr/bin/env node
 /**
- * link-dev.cjs - Create symlink for free-dev only
+ * link-dev.cjs - Create symlinks for free-dev and free-mcp-dev
  *
- * This script creates a symlink for the free-dev command pointing to the local
- * development version, while leaving the stable npm version of `free` untouched.
+ * Creates global symlinks pointing to the local development build,
+ * while leaving the stable npm versions of `free` / `free-mcp` untouched.
  *
- * Usage: yarn link:dev
- *
- * What it does:
- * 1. Finds the global npm bin directory
- * 2. Creates/updates a symlink: free-dev -> ./bin/free-dev.mjs
- *
- * To undo: yarn unlink:dev
+ * Usage: pnpm link:dev        (or pnpm run link:dev)
+ * Undo:  pnpm unlink:dev
  */
 
 const { execFileSync } = require('child_process');
@@ -19,124 +14,106 @@ const { join, dirname } = require('path');
 const fs = require('fs');
 
 const projectRoot = dirname(__dirname);
-const binSource = join(projectRoot, 'bin', 'free-dev.mjs');
 
-// Get the action from command line args
+/** Binaries to link: [globalName, localPath] */
+const BINS = [
+  ['free-dev', join(projectRoot, 'dist', 'cli-dev.mjs')],
+  ['free-mcp-dev', join(projectRoot, 'dist', 'mcp-bridge-dev.mjs')],
+];
+
 const action = process.argv[2] || 'link';
 
 function getGlobalBinDir() {
-    // Try npm global bin first using execFileSync (safer than execSync)
-    try {
-        const npmBin = execFileSync('npm', ['bin', '-g'], { encoding: 'utf8' }).trim();
-        if (fs.existsSync(npmBin)) {
-            return npmBin;
-        }
-    } catch (e) {
-        // Fall through to alternatives
-    }
+  try {
+    const npmBin = execFileSync('npm', ['bin', '-g'], { encoding: 'utf8' }).trim();
+    if (fs.existsSync(npmBin)) return npmBin;
+  } catch (_) { /* fall through */ }
 
-    // Common locations by platform
-    if (process.platform === 'darwin') {
-        // macOS with Homebrew Node (Apple Silicon)
-        const homebrewBin = '/opt/homebrew/bin';
-        if (fs.existsSync(homebrewBin)) {
-            return homebrewBin;
-        }
-        // Intel Mac Homebrew
-        const homebrewUsrBin = '/usr/local/bin';
-        if (fs.existsSync(homebrewUsrBin)) {
-            return homebrewUsrBin;
-        }
+  if (process.platform === 'darwin') {
+    for (const dir of ['/opt/homebrew/bin', '/usr/local/bin']) {
+      if (fs.existsSync(dir)) return dir;
     }
-
-    // Fallback to /usr/local/bin
-    return '/usr/local/bin';
+  }
+  return '/usr/local/bin';
 }
 
 function link() {
-    const globalBin = getGlobalBinDir();
-    const binTarget = join(globalBin, 'free-dev');
+  const globalBin = getGlobalBinDir();
 
-    console.log('Creating symlink for free-dev...');
-    console.log(`  Source: ${binSource}`);
-    console.log(`  Target: ${binTarget}`);
+  for (const [name, source] of BINS) {
+    const target = join(globalBin, name);
+    console.log(`\nLinking ${name}...`);
+    console.log(`  Source: ${source}`);
+    console.log(`  Target: ${target}`);
 
-    // Check if source exists
-    if (!fs.existsSync(binSource)) {
-        console.error(`\n❌ Error: ${binSource} does not exist.`);
-        console.error("   Run 'yarn build' first to compile the project.");
-        process.exit(1);
+    if (!fs.existsSync(source)) {
+      console.error(`  ❌ Source does not exist. Run 'pnpm build' first.`);
+      continue;
     }
 
-    // Remove existing symlink or file
+    // Remove existing
     try {
-        const stat = fs.lstatSync(binTarget);
-        if (stat.isSymbolicLink() || stat.isFile()) {
-            fs.unlinkSync(binTarget);
-            console.log(`  Removed existing: ${binTarget}`);
-        }
-    } catch (e) {
-        // File doesn't exist, that's fine
-    }
+      const stat = fs.lstatSync(target);
+      if (stat.isSymbolicLink() || stat.isFile()) {
+        fs.unlinkSync(target);
+      }
+    } catch (_) { /* doesn't exist */ }
 
-    // Create the symlink
     try {
-        fs.symlinkSync(binSource, binTarget);
-        console.log('\n✅ Successfully linked free-dev to local development version');
-        console.log('\nNow you can use:');
-        console.log('  free      → stable npm version (unchanged)');
-        console.log('  free-dev  → local development version');
-        console.log('\nTo undo: yarn unlink:dev');
+      fs.symlinkSync(source, target);
+      // Make executable
+      fs.chmodSync(source, 0o755);
+      console.log(`  ✅ Linked`);
     } catch (e) {
-        if (e.code === 'EACCES') {
-            console.error('\n❌ Permission denied. Try running with sudo:');
-            console.error('   sudo yarn link:dev');
-        } else {
-            console.error(`\n❌ Error creating symlink: ${e.message}`);
-        }
-        process.exit(1);
+      if (e.code === 'EACCES') {
+        console.error(`  ❌ Permission denied. Try: sudo pnpm link:dev`);
+      } else {
+        console.error(`  ❌ ${e.message}`);
+      }
     }
+  }
+
+  console.log('\nDone. You can now use:');
+  console.log('  free         → stable npm version (unchanged)');
+  console.log('  free-dev     → local dev build (APP_ENV=development, ~/.free-dev)');
+  console.log('  free-mcp-dev → local dev MCP bridge');
+  console.log('\nTo undo: pnpm unlink:dev');
 }
 
 function unlink() {
-    const globalBin = getGlobalBinDir();
-    const binTarget = join(globalBin, 'free-dev');
+  const globalBin = getGlobalBinDir();
 
-    console.log('Removing free-dev symlink...');
+  for (const [name, source] of BINS) {
+    const target = join(globalBin, name);
+    console.log(`\nUnlinking ${name}...`);
 
     try {
-        const stat = fs.lstatSync(binTarget);
-        if (stat.isSymbolicLink()) {
-            const linkTarget = fs.readlinkSync(binTarget);
-            if (linkTarget === binSource || linkTarget.includes('free-cli')) {
-                fs.unlinkSync(binTarget);
-                console.log('\n✅ Removed free-dev development symlink');
-                console.log('\nTo restore npm version: npm install -g free-coder');
-            } else {
-                console.log(`\n⚠️  free-dev symlink points elsewhere: ${linkTarget}`);
-                console.log('   Not removing. Remove manually if needed.');
-            }
+      const stat = fs.lstatSync(target);
+      if (stat.isSymbolicLink()) {
+        const linkTarget = fs.readlinkSync(target);
+        if (linkTarget === source || linkTarget.includes('free-cli')) {
+          fs.unlinkSync(target);
+          console.log(`  ✅ Removed`);
         } else {
-            console.log(`\n⚠️  ${binTarget} exists but is not a symlink.`);
-            console.log('   Not removing. This may be the npm-installed version.');
+          console.log(`  ⚠️  Points elsewhere: ${linkTarget} — skipping`);
         }
+      } else {
+        console.log(`  ⚠️  Not a symlink — skipping`);
+      }
     } catch (e) {
-        if (e.code === 'ENOENT') {
-            console.log("\n✅ free-dev symlink doesn't exist (already removed or never created)");
-        } else if (e.code === 'EACCES') {
-            console.error('\n❌ Permission denied. Try running with sudo:');
-            console.error('   sudo yarn unlink:dev');
-            process.exit(1);
-        } else {
-            console.error(`\n❌ Error: ${e.message}`);
-            process.exit(1);
-        }
+      if (e.code === 'ENOENT') {
+        console.log(`  ✅ Already removed`);
+      } else if (e.code === 'EACCES') {
+        console.error(`  ❌ Permission denied. Try: sudo pnpm unlink:dev`);
+      } else {
+        console.error(`  ❌ ${e.message}`);
+      }
     }
+  }
 }
 
-// Main
 if (action === 'unlink') {
-    unlink();
+  unlink();
 } else {
-    link();
+  link();
 }

@@ -113,6 +113,16 @@ export function mapAcpSessionCapabilities(
   };
 }
 
+/**
+ * Session update types that actually modify capabilities (models/modes/commands/configOptions).
+ * Must stay in sync with the switch cases in mergeAcpSessionCapabilities below.
+ */
+export const CAPABILITY_UPDATE_TYPES: ReadonlySet<string> = new Set([
+  'available_commands_update',
+  'current_mode_update',
+  'config_option_update',
+]);
+
 export function mergeAcpSessionCapabilities(
   current: SessionCapabilities,
   update: SessionUpdate

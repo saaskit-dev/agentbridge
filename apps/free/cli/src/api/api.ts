@@ -70,10 +70,12 @@ export class ApiClient {
   }
 
   /**
-   * Create a new session or load existing one with the given tag
+   * Get or create a session by client-generated ID.
+   * If the server returns 409 (ID taken by archived/deleted session or another user),
+   * generates a new UUID and retries (up to 3 attempts).
    */
   async getOrCreateSession(opts: {
-    tag: string;
+    id: string;
     metadata: Metadata;
     state: AgentState | null;
   }): Promise<Session | null> {
@@ -108,16 +110,20 @@ export class ApiClient {
       encryptionVariant = 'legacy';
     }
 
-    // Create session
+    // Get or create session — retry with new UUID on 409 conflict
+    let sessionId = opts.id;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const encryptedMetadata = await encryptToWireString(encryptionKey, encryptionVariant, opts.metadata);
+      const encryptedState = opts.state
+        ? await encryptToWireString(encryptionKey, encryptionVariant, opts.state)
+        : null;
     try {
       const response = await axios.post<CreateSessionResponse>(
         `${configuration.serverUrl}/v1/sessions`,
         {
-          tag: opts.tag,
-          metadata: await encryptToWireString(encryptionKey, encryptionVariant, opts.metadata),
-          agentState: opts.state
-            ? await encryptToWireString(encryptionKey, encryptionVariant, opts.state)
-            : null,
+          id: sessionId,
+          metadata: encryptedMetadata,
+          agentState: encryptedState,
           dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : null,
         },
         {
@@ -125,11 +131,19 @@ export class ApiClient {
             Authorization: `Bearer ${this.credential.token}`,
             'Content-Type': 'application/json',
           },
-          timeout: 60000, // 1 minute timeout for very bad network connections
+          timeout: 60000,
+          validateStatus: (status) => status === 200 || status === 409,
         }
       );
 
-      logger.debug(`Session created/loaded: ${response.data.session.id} (tag: ${opts.tag})`);
+      if (response.status === 409) {
+        const { randomUUID } = await import('node:crypto');
+        sessionId = randomUUID();
+        logger.debug(`Session ID conflict, retrying with new ID (attempt ${attempt + 1})`);
+        continue;
+      }
+
+      logger.debug(`Session created/loaded: ${response.data.session.id}`);
       const raw = response.data.session;
       const session: Session = {
         id: raw.id,
@@ -215,6 +229,8 @@ export class ApiClient {
         `Failed to get or create session: ${safeStringify(error)}`
       );
     }
+    } // end for loop
+    throw new Error('Failed to create session: ID conflict after 3 attempts');
   }
 
   /**
@@ -545,7 +561,10 @@ export class ApiClient {
         logger.debug('[API] Account settings not found');
         return null;
       }
-      logger.debug(`[API] [ERROR] Failed to get account settings:`, error);
+      logger.debug('[API] Failed to get account settings', {
+        code: error?.code ?? null,
+        status: error?.response?.status ?? null,
+      });
       return null;
     }
   }

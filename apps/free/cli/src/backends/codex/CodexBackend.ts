@@ -79,7 +79,12 @@ export class CodexBackend implements AgentBackend {
           : {}),
       };
 
-      logger.debug('[CodexBackend] creating session', { cwd: this.startOpts.cwd, model: this.startOpts.model, approvalPolicy, sandbox });
+      logger.debug('[CodexBackend] creating session', {
+        cwd: this.startOpts.cwd,
+        model: this.startOpts.model,
+        approvalPolicy,
+        sandbox,
+      });
       await this.client.startSession(sessionConfig);
       this.sessionCreated = true;
       logger.debug('[CodexBackend] session created');
@@ -90,9 +95,30 @@ export class CodexBackend implements AgentBackend {
     }
   }
 
+  async setModel(modelId: string): Promise<void> {
+    logger.warn(
+      '[CodexBackend] setModel called but runtime model switching is not supported in PTY mode',
+      { modelId }
+    );
+  }
+
+  async setMode(modeId: string): Promise<void> {
+    logger.warn(
+      '[CodexBackend] setMode called but runtime mode switching is not supported in PTY mode',
+      { modeId }
+    );
+  }
+
+  async setConfig(optionId: string, value: string): Promise<void> {
+    logger.warn(
+      '[CodexBackend] setConfig called but runtime config switching is not supported in PTY mode',
+      { optionId, value }
+    );
+  }
+
   async abort(): Promise<void> {
     logger.debug('[CodexBackend] abort — disconnecting client');
-    await this.client.disconnect().catch((err) => {
+    await this.client.disconnect().catch(err => {
       logger.warn('[CodexBackend] error during abort disconnect', { error: safeStringify(err) });
       this.exitInfo = { reason: `abort disconnect error: ${safeStringify(err)}` };
     });
@@ -101,7 +127,7 @@ export class CodexBackend implements AgentBackend {
   async stop(): Promise<void> {
     logger.debug('[CodexBackend] stop — force closing session');
     this.permissionHandler?.reset();
-    await this.client.forceCloseSession().catch((err) => {
+    await this.client.forceCloseSession().catch(err => {
       logger.warn('[CodexBackend] error during stop', { error: safeStringify(err) });
       this.exitInfo = { reason: `stop error: ${safeStringify(err)}` };
     });

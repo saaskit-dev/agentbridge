@@ -136,8 +136,12 @@ export class IPCClient {
 
   send(msg: IPCClientMessage): void {
     if (this.socket?.writable) {
-      this.socket.write(JSON.stringify(msg) + '\n');
-      return;
+      try {
+        this.socket.write(JSON.stringify(msg) + '\n');
+        return;
+      } catch {
+        // EPIPE — daemon disconnected; fall through to buffer below
+      }
     }
 
     // Socket is not writable (reconnect window)

@@ -37,7 +37,7 @@ export async function installUserAgent(): Promise<void> {
     // Build environment block — capture current env so daemon inherits the correct variant
     const envLines = [`Environment="PATH=${process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'}"`];
     if (process.env.FREE_HOME_DIR) envLines.push(`Environment="FREE_HOME_DIR=${process.env.FREE_HOME_DIR}"`);
-    if (process.env.APP_ENV) envLines.push(`Environment="APP_ENV=${process.env.APP_ENV}"`);
+    envLines.push(`Environment="APP_ENV=${configuration.variant}"`);
     if (process.env.FREE_SERVER_URL) envLines.push(`Environment="FREE_SERVER_URL=${process.env.FREE_SERVER_URL}"`);
     if (process.env.FREE_WEBAPP_URL) envLines.push(`Environment="FREE_WEBAPP_URL=${process.env.FREE_WEBAPP_URL}"`);
 

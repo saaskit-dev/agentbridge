@@ -96,9 +96,9 @@ export async function installUserAgent(): Promise<void> {
                     <key>PATH</key>
                     <string>${process.env.PATH}</string>${process.env.FREE_HOME_DIR ? `
                     <key>FREE_HOME_DIR</key>
-                    <string>${process.env.FREE_HOME_DIR}</string>` : ''}${process.env.APP_ENV ? `
+                    <string>${process.env.FREE_HOME_DIR}</string>` : ''}
                     <key>APP_ENV</key>
-                    <string>${process.env.APP_ENV}</string>` : ''}${process.env.FREE_SERVER_URL ? `
+                    <string>${configuration.variant}</string>${process.env.FREE_SERVER_URL ? `
                     <key>FREE_SERVER_URL</key>
                     <string>${process.env.FREE_SERVER_URL}</string>` : ''}${process.env.FREE_WEBAPP_URL ? `
                     <key>FREE_WEBAPP_URL</key>

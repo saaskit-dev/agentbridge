@@ -93,8 +93,12 @@ export function spawnFreeCLI(args: string[], options: SpawnOptions = {}): ChildP
     throw new Error(errorMessage);
   }
 
+  // Ensure APP_ENV is propagated so child processes inherit the correct variant
+  // without relying solely on the --variant CLI flag.
+  const env = { ...options.env ?? process.env, APP_ENV: configuration.isDev ? 'development' : 'production' };
+
   // Use absolute path to the current runtime to avoid PATH issues in daemon processes
   // process.execPath gives us the absolute path to the node/bun binary running this process
   const runtime = process.execPath;
-  return spawn(runtime, nodeArgs, options);
+  return spawn(runtime, nodeArgs, { ...options, env });
 }

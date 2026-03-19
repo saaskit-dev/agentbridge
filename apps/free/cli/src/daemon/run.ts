@@ -42,6 +42,8 @@ import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 import { buildAgentAuthEnv } from './buildAgentAuthEnv';
 import { shutdownTelemetry, getProcessTraceContext } from '@/telemetry';
+import { isAnalyticsEnabledSync } from '@/api/analyticsHeaderSync';
+import { getChildProcStats } from '@/utils/childProcessUtils';
 import { readAllPersistedSessions, eraseSession as erasePersistedSession } from './sessions/sessionPersistence';
 
 // Register all agent session types at module load time
@@ -275,7 +277,6 @@ export async function startDaemon(): Promise<void> {
           startedBy: opts.startedBy ?? 'cli',
           cwd: opts.directory,
           resumeSessionId: opts.resumeAgentSessionId,
-          sessionTag: opts.sessionTag,
           env: extraEnv,
           permissionMode: opts.permissionMode,
           model: opts.model,
@@ -361,7 +362,6 @@ export async function startDaemon(): Promise<void> {
         model: options.model,
         mode: options.mode,
         resumeAgentSessionId: options.resumeAgentSessionId,
-        sessionTag: options.sessionTag,
         startedBy: options.startedBy ?? 'app',
         token: options.token,
         startingMode: 'remote',
@@ -536,7 +536,7 @@ export async function startDaemon(): Promise<void> {
             startedBy: 'daemon',
             cwd: data.cwd,
             resumeSessionId: data.resumeSessionId,
-            sessionTag: data.sessionTag,
+            sessionId: data.sessionId,
             permissionMode: data.permissionMode,
             model: data.model,
             mode: data.mode,
@@ -712,6 +712,33 @@ export async function startDaemon(): Promise<void> {
           'exception',
           'A different daemon was started without killing us. We should kill ourselves.'
         );
+      }
+
+      // Memory metrics — daemon + all child processes, guarded by analytics opt-in.
+      if (isAnalyticsEnabledSync()) {
+        const mem = process.memoryUsage();
+        const sessions = sessionManager?.list() ?? [];
+
+        logger.debug('[DAEMON RUN] mem_metrics:daemon', {
+          pid: process.pid,
+          rssKB: Math.round(mem.rss / 1024),
+          heapUsedKB: Math.round(mem.heapUsed / 1024),
+          heapTotalKB: Math.round(mem.heapTotal / 1024),
+          externalKB: Math.round(mem.external / 1024),
+          arrayBuffersKB: Math.round(mem.arrayBuffers / 1024),
+          activeSessions: sessions.length,
+        });
+
+        // Collect child process memory async (non-blocking, fire-and-forget).
+        const pidToSessionId = new Map<number, string>();
+        for (const s of sessions) {
+          if (s.childPid) pidToSessionId.set(s.childPid, s.sessionId);
+        }
+        getChildProcStats(process.pid, pidToSessionId).then(children => {
+          if (children.length > 0) {
+            logger.debug('[DAEMON RUN] mem_metrics:children', { children });
+          }
+        }).catch(() => { /* non-critical, ignore */ });
       }
 
       // Heartbeat

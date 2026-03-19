@@ -142,14 +142,27 @@ export class IPCServer {
       });
     }
     const line = JSON.stringify(msg) + '\n';
+    const deadSockets: net.Socket[] = [];
     for (const socket of sockets) {
-      const flushed = socket.write(line);
-      if (!flushed) {
-        logger.debug('[IPCServer] socket send buffer full, backpressure detected', {
-          sessionId,
-          msgType: msg.type,
-        });
+      if (!socket.writable) {
+        deadSockets.push(socket);
+        continue;
       }
+      try {
+        const flushed = socket.write(line);
+        if (!flushed) {
+          logger.debug('[IPCServer] socket send buffer full, backpressure detected', {
+            sessionId,
+            msgType: msg.type,
+          });
+        }
+      } catch {
+        // EPIPE — client disconnected
+        deadSockets.push(socket);
+      }
+    }
+    for (const socket of deadSockets) {
+      this.cleanup(socket);
     }
   }
 
@@ -483,10 +496,15 @@ export class IPCServer {
   }
 
   private writeToSocket(socket: net.Socket, msg: IPCServerMessage): void {
-    if (socket.writable) {
+    if (!socket.writable) {
+      logger.debug('[IPCServer] writeToSocket: socket not writable, message dropped', { type: msg.type });
+      return;
+    }
+    try {
       socket.write(JSON.stringify(msg) + '\n');
-    } else {
-      logger.warn('[IPCServer] writeToSocket: socket not writable, message dropped', { type: msg.type });
+    } catch {
+      // EPIPE — client disconnected
+      logger.debug('[IPCServer] writeToSocket: write failed (EPIPE)', { type: msg.type });
     }
   }
 

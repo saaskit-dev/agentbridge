@@ -16,7 +16,6 @@ import {
   UserMessageSchema,
   Usage,
 } from './types';
-import { RawJSONLines } from '@/claude/types';
 import { configuration } from '@/configuration';
 import type { NormalizedMessage } from '@/daemon/sessions/types';
 import { setCurrentTurnTrace, getProcessTraceContext } from '@/telemetry';
@@ -29,14 +28,7 @@ import { calculateCost } from '@/utils/pricing';
 import { InvalidateSync } from '@/utils/sync';
 import { backoff, delay } from '@/utils/time';
 import type { SessionEnvelope } from '@/sessionProtocol/types';
-import type { SessionTurnEndStatus } from '@/sessionProtocol/types';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
-import {
-
-  closeClaudeTurnWithStatusNormalized,
-  mapClaudeLogMessageToNormalizedMessages,
-  type ClaudeSessionProtocolState,
-} from '@/claude/utils/sessionProtocolMapper';
 
 const logger = new Logger('api/apiSession');
 
@@ -157,17 +149,6 @@ export class ApiSessionClient extends EventEmitter {
   private capabilitiesLock = new AsyncLock();
   private encryptionKey: Uint8Array;
   private encryptionVariant: 'legacy' | 'dataKey';
-  private claudeSessionProtocolState: ClaudeSessionProtocolState = {
-    currentTurnId: null,
-    uuidToProviderSubagent: new Map<string, string>(),
-    taskPromptToSubagents: new Map<string, string[]>(),
-    providerSubagentToSessionSubagent: new Map<string, string>(),
-    subagentTitles: new Map<string, string>(),
-    bufferedSubagentMessages: new Map<string, RawJSONLines[]>(),
-    hiddenParentToolCalls: new Set<string>(),
-    startedSubagents: new Set<string>(),
-    activeSubagents: new Set<string>(),
-  };
   private lastSeq = 0;
   private pendingOutbox: Array<{ content: string; id: string; _trace?: WireTrace }> = [];
   private readonly sendSync: InvalidateSync;
@@ -212,7 +193,7 @@ export class ApiSessionClient extends EventEmitter {
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelayMax: 60000,
       transports: ['websocket'],
       withCredentials: true,
       autoConnect: false,
@@ -221,7 +202,7 @@ export class ApiSessionClient extends EventEmitter {
       sessionId: this.sessionId,
       serverUrl: configuration.serverUrl,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelayMax: 60000,
     });
 
     //
@@ -535,26 +516,9 @@ export class ApiSessionClient extends EventEmitter {
       return;
     }
 
-    // Skip flush if socket is disconnected - wait for reconnection
-    if (!this.socket.connected) {
-      logger.debug('[apiSession] skipping outbox flush - socket disconnected', {
-        userId: this.userId,
-        sessionId: this.sessionId,
-        count: this.pendingOutbox.length,
-      });
-      return;
-    }
-
     // Drain in batches — server schema limits each POST to 100 messages.
+    // NOTE: outbox flushing uses HTTP POST and works regardless of WebSocket state.
     while (this.pendingOutbox.length > 0) {
-      if (!this.socket.connected) {
-        logger.warn('[apiSession] socket disconnected mid-flush, will resume later', {
-          sessionId: this.sessionId,
-          remaining: this.pendingOutbox.length,
-        });
-        return;
-      }
-
       const batch = this.pendingOutbox.slice(0, ApiSessionClient.FLUSH_BATCH_SIZE);
       logger.debug('[apiSession] flushing outbox', {
         userId: this.userId,
@@ -595,13 +559,6 @@ export class ApiSessionClient extends EventEmitter {
         // Session deleted on the server — stop sending permanently, don't retry.
         if (status === 404) {
           this.sendSync.stop();
-          return;
-        }
-        // Don't retry if socket disconnected after we started
-        if (!this.socket.connected) {
-          logger.debug('[apiSession] socket disconnected during flush, stopping retry', {
-            sessionId: this.sessionId,
-          });
           return;
         }
         throw err;
@@ -645,47 +602,6 @@ export class ApiSessionClient extends EventEmitter {
     });
     this.sendSync.invalidate();
     return id;
-  }
-
-  /**
-   * Send message to session
-   * @param body - Message body (can be MessageContent or raw content for agent messages)
-   */
-  async sendClaudeSessionMessage(body: RawJSONLines) {
-    const mapped = mapClaudeLogMessageToNormalizedMessages(body, this.claudeSessionProtocolState);
-    this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-    for (const message of mapped.messages) {
-      await this.sendNormalizedMessage(message);
-    }
-    // Track usage from assistant messages
-    if (body.type === 'assistant' && body.message?.usage) {
-      try {
-        this.sendUsageData(body.message.usage, body.message.model);
-      } catch (error) {
-        logger.debug('[SOCKET] Failed to send usage data', { userId: this.userId, sessionId: this.sessionId, error: safeStringify(error) });
-      }
-    }
-
-    // Update metadata with summary if this is a summary message
-    if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
-      this.updateMetadata(metadata => ({
-        ...metadata,
-        summary: {
-          text: body.summary,
-          updatedAt: Date.now(),
-        },
-      }));
-    }
-  }
-
-  async closeClaudeSessionTurn(status: SessionTurnEndStatus = 'completed') {
-    const mapped = closeClaudeTurnWithStatusNormalized(this.claudeSessionProtocolState, status);
-    this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;
-    for (const message of mapped.messages) {
-      await this.sendNormalizedMessage(message);
-    }
-    // Turn is complete — clear the per-message trace so idle logs don't inherit it.
-    setCurrentTurnTrace(undefined);
   }
 
   /**
@@ -810,6 +726,9 @@ export class ApiSessionClient extends EventEmitter {
    * Send a ping message to keep the connection alive
    */
   keepAlive(thinking: boolean, mode: 'local' | 'remote') {
+    if (!this.socket.connected) {
+      return;
+    }
     logger.debug(`[API] Sending keep alive message: ${thinking}`);
     this.socket.volatile.emit('session-alive', {
       sid: this.sessionId,
@@ -1053,7 +972,11 @@ export class ApiSessionClient extends EventEmitter {
    * Wait for socket buffer to flush
    */
   async flush(): Promise<void> {
+    // Wait for HTTP outbox to drain (works regardless of WebSocket state).
     await Promise.race([this.sendSync.invalidateAndAwait(), delay(10000)]);
+    // If socket is connected, also wait for a round-trip ping to confirm the
+    // server has processed everything. Skip this when disconnected — HTTP flush above
+    // is the authoritative delivery path and has already completed.
     if (!this.socket.connected) {
       return;
     }

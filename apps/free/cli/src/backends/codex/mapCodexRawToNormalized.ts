@@ -25,7 +25,10 @@ function pickCallId(message: Record<string, unknown>): string {
 function summarizeCommand(command: unknown): string | null {
   if (typeof command === 'string' && command.trim().length > 0) return command;
   if (Array.isArray(command)) {
-    const cmd = command.map(v => String(v)).join(' ').trim();
+    const cmd = command
+      .map(v => String(v))
+      .join(' ')
+      .trim();
     return cmd.length > 0 ? cmd : null;
   }
   return null;
@@ -86,10 +89,31 @@ export function mapCodexRawToNormalized(
 
   if (type === 'agent_message') {
     if (typeof message.message !== 'string') return null;
+    const msgText = message.message;
+
+    try {
+      const parsed = JSON.parse(msgText);
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        parsed.code !== undefined &&
+        parsed.message !== undefined
+      ) {
+        const errorMsg = (parsed.data as Record<string, unknown>)?.message ?? parsed.message;
+        return {
+          ...base,
+          role: 'event',
+          content: { type: 'error', message: String(errorMsg), retryable: false },
+        };
+      }
+    } catch {
+      /* not JSON, fall through */
+    }
+
     return {
       ...base,
       role: 'agent',
-      content: [{ type: 'text', text: message.message, uuid: createId(), parentUUID: null }],
+      content: [{ type: 'text', text: msgText, uuid: createId(), parentUUID: null }],
     };
   }
 

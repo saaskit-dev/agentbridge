@@ -65,12 +65,12 @@ export class FakeAppClient {
   }
 
   async createSession(opts?: {
-    tag?: string;
+    id?: string;
     metadata?: Metadata;
     state?: Session['agentState'];
   }): Promise<Session> {
     const session = await this.api.getOrCreateSession({
-      tag: opts?.tag ?? `fake-app-${randomUUID()}`,
+      id: opts?.id ?? randomUUID(),
       metadata: opts?.metadata ?? defaultSessionMetadata(),
       state: opts?.state ?? null,
     });
@@ -226,6 +226,11 @@ export class FakeAppClient {
     ) as AgentState | null;
   }
 
+  /** Discard all accumulated updates so subsequent waitForUpdate calls only see fresh events. */
+  drainUpdates(): void {
+    this.updates.length = 0;
+  }
+
   async waitForUpdate(
     predicate: (update: Update) => boolean,
     timeoutMs: number,
@@ -234,8 +239,11 @@ export class FakeAppClient {
     const startedAt = Date.now();
 
     while (Date.now() - startedAt < timeoutMs) {
-      const match = this.updates.find(predicate);
-      if (match) return match;
+      const idx = this.updates.findIndex(predicate);
+      if (idx !== -1) {
+        const [match] = this.updates.splice(idx, 1);
+        return match;
+      }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 

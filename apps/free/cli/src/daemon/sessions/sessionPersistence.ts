@@ -30,7 +30,6 @@ const logger = new Logger('daemon/sessions/sessionPersistence');
 
 export interface PersistedSession {
   sessionId: string;
-  sessionTag: string;
   agentType: AgentType;
   cwd: string;
   resumeSessionId?: string;

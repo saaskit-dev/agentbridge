@@ -97,8 +97,7 @@ describe.skipIf(!runRealAgentSmoke)(
     let daemonPid = 0;
 
     beforeAll(async () => {
-      const env = await ensureLocalServerAndCredentials();
-      serverProcess = env.serverProcess;
+      await ensureLocalServerAndCredentials();
 
       const credentials = await readCredentials();
       if (!credentials) throw new Error('Missing test credentials');
@@ -113,15 +112,13 @@ describe.skipIf(!runRealAgentSmoke)(
     afterAll(async () => {
       await appClient?.disconnect();
       await stopDaemon();
-      await stopSpawnedProcess(serverProcess);
     }, 120_000);
 
     it('claude-acp surfaces initial capabilities or a visible error instead of failing silently', async () => {
-      const tag = `smoke-claude-acp-${randomUUID()}`;
-      const session = await appClient.createSession({ tag });
+      const session = await appClient.createSession();
 
       try {
-        const spawnResult = await spawnDaemonSession('/tmp', undefined, tag, 'claude-acp');
+        const spawnResult = await spawnDaemonSession('/tmp', undefined, 'claude-acp');
         expect(spawnResult).toHaveProperty('success', true);
         expect(spawnResult.sessionId).toBe(session.id);
 
@@ -148,11 +145,10 @@ describe.skipIf(!runRealAgentSmoke)(
     });
 
     it('codex-acp surfaces either initial capabilities or a visible error instead of failing silently', async () => {
-      const tag = `smoke-codex-acp-${randomUUID()}`;
-      const session = await appClient.createSession({ tag });
+      const session = await appClient.createSession();
 
       try {
-        const spawnResult = await spawnDaemonSession('/tmp', undefined, tag, 'codex-acp');
+        const spawnResult = await spawnDaemonSession('/tmp', undefined, 'codex-acp');
         expect(spawnResult).toHaveProperty('success', true);
         expect(spawnResult.sessionId).toBe(session.id);
 

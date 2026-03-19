@@ -143,7 +143,9 @@ describe('ClaudeAcpBackend', () => {
     expect(capabilityEvents[1]?.commands?.[0]?.id).toBe('/compact');
   });
 
-  it('forwards model selection through ACP', async () => {
+  // ─── Model selection ────────────────────────────────────────────────────────
+
+  it('forwards model selection through ACP set_model API', async () => {
     const backend = new ClaudeAcpBackend();
 
     await backend.start({
@@ -181,148 +183,7 @@ describe('ClaudeAcpBackend', () => {
     );
   });
 
-  it('applies the initial mode before sending the first prompt', async () => {
-    const backend = new ClaudeAcpBackend();
-
-    await backend.start({
-      cwd: '/tmp',
-      env: {},
-      mode: 'plan',
-      mcpServerUrl: '',
-      session: makeSession(),
-    });
-
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
-    startedHandler({
-      sessionId: 'acp-session-1',
-      modes: {
-        availableModes: [
-          { id: 'default', name: 'Default' },
-          { id: 'plan', name: 'Plan' },
-        ],
-        currentModeId: 'default',
-      },
-      configOptions: [
-        {
-          id: 'workflow_mode',
-          name: 'Mode',
-          category: 'mode',
-          type: 'select',
-          currentValue: 'default',
-          options: [
-            { value: 'default', name: 'Default' },
-            { value: 'plan', name: 'Plan' },
-          ],
-        },
-      ],
-    });
-
-    await backend.sendMessage('hello');
-
-    expect(mockSetSessionConfigOption).toHaveBeenCalledWith('acp-session-1', 'workflow_mode', 'plan');
-    expect(mockSetSessionMode).toHaveBeenCalledWith('acp-session-1', 'plan');
-    expect(mockSetSessionConfigOption.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSetSessionMode.mock.invocationCallOrder[0]
-    );
-    expect(mockSetSessionMode.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSendPrompt.mock.invocationCallOrder[0]
-    );
-  });
-
-  it('replays deferred mode selection through both configOption and session mode before the first prompt', async () => {
-    const backend = new ClaudeAcpBackend();
-
-    await backend.start({
-      cwd: '/tmp',
-      env: {},
-      mcpServerUrl: '',
-      session: makeSession(),
-    });
-
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
-    startedHandler({
-      sessionId: 'acp-session-1',
-      modes: {
-        availableModes: [
-          { id: 'default', name: 'Default' },
-          { id: 'plan', name: 'Plan' },
-        ],
-        currentModeId: 'default',
-      },
-      configOptions: [
-        {
-          id: 'workflow_mode',
-          name: 'Mode',
-          category: 'mode',
-          type: 'select',
-          currentValue: 'default',
-          options: [
-            { value: 'default', name: 'Default' },
-            { value: 'plan', name: 'Plan' },
-          ],
-        },
-      ],
-    });
-
-    await backend.setMode('plan');
-    await backend.sendMessage('hello');
-
-    expect(mockSetSessionConfigOption).toHaveBeenCalledWith('acp-session-1', 'workflow_mode', 'plan');
-    expect(mockSetSessionMode).toHaveBeenCalledWith('acp-session-1', 'plan');
-    expect(mockSetSessionConfigOption.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSetSessionMode.mock.invocationCallOrder[0]
-    );
-    expect(mockSetSessionMode.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSendPrompt.mock.invocationCallOrder[0]
-    );
-  });
-
-  it('applies runtime mode changes through both configOption and session mode', async () => {
-    const backend = new ClaudeAcpBackend();
-
-    await backend.start({
-      cwd: '/tmp',
-      env: {},
-      mcpServerUrl: '',
-      session: makeSession(),
-    });
-
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
-    startedHandler({
-      sessionId: 'acp-session-1',
-      modes: {
-        availableModes: [
-          { id: 'default', name: 'Default' },
-          { id: 'plan', name: 'Plan' },
-        ],
-        currentModeId: 'default',
-      },
-      configOptions: [
-        {
-          id: 'workflow_mode',
-          name: 'Mode',
-          category: 'mode',
-          type: 'select',
-          currentValue: 'default',
-          options: [
-            { value: 'default', name: 'Default' },
-            { value: 'plan', name: 'Plan' },
-          ],
-        },
-      ],
-    });
-
-    await backend.sendMessage('hello');
-    mockSetSessionMode.mockClear();
-    mockSetSessionConfigOption.mockClear();
-
-    await backend.setMode('plan');
-
-    expect(mockSetSessionConfigOption).toHaveBeenCalledWith('acp-session-1', 'workflow_mode', 'plan');
-    expect(mockSetSessionMode).toHaveBeenCalledWith('acp-session-1', 'plan');
-  });
-
-  it('forwards model selection through config options when model is configurable', async () => {
+  it('uses set_model API first when model config option is present, skips set_config_option on success', async () => {
     const backend = new ClaudeAcpBackend();
 
     await backend.start({
@@ -363,13 +224,322 @@ describe('ClaudeAcpBackend', () => {
 
     await backend.setModel('claude-opus');
 
-    expect(mockSetSessionConfigOption).toHaveBeenCalledWith(
-      'acp-session-1',
-      'model_picker',
-      'claude-opus'
-    );
-    expect(mockSetSessionModel).not.toHaveBeenCalled();
+    expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'claude-opus');
+    expect(mockSetSessionConfigOption).not.toHaveBeenCalled();
   });
+
+  it('falls back to set_config_option for model when set_model fails', async () => {
+    const backend = new ClaudeAcpBackend();
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      mcpServerUrl: '',
+      session: makeSession(),
+    });
+
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    startedHandler({
+      sessionId: 'acp-session-1',
+      models: {
+        availableModels: [
+          { modelId: 'claude-sonnet', name: 'Claude Sonnet' },
+          { modelId: 'claude-opus', name: 'Claude Opus' },
+        ],
+        currentModelId: 'claude-sonnet',
+      },
+      configOptions: [
+        {
+          id: 'model_picker',
+          name: 'Model',
+          category: 'model',
+          type: 'select',
+          currentValue: 'claude-sonnet',
+          options: [
+            { value: 'claude-sonnet', name: 'Claude Sonnet' },
+            { value: 'claude-opus', name: 'Claude Opus' },
+          ],
+        },
+      ],
+    });
+
+    await backend.sendMessage('hello');
+    mockSetSessionModel.mockClear();
+    mockSetSessionConfigOption.mockClear();
+    mockSetSessionModel.mockRejectedValueOnce(new Error('ACP unstable_setSessionModel is not supported by this SDK connection'));
+
+    await backend.setModel('claude-opus');
+
+    expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'claude-opus');
+    expect(mockSetSessionConfigOption).toHaveBeenCalledWith('acp-session-1', 'model_picker', 'claude-opus');
+  });
+
+  it('routes setConfig model option changes through set_model API', async () => {
+    const backend = new ClaudeAcpBackend();
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      mcpServerUrl: '',
+      session: makeSession(),
+    });
+
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    startedHandler({
+      sessionId: 'acp-session-1',
+      models: {
+        availableModels: [
+          { modelId: 'claude-sonnet', name: 'Claude Sonnet' },
+          { modelId: 'claude-opus', name: 'Claude Opus' },
+        ],
+        currentModelId: 'claude-sonnet',
+      },
+      configOptions: [
+        {
+          id: 'model_picker',
+          name: 'Model',
+          category: 'model',
+          type: 'select',
+          currentValue: 'claude-sonnet',
+          options: [
+            { value: 'claude-sonnet', name: 'Claude Sonnet' },
+            { value: 'claude-opus', name: 'Claude Opus' },
+          ],
+        },
+      ],
+    });
+
+    await backend.sendMessage('hello');
+    mockSetSessionModel.mockClear();
+    mockSetSessionConfigOption.mockClear();
+
+    // App sends set-config RPC with the model option ID — should route through set_model
+    await backend.setConfig?.('model_picker', 'claude-opus');
+
+    expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'claude-opus');
+    expect(mockSetSessionConfigOption).not.toHaveBeenCalledWith('acp-session-1', 'model_picker', 'claude-opus');
+  });
+
+  it('does not apply model when set_model unavailable and no model config option', async () => {
+    const backend = new ClaudeAcpBackend();
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      mcpServerUrl: '',
+      session: makeSession(),
+    });
+
+    // Session with models but no model config option
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    startedHandler({
+      sessionId: 'acp-session-1',
+      models: {
+        availableModels: [
+          { modelId: 'claude-sonnet', name: 'Claude Sonnet' },
+          { modelId: 'claude-opus', name: 'Claude Opus' },
+        ],
+        currentModelId: 'claude-sonnet',
+      },
+      configOptions: [],
+    });
+
+    await backend.sendMessage('hello');
+    mockSetSessionModel.mockClear();
+    mockSetSessionConfigOption.mockClear();
+    mockSetSessionModel.mockRejectedValueOnce(new Error('not supported'));
+
+    await backend.setModel('claude-opus');
+
+    expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'claude-opus');
+    // No model config option to fall back to — set_config_option must not be called
+    expect(mockSetSessionConfigOption).not.toHaveBeenCalled();
+  });
+
+  // ─── Mode selection ─────────────────────────────────────────────────────────
+
+  it('applies the initial mode via set_mode API before sending the first prompt', async () => {
+    const backend = new ClaudeAcpBackend();
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      mode: 'plan',
+      mcpServerUrl: '',
+      session: makeSession(),
+    });
+
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    startedHandler({
+      sessionId: 'acp-session-1',
+      modes: {
+        availableModes: [
+          { id: 'default', name: 'Default' },
+          { id: 'plan', name: 'Plan' },
+        ],
+        currentModeId: 'default',
+      },
+      configOptions: [
+        {
+          id: 'workflow_mode',
+          name: 'Mode',
+          category: 'mode',
+          type: 'select',
+          currentValue: 'default',
+          options: [
+            { value: 'default', name: 'Default' },
+            { value: 'plan', name: 'Plan' },
+          ],
+        },
+      ],
+    });
+
+    await backend.sendMessage('hello');
+
+    expect(mockSetSessionMode).toHaveBeenCalledWith('acp-session-1', 'plan');
+    expect(mockSetSessionConfigOption).not.toHaveBeenCalled();
+    expect(mockSetSessionMode.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSendPrompt.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('replays deferred mode selection via set_mode API before the first prompt', async () => {
+    const backend = new ClaudeAcpBackend();
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      mcpServerUrl: '',
+      session: makeSession(),
+    });
+
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    startedHandler({
+      sessionId: 'acp-session-1',
+      modes: {
+        availableModes: [
+          { id: 'default', name: 'Default' },
+          { id: 'plan', name: 'Plan' },
+        ],
+        currentModeId: 'default',
+      },
+      configOptions: [
+        {
+          id: 'workflow_mode',
+          name: 'Mode',
+          category: 'mode',
+          type: 'select',
+          currentValue: 'default',
+          options: [
+            { value: 'default', name: 'Default' },
+            { value: 'plan', name: 'Plan' },
+          ],
+        },
+      ],
+    });
+
+    await backend.setMode('plan');
+    await backend.sendMessage('hello');
+
+    expect(mockSetSessionMode).toHaveBeenCalledWith('acp-session-1', 'plan');
+    expect(mockSetSessionConfigOption).not.toHaveBeenCalled();
+    expect(mockSetSessionMode.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSendPrompt.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('applies runtime mode changes via set_mode API', async () => {
+    const backend = new ClaudeAcpBackend();
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      mcpServerUrl: '',
+      session: makeSession(),
+    });
+
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    startedHandler({
+      sessionId: 'acp-session-1',
+      modes: {
+        availableModes: [
+          { id: 'default', name: 'Default' },
+          { id: 'plan', name: 'Plan' },
+        ],
+        currentModeId: 'default',
+      },
+      configOptions: [
+        {
+          id: 'workflow_mode',
+          name: 'Mode',
+          category: 'mode',
+          type: 'select',
+          currentValue: 'default',
+          options: [
+            { value: 'default', name: 'Default' },
+            { value: 'plan', name: 'Plan' },
+          ],
+        },
+      ],
+    });
+
+    await backend.sendMessage('hello');
+    mockSetSessionMode.mockClear();
+    mockSetSessionConfigOption.mockClear();
+
+    await backend.setMode('plan');
+
+    expect(mockSetSessionMode).toHaveBeenCalledWith('acp-session-1', 'plan');
+    expect(mockSetSessionConfigOption).not.toHaveBeenCalled();
+  });
+
+  it('falls back to set_config_option for mode when set_mode fails', async () => {
+    const backend = new ClaudeAcpBackend();
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      mcpServerUrl: '',
+      session: makeSession(),
+    });
+
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    startedHandler({
+      sessionId: 'acp-session-1',
+      modes: {
+        availableModes: [
+          { id: 'default', name: 'Default' },
+          { id: 'plan', name: 'Plan' },
+        ],
+        currentModeId: 'default',
+      },
+      configOptions: [
+        {
+          id: 'workflow_mode',
+          name: 'Mode',
+          category: 'mode',
+          type: 'select',
+          currentValue: 'default',
+          options: [
+            { value: 'default', name: 'Default' },
+            { value: 'plan', name: 'Plan' },
+          ],
+        },
+      ],
+    });
+
+    await backend.sendMessage('hello');
+    mockSetSessionMode.mockClear();
+    mockSetSessionConfigOption.mockClear();
+    mockSetSessionMode.mockRejectedValueOnce(new Error('set_mode not supported'));
+
+    await backend.setMode('plan');
+
+    expect(mockSetSessionMode).toHaveBeenCalledWith('acp-session-1', 'plan');
+    expect(mockSetSessionConfigOption).toHaveBeenCalledWith('acp-session-1', 'workflow_mode', 'plan');
+  });
+
+  // ─── Config selections ───────────────────────────────────────────────────────
 
   it('replays deferred config selections before the first prompt', async () => {
     const backend = new ClaudeAcpBackend();
@@ -411,6 +581,8 @@ describe('ClaudeAcpBackend', () => {
       mockSendPrompt.mock.invocationCallOrder[0]
     );
   });
+
+  // ─── Commands / output ───────────────────────────────────────────────────────
 
   it('runs capability commands through ACP prompts', async () => {
     const backend = new ClaudeAcpBackend();

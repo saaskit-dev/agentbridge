@@ -19,24 +19,23 @@ import type { ApiSessionClient } from '@/api/apiSession';
  * allowing the application to continue running while offline. When reconnection
  * succeeds, the real session replaces this stub.
  *
- * @param sessionTag - Unique session tag (used to create offline session ID)
+ * @param sessionId - Client-generated session ID
  * @returns A no-op ApiSessionClient stub
  *
  * @example
  * ```typescript
- * const offlineStub = createOfflineSessionStub(sessionTag);
+ * const offlineStub = createOfflineSessionStub(sessionId);
  * let session: ApiSessionClient = offlineStub;
  *
  * // When reconnected:
  * session = api.sessionSyncClient(response);
  * ```
  */
-export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
+export function createOfflineSessionStub(sessionId: string): ApiSessionClient {
   return {
-    sessionId: `offline-${sessionTag}`,
+    sessionId: `offline-${sessionId}`,
     sendCodexMessage: () => {},
     sendAgentMessage: () => {},
-    sendClaudeSessionMessage: () => {},
     keepAlive: () => {},
     sendSessionEvent: () => {},
     sendSessionDeath: () => {},

@@ -20,8 +20,8 @@ import { startOfflineReconnection } from '@/utils/serverConnectionErrors';
 export interface SetupOfflineReconnectionOptions {
   /** API client instance */
   api: ApiClient;
-  /** Unique session tag */
-  sessionTag: string;
+  /** Client-generated session ID */
+  sessionId: string;
   /** Session metadata */
   metadata: Metadata;
   /** Agent state */
@@ -54,7 +54,7 @@ export interface SetupOfflineReconnectionResult {
  * session stub and starts background reconnection. When reconnection succeeds,
  * the `onSessionSwap` callback is invoked with the new real session.
  *
- * @param opts - Options including api, sessionTag, metadata, state, response, onSessionSwap
+ * @param opts - Options including api, sessionId, metadata, state, response, onSessionSwap
  * @returns Result with session, reconnectionHandle, and isOffline flag
  *
  * @example
@@ -63,7 +63,7 @@ export interface SetupOfflineReconnectionResult {
  *
  * const result = setupOfflineReconnection({
  *     api,
- *     sessionTag,
+ *     sessionId,
  *     metadata,
  *     state,
  *     response,
@@ -77,7 +77,7 @@ export interface SetupOfflineReconnectionResult {
 export function setupOfflineReconnection(
   opts: SetupOfflineReconnectionOptions
 ): SetupOfflineReconnectionResult {
-  const { api, sessionTag, metadata, state, response, onSessionSwap } = opts;
+  const { api, sessionId, metadata, state, response, onSessionSwap } = opts;
 
   let session: ApiSessionClient;
   let reconnectionHandle: ReturnType<typeof startOfflineReconnection<ApiSessionClient>> | null =
@@ -86,13 +86,13 @@ export function setupOfflineReconnection(
   // Note: connectionState.notifyOffline() was already called by api.ts with error details
   if (!response) {
     // Create a no-op session stub for offline mode using shared utility
-    session = createOfflineSessionStub(sessionTag);
+    session = createOfflineSessionStub(sessionId);
 
     // Start background reconnection
     reconnectionHandle = startOfflineReconnection<ApiSessionClient>({
       serverUrl: configuration.serverUrl,
       onReconnected: async () => {
-        const resp = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+        const resp = await api.getOrCreateSession({ id: sessionId, metadata, state });
         if (!resp) throw new Error('Server unavailable');
         const realSession = api.sessionSyncClient(resp);
         // Notify caller to swap the session reference
