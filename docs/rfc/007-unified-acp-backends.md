@@ -1,4 +1,4 @@
-# RFC-006: 统一 ACP Backend — claude-acp / codex-acp
+# RFC-007: 统一 ACP Backend — claude-acp / codex-acp
 
 - **Status**: Implemented ✅（Phase 1-4 全部完成）
 - **Created**: 2026-03-14

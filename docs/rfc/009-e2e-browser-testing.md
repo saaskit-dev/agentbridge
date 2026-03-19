@@ -1,4 +1,4 @@
-# E2E Browser Testing via Metro Module Injection
+# RFC-009: E2E Browser Testing via Metro Module Injection
 
 - **Status**: Implemented ✅（测试 harness 完成，CI 自动化待做）
 - **Created**: 2026-03-15
