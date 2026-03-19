@@ -540,6 +540,7 @@ export const zhHant: TranslationStructure = {
       editNotebook: '編輯 Notebook',
       todoList: '待辦清單',
       webSearch: 'Web 搜尋',
+      toolSearch: '工具搜尋',
       reasoning: '推理',
       applyChanges: '更新檔案',
       viewDiff: '目前檔案更改',

@@ -3,7 +3,7 @@
  *
  * Handles all message types emitted by the OpenCode ACP backend.
  * OpenCode uses the same ACP protocol as Gemini, so the mapping is structurally
- * identical — only the agent-specific tool names differ (OpenCodeBash / OpenCodePatch).
+ * identical — only the agent-specific tool names differ (CodexBash / CodexPatch).
  */
 
 import { createId } from '@paralleldrive/cuid2';
@@ -140,7 +140,7 @@ export function mapOpenCodeRawToNormalized(msg: AgentMessage): NormalizedMessage
           content: [{
             type: 'tool-call',
             id: callId,
-            name: 'OpenCodeBash',
+            name: 'CodexBash',
             input: inputs,
             description: null,
             uuid: id,
@@ -157,7 +157,7 @@ export function mapOpenCodeRawToNormalized(msg: AgentMessage): NormalizedMessage
           content: [{
             type: 'tool-call',
             id: callId,
-            name: 'OpenCodePatch',
+            name: 'CodexPatch',
             input: { auto_approved: m.auto_approved, changes: m.changes },
             description: null,
             uuid: id,

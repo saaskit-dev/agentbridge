@@ -44,6 +44,8 @@ export interface HandlerContext {
   toolCallIdToNameMap: Map<string, string>;
   idleTimeout: ReturnType<typeof setTimeout> | null;
   toolCallCountSincePrompt: number;
+  /** Known MCP server names for tool name normalization */
+  mcpServerNames: string[];
   emit: (msg: AgentMessage) => void;
   emitIdleStatus: () => void;
   clearIdleTimeout: () => void;
@@ -189,8 +191,16 @@ export function startToolCall(
 
   // Note: isInvestigationTool is called by getToolCallTimeout below to determine timeout
 
+  // Extract real tool name from multiple sources (in priority order):
+  // 1. _meta.claudeCode.toolName (Claude ACP sends real name here while kind="other")
+  // 2. title field (often mirrors _meta.claudeCode.toolName)
+  // 3. transport.extractToolNameFromId (e.g. Gemini embeds name in callId)
+  // 4. toolKindStr fallback
+  const metaToolName = (update as any)?._meta?.claudeCode?.toolName as string | undefined;
+  const titleToolName = typeof (update as any)?.title === 'string' ? (update as any).title : undefined;
   const extractedName = ctx.transport.extractToolNameFromId?.(toolCallId);
-  const realToolName = extractedName ?? (toolKindStr || 'unknown');
+  const rawToolName = metaToolName || titleToolName || extractedName || toolKindStr || 'unknown';
+  const realToolName = normalizeMcpToolName(rawToolName, ctx.mcpServerNames);
   ctx.toolCallIdToNameMap.set(toolCallId, realToolName);
   ctx.activeToolCalls.add(toolCallId);
   ctx.toolCallStartTimes.set(toolCallId, startTime);
@@ -360,4 +370,75 @@ export function handleThinkingUpdate(update: SessionUpdate, ctx: HandlerContext)
   if (!update.thinking) return { handled: false };
   ctx.emit({ type: 'event', name: 'thinking', payload: update.thinking });
   return { handled: true };
+}
+
+// ============================================================================
+// Tool Name Normalization
+// ============================================================================
+
+/**
+ * Canonical tool name aliases.
+ *
+ * Different agents use different names for the same conceptual tool.
+ * This map normalizes all variants to the canonical name used by knownTools in the app.
+ *
+ * Convention: Claude's PascalCase names are canonical since they're the primary agent
+ * and the app's knownTools registry is keyed on them.
+ */
+const TOOL_NAME_ALIASES: Record<string, string> = {
+  // OpenCode lowercase → Claude PascalCase
+  bash: 'Bash',
+  glob: 'Glob',
+  grep: 'Grep',
+  write: 'Write',
+  ls: 'LS',
+  // OpenCode "task" is equivalent to Claude "Task" (sub-agent spawning)
+  task: 'Task',
+};
+
+/**
+ * Normalize tool names to canonical format.
+ *
+ * Handles two types of normalization:
+ *
+ * 1. **MCP tool names** — Different ACP SDKs use different prefixes for the same MCP tool:
+ *      Claude ACP:    mcp__free__change_title  (canonical)
+ *      Codex ACP:     free_change_title
+ *      OpenCode ACP:  free_change_title
+ *      Gemini CLI:    change_title / free__change_title
+ *    All variants are unified to `mcp__<server>__<tool>`.
+ *
+ * 2. **Built-in tool names** — Different agents use different casing/naming for equivalent tools:
+ *      Claude: Read, Bash, Glob, Grep     (PascalCase)
+ *      OpenCode: read, bash, glob, task   (lowercase)
+ *    All variants are unified to Claude's PascalCase convention.
+ */
+export function normalizeMcpToolName(toolName: string, mcpServerNames: string[]): string {
+  if (!toolName) return toolName;
+
+  // 1. Normalize built-in tool name aliases (e.g. bash → Bash, task → Task)
+  const alias = TOOL_NAME_ALIASES[toolName];
+  if (alias) return alias;
+
+  // 2. MCP tool name normalization
+  if (mcpServerNames.length > 0 && !toolName.startsWith('mcp__')) {
+    for (const server of mcpServerNames) {
+      // Pattern: server__tool (double underscore, no mcp prefix)
+      // e.g. "free__change_title" → "mcp__free__change_title"
+      const doublePrefix = `${server}__`;
+      if (toolName.startsWith(doublePrefix)) {
+        return `mcp__${toolName}`;
+      }
+
+      // Pattern: server_tool (single underscore prefix from Codex/OpenCode)
+      // e.g. "free_change_title" → "mcp__free__change_title"
+      const singlePrefix = `${server}_`;
+      if (toolName.startsWith(singlePrefix)) {
+        const tool = toolName.slice(singlePrefix.length);
+        return `mcp__${server}__${tool}`;
+      }
+    }
+  }
+
+  return toolName;
 }

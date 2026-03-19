@@ -132,7 +132,7 @@ export function mapClaudeAcpRawToNormalized(msg: AgentMessage): NormalizedMessag
           content: [{
             type: 'tool-call',
             id: callId,
-            name: 'ClaudeAcpBash',
+            name: 'CodexBash',
             input: inputs,
             description: null,
             uuid: id,
@@ -149,7 +149,7 @@ export function mapClaudeAcpRawToNormalized(msg: AgentMessage): NormalizedMessag
           content: [{
             type: 'tool-call',
             id: callId,
-            name: 'ClaudeAcpPatch',
+            name: 'CodexPatch',
             input: { auto_approved: m.auto_approved, changes: m.changes },
             description: null,
             uuid: id,

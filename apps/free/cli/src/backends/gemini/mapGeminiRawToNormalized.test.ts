@@ -93,12 +93,12 @@ describe('mapGeminiRawToNormalized', () => {
     expect(mapGeminiRawToNormalized(msg)).toBeNull();
   });
 
-  it('maps exec-approval-request to GeminiBash tool-call', () => {
+  it('maps exec-approval-request to CodexBash tool-call', () => {
     const msg = { type: 'exec-approval-request', call_id: 'exec-1', command: 'ls' } as AgentMessage;
     const result = mapGeminiRawToNormalized(msg);
     expect(result?.role).toBe('agent');
     const block = result?.role === 'agent' ? result.content[0] : null;
     expect(block?.type).toBe('tool-call');
-    expect((block as { name: string } | null)?.name).toBe('GeminiBash');
+    expect((block as { name: string } | null)?.name).toBe('CodexBash');
   });
 });

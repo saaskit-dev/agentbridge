@@ -182,9 +182,10 @@ const rawToolResultContentSchema = z
     type: z.literal('tool_result'),
     tool_use_id: z.string(),
     content: z.union([
-      z.array(z.object({ type: z.literal('text'), text: z.string() })),
       z.string(),
-    ]),
+      z.array(z.object({ type: z.string() }).passthrough()),
+      z.null(),
+    ]).optional(), // Tool results can contain text strings, arrays of typed blocks, or null
     is_error: z.boolean().optional(),
     permissions: z
       .object({
@@ -735,7 +736,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'text') {
         return {
           id,
-    
+
           createdAt,
           role: 'user',
           content: {
@@ -744,6 +745,7 @@ export function normalizeRawMessage(
           },
           isSidechain: false,
           meta: raw.meta,
+          traceId: raw.traceId,
         };
       }
       // Skip other session event types (turn-start, turn-end, etc.)
@@ -758,6 +760,7 @@ export function normalizeRawMessage(
       content: raw.content as { type: 'text'; text: string },
       isSidechain: false,
       meta: raw.meta,
+      traceId: raw.traceId,
     };
   }
   if (raw.role === 'agent') {
@@ -896,7 +899,9 @@ export function normalizeRawMessage(
                   ? raw.content.data.toolUseResult
                   : typeof c.content === 'string'
                     ? c.content
-                    : c.content[0].text,
+                    : Array.isArray(c.content) && c.content[0]?.type === 'text'
+                      ? c.content[0].text
+                      : c.content,
                 is_error: c.is_error || false,
                 uuid: raw.content.data.uuid,
                 parentUUID: raw.content.data.parentUuid ?? null,

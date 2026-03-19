@@ -553,6 +553,7 @@ export const ja: TranslationStructure = {
       editNotebook: 'ノートブック編集',
       todoList: 'Todoリスト',
       webSearch: 'Web検索',
+      toolSearch: 'ツール検索',
       reasoning: '推論',
       applyChanges: 'ファイルを更新',
       viewDiff: '現在のファイル変更',
