@@ -65,6 +65,6 @@ export function createBackoff(opts?: {
 
 export const backoff = createBackoff({
   onError: e => {
-    logger.warn('Backoff error', { error: e });
+    logger.debug('Backoff error', { error: e });
   },
 });

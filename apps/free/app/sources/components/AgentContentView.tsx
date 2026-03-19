@@ -3,7 +3,6 @@ import { View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useHeaderHeight } from '@/utils/responsive';
 
 interface AgentContentViewProps {
   input?: React.ReactNode | null;
@@ -14,7 +13,6 @@ interface AgentContentViewProps {
 export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(
   ({ input, content, placeholder }) => {
     const safeArea = useSafeAreaInsets();
-    const headerHeight = useHeaderHeight();
     const state = useKeyboardState();
     return (
       <View
@@ -35,7 +33,7 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(
               style={[
                 {
                   position: 'absolute',
-                  top: safeArea.top + headerHeight,
+                  top: 0,
                   left: 0,
                   right: 0,
                   bottom: 0,

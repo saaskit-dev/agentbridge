@@ -537,6 +537,7 @@ class Sync {
         type: 'text',
         text,
       },
+      traceId: trace.tid, // Propagate traceId so DevTraceBadge can display it
       meta: {
         sentFrom,
         permissionMode,
@@ -553,6 +554,19 @@ class Sync {
     const normalizedMessage = normalizeRawMessage(id, createdAt, content);
     if (normalizedMessage) {
       this.enqueueMessages(sessionId, [normalizedMessage]);
+    }
+
+    // Optimistically set session to thinking state so UI shows "working" immediately
+    // instead of waiting for the server round-trip.
+    const currentSession = storage.getState().sessions[sessionId];
+    if (currentSession) {
+      this.applySessions([
+        {
+          ...currentSession,
+          thinking: true,
+          thinkingAt: createdAt,
+        },
+      ]);
     }
 
     let pending = this.pendingOutbox.get(sessionId);
@@ -591,6 +605,10 @@ class Sync {
     this.pendingOutbox.delete(sessionId);
     this.persistOutbox();
     storage.getState().setSessionSendError(sessionId, null);
+    // NOTE: We intentionally do NOT reset session.thinking here.
+    // The agent may still be processing a previously-sent message.
+    // Server activity updates will self-correct any orphaned optimistic
+    // thinking state within seconds.
   }
 
   applySettings = (delta: Partial<Settings>) => {
@@ -778,7 +796,7 @@ class Sync {
     const data = await response.json();
     const sessions = data.sessions as Array<{
       id: string;
-      tag: string;
+      tag: string | null;
       seq: number;
       metadata: string;
       metadataVersion: number;
@@ -787,7 +805,7 @@ class Sync {
       capabilities?: string | null;
       capabilitiesVersion?: number;
       dataEncryptionKey: string | null;
-      active: boolean;
+      status: 'active' | 'offline' | 'archived' | 'deleted';
       activeAt: number;
       createdAt: number;
       updatedAt: number;
@@ -1647,7 +1665,7 @@ class Sync {
       // Apply to storage (storage handles the transformation)
       storage.getState().applyPurchases(customerInfo);
     } catch (error) {
-      logger.error('Failed to sync purchases:', toError(error));
+      logger.warn('Failed to sync purchases', { error: String(error) });
       // Don't throw - purchases are optional
     }
   };
@@ -1919,6 +1937,10 @@ class Sync {
             decrypted.createdAt,
             decrypted.content
           );
+          // Propagate traceId from server DB (same as fetchMessages path)
+          if (lastMessage && decrypted.traceId) {
+            lastMessage.traceId = decrypted.traceId;
+          }
 
           // Check for task lifecycle events to update thinking state
           // This ensures UI updates even if volatile activity updates are lost
@@ -2448,7 +2470,13 @@ class Sync {
         const shouldUpdateThinking = update.activeAt > (session.thinkingAt ?? 0);
         sessions.push({
           ...session,
-          active: update.active,
+          // Translate ephemeral boolean into status; never downgrade archived/deleted from keepAlive
+          status:
+            session.status === 'archived' || session.status === 'deleted'
+              ? session.status
+              : update.active
+                ? 'active'
+                : 'offline',
           activeAt: update.activeAt,
           ...(shouldUpdateThinking
             ? { thinking: update.thinking, thinkingAt: update.activeAt }

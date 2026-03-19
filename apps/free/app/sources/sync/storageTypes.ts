@@ -70,7 +70,7 @@ export interface Session {
   seq: number;
   createdAt: number;
   updatedAt: number;
-  active: boolean;
+  status: 'active' | 'offline' | 'archived' | 'deleted';
   activeAt: number;
   metadata: Metadata | null;
   metadataVersion: number;

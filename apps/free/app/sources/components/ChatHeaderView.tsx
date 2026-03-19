@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
 import * as React from 'react';
 import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +20,43 @@ interface ChatHeaderViewProps {
   tintColor?: string;
   isConnected?: boolean;
   flavor?: string | null;
+  /** Session ID shown in dev mode, centered in header, tap-to-copy */
+  devSessionId?: string | null;
+}
+
+/** Small tap-to-copy badge for IDs in dev mode. Dark background pill for visibility on any header. */
+function CopyableBadge({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = React.useState(false);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  const handlePress = React.useCallback(async () => {
+    await Clipboard.setStringAsync(value);
+    setCopied(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 1200);
+  }, [value]);
+  return (
+    <Pressable
+      onPress={handlePress}
+      hitSlop={4}
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        borderRadius: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+      }}
+    >
+      <Text
+        style={{
+          fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+          fontSize: 9,
+          color: copied ? '#4ade80' : '#0f0',
+        }}
+      >
+        {copied ? 'copied!' : `${label}:${value}`}
+      </Text>
+    </Pressable>
+  );
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -29,6 +67,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
   avatarId,
   isConnected = true,
   flavor,
+  devSessionId,
 }) => {
   const { theme } = useUnistyles();
   const navigation = useNavigation();
@@ -92,6 +131,13 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
             )}
           </View>
 
+          {/* Dev mode: session ID centered in header, tap-to-copy */}
+          {!!devSessionId && (
+            <View pointerEvents="box-none" style={styles.devIdContainer}>
+              <CopyableBadge label="sid" value={devSessionId} />
+            </View>
+          )}
+
           {avatarId && onAvatarPress && (
             <Pressable onPress={onAvatarPress} hitSlop={15} style={styles.avatarButton}>
               <Avatar id={avatarId} size={32} monochrome={!isConnected} flavor={flavor} />
@@ -148,5 +194,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Platform.select({ ios: -8, default: -8 }),
+  },
+  devIdContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 2,
+    alignItems: 'center',
   },
 });

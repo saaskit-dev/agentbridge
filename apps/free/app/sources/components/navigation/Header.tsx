@@ -236,9 +236,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     flexGrow: 1,
     flexBasis: 0,
     alignSelf: 'stretch',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: Platform.OS === 'ios' ? 'center' : 'flex-start',
+    flexDirection: 'column',
+    alignItems: Platform.OS === 'ios' ? 'center' : 'flex-start',
+    justifyContent: 'center',
     paddingHorizontal: 12,
   },
   rightContainer: {

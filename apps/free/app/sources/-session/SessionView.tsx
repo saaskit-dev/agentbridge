@@ -26,7 +26,6 @@ import {
   sessionSetModel,
 } from '@/sync/ops';
 import { resolveCommandInput } from '@/sync/suggestionCommands';
-import { useAuth } from '@/auth/AuthContext';
 import {
   storage,
   useIsDataReady,
@@ -71,6 +70,7 @@ export const SessionView = React.memo((props: { id: string }) => {
   const headerHeight = useHeaderHeight();
   const realtimeStatus = useRealtimeStatus();
   const isTablet = useIsTablet();
+  const devModeEnabledForHeader = useLocalSetting('devModeEnabled') || __DEV__;
 
   // Compute header props based on session state
   const headerProps = useMemo(() => {
@@ -149,7 +149,11 @@ export const SessionView = React.memo((props: { id: string }) => {
             zIndex: 1000,
           }}
         >
-          <ChatHeaderView {...headerProps} onBackPress={() => router.back()} />
+          <ChatHeaderView
+            {...headerProps}
+            onBackPress={() => router.back()}
+            devSessionId={devModeEnabledForHeader ? sessionId : null}
+          />
           {/* Voice status bar below header - not on tablet (shown in sidebar) */}
           {!isTablet && realtimeStatus !== 'disconnected' && (
             <VoiceAssistantStatusBar variant="full" />
@@ -203,18 +207,6 @@ export const SessionView = React.memo((props: { id: string }) => {
   );
 });
 
-/** Decode JWT payload to extract sub (userId). Returns null on failure. */
-function decodeJwtSub(token: string): string | null {
-  try {
-    const seg = token.split('.')[1];
-    if (!seg) return null;
-    const b64 = seg.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(seg.length / 4) * 4, '=');
-    const payload = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
-    return payload.sub ?? payload.userId ?? payload.user ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function SessionViewLoaded({ sessionId, session }: { sessionId: string; session: Session }) {
   const { theme } = useUnistyles();
@@ -275,6 +267,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       confirmedModelId
     );
   }, [confirmedModelId, session.capabilities?.models?.available]);
+  const actualModeLabel = React.useMemo(() => {
+    if (!currentAgentMode) return null;
+    return (
+      displayCapabilities?.modes?.available?.find(mode => mode.id === currentAgentMode)?.name ??
+      currentAgentMode
+    );
+  }, [currentAgentMode, displayCapabilities?.modes?.available]);
   const pendingCapabilityLabel = React.useMemo(() => {
     const getModeLabel = (modeId: string) =>
       displayCapabilities?.modes?.available?.find(mode => mode.id === modeId)?.name ?? modeId;
@@ -293,6 +292,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       return `Switching to ${getModeLabel(desiredAgentMode)}...`;
     }
 
+    // When confirmedModelId exists but doesn't match desired, the user explicitly
+    // changed model and backend hasn't confirmed yet.
     if (
       desiredModelSelection &&
       confirmedModelId &&
@@ -301,27 +302,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       return `Switching to ${getModelLabel(desiredModelSelection)}...`;
     }
 
-    if (
-      desiredModelSelection &&
-      !confirmedModelId &&
-      displayCapabilities?.models?.available?.length
-    ) {
-      const desiredModelExists = displayCapabilities.models.available.some(
-        model => model.id === desiredModelSelection
-      );
-      if (desiredModelExists) {
-        return `Switching to ${getModelLabel(desiredModelSelection)}...`;
-      }
-    }
-
-    if (desiredAgentMode && !currentAgentMode && displayCapabilities?.modes?.available?.length) {
-      const desiredModeExists = displayCapabilities.modes.available.some(
-        mode => mode.id === desiredAgentMode
-      );
-      if (desiredModeExists) {
-        return `Switching to ${getModeLabel(desiredAgentMode)}...`;
-      }
-    }
+    // Don't show "Switching to..." during initial capability discovery when
+    // confirmedModelId/currentAgentMode are not yet populated. The initial default
+    // selection is not a user-initiated change and shouldn't flash a switching label.
 
     return null;
   }, [
@@ -340,8 +323,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const alwaysShowContextSize = useSetting('alwaysShowContextSize');
   const experiments = useSetting('experiments');
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
-  const { credentials } = useAuth();
-  const devUserId = devModeEnabled && credentials ? decodeJwtSub(credentials.token) : null;
 
   React.useEffect(() => {
     const availableModels = session.capabilities?.models?.available ?? [];
@@ -380,7 +361,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
 
   // Track whether the initial requested mode has been confirmed by the backend.
   // Only after confirmation, agent-driven mode changes (e.g. ExitPlanMode) sync back.
-  const initialModeConfirmedRef = React.useRef(false);
+  //
+  // Initialize to true if capabilities are already loaded at mount time (cached from server).
+  // This prevents "Switching to..." from showing permanently when desiredAgentMode (from
+  // localStorage) diverges from currentAgentMode (from cached capabilities) — the modes
+  // have already settled; they just need a one-time sync rather than waiting for a match
+  // that will never happen.
+  const initialModeConfirmedRef = React.useRef(currentAgentMode !== null);
   React.useEffect(() => {
     if (!currentAgentMode || !desiredAgentMode) return;
     if (currentAgentMode === desiredAgentMode) {
@@ -632,6 +619,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       onModelModeChange={updateModelMode as any}
       capabilities={displayCapabilities}
       actualModelLabel={actualModelLabel}
+      actualModeLabel={actualModeLabel}
       pendingCapabilityLabel={pendingCapabilityLabel}
       onAgentModeChange={updateAgentMode}
       onConfigOptionChange={updateConfigOption}
@@ -714,39 +702,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
 
   return (
     <>
-      {/* Dev Info Badge - session/user IDs */}
-      {devModeEnabled && (
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            bottom: safeArea.bottom + 80,
-            left: 0,
-            right: 0,
-            alignItems: 'center',
-            zIndex: 997,
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: 'rgba(0,0,0,0.55)',
-              borderRadius: 6,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-            }}
-          >
-            <Text style={{ color: '#0f0', fontFamily: 'monospace', fontSize: 10, opacity: 0.9 }}>
-              sid:{sessionId}
-            </Text>
-            {!!devUserId && (
-              <Text style={{ color: '#0ff', fontFamily: 'monospace', fontSize: 10, opacity: 0.9 }}>
-                uid:{devUserId}
-              </Text>
-            )}
-          </View>
-        </View>
-      )}
-
       {/* CLI Version Warning Overlay - Subtle centered pill */}
       {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
         <Pressable

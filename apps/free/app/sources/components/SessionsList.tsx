@@ -415,7 +415,7 @@ const SessionItem = React.memo(
             monochrome={!sessionStatus.isConnected}
             flavor={session.metadata?.flavor}
           />
-          {session.draft && (
+          {!!session.draft && (
             <View style={styles.draftIconContainer}>
               <Ionicons name="create-outline" size={12} style={styles.draftIconOverlay} />
             </View>

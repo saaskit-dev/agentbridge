@@ -18,8 +18,8 @@ const sizes: {
   [key in RoundButtonSize]: { height: number; fontSize: number; hitSlop: number; pad: number };
 } = {
   large: { height: 48, fontSize: 21, hitSlop: 0, pad: Platform.OS == 'ios' ? 0 : -1 },
-  normal: { height: 32, fontSize: 16, hitSlop: 8, pad: Platform.OS == 'ios' ? 1 : -2 },
-  small: { height: 24, fontSize: 14, hitSlop: 12, pad: Platform.OS == 'ios' ? -1 : -1 },
+  normal: { height: 36, fontSize: 16, hitSlop: 8, pad: Platform.OS == 'ios' ? 0 : -2 },
+  small: { height: 28, fontSize: 14, hitSlop: 8, pad: Platform.OS == 'ios' ? -1 : -1 },
 };
 
 export type RoundButtonDisplay = 'default' | 'inverted';

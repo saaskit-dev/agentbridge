@@ -5,15 +5,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { Typography } from '@/constants/Typography';
-import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 import { t } from '@/text';
 
-export type TabType = 'inbox' | 'sessions' | 'settings';
+export type TabType = 'sessions' | 'settings';
 
 interface TabBarProps {
   activeTab: TabType;
   onTabPress: (tab: TabType) => void;
-  inboxBadgeCount?: number;
 }
 
 const styles = StyleSheet.create(theme => ({
@@ -52,38 +50,11 @@ const styles = StyleSheet.create(theme => ({
   labelInactive: {
     color: theme.colors.textSecondary,
   },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -8,
-    backgroundColor: theme.colors.status.error,
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    ...Typography.default('semiBold'),
-  },
-  indicatorDot: {
-    position: 'absolute',
-    top: 0,
-    right: -2,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.text,
-  },
 }));
 
-export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }: TabBarProps) => {
+export const TabBar = React.memo(({ activeTab, onTabPress }: TabBarProps) => {
   const { theme } = useUnistyles();
   const insets = useSafeAreaInsets();
-  const inboxHasContent = useInboxHasContent();
 
   const tabs: { key: TabType; icon: any; label: string }[] = React.useMemo(() => {
     // NOTE: Zen tab removed - the feature never got to a useful state
@@ -122,16 +93,6 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
                   style={[{ width: 24, height: 24 }]}
                   tintColor={isActive ? theme.colors.text : theme.colors.textSecondary}
                 />
-                {tab.key === 'inbox' && inboxBadgeCount > 0 && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>
-                      {inboxBadgeCount > 99 ? '99+' : inboxBadgeCount}
-                    </Text>
-                  </View>
-                )}
-                {tab.key === 'inbox' && inboxHasContent && inboxBadgeCount === 0 && (
-                  <View style={styles.indicatorDot} />
-                )}
               </View>
               <Text style={[styles.label, isActive ? styles.labelActive : styles.labelInactive]}>
                 {tab.label}
