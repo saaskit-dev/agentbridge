@@ -1,33 +1,34 @@
-export type DisplayAgentFlavor = 'claude' | 'codex' | 'gemini' | 'opencode';
+export type DisplayAgentFlavor = 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
 export type KnownAgentType =
   | 'claude'
-  | 'claude-acp'
+  | 'claude-native'
   | 'codex'
-  | 'codex-acp'
   | 'gemini'
-  | 'opencode';
+  | 'opencode'
+  | 'cursor';
 export type AppAgentFlavor = KnownAgentType | string;
 export type SessionFlavor = AppAgentFlavor | 'gpt' | 'openai';
 
 export function normalizeAgentFlavor(
   flavor: SessionFlavor | null | undefined
 ): DisplayAgentFlavor {
-  if (flavor === 'claude' || flavor === 'claude-acp') return 'claude';
-  if (flavor === 'codex' || flavor === 'codex-acp' || flavor === 'gpt' || flavor === 'openai') {
+  if (flavor === 'claude' || flavor === 'claude-native') return 'claude';
+  if (flavor === 'codex' || flavor === 'gpt' || flavor === 'openai') {
     return 'codex';
   }
   if (flavor === 'gemini') return 'gemini';
   if (flavor === 'opencode') return 'opencode';
+  if (flavor === 'cursor') return 'cursor';
   return 'claude';
 }
 
 export function getCapabilityPresetFlavor(
   flavor: SessionFlavor | null | undefined
 ): DisplayAgentFlavor | null {
-  if (flavor === 'claude') return 'claude';
-  if (flavor === 'codex' || flavor === 'gpt' || flavor === 'openai') return 'codex';
+  if (flavor === 'claude-native') return 'claude';
   if (flavor === 'gemini') return 'gemini';
   if (flavor === 'opencode') return 'opencode';
+  if (flavor === 'cursor') return 'cursor';
   return null;
 }
 
@@ -37,7 +38,7 @@ export function usesAcpPermissionDecisions(
   if (!flavor) {
     return false;
   }
-  if (flavor === 'claude') {
+  if (flavor === 'claude-native') {
     return false;
   }
   return true;
@@ -49,11 +50,11 @@ export function coerceAgentType(flavor: unknown): AppAgentFlavor {
   }
   if (
     flavor === 'claude' ||
-    flavor === 'claude-acp' ||
+    flavor === 'claude-native' ||
     flavor === 'codex' ||
-    flavor === 'codex-acp' ||
     flavor === 'gemini' ||
-    flavor === 'opencode'
+    flavor === 'opencode' ||
+    flavor === 'cursor'
   ) {
     return flavor;
   }
@@ -65,11 +66,11 @@ export function coerceAgentType(flavor: unknown): AppAgentFlavor {
 
 export function getAgentDisplayName(agentType: AppAgentFlavor): string {
   if (agentType === 'claude') return 'Claude';
-  if (agentType === 'claude-acp') return 'Claude ACP';
+  if (agentType === 'claude-native') return 'Claude Native';
   if (agentType === 'codex') return 'Codex';
-  if (agentType === 'codex-acp') return 'Codex ACP';
   if (agentType === 'gemini') return 'Gemini';
   if (agentType === 'opencode') return 'OpenCode';
+  if (agentType === 'cursor') return 'Cursor';
   return agentType
     .split('-')
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
@@ -77,26 +78,27 @@ export function getAgentDisplayName(agentType: AppAgentFlavor): string {
 }
 
 export function getAgentDescription(agentType: AppAgentFlavor): string {
-  if (agentType === 'claude') return 'Claude legacy backend';
-  if (agentType === 'claude-acp') return 'Claude via ACP';
-  if (agentType === 'codex') return 'Codex legacy backend';
-  if (agentType === 'codex-acp') return 'Codex via ACP';
+  if (agentType === 'claude') return 'Claude via ACP';
+  if (agentType === 'claude-native') return 'Claude native PTY/SDK backend';
+  if (agentType === 'codex') return 'Codex via ACP';
   if (agentType === 'gemini') return 'Gemini via ACP';
   if (agentType === 'opencode') return 'OpenCode via ACP';
+  if (agentType === 'cursor') return 'Cursor via ACP';
   return 'Daemon-registered agent';
 }
 
 export function isAcpAgent(flavor: SessionFlavor | null | undefined): boolean {
   return (
-    flavor === 'claude-acp' ||
-    flavor === 'codex-acp' ||
+    flavor === 'claude' ||
+    flavor === 'codex' ||
     flavor === 'gemini' ||
-    flavor === 'opencode'
+    flavor === 'opencode' ||
+    flavor === 'cursor'
   );
 }
 
 export function isExperimentalAgent(agentType: AppAgentFlavor): boolean {
-  return agentType === 'claude' || agentType === 'codex';
+  return agentType === 'claude-native';
 }
 
 export function isAgentFlavorMatch(

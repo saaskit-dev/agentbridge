@@ -131,6 +131,7 @@ export default {
       'expo-localization',
       'expo-mail-composer',
       'expo-secure-store',
+      'expo-sqlite',
       'expo-web-browser',
       'react-native-vision-camera',
       '@more-tech/react-native-libsodium',

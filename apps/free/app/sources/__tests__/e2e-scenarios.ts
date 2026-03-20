@@ -178,7 +178,7 @@ async function runScenario(
 
 // --- 1.1 创建 session（所有 agent 类型） ---
 async function test_createSessions(ctx: TestContext) {
-  const agents = ['claude', 'claude-acp', 'codex', 'codex-acp', 'gemini', 'opencode'];
+  const agents = ['claude', 'claude-native', 'codex', 'gemini', 'opencode'];
   const results: any[] = [];
 
   for (const agent of agents) {

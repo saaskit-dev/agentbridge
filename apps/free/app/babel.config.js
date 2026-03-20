@@ -18,6 +18,27 @@ module.exports = function (api) {
     // This won't cause issues since the plugin won't be needed anyway
   }
 
+  // Metro wraps all modules in CommonJS-style functions where import.meta
+  // is invalid syntax at runtime. This plugin replaces import.meta with a
+  // plain object so packages like wa-sqlite (which use import.meta.url to
+  // locate their .wasm file) can be bundled without errors.
+  const transformImportMeta = (babel) => ({
+    visitor: {
+      MetaProperty(path) {
+        if (path.node.meta.name === 'import' && path.node.property.name === 'meta') {
+          path.replaceWith(
+            babel.types.objectExpression([
+              babel.types.objectProperty(
+                babel.types.identifier('url'),
+                babel.types.stringLiteral(''),
+              ),
+            ]),
+          );
+        }
+      },
+    },
+  });
+
   return {
     presets: ['babel-preset-expo'],
     env: {
@@ -26,6 +47,7 @@ module.exports = function (api) {
       },
     },
     plugins: [
+      transformImportMeta,
       ['react-native-unistyles/plugin', { root: 'sources' }],
       workletsPlugin, // Must be last - automatically selects correct plugin for version
     ],

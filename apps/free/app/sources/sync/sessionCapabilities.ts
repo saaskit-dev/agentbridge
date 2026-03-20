@@ -70,7 +70,7 @@ export type CapabilityCategory = keyof Pick<
   'models' | 'modes' | 'configOptions' | 'commands'
 >;
 
-const capabilityPresets: Record<'claude' | 'codex' | 'gemini' | 'opencode', SessionCapabilities> = {
+const capabilityPresets: Record<'claude' | 'gemini' | 'opencode' | 'cursor', SessionCapabilities> = {
   claude: {
     models: {
       available: [
@@ -80,20 +80,6 @@ const capabilityPresets: Record<'claude' | 'codex' | 'gemini' | 'opencode', Sess
         { id: 'opus', name: 'Opus', description: 'Most capable model' },
       ],
       current: 'default',
-    },
-  },
-  codex: {
-    models: {
-      available: [
-        { id: 'gpt-5-codex-high', name: 'GPT-5 Codex High', description: 'Best for complex coding' },
-        { id: 'gpt-5-codex-medium', name: 'GPT-5 Codex Medium', description: 'Balanced coding assistance' },
-        { id: 'gpt-5-codex-low', name: 'GPT-5 Codex Low', description: 'Fast coding help' },
-        { id: 'gpt-5-minimal', name: 'GPT-5 Minimal', description: 'Lowest reasoning budget' },
-        { id: 'gpt-5-low', name: 'GPT-5 Low', description: 'Fast general model' },
-        { id: 'gpt-5-medium', name: 'GPT-5 Medium', description: 'Balanced general model' },
-        { id: 'gpt-5-high', name: 'GPT-5 High', description: 'Highest reasoning budget' },
-      ],
-      current: 'gpt-5-codex-high',
     },
   },
   gemini: {
@@ -114,6 +100,25 @@ const capabilityPresets: Record<'claude' | 'codex' | 'gemini' | 'opencode', Sess
     models: {
       available: [{ id: 'default', name: 'Default', description: 'Use provider default model' }],
       current: 'default',
+    },
+  },
+  cursor: {
+    models: {
+      available: [
+        { id: 'default[]', name: 'Auto', description: 'Automatically select best model' },
+        { id: 'claude-sonnet-4-6[thinking=true,context=200k,effort=medium]', name: 'Sonnet 4.6' },
+        { id: 'claude-opus-4-6[thinking=true,context=200k,effort=high,fast=false]', name: 'Opus 4.6' },
+        { id: 'gpt-5.4[reasoning=medium,context=272k,fast=false]', name: 'GPT-5.4' },
+      ],
+      current: 'default[]',
+    },
+    modes: {
+      available: [
+        { id: 'agent', name: 'Agent', description: 'Full agent capabilities with tool access' },
+        { id: 'plan', name: 'Plan', description: 'Read-only mode for planning' },
+        { id: 'ask', name: 'Ask', description: 'Q&A mode - no edits or command execution' },
+      ],
+      current: 'agent',
     },
   },
 };

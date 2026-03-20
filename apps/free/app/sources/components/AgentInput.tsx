@@ -77,12 +77,12 @@ interface AgentInputProps {
     dotColor: string;
     isPulsing?: boolean;
     cliStatus?: {
-      claude: boolean | null;
-      'claude-acp'?: boolean | null;
-      codex: boolean | null;
-      'codex-acp'?: boolean | null;
+      'claude-native': boolean | null;
+      claude?: boolean | null;
+      'codex'?: boolean | null;
       gemini?: boolean | null;
       opencode?: boolean | null;
+      cursor?: boolean | null;
     };
   };
   autocompletePrefixes: string[];
@@ -405,13 +405,12 @@ export const AgentInput = React.memo(
     const cliStatus = props.connectionStatus?.cliStatus;
     const cliStatusItems = React.useMemo(
       () => [
-        { key: 'claude', available: cliStatus?.claude },
-        ...(cliStatus?.['claude-acp'] !== undefined
-          ? [{ key: 'claude-acp', available: cliStatus['claude-acp'] }]
+        { key: 'claude-native', available: cliStatus?.['claude-native'] },
+        ...(cliStatus?.claude !== undefined
+          ? [{ key: 'claude', available: cliStatus.claude }]
           : []),
-        { key: 'codex', available: cliStatus?.codex },
-        ...(cliStatus?.['codex-acp'] !== undefined
-          ? [{ key: 'codex-acp', available: cliStatus['codex-acp'] }]
+        ...(cliStatus?.['codex'] !== undefined
+          ? [{ key: 'codex', available: cliStatus['codex'] }]
           : []),
         ...(cliStatus?.gemini !== undefined
           ? [{ key: 'gemini', available: cliStatus.gemini }]
@@ -419,14 +418,17 @@ export const AgentInput = React.memo(
         ...(cliStatus?.opencode !== undefined
           ? [{ key: 'opencode', available: cliStatus.opencode }]
           : []),
+        ...(cliStatus?.cursor !== undefined
+          ? [{ key: 'cursor', available: cliStatus.cursor }]
+          : []),
       ],
       [
+        cliStatus?.['claude-native'],
         cliStatus?.claude,
-        cliStatus?.['claude-acp'],
-        cliStatus?.codex,
-        cliStatus?.['codex-acp'],
+        cliStatus?.['codex'],
         cliStatus?.gemini,
         cliStatus?.opencode,
+        cliStatus?.cursor,
       ]
     );
     const capabilityStatusText = React.useMemo(() => {
@@ -1184,7 +1186,7 @@ export const AgentInput = React.memo(
                 minHeight: 20, // Fixed minimum height to prevent jumping
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, flexWrap: 'wrap', gap: 11, rowGap: 2 }}>
                 {props.connectionStatus && (
                   <>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
