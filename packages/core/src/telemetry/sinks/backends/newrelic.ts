@@ -40,8 +40,6 @@ export class NewRelicBackend implements RemoteBackend {
           component: entry.component,
           layer: entry.layer,
           ...(entry.traceId ? { traceId: entry.traceId } : {}),
-          ...(entry.spanId ? { spanId: entry.spanId } : {}),
-          ...(entry.parentSpanId ? { parentSpanId: entry.parentSpanId } : {}),
           ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
           ...(entry.machineId ? { machineId: entry.machineId } : {}),
           ...(entry.durationMs != null ? { durationMs: entry.durationMs } : {}),

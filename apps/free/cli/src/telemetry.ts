@@ -107,11 +107,9 @@ export function initCliTelemetry(): void {
 
   // If spawned as a child of the daemon, inherit the trace context.
   const envTraceId = process.env.FREE_TRACE_ID;
-  const envSpanId = process.env.FREE_SPAN_ID;
-  if (envTraceId && envSpanId) {
+  if (envTraceId) {
     processTraceCtx = continueTrace({
       traceId: envTraceId,
-      spanId: envSpanId,
       sessionId: process.env.FREE_SESSION_ID || undefined,
       machineId: process.env.FREE_MACHINE_ID || undefined,
       userId,

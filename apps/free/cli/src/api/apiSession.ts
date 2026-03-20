@@ -311,11 +311,10 @@ export class ApiSessionClient extends EventEmitter {
           // currentTurnTrace module variable is already set so the polling path
           // benefits from it. Node.js is single-threaded: no other socket event
           // can overwrite currentTurnTrace between here and fetchMessages() running.
-          if (data._trace?.tid && data._trace?.sid) {
+          if (data._trace?.tid) {
             const wire = data._trace;
             setCurrentTurnTrace(continueTrace({
               traceId: wire.tid,
-              spanId: wire.sid,
               sessionId: wire.ses,
               machineId: wire.mid,
             }));
@@ -671,7 +670,6 @@ export class ApiSessionClient extends EventEmitter {
       id,
       outboxSize: this.pendingOutbox.length,
       traceId: trace?.tid,
-      spanId: trace?.sid,
     });
     this.sendSync.invalidate();
     return id;

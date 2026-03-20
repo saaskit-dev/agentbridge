@@ -195,7 +195,7 @@ export async function claudeRemote(opts: {
 
   updateThinking(true);
   try {
-    logger.info('[claudeRemote] Starting to iterate over response', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId, spanId: getProcessTraceContext()?.spanId });
+    logger.info('[claudeRemote] Starting to iterate over response', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId });
 
     for await (const message of response) {
       if (message.type === 'assistant') {
@@ -206,7 +206,6 @@ export async function claudeRemote(opts: {
           sessionId: opts.sessionId,
           path: opts.path,
           traceId: getProcessTraceContext()?.traceId,
-          spanId: getProcessTraceContext()?.spanId,
           blockTypes: blocks.map(b => b.type),
           ...(toolCalls.length > 0 ? { toolCalls } : {}),
         });
@@ -218,7 +217,7 @@ export async function claudeRemote(opts: {
             .filter(c => c.type === 'tool_result')
             .map(c => ({ tool_use_id: c.tool_use_id, is_error: c.is_error }));
           if (results.length > 0) {
-            logger.info('[claudeRemote] tool results received', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId, spanId: getProcessTraceContext()?.spanId, results });
+            logger.info('[claudeRemote] tool results received', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId, results });
           }
         }
       } else {
@@ -269,7 +268,7 @@ export async function claudeRemote(opts: {
       // Handle result messages
       if (message.type === 'result') {
         updateThinking(false);
-        logger.debug('[claudeRemote] Result received, exiting claudeRemote', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId, spanId: getProcessTraceContext()?.spanId });
+        logger.debug('[claudeRemote] Result received, exiting claudeRemote', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId });
 
         // Send completion messages
         if (isCompactCommand) {

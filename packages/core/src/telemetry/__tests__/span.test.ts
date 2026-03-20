@@ -30,8 +30,6 @@ describe('Span', () => {
   it('creates a new trace when no parent context', () => {
     const span = new Span('operation', 'test')
     expect(span.traceId).toBeTruthy()
-    expect(span.spanId).toBeTruthy()
-    expect(span.parentSpanId).toBeUndefined()
     expect(span.name).toBe('operation')
   })
 
@@ -40,8 +38,6 @@ describe('Span', () => {
     const span = new Span('child-op', 'test', parent)
 
     expect(span.traceId).toBe(parent.traceId)
-    expect(span.spanId).not.toBe(parent.spanId)
-    expect(span.parentSpanId).toBe(parent.spanId)
   })
 
   it('logs span start on creation', () => {
@@ -57,7 +53,6 @@ describe('Span', () => {
 
     const entry = sink.entries.find(e => e.message === 'doing work')!
     expect(entry.traceId).toBe(span.traceId)
-    expect(entry.spanId).toBe(span.spanId)
     expect(entry.data).toEqual({ step: 1 })
   })
 
@@ -104,7 +99,6 @@ describe('Span', () => {
     const ctx = span.toContext()
 
     expect(ctx.traceId).toBe(span.traceId)
-    expect(ctx.spanId).toBe(span.spanId)
     expect(ctx.sessionId).toBe('s1')
     expect(ctx.machineId).toBe('m1')
   })

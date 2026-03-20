@@ -96,8 +96,6 @@ export class Logger {
     const resolvedCtx = ctx ?? _globalContextProvider?.()
     if (resolvedCtx) {
       entry.traceId = resolvedCtx.traceId
-      entry.spanId = resolvedCtx.spanId
-      if (resolvedCtx.parentSpanId) entry.parentSpanId = resolvedCtx.parentSpanId
       if (resolvedCtx.sessionId) entry.sessionId = resolvedCtx.sessionId
       if (resolvedCtx.machineId) entry.machineId = resolvedCtx.machineId
       if (resolvedCtx.userId) entry.userId = resolvedCtx.userId

@@ -4,8 +4,6 @@ import { createTrace, continueTrace } from './context.js'
 
 export class Span {
   readonly traceId: string
-  readonly spanId: string
-  readonly parentSpanId?: string
   readonly name: string
 
   private readonly component: string
@@ -21,7 +19,6 @@ export class Span {
     if (parentCtx) {
       this.ctx = continueTrace({
         traceId: parentCtx.traceId,
-        spanId: parentCtx.spanId,
         sessionId: parentCtx.sessionId,
         machineId: parentCtx.machineId,
       })
@@ -30,8 +27,6 @@ export class Span {
     }
 
     this.traceId = this.ctx.traceId
-    this.spanId = this.ctx.spanId
-    this.parentSpanId = this.ctx.parentSpanId
 
     this.emit('debug', `[span:start] ${name}`)
   }
@@ -70,8 +65,6 @@ export class Span {
       layer: isCollectorReady() ? getCollector().currentLayer : 'unknown',
       component: this.component,
       traceId: this.traceId,
-      spanId: this.spanId,
-      parentSpanId: this.parentSpanId,
       sessionId: this.ctx.sessionId,
       machineId: this.ctx.machineId,
       message,

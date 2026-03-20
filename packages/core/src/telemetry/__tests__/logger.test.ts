@@ -112,7 +112,6 @@ describe('Logger.span()', () => {
     const log = new Logger('svc')
     const ctx = createTrace({ sessionId: 'sess-42' })
     const span = log.span('child-op', ctx)
-    expect(span.parentSpanId).toBe(ctx.spanId)
     expect(span.traceId).toBe(ctx.traceId)
   })
 
@@ -146,7 +145,6 @@ describe('ScopedLogger (withContext)', () => {
 
     for (const entry of sink.entries) {
       expect(entry.traceId).toBe(ctx.traceId)
-      expect(entry.spanId).toBe(ctx.spanId)
       expect(entry.sessionId).toBe('sess-1')
     }
   })
@@ -158,14 +156,6 @@ describe('ScopedLogger (withContext)', () => {
     expect(scoped.context).toBe(ctx)
   })
 
-  it('includes parentSpanId when present', () => {
-    const log = new Logger('x')
-    const ctx = createTrace()
-    const child = { ...ctx, parentSpanId: 'parent-1' } as const
-    const scoped = log.withContext(child)
-    scoped.info('msg')
-    expect(sink.entries[0].parentSpanId).toBe('parent-1')
-  })
 })
 
 describe('setGlobalContextProvider', () => {
@@ -193,7 +183,6 @@ describe('setGlobalContextProvider', () => {
 
     for (const entry of sink.entries) {
       expect(entry.traceId).toBe(ctx.traceId)
-      expect(entry.spanId).toBe(ctx.spanId)
       expect(entry.sessionId).toBe('turn-123')
     }
   })
@@ -218,7 +207,6 @@ describe('setGlobalContextProvider', () => {
     log.info('msg')
 
     expect(sink.entries[0].traceId).toBeUndefined()
-    expect(sink.entries[0].spanId).toBeUndefined()
   })
 
   it('provider can be cleared by passing undefined', () => {

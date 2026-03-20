@@ -11,9 +11,8 @@ export function enableMonitoring(app: Fastify) {
 
     // RFC §7.2: extract trace context from HTTP headers
     const traceId = request.headers['x-trace-id'] as string | undefined;
-    const spanId = request.headers['x-span-id'] as string | undefined;
-    if (traceId && spanId) {
-      request.traceCtx = continueTrace({ traceId, spanId });
+    if (traceId) {
+      request.traceCtx = continueTrace({ traceId });
     }
   });
 
