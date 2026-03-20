@@ -8,13 +8,19 @@ function resolveClient(tx?: SeqClient) {
 }
 
 export async function allocateUserSeq(accountId: string) {
-  const user = await db.account.update({
-    where: { id: accountId },
-    select: { seq: true },
-    data: { seq: { increment: 1 } },
-  });
-  const seq = user.seq;
-  return seq;
+  try {
+    const user = await db.account.update({
+      where: { id: accountId },
+      select: { seq: true },
+      data: { seq: { increment: 1 } },
+    });
+    return user.seq;
+  } catch (error: any) {
+    if (error?.code === 'P2025') {
+      throw new Error(`Account not found: ${accountId}`);
+    }
+    throw error;
+  }
 }
 
 export async function allocateSessionSeq(sessionId: string) {

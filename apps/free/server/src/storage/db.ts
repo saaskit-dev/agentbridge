@@ -64,19 +64,22 @@ export function getPGlite(): PGlite | null {
  */
 export async function closePGlite(): Promise<void> {
   if (pgliteInstance) {
-    logger.debug('[DB] Closing PGLite instance...');
+    logger.info('[shutdown] closePGlite: start');
     try {
-      // First disconnect Prisma
       if (prismaClient) {
+        logger.info('[shutdown] closePGlite: prisma.$disconnect start');
         await prismaClient.$disconnect();
+        logger.info('[shutdown] closePGlite: prisma.$disconnect done');
       }
-      // Then close PGLite
+      logger.info('[shutdown] closePGlite: pglite.close start');
       await pgliteInstance.close();
-      logger.debug('[DB] PGLite closed successfully');
+      logger.info('[shutdown] closePGlite: pglite.close done');
     } catch (error) {
-      logger.error('[DB] Error closing PGLite:', toError(error));
+      logger.error('[shutdown] closePGlite: error', toError(error));
     }
     pgliteInstance = null;
     prismaClient = null;
+  } else {
+    logger.info('[shutdown] closePGlite: no pglite instance (using external DB), skipping');
   }
 }

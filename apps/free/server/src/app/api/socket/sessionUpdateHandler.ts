@@ -336,20 +336,30 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
       const { sid, thinking } = data;
 
-      // Check session validity using cache (now returns 'valid' | 'archived' | 'invalid')
+      // Check session validity using cache
       const validity = await activityCache.isSessionValid(sid, userId);
-      if (validity === 'archived') {
-        // DB says session is archived — tell the daemon to shut down
-        log.info('[session-alive] session archived in DB, notifying daemon', { userId, sid });
+      if (validity === 'archived' || validity === 'deleted') {
+        // Session was intentionally ended — tell the daemon to shut down
+        log.info('[session-alive] session archived/deleted in DB, notifying daemon', { userId, sid });
         socket.emit('session-archived', { sid });
         return;
       }
-      if (validity !== 'valid') {
+      if (validity === 'invalid') {
         return;
       }
-
-      // Queue database update (will only update if time difference is significant)
-      activityCache.queueSessionUpdate(sid, t);
+      if (validity === 'offline') {
+        // Daemon reconnected while session was offline — re-activate
+        // DB is updated directly here; skip queueSessionUpdate (no cache entry after evict)
+        await db.session.updateMany({
+          where: { id: sid, accountId: userId, status: 'offline' },
+          data: { status: 'active', lastActiveAt: new Date(t) },
+        });
+        activityCache.evictSession(sid);
+        log.info('[session-alive] re-activated offline session', { userId, sid });
+      } else {
+        // Queue database update (will only update if time difference is significant)
+        activityCache.queueSessionUpdate(sid, t);
+      }
 
       // Emit session activity update
       const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false);
@@ -462,10 +472,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         return;
       }
 
-      // Update last active at (use updateMany with accountId to prevent cross-account writes)
+      // Mark session archived
       await db.session.updateMany({
         where: { id: sid, accountId: userId },
-        data: { lastActiveAt: new Date(t), active: false },
+        data: { lastActiveAt: new Date(t), status: 'archived' },
       });
 
       // Evict from activity cache so subsequent session-alive checks see the archived state
@@ -478,7 +488,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         payload: sessionActivity,
         recipientFilter: { type: 'user-scoped-only' },
       });
-      log.info('[session-end] session archived (active=false)', { userId, sid });
+      log.info('[session-end] session archived', { userId, sid });
     } catch (error) {
       log.error('Error in session-end', undefined, { userId, sid: data?.sid, error: safeStringify(error) });
     }

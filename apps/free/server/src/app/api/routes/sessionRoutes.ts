@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { type Fastify } from '../types';
 import { eventRouter, buildNewSessionUpdate } from '@/app/events/eventRouter';
 import { sessionDelete } from '@/app/session/sessionDelete';
+import { activityCache } from '@/app/presence/sessionCache';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
@@ -20,7 +21,7 @@ export function sessionRoutes(app: Fastify) {
       const userId = request.userId;
 
       const sessions = await db.session.findMany({
-        where: { accountId: userId },
+        where: { accountId: userId, status: { not: 'deleted' } },
         orderBy: { updatedAt: 'desc' },
         take: 150,
         select: {
@@ -35,47 +36,30 @@ export function sessionRoutes(app: Fastify) {
           capabilities: true,
           capabilitiesVersion: true,
           dataEncryptionKey: true,
-          active: true,
+          status: true,
           lastActiveAt: true,
-          // messages: {
-          //     orderBy: { seq: 'desc' },
-          //     take: 1,
-          //     select: {
-          //         id: true,
-          //         seq: true,
-          //         content: true,
-          //         localId: true,
-          //         createdAt: true
-          //     }
-          // }
         },
       });
 
       log.debug('[sessions] list', { userId, count: sessions.length });
 
       return reply.send({
-        sessions: sessions.map(v => {
-          // const lastMessage = v.messages[0];
-          const sessionUpdatedAt = v.updatedAt.getTime();
-          // const lastMessageCreatedAt = lastMessage ? lastMessage.createdAt.getTime() : 0;
-
-          return {
-            id: v.id,
-            seq: v.seq,
-            createdAt: v.createdAt.getTime(),
-            updatedAt: sessionUpdatedAt,
-            active: v.active,
-            activeAt: v.lastActiveAt.getTime(),
-            metadata: v.metadata,
-            metadataVersion: v.metadataVersion,
-            agentState: v.agentState,
-            agentStateVersion: v.agentStateVersion,
-            capabilities: v.capabilities,
-            capabilitiesVersion: v.capabilitiesVersion,
-            dataEncryptionKey: v.dataEncryptionKey, // Already base64 string
-            lastMessage: null,
-          };
-        }),
+        sessions: sessions.map(v => ({
+          id: v.id,
+          seq: v.seq,
+          createdAt: v.createdAt.getTime(),
+          updatedAt: v.updatedAt.getTime(),
+          status: v.status,
+          activeAt: v.lastActiveAt.getTime(),
+          metadata: v.metadata,
+          metadataVersion: v.metadataVersion,
+          agentState: v.agentState,
+          agentStateVersion: v.agentStateVersion,
+          capabilities: v.capabilities,
+          capabilitiesVersion: v.capabilitiesVersion,
+          dataEncryptionKey: v.dataEncryptionKey, // Already base64 string
+          lastMessage: null,
+        })),
       });
     }
   );
@@ -100,7 +84,7 @@ export function sessionRoutes(app: Fastify) {
       const sessions = await db.session.findMany({
         where: {
           accountId: userId,
-          active: true,
+          status: 'active',
           lastActiveAt: { gt: new Date(Date.now() - 1000 * 60 * 15) /* 15 minutes */ },
         },
         orderBy: { lastActiveAt: 'desc' },
@@ -117,7 +101,7 @@ export function sessionRoutes(app: Fastify) {
           capabilities: true,
           capabilitiesVersion: true,
           dataEncryptionKey: true,
-          active: true,
+          status: true,
           lastActiveAt: true,
         },
       });
@@ -130,7 +114,7 @@ export function sessionRoutes(app: Fastify) {
           seq: v.seq,
           createdAt: v.createdAt.getTime(),
           updatedAt: v.updatedAt.getTime(),
-          active: v.active,
+          status: v.status,
           activeAt: v.lastActiveAt.getTime(),
           metadata: v.metadata,
           metadataVersion: v.metadataVersion,
@@ -173,8 +157,8 @@ export function sessionRoutes(app: Fastify) {
         }
       }
 
-      // Build where clause
-      const where: Prisma.SessionWhereInput = { accountId: userId };
+      // Build where clause (always exclude soft-deleted sessions)
+      const where: Prisma.SessionWhereInput = { accountId: userId, status: { not: 'deleted' } };
 
       // Add changedSince filter (just a filter, doesn't affect pagination)
       if (changedSince) {
@@ -209,7 +193,7 @@ export function sessionRoutes(app: Fastify) {
           capabilities: true,
           capabilitiesVersion: true,
           dataEncryptionKey: true,
-          active: true,
+          status: true,
           lastActiveAt: true,
         },
       });
@@ -233,7 +217,7 @@ export function sessionRoutes(app: Fastify) {
           seq: v.seq,
           createdAt: v.createdAt.getTime(),
           updatedAt: v.updatedAt.getTime(),
-          active: v.active,
+          status: v.status,
           activeAt: v.lastActiveAt.getTime(),
           metadata: v.metadata,
           metadataVersion: v.metadataVersion,
@@ -249,13 +233,14 @@ export function sessionRoutes(app: Fastify) {
     }
   );
 
-  // Create or load session by tag
+  // Get or create session by client-generated ID.
+  // The daemon generates a UUID and uses it as both the lookup key and the primary key.
   app.post(
     '/v1/sessions',
     {
       schema: {
         body: z.object({
-          tag: z.string(),
+          id: z.string(),
           metadata: z.string(),
           agentState: z.string().nullish(),
           dataEncryptionKey: z.string().nullish(),
@@ -265,79 +250,102 @@ export function sessionRoutes(app: Fastify) {
     },
     async (request, reply) => {
       const userId = request.userId;
-      const { tag, metadata, dataEncryptionKey } = request.body;
+      const { id, metadata, dataEncryptionKey } = request.body;
       const traceId = request.headers['x-trace-id'] as string | undefined;
 
-      const session = await db.session.findFirst({
-        where: {
-          accountId: userId,
-          tag: tag,
-        },
-      });
-      if (session) {
-        log.info(`Found existing session: ${session.id} for tag ${tag}`, { sessionId: session.id, userId, tag, traceId });
-        return reply.send({
-          session: {
-            id: session.id,
-            seq: session.seq,
-            metadata: session.metadata,
-            metadataVersion: session.metadataVersion,
-            agentState: session.agentState,
-            agentStateVersion: session.agentStateVersion,
-            capabilities: session.capabilities,
-            capabilitiesVersion: session.capabilitiesVersion,
-            dataEncryptionKey: session.dataEncryptionKey, // Already base64 string
-            active: session.active,
-            activeAt: session.lastActiveAt.getTime(),
-            createdAt: session.createdAt.getTime(),
-            updatedAt: session.updatedAt.getTime(),
-            lastMessage: null,
-          },
-        });
-      } else {
-        // Resolve seq
-        const updSeq = await allocateUserSeq(userId);
+      // Look up existing active/offline session by client-provided ID
+      const session = await db.session.findUnique({ where: { id } });
+      if (session && session.accountId === userId && (session.status === 'active' || session.status === 'offline')) {
+        log.info(`Resuming existing session: ${session.id}`, { sessionId: session.id, userId, traceId });
 
-        // Create session
-        log.info(`Creating new session for user ${userId} with tag ${tag}`, { userId, tag, traceId });
-        const session = await db.session.create({
-          data: {
-            accountId: userId,
-            tag: tag,
-            metadata: metadata,
-            dataEncryptionKey: dataEncryptionKey || undefined, // Now stored as base64 string
-          },
-        });
-        log.info(`Session created: ${session.id}`, { sessionId: session.id, userId, traceId });
-
-        // Emit new session update
-        const updatePayload = buildNewSessionUpdate(session, updSeq, randomKeyNaked(12));
-        log.info('Emitting new-session update to user-scoped connections', { userId, sessionId: session.id, traceId });
-        eventRouter.emitUpdate({
-          userId,
-          payload: updatePayload,
-          recipientFilter: { type: 'user-scoped-only' },
-        });
+        // Re-activate offline sessions on daemon restart/crash recovery.
+        let activeSession = session;
+        if (session.status === 'offline') {
+          log.info(`Re-activating offline session on daemon recovery: ${session.id}`, { sessionId: session.id, userId, traceId });
+          activeSession = await db.session.update({
+            where: { id: session.id },
+            data: { status: 'active', lastActiveAt: new Date() },
+          });
+          activityCache.evictSession(session.id);
+        }
 
         return reply.send({
           session: {
-            id: session.id,
-            seq: session.seq,
-            metadata: session.metadata,
-            metadataVersion: session.metadataVersion,
-            agentState: session.agentState,
-            agentStateVersion: session.agentStateVersion,
-            capabilities: session.capabilities,
-            capabilitiesVersion: session.capabilitiesVersion,
-            dataEncryptionKey: session.dataEncryptionKey, // Already base64 string
-            active: session.active,
-            activeAt: session.lastActiveAt.getTime(),
-            createdAt: session.createdAt.getTime(),
-            updatedAt: session.updatedAt.getTime(),
+            id: activeSession.id,
+            seq: activeSession.seq,
+            metadata: activeSession.metadata,
+            metadataVersion: activeSession.metadataVersion,
+            agentState: activeSession.agentState,
+            agentStateVersion: activeSession.agentStateVersion,
+            capabilities: activeSession.capabilities,
+            capabilitiesVersion: activeSession.capabilitiesVersion,
+            dataEncryptionKey: activeSession.dataEncryptionKey,
+            status: activeSession.status,
+            activeAt: activeSession.lastActiveAt.getTime(),
+            createdAt: activeSession.createdAt.getTime(),
+            updatedAt: activeSession.updatedAt.getTime(),
             lastMessage: null,
           },
         });
       }
+
+      // ID exists but belongs to another user, or is archived/deleted — tell client to retry
+      if (session) {
+        log.info(`Session ID conflict: ${id} exists but not resumable`, { userId, traceId, existingStatus: session.status });
+        reply.code(409);
+        return { error: 'session_id_conflict' };
+      }
+
+      // Create new session with client-provided ID
+      const updSeq = await allocateUserSeq(userId);
+      log.info(`Creating new session ${id} for user ${userId}`, { userId, sessionId: id, traceId });
+      let newSession;
+      try {
+        newSession = await db.session.create({
+          data: {
+            id,
+            accountId: userId,
+            metadata: metadata,
+            dataEncryptionKey: dataEncryptionKey || undefined,
+          },
+        });
+      } catch (err: unknown) {
+        // P2002: concurrent race — another request created a session with this ID
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          log.info(`Concurrent create race on session ID ${id}`, { userId, traceId });
+          reply.code(409);
+          return { error: 'session_id_conflict' };
+        }
+        throw err;
+      }
+      log.info(`Session created: ${newSession.id}`, { sessionId: newSession.id, userId, traceId });
+
+      // Emit new session update
+      const updatePayload = buildNewSessionUpdate(newSession, updSeq, randomKeyNaked(12));
+      eventRouter.emitUpdate({
+        userId,
+        payload: updatePayload,
+        recipientFilter: { type: 'user-scoped-only' },
+      });
+
+      return reply.send({
+        session: {
+          id: newSession.id,
+          seq: newSession.seq,
+          metadata: newSession.metadata,
+          metadataVersion: newSession.metadataVersion,
+          agentState: newSession.agentState,
+          agentStateVersion: newSession.agentStateVersion,
+          capabilities: newSession.capabilities,
+          capabilitiesVersion: newSession.capabilitiesVersion,
+          dataEncryptionKey: newSession.dataEncryptionKey,
+          status: newSession.status,
+          activeAt: newSession.lastActiveAt.getTime(),
+          createdAt: newSession.createdAt.getTime(),
+          updatedAt: newSession.updatedAt.getTime(),
+          lastMessage: null,
+        },
+      });
     }
   );
 
@@ -375,7 +383,6 @@ export function sessionRoutes(app: Fastify) {
         select: {
           id: true,
           seq: true,
-          localId: true,
           content: true,
           createdAt: true,
           updatedAt: true,
@@ -389,7 +396,6 @@ export function sessionRoutes(app: Fastify) {
           id: v.id,
           seq: v.seq,
           content: v.content,
-          localId: v.localId,
           createdAt: v.createdAt.getTime(),
           updatedAt: v.updatedAt.getTime(),
         })),

@@ -13,11 +13,11 @@ const logger = new Logger('server/presence/timeout');
 
 export function startTimeout() {
   forever('session-timeout', async () => {
-    while (true) {
+    while (!shutdownSignal.aborted) {
       // Find timed out sessions
       const sessions = await db.session.findMany({
         where: {
-          active: true,
+          status: 'active',
           lastActiveAt: {
             lte: new Date(Date.now() - 1000 * 60 * 3), // 3 minutes
           },
@@ -28,13 +28,13 @@ export function startTimeout() {
       }
       for (const session of sessions) {
         const updated = await db.session.updateManyAndReturn({
-          where: { id: session.id, active: true },
-          data: { active: false },
+          where: { id: session.id, status: 'active' },
+          data: { status: 'offline' },
         });
         if (updated.length === 0) {
           continue;
         }
-        logger.debug('session marked inactive', { sessionId: session.id, accountId: session.accountId });
+        logger.debug('session marked offline', { sessionId: session.id, accountId: session.accountId });
         eventRouter.emitEphemeral({
           userId: session.accountId,
           payload: buildSessionActivityEphemeral(

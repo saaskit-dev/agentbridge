@@ -448,7 +448,7 @@ class EventRouter {
   }): void {
     const connections = this.userConnections.get(params.userId);
     if (!connections) {
-      log.warn(`No connections found for user ${params.userId}`, {
+      log.debug(`No connections found for user ${params.userId}`, {
         userId: params.userId,
         updateId: (params.payload as any).id,
         event: params.eventName,
@@ -513,7 +513,7 @@ export function buildNewSessionUpdate(
     capabilities: string | null;
     capabilitiesVersion: number;
     dataEncryptionKey: string | null;
-    active: boolean;
+    status: string;
     lastActiveAt: Date;
     createdAt: Date;
     updatedAt: Date;
@@ -535,7 +535,7 @@ export function buildNewSessionUpdate(
       capabilities: session.capabilities,
       capabilitiesVersion: session.capabilitiesVersion,
       dataEncryptionKey: session.dataEncryptionKey, // Already base64 string in Free
-      active: session.active,
+      status: session.status,
       activeAt: session.lastActiveAt.getTime(),
       createdAt: session.createdAt.getTime(),
       updatedAt: session.updatedAt.getTime(),
