@@ -34,5 +34,5 @@ if (!hasNoWarnings || !hasNoDeprecation) {
   }
 } else {
   // We're running with the flags, import the actual MCP bridge
-  await import('./codex/freeMcpStdioBridge.js');
+  await import('./mcp/freeMcpStdioBridge.js');
 }
