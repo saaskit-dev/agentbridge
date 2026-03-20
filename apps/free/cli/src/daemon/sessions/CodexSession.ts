@@ -1,5 +1,5 @@
 /**
- * CodexSession — AgentSession subclass for the Codex (OpenAI) agent.
+ * CodexSession — AgentSession subclass for Codex with ACP backend.
  *
  * Mode = EnhancedMode (permissionMode + optional model override).
  * Uses AgentSession default mode handling.

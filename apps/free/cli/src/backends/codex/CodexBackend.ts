@@ -1,140 +1,29 @@
-/**
- * CodexBackend — AgentBackend implementation for Codex (OpenAI).
- *
- * Wraps CodexMcpClient and translates raw Codex events to NormalizedMessage.
- *
- * Protocol:
- *   start()       → connect CodexMcpClient, register event handler
- *   sendMessage() → startSession() on first message, continueSession() thereafter
- *   abort()       → disconnect (CodexMCP has no dedicated abort tool)
- *   stop()        → forceCloseSession() + output.end()
- */
-
-import { CodexMcpClient } from '@/codex/codexMcpClient';
-import { resolveCodexExecutionPolicy } from '@/codex/executionPolicy';
-import { CodexPermissionHandler } from '@/codex/utils/permissionHandler';
-import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
-import { safeStringify } from '@saaskit-dev/agentbridge';
-import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
-import type { ApiSessionClient } from '@/api/apiSession';
-import type { AgentBackend, AgentStartOpts, BackendExitInfo } from '@/daemon/sessions/AgentBackend';
-import type { NormalizedMessage } from '@/daemon/sessions/types';
+import { createCodexBackend } from '@saaskit-dev/agentbridge';
+import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
+import type { AgentStartOpts } from '@/daemon/sessions/AgentBackend';
+import { DiscoveredAcpBackendBase } from '@/backends/acp/DiscoveredAcpBackendBase';
 import { mapCodexRawToNormalized } from './mapCodexRawToNormalized';
 
 const logger = new Logger('backends/codex/CodexBackend');
 
-export class CodexBackend implements AgentBackend {
+export class CodexBackend extends DiscoveredAcpBackendBase {
   readonly agentType = 'codex' as const;
-  readonly output = new PushableAsyncIterable<NormalizedMessage>();
-  exitInfo?: BackendExitInfo;
 
-  private client!: CodexMcpClient;
-  private permissionHandler: CodexPermissionHandler | null = null;
-  private startOpts!: AgentStartOpts;
-  private sessionCreated = false;
-
-  async start(opts: AgentStartOpts): Promise<void> {
-    this.startOpts = opts;
-    this.client = new CodexMcpClient();
-    this.permissionHandler = new CodexPermissionHandler(opts.session);
-    this.client.setPermissionHandler(this.permissionHandler);
-    await this.client.connect();
-    this.client.setHandler((raw: Record<string, unknown>) => {
-      if (process.env.APP_ENV === 'development') {
-        logger.debug('[CodexBackend] raw event', { raw });
-      }
-      const normalized = mapCodexRawToNormalized(raw);
-      if (normalized) this.output.push(normalized);
-    });
-    logger.debug('[CodexBackend] started', { cwd: opts.cwd });
+  constructor() {
+    super(logger);
   }
 
-  onSessionChange(newSession: ApiSessionClient): void {
-    this.permissionHandler?.updateSession(newSession);
-  }
-
-  async sendMessage(text: string): Promise<void> {
-    if (!this.sessionCreated) {
-      const permissionMode = this.startOpts.permissionMode ?? 'read-only';
-      const { approvalPolicy, sandbox } = resolveCodexExecutionPolicy(
-        permissionMode,
-        this.client.sandboxEnabled
-      );
-
-      const sessionConfig = {
-        prompt: `${CHANGE_TITLE_INSTRUCTION}\n\n${text}`,
-        'approval-policy': approvalPolicy,
-        sandbox,
-        cwd: this.startOpts.cwd,
-        ...(this.startOpts.model ? { model: this.startOpts.model } : {}),
-        ...(this.startOpts.mcpServerUrl
-          ? {
-              config: {
-                mcpServers: {
-                  free: { url: this.startOpts.mcpServerUrl },
-                },
-              },
-            }
-          : {}),
-      };
-
-      logger.debug('[CodexBackend] creating session', {
-        cwd: this.startOpts.cwd,
-        model: this.startOpts.model,
-        approvalPolicy,
-        sandbox,
-      });
-      await this.client.startSession(sessionConfig);
-      this.sessionCreated = true;
-      logger.debug('[CodexBackend] session created');
-    } else {
-      logger.debug('[CodexBackend] continuing session', { preview: text.slice(0, 100) });
-      await this.client.continueSession(text);
-      logger.debug('[CodexBackend] continueSession completed');
-    }
-  }
-
-  async setModel(modelId: string): Promise<void> {
-    logger.warn(
-      '[CodexBackend] setModel called but runtime model switching is not supported in PTY mode',
-      { modelId }
-    );
-  }
-
-  async setMode(modeId: string): Promise<void> {
-    logger.warn(
-      '[CodexBackend] setMode called but runtime mode switching is not supported in PTY mode',
-      { modeId }
-    );
-  }
-
-  async setConfig(optionId: string, value: string): Promise<void> {
-    logger.warn(
-      '[CodexBackend] setConfig called but runtime config switching is not supported in PTY mode',
-      { optionId, value }
-    );
-  }
-
-  async abort(): Promise<void> {
-    logger.debug('[CodexBackend] abort — disconnecting client');
-    await this.client.disconnect().catch(err => {
-      logger.warn('[CodexBackend] error during abort disconnect', { error: safeStringify(err) });
-      this.exitInfo = { reason: `abort disconnect error: ${safeStringify(err)}` };
+  protected createAcpBackend(opts: AgentStartOpts): IAgentBackend {
+    return createCodexBackend({
+      cwd: opts.cwd,
+      env: opts.env,
+      mcpServers: this.buildFreeMcpServers(opts),
+      permissionHandler: this.getPermissionHandler() ?? undefined,
     });
   }
 
-  async stop(): Promise<void> {
-    logger.debug('[CodexBackend] stop — force closing session');
-    this.permissionHandler?.reset();
-    await this.client.forceCloseSession().catch(err => {
-      logger.warn('[CodexBackend] error during stop', { error: safeStringify(err) });
-      this.exitInfo = { reason: `stop error: ${safeStringify(err)}` };
-    });
-    if (!this.exitInfo) {
-      this.exitInfo = { reason: 'stopped gracefully' };
-    }
-    logger.info('[CodexBackend] backend stopped', { reason: this.exitInfo.reason });
-    this.output.end();
+  protected mapRawMessage(msg: AgentMessage) {
+    return mapCodexRawToNormalized(msg);
   }
 }

@@ -70,6 +70,7 @@ describe('OpenCodeBackend', () => {
       cwd: '/tmp',
       env: {},
       mcpServerUrl: '',
+      freeMcpToolNames: [],
       session: makeSession(),
       permissionMode: 'accept-edits',
     });
@@ -90,6 +91,7 @@ describe('OpenCodeBackend', () => {
       cwd: '/tmp',
       env: {},
       mcpServerUrl: '',
+      freeMcpToolNames: [],
       session: makeSession(),
     });
 

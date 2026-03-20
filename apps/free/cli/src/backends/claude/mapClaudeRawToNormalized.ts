@@ -2,7 +2,7 @@ import { createId } from '@paralleldrive/cuid2';
 import type { AgentMessage } from '@/agent';
 import type { NormalizedMessage, UsageData } from '@/daemon/sessions/types';
 
-export function mapCodexAcpRawToNormalized(msg: AgentMessage): NormalizedMessage | null {
+export function mapClaudeRawToNormalized(msg: AgentMessage): NormalizedMessage | null {
   const id = createId();
   const createdAt = Date.now();
   const base = { id, createdAt, isSidechain: false };

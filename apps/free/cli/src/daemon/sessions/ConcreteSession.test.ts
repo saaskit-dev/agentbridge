@@ -2,10 +2,9 @@
  * Concrete AgentSession subclass tests
  *
  * Tests the agent-specific session classes:
- *   - ClaudeSession: mode hashing (7 fields), extractMode (all meta fields), HookServer lifecycle
- *   - ClaudeAcpSession: mode hashing (2 fields), extractMode
+ *   - ClaudeNativeSession: mode hashing (7 fields), extractMode (all meta fields), HookServer lifecycle
+ *   - ClaudeSession: mode hashing (2 fields), extractMode
  *   - CodexSession: mode hashing (2 fields), extractMode
- *   - CodexAcpSession: mode hashing (2 fields), extractMode
  *   - GeminiSession: mode hashing (2 fields), extractMode
  *   - OpenCodeSession: mode hashing (1 field), extractMode
  *
@@ -36,17 +35,14 @@ const mockedDeps = vi.hoisted(() => ({
 // Mock heavy dependencies so we don't pull in real backends / crypto / etc.
 // ---------------------------------------------------------------------------
 
+vi.mock('@/backends/claude-native/ClaudeNativeBackend', () => ({
+  ClaudeNativeBackend: class MockClaudeNativeBackend { readonly __type = 'claude-native'; },
+}));
 vi.mock('@/backends/claude/ClaudeBackend', () => ({
   ClaudeBackend: class MockClaudeBackend { readonly __type = 'claude'; },
 }));
-vi.mock('@/backends/claude-acp/ClaudeAcpBackend', () => ({
-  ClaudeAcpBackend: class MockClaudeAcpBackend { readonly __type = 'claude-acp'; },
-}));
 vi.mock('@/backends/codex/CodexBackend', () => ({
   CodexBackend: class MockCodexBackend { readonly __type = 'codex'; },
-}));
-vi.mock('@/backends/codex-acp/CodexAcpBackend', () => ({
-  CodexAcpBackend: class MockCodexAcpBackend { readonly __type = 'codex-acp'; },
 }));
 vi.mock('@/backends/gemini/GeminiBackend', () => ({
   GeminiBackend: class MockGeminiBackend { readonly __type = 'gemini'; },
@@ -74,10 +70,9 @@ vi.mock('@/utils/deterministicJson', () => ({
   hashObject: (obj: Record<string, unknown>) => JSON.stringify(obj),
 }));
 
+import { ClaudeNativeSession } from './ClaudeNativeSession';
 import { ClaudeSession } from './ClaudeSession';
-import { ClaudeAcpSession } from './ClaudeAcpSession';
 import { CodexSession } from './CodexSession';
-import { CodexAcpSession } from './CodexAcpSession';
 import { GeminiSession } from './GeminiSession';
 import { OpenCodeSession } from './OpenCodeSession';
 
@@ -115,31 +110,7 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// ClaudeAcpSession
-// ---------------------------------------------------------------------------
-
-describe('ClaudeAcpSession', () => {
-  it('agentType is "claude-acp"', () => {
-    const session = new ClaudeAcpSession(makeOpts());
-    expect(session.agentType).toBe('claude-acp');
-  });
-
-  it('createBackend returns ClaudeAcpBackend', () => {
-    const session = new ClaudeAcpSession(makeOpts());
-    const backend = session.createBackend();
-    expect((backend as { __type?: string }).__type).toBe('claude-acp');
-  });
-
-  it('extracts permissionMode and model from meta', () => {
-    const session = new ClaudeAcpSession(makeOpts());
-    const mode = (session as any).extractMode(makeUserMessage({ permissionMode: 'yolo', model: 'claude-opus' }));
-    expect(mode.permissionMode).toBe('yolo');
-    expect(mode.model).toBe('claude-opus');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ClaudeSession
+// ClaudeSession (ACP)
 // ---------------------------------------------------------------------------
 
 describe('ClaudeSession', () => {
@@ -154,21 +125,45 @@ describe('ClaudeSession', () => {
     expect((backend as { __type?: string }).__type).toBe('claude');
   });
 
+  it('extracts permissionMode and model from meta', () => {
+    const session = new ClaudeSession(makeOpts());
+    const mode = (session as any).extractMode(makeUserMessage({ permissionMode: 'yolo', model: 'claude-opus' }));
+    expect(mode.permissionMode).toBe('yolo');
+    expect(mode.model).toBe('claude-opus');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ClaudeNativeSession
+// ---------------------------------------------------------------------------
+
+describe('ClaudeNativeSession', () => {
+  it('agentType is "claude-native"', () => {
+    const session = new ClaudeNativeSession(makeOpts());
+    expect(session.agentType).toBe('claude-native');
+  });
+
+  it('createBackend returns ClaudeNativeBackend', () => {
+    const session = new ClaudeNativeSession(makeOpts());
+    const backend = session.createBackend();
+    expect((backend as { __type?: string }).__type).toBe('claude-native');
+  });
+
   describe('defaultMode()', () => {
     it('uses opts.permissionMode when provided', () => {
-      const session = new ClaudeSession(makeOpts({ permissionMode: 'yolo' }));
+      const session = new ClaudeNativeSession(makeOpts({ permissionMode: 'yolo' }));
       const mode = session.defaultMode();
       expect(mode.permissionMode).toBe('yolo');
     });
 
     it('falls back to read-only when opts.permissionMode is undefined', () => {
-      const session = new ClaudeSession(makeOpts());
+      const session = new ClaudeNativeSession(makeOpts());
       const mode = session.defaultMode();
       expect(mode.permissionMode).toBe('read-only');
     });
 
     it('includes model from opts', () => {
-      const session = new ClaudeSession(makeOpts({ model: 'opus-4' }));
+      const session = new ClaudeNativeSession(makeOpts({ model: 'opus-4' }));
       const mode = session.defaultMode();
       expect(mode.model).toBe('opus-4');
     });
@@ -176,7 +171,7 @@ describe('ClaudeSession', () => {
 
   describe('extractMode()', () => {
     it('extracts all Claude-specific fields from meta', () => {
-      const session = new ClaudeSession(makeOpts());
+      const session = new ClaudeNativeSession(makeOpts());
       const msg = makeUserMessage({
         permissionMode: 'yolo',
         model: 'opus-4',
@@ -199,14 +194,14 @@ describe('ClaudeSession', () => {
     });
 
     it('falls back to opts values when meta is missing', () => {
-      const session = new ClaudeSession(makeOpts({ permissionMode: 'accept-edits', model: 'haiku' }));
+      const session = new ClaudeNativeSession(makeOpts({ permissionMode: 'accept-edits', model: 'haiku' }));
       const mode = (session as any).extractMode(makeUserMessage());
       expect(mode.permissionMode).toBe('accept-edits');
       expect(mode.model).toBe('haiku');
     });
 
     it('falls back to read-only when both meta and opts are empty', () => {
-      const session = new ClaudeSession(makeOpts());
+      const session = new ClaudeNativeSession(makeOpts());
       const mode = (session as any).extractMode(makeUserMessage());
       expect(mode.permissionMode).toBe('read-only');
     });
@@ -214,14 +209,14 @@ describe('ClaudeSession', () => {
 
   describe('createModeHasher()', () => {
     it('produces deterministic hashes', () => {
-      const session = new ClaudeSession(makeOpts());
+      const session = new ClaudeNativeSession(makeOpts());
       const hasher = session.createModeHasher();
       const mode = { permissionMode: 'yolo' as const, model: 'opus-4' };
       expect(hasher(mode)).toBe(hasher(mode));
     });
 
     it('hash differs when permissionMode changes', () => {
-      const session = new ClaudeSession(makeOpts());
+      const session = new ClaudeNativeSession(makeOpts());
       const hasher = session.createModeHasher();
       const a = hasher({ permissionMode: 'yolo', model: 'opus-4' });
       const b = hasher({ permissionMode: 'read-only', model: 'opus-4' });
@@ -229,7 +224,7 @@ describe('ClaudeSession', () => {
     });
 
     it('hash includes all 7 fields', () => {
-      const session = new ClaudeSession(makeOpts());
+      const session = new ClaudeNativeSession(makeOpts());
       const hasher = session.createModeHasher();
       const hash = hasher({
         permissionMode: 'yolo',
@@ -267,7 +262,7 @@ describe('ClaudeSession', () => {
         hookCallback?.('new-claude-session-id');
       });
 
-    const session = new ClaudeSession(makeOpts({ startingMode: 'local' }));
+    const session = new ClaudeNativeSession(makeOpts({ startingMode: 'local' }));
     await session.initialize();
 
     const scanner = await mockedDeps.createSessionScannerMock.mock.results[0]?.value;
@@ -294,70 +289,8 @@ describe('CodexSession', () => {
     expect((backend as { __type?: string }).__type).toBe('codex');
   });
 
-  describe('defaultMode()', () => {
-    it('uses opts.permissionMode with fallback to read-only', () => {
-      expect(new CodexSession(makeOpts()).defaultMode().permissionMode).toBe('read-only');
-      expect(new CodexSession(makeOpts({ permissionMode: 'yolo' })).defaultMode().permissionMode).toBe('yolo');
-    });
-
-    it('includes model from opts', () => {
-      const session = new CodexSession(makeOpts({ model: 'o3' }));
-      expect(session.defaultMode().model).toBe('o3');
-    });
-  });
-
-  describe('extractMode()', () => {
-    it('extracts permissionMode and model from meta', () => {
-      const session = new CodexSession(makeOpts());
-      const mode = (session as any).extractMode(makeUserMessage({ permissionMode: 'accept-edits', model: 'o3' }));
-      expect(mode.permissionMode).toBe('accept-edits');
-      expect(mode.model).toBe('o3');
-    });
-
-    it('falls back to opts when meta is missing', () => {
-      const session = new CodexSession(makeOpts({ permissionMode: 'yolo', model: 'o3-mini' }));
-      const mode = (session as any).extractMode(makeUserMessage());
-      expect(mode.permissionMode).toBe('yolo');
-      expect(mode.model).toBe('o3-mini');
-    });
-  });
-
-  describe('createModeHasher()', () => {
-    it('hash only includes permissionMode and model', () => {
-      const session = new CodexSession(makeOpts());
-      const hasher = session.createModeHasher();
-      const hash = hasher({ permissionMode: 'yolo', model: 'o3' });
-      const parsed = JSON.parse(hash);
-      expect(Object.keys(parsed)).toEqual(['permissionMode', 'model']);
-    });
-
-    it('hash differs when model changes', () => {
-      const session = new CodexSession(makeOpts());
-      const hasher = session.createModeHasher();
-      expect(hasher({ permissionMode: 'yolo', model: 'a' }))
-        .not.toBe(hasher({ permissionMode: 'yolo', model: 'b' }));
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// CodexAcpSession
-// ---------------------------------------------------------------------------
-
-describe('CodexAcpSession', () => {
-  it('agentType is "codex-acp"', () => {
-    const session = new CodexAcpSession(makeOpts());
-    expect(session.agentType).toBe('codex-acp');
-  });
-
-  it('createBackend returns CodexAcpBackend', () => {
-    const session = new CodexAcpSession(makeOpts());
-    const backend = session.createBackend();
-    expect((backend as { __type?: string }).__type).toBe('codex-acp');
-  });
-
   it('extracts permissionMode and model from meta', () => {
-    const session = new CodexAcpSession(makeOpts());
+    const session = new CodexSession(makeOpts());
     const mode = (session as any).extractMode(makeUserMessage({ permissionMode: 'accept-edits', model: 'o3' }));
     expect(mode.permissionMode).toBe('accept-edits');
     expect(mode.model).toBe('o3');

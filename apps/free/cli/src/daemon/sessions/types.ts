@@ -139,11 +139,11 @@ export type NormalizedMessage = (
 
 export type AgentType =
   | 'claude'
-  | 'claude-acp'
+  | 'claude-native'
   | 'codex'
-  | 'codex-acp'
   | 'gemini'
   | 'opencode'
+  | 'cursor'
   | (string & {});
 
 // ---------------------------------------------------------------------------
