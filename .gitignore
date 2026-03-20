@@ -72,3 +72,4 @@ apps/free/server/data/
 apps/free/cli/tools/archives/
 apps/free/cli/tools/unpacked/
 scripts/vps-ssh.sh
+.opencli/
