@@ -76,6 +76,36 @@ kill_port() {
     fi
 }
 
+# 等待端口关闭（server 已收到 SIGINT，等它自己 graceful shutdown）
+# 超时后强杀
+wait_port_close() {
+    local port=$1
+    local service_name=$2
+
+    if ! lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+        return 0
+    fi
+
+    log_info "等待 $service_name 关闭 (端口 $port)..."
+    while lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; do
+        sleep 0.5
+    done
+    log_info "$service_name 已正常关闭"
+}
+
+stop_all() {
+    log_info "正在停止所有服务..."
+
+    # Server 已收到 SIGINT（同进程组），等它 graceful shutdown，超时强杀
+    wait_port_close $SERVER_PORT "Server" 15
+
+    # Daemon
+    free-dev daemon stop 2>/dev/null || true
+
+    # Web/Expo 不需要 graceful shutdown，直接杀
+    kill_port $WEB_PORT "Web"
+}
+
 cleanup_all() {
     log_section "清理历史进程"
 
@@ -92,7 +122,7 @@ cleanup_all() {
 
     # 停止 daemon
     log_info "停止 daemon..."
-    free daemon stop 2>/dev/null || true
+    free-dev daemon stop 2>/dev/null || true
 
     # 清理 PGlite 锁文件（如果存在）
     if [ -d "$PROJECT_ROOT/apps/free/server/data/pglite" ]; then
@@ -138,23 +168,18 @@ build_cli() {
 }
 
 link_cli() {
-    log_section "安装 CLI 全局命令"
+    log_section "安装 CLI dev 全局命令"
 
     cd "$PROJECT_ROOT/apps/free/cli"
 
-    # 先移除旧的全局链接（如果存在）
-    rm -f $(which free) $(which free-mcp)
-    # npm unlink -g @saaskit-dev/free 2>/dev/null || true
-
-    # 创建新的全局链接
-    npm link 2>&1 | tee "$LOG_DIR/link-cli.log"
+    pnpm link:dev 2>&1 | tee "$LOG_DIR/link-cli.log"
 
     # 验证
-    if command -v free &> /dev/null; then
-        CLI_VERSION=$(free --version 2>/dev/null | head -1 || echo "unknown")
-        log_success "CLI 全局命令已安装: free ($CLI_VERSION)"
+    if command -v free-dev &> /dev/null; then
+        CLI_VERSION=$(free-dev --version 2>/dev/null | head -1 || echo "unknown")
+        log_success "CLI 全局命令已安装: free-dev ($CLI_VERSION)"
     else
-        log_warn "CLI 全局命令安装失败，请手动执行: cd apps/free/cli && npm link"
+        log_warn "CLI 全局命令安装失败，请手动执行: cd apps/free/cli && pnpm link:dev"
     fi
 }
 
@@ -179,8 +204,11 @@ start_server() {
 
     log_info "启动 Server (端口 $SERVER_PORT)..."
 
-    # 使用 standalone 模式（PGlite）
-    pnpm --filter @free/server standalone serve 2>&1 | tee "$LOG_DIR/server.log" &
+    # 直接用 tsx 启动，不经过 pnpm，避免 pnpm 收到 SIGINT 后报错干扰 graceful shutdown
+    "$PROJECT_ROOT/apps/free/server/node_modules/.bin/tsx" \
+        --env-file="$PROJECT_ROOT/apps/free/server/.env" \
+        "$PROJECT_ROOT/apps/free/server/src/standalone.ts" serve \
+        2>&1 | tee "$LOG_DIR/server.log" &
     SERVER_PID=$!
 
     echo $SERVER_PID > "$LOG_DIR/server.pid"
@@ -204,12 +232,12 @@ start_server() {
 start_daemon() {
     log_section "启动 Daemon"
 
-    log_info "启动 free daemon..."
-    free daemon start 2>&1 | tee "$LOG_DIR/daemon.log" || true
+    log_info "启动 free-dev daemon..."
+    free-dev daemon start 2>&1 | tee "$LOG_DIR/daemon.log" || true
 
     # 显示 daemon 状态
     sleep 2
-    if free daemon status > /dev/null 2>&1; then
+    if free-dev daemon status > /dev/null 2>&1; then
         log_success "Daemon 已启动"
 
         if [ -f "$HOME/.free-dev/settings.json" ]; then
@@ -328,7 +356,7 @@ show_help() {
     echo "  $0 --no-clean         # 不杀死历史进程"
     echo ""
     echo "全局命令:"
-    echo "  构建后会自动执行 npm link，之后可以直接使用 'free' 命令"
+    echo "  构建后会自动执行 pnpm link:dev，之后可以直接使用 'free-dev' 命令"
     echo ""
     echo "日志目录: $LOG_DIR"
     echo ""
@@ -415,7 +443,7 @@ main() {
     echo ""
 
     # 等待中断信号
-    trap 'log_info "正在停止..."; kill_port $SERVER_PORT "Server"; kill_port $WEB_PORT "Web"; exit 0' INT TERM
+    trap 'stop_all; exit 0' INT TERM
 
     # 保持脚本运行
     wait

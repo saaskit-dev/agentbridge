@@ -162,11 +162,9 @@ cmd_dev() {
 # ─── free (dev) ────────────────────────────────────────────────────────────
 
 cmd_free() {
-    export APP_ENV=development
-    export FREE_HOME_DIR=~/.free-dev
     export FREE_SERVER_URL="http://localhost:3000"
     export FREE_WEBAPP_URL="http://localhost:8081"
-    free "$@"
+    free-dev "$@"
 }
 
 # ─── build ─────────────────────────────────────────────────────────────────
@@ -187,8 +185,8 @@ cmd_build() {
             cd "$ROOT/packages/core" && pnpm build
             ;;
         cli)
-            info "构建 CLI + npm link"
-            cd "$ROOT/apps/free/cli" && pnpm build && npm link
+            info "构建 CLI + link dev"
+            cd "$ROOT/apps/free/cli" && pnpm build && pnpm link:dev
             ;;
         "")
             local choice
