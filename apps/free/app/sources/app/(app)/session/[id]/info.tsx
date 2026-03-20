@@ -363,7 +363,7 @@ function SessionInfoContent({ session }: { session: Session }) {
               onPress={handleArchiveSession}
             />
           )}
-          {!sessionStatus.isConnected && !session.active && (
+          {session.status === 'archived' && (
             <Item
               title={t('sessionInfo.deleteSession')}
               subtitle={t('sessionInfo.deleteSessionSubtitle')}

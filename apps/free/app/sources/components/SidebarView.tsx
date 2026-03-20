@@ -199,7 +199,7 @@ export const SidebarView = React.memo(() => {
   const titleContent = (
     <>
       <Text style={styles.titleText}>{t('sidebar.sessionsTitle')}</Text>
-      {connectionStatus.text && (
+      {!!connectionStatus.text && (
         <View style={styles.statusContainer}>
           <StatusDot
             color={connectionStatus.color}

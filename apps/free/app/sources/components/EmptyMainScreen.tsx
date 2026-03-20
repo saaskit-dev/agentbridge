@@ -42,7 +42,8 @@ const stylesheet = StyleSheet.create(theme => ({
     marginTop: 12,
     marginHorizontal: 24,
     marginBottom: 48,
-    width: 250,
+    maxWidth: 250,
+    width: '100%',
   },
   stepRow: {
     flexDirection: 'row',
@@ -77,11 +78,13 @@ const stylesheet = StyleSheet.create(theme => ({
     width: '100%',
   },
   buttonWrapper: {
-    width: 240,
+    maxWidth: 280,
+    width: '100%',
     marginBottom: 12,
   },
   buttonWrapperSecondary: {
-    width: 240,
+    maxWidth: 280,
+    width: '100%',
   },
 }));
 

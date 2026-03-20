@@ -67,19 +67,19 @@ const REALTIME_MODE_DEBOUNCE_MS = 150;
  * Returns either "online" (string) or a timestamp (number) for last seen
  */
 function resolveSessionOnlineState(session: {
-  active: boolean;
+  status: 'active' | 'offline' | 'archived' | 'deleted';
   activeAt: number;
 }): 'online' | number {
-  // Session is online if the active flag is true
-  return session.active ? 'online' : session.activeAt;
+  return session.status === 'active' ? 'online' : session.activeAt;
 }
 
 /**
  * Checks if a session should be shown in the active sessions group
  */
-function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
-  // Use the active flag directly, no timeout checks
-  return session.active;
+function isSessionActive(session: {
+  status: 'active' | 'offline' | 'archived' | 'deleted';
+}): boolean {
+  return session.status === 'active';
 }
 
 function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
@@ -370,7 +370,7 @@ export const storage = create<StorageState>()((set, get) => {
     },
     getActiveSessions: () => {
       const state = get();
-      return Object.values(state.sessions).filter(s => s.active);
+      return Object.values(state.sessions).filter(s => s.status === 'active');
     },
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: 'online' | number })[]) =>
       set(state => {

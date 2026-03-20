@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { useSessions } from '@/sync/storage';
+import type { Session } from '@/sync/storageTypes';
 
 const logger = new Logger('app/hooks/useWatchConnectivity');
 
@@ -61,13 +62,13 @@ export function useWatchConnectivity() {
     if (!watchModule.current || !sessions) return;
 
     const payload = sessions
-      .filter((s) => s.active)
+      .filter((s): s is Session => typeof s !== 'string' && s.status === 'active')
       .slice(0, 20) // Limit to 20 sessions for Watch
       .map((s) => ({
         id: s.id,
         projectPath: s.metadata?.path ?? '',
         host: s.metadata?.host ?? '',
-        isActive: s.active,
+        isActive: true,
         isThinking: s.thinking,
         presence: s.presence === 'online' ? 'online' : 'offline',
         presenceTimestamp: typeof s.presence === 'number' ? s.presence : null,

@@ -128,22 +128,15 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
 
     const handleTextChange = React.useCallback(
       (text: string) => {
-        // When text changes, assume cursor moves to end
-        const selection = { start: text.length, end: text.length };
-        selectionRef.current = selection;
+        // Don't assume cursor position here — let onSelectionChange report the real position.
+        // Previously this forced selection to text.length, which broke mid-text editing,
+        // external keyboard word completions, and cursor repositioning.
 
-        logger.debug('📝 MultiTextInput.native: Text changed:', JSON.stringify({ text, selection }));
+        logger.debug('📝 MultiTextInput.native: Text changed:', JSON.stringify({ text }));
 
         onChangeText(text);
-
-        if (onStateChange) {
-          onStateChange({ text, selection });
-        }
-        if (onSelectionChange) {
-          onSelectionChange(selection);
-        }
       },
-      [onChangeText, onStateChange, onSelectionChange]
+      [onChangeText]
     );
 
     const handleSelectionChange = React.useCallback(

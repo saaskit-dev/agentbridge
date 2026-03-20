@@ -79,7 +79,7 @@ export class InvalidateSync {
         await this._command();
       });
     } catch (e) {
-      logger.error('[InvalidateSync] backoff exhausted, scheduling retry', {
+      logger.warn('[InvalidateSync] backoff exhausted, scheduling retry', {
         error: String(e),
         retryInMs: RETRY_AFTER_EXHAUSTION_MS,
       });

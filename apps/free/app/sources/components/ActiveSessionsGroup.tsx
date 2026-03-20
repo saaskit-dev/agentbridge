@@ -457,7 +457,7 @@ const CompactSessionRow = React.memo(
               }}
             >
               {/* Draft status indicator */}
-              {session.draft && (
+              {!!session.draft && (
                 <View style={styles.taskStatusContainer}>
                   <Ionicons name="create-outline" size={10} color={styles.taskStatusText.color} />
                 </View>

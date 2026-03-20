@@ -7,7 +7,6 @@ import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { FABWide } from './FABWide';
 import { Header } from './navigation/Header';
 import { HeaderLogo } from './HeaderLogo';
-import { InboxView } from './InboxView';
 import { SessionsList } from './SessionsList';
 import { SessionsListWrapper } from './SessionsListWrapper';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
@@ -17,7 +16,7 @@ import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { Typography } from '@/constants/Typography';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { isUsingCustomServer } from '@/sync/serverConfig';
-import { useFriendRequests, useSocketStatus, useRealtimeStatus } from '@/sync/storage';
+import { useSocketStatus, useRealtimeStatus } from '@/sync/storage';
 import { t } from '@/text';
 import { useIsTablet } from '@/utils/responsive';
 
@@ -100,12 +99,11 @@ const styles = StyleSheet.create(theme => ({
 // Tab header configuration
 const TAB_TITLES = {
   sessions: 'tabs.sessions',
-  inbox: 'tabs.inbox',
   settings: 'tabs.settings',
 } as const;
 
 // Active tabs
-type ActiveTabType = 'sessions' | 'inbox' | 'settings';
+type ActiveTabType = 'sessions' | 'settings';
 
 // Header title component with connection status
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
@@ -151,7 +149,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
   return (
     <View style={styles.titleContainer}>
       <Text style={styles.titleText}>{t(TAB_TITLES[activeTab])}</Text>
-      {connectionStatus.text && (
+      {!!connectionStatus.text && (
         <View style={styles.statusContainer}>
           <StatusDot
             color={connectionStatus.color}
@@ -182,20 +180,6 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     );
   }
 
-  if (activeTab === 'inbox') {
-    return (
-      <Pressable
-        onPress={() => {
-          router.push('/friends/search');
-        }}
-        hitSlop={15}
-        style={styles.headerButton}
-      >
-        <Ionicons name="person-add-outline" size={24} color={theme.colors.header.tint} />
-      </Pressable>
-    );
-  }
-
   if (activeTab === 'settings') {
     if (!isCustomServer) {
       // Empty view to maintain header centering
@@ -216,7 +200,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
   const sessionListViewData = useVisibleSessionListViewData();
   const isTablet = useIsTablet();
   const router = useRouter();
-  const friendRequests = useFriendRequests();
   const realtimeStatus = useRealtimeStatus();
 
   // Tab state management
@@ -234,8 +217,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
   // Regular phone mode with tabs - define this before any conditional returns
   const renderTabContent = React.useCallback(() => {
     switch (activeTab) {
-      case 'inbox':
-        return <InboxView />;
       case 'settings':
         return <SettingsViewWrapper />;
       case 'sessions':
@@ -303,7 +284,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
       <TabBar
         activeTab={activeTab}
         onTabPress={handleTabPress}
-        inboxBadgeCount={friendRequests.length}
       />
     </>
   );

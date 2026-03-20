@@ -1,5 +1,6 @@
+import * as Clipboard from 'expo-clipboard';
 import * as React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from './layout';
 import { MarkdownView } from './markdown/MarkdownView';
@@ -70,6 +71,34 @@ function RenderBlock(props: {
   }
 }
 
+/** Tap-to-copy text badge for dev mode. */
+function CopyableDevText({ label, value, color }: { label: string; value: string; color: string }) {
+  const [copied, setCopied] = React.useState(false);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  const handlePress = React.useCallback(async () => {
+    await Clipboard.setStringAsync(value);
+    setCopied(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 1200);
+  }, [value]);
+  return (
+    <Pressable onPress={handlePress} hitSlop={4}>
+      <Text
+        style={[
+          styles.devBadgeText,
+          {
+            color: copied ? '#4ade80' : color,
+            fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+          },
+        ]}
+      >
+        {copied ? 'copied!' : `${label}:${value}`}
+      </Text>
+    </Pressable>
+  );
+}
+
 /** Small monospace overlay shown in dev mode below a message. */
 function DevTraceBadge(props: { traceId?: string; id: string; alignSelf?: 'flex-start' | 'flex-end' }) {
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
@@ -77,13 +106,9 @@ function DevTraceBadge(props: { traceId?: string; id: string; alignSelf?: 'flex-
   return (
     <View style={[styles.devBadgeContainer, props.alignSelf ? { alignSelf: props.alignSelf } : undefined]}>
       {!!props.traceId && (
-        <Text style={styles.devBadgeText} selectable>
-          trace:{props.traceId}
-        </Text>
+        <CopyableDevText label="trace" value={props.traceId} color="#888" />
       )}
-      <Text style={[styles.devBadgeText, { color: '#aaa' }]} selectable>
-        id:{props.id}
-      </Text>
+      <CopyableDevText label="id" value={props.id} color="#aaa" />
     </View>
   );
 }

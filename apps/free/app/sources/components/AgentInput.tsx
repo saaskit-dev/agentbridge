@@ -62,6 +62,7 @@ interface AgentInputProps {
   onModelModeChange?: (mode: ModelMode) => void;
   capabilities?: SessionCapabilities | null;
   actualModelLabel?: string | null;
+  actualModeLabel?: string | null;
   pendingCapabilityLabel?: string | null;
   onAgentModeChange?: (modeId: string) => void;
   onConfigOptionChange?: (optionId: string, value: string) => void;
@@ -430,11 +431,14 @@ export const AgentInput = React.memo(
     );
     const capabilityStatusText = React.useMemo(() => {
       const items: string[] = [];
+      if (props.actualModeLabel) {
+        items.push(`Mode: ${props.actualModeLabel}`);
+      }
       if (props.actualModelLabel) {
         items.push(`Model: ${props.actualModelLabel}`);
       }
       return items.join('  ');
-    }, [props.actualModelLabel]);
+    }, [props.actualModelLabel, props.actualModeLabel]);
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 

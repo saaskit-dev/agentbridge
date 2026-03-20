@@ -146,19 +146,17 @@ export function getSessionSubtitle(session: Session): string {
 }
 
 /**
- * Checks if a session is currently online based on the active flag.
- * A session is considered online if the active flag is true.
+ * Checks if a session is currently online based on status.
  */
 export function isSessionOnline(session: Session): boolean {
-  return session.active;
+  return session.status === 'active';
 }
 
 /**
  * Checks if a session should be shown in the active sessions group.
- * Uses the active flag directly.
  */
 export function isSessionActive(session: Session): boolean {
-  return session.active;
+  return session.status === 'active';
 }
 
 /**

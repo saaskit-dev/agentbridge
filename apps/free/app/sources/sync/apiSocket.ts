@@ -294,7 +294,7 @@ class ApiSocket {
 
     // Error events
     this.socket.on('connect_error', error => {
-      logger.error('[SyncSocket] Connection error', toError(error));
+      logger.warn('[SyncSocket] Connection error', { error: String(error) });
       this.updateStatus('error');
     });
 
