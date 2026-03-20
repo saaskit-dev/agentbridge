@@ -53,6 +53,8 @@ export interface CLIClientOptions {
 function feedMessageToBuffer(msg: NormalizedMessage, buffer: MessageBuffer): void {
   if (msg.role === 'user') {
     buffer.addMessage(`👤 ${msg.content.text}`, 'user');
+    // User message starts a new assistant turn — next text block must not append to previous response.
+    buffer.markNewAssistantTurn();
   } else if (msg.role === 'agent') {
     for (const block of msg.content as NormalizedAgentContent[]) {
       switch (block.type) {
@@ -111,9 +113,16 @@ function feedMessageToBuffer(msg: NormalizedMessage, buffer: MessageBuffer): voi
     switch (event.type) {
       case 'status':
         if (event.state === 'working') {
-          buffer.addMessage('⏳ Working...', 'status');
+          // Deduplicate: only add if the last message is not already "Working..."
+          const msgs = buffer.getMessages();
+          const last = msgs[msgs.length - 1];
+          if (!last || last.content !== '⏳ Working...') {
+            buffer.addMessage('⏳ Working...', 'status');
+          }
+        } else if (event.state === 'idle') {
+          // Turn complete — next text block must start a new assistant message.
+          buffer.markNewAssistantTurn();
         }
-        // Don't add idle status — it clutters the display
         break;
       case 'ready':
         buffer.addMessage('✅ Ready for next message', 'status');
@@ -232,7 +241,11 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
     ipc.on('history', (msg: IPCServerMessage) => {
       if (msg.type !== 'history' || msg.sessionId !== sessionId) return;
       log.debug('history received', { count: msg.msgs.length });
-      renderer.onHistory(msg.msgs);
+      // PTY mode: Claude renders its own UI via raw bytes — normalized history is meaningless here.
+      // Remote mode: show recent messages so user knows where the conversation was.
+      if (!isPtyMode) {
+        renderer.onHistory(msg.msgs);
+      }
     });
 
     ipc.on('agent_output', (msg: IPCServerMessage) => {

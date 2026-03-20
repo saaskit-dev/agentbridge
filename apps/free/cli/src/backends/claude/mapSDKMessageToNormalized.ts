@@ -5,6 +5,11 @@
  * NormalizedMessage format consumed by AgentSession.pipeBackendOutput().
  *
  * Returns null for messages that carry no renderable information (system, log, etc.)
+ *
+ * Callers must create a SDKMapperState via createSDKMapperState() and pass it on
+ * every call so that open tool calls can be tracked across messages. When the
+ * session ends (normally or by abort), call flushSDKOpenToolCalls(state) to emit
+ * synthetic tool-result messages for any calls that were never closed.
  */
 
 import { createId } from '@paralleldrive/cuid2';
@@ -17,7 +22,44 @@ function nowMs(): number {
 
 const base = () => ({ createdAt: nowMs(), isSidechain: false } as const);
 
-export function mapSDKMessageToNormalized(message: SDKMessage): NormalizedMessage[] {
+export type SDKMapperState = {
+  /** IDs of tool calls that have been started but not yet closed via tool_result. */
+  openToolCallIds: Set<string>;
+};
+
+export function createSDKMapperState(): SDKMapperState {
+  return { openToolCallIds: new Set() };
+}
+
+/**
+ * Emits synthetic tool-result (is_error=true) messages for every tool call that
+ * was started but never received a tool_result (e.g. the session was aborted).
+ * Idempotent — clears the set so calling it twice is safe.
+ */
+export function flushSDKOpenToolCalls(state: SDKMapperState): NormalizedMessage[] {
+  const results: NormalizedMessage[] = [];
+  for (const toolUseId of state.openToolCallIds) {
+    results.push({
+      ...base(),
+      id: createId(),
+      role: 'agent',
+      content: [
+        {
+          type: 'tool-result',
+          tool_use_id: toolUseId,
+          content: null,
+          is_error: true,
+          uuid: createId(),
+          parentUUID: null,
+        },
+      ],
+    });
+  }
+  state.openToolCallIds.clear();
+  return results;
+}
+
+export function mapSDKMessageToNormalized(message: SDKMessage, state: SDKMapperState): NormalizedMessage[] {
   const results: NormalizedMessage[] = [];
 
   if (message.type === 'system') {
@@ -44,6 +86,7 @@ export function mapSDKMessageToNormalized(message: SDKMessage): NormalizedMessag
         });
       } else if (block.type === 'tool_use' && typeof block.id === 'string') {
         const name = typeof block.name === 'string' ? block.name : 'unknown';
+        state.openToolCallIds.add(block.id);
         results.push({
           ...base(),
           id: createId(),
@@ -73,6 +116,7 @@ export function mapSDKMessageToNormalized(message: SDKMessage): NormalizedMessag
         if (block.type === 'tool_result') {
           const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : '';
           const isError = block.is_error === true;
+          state.openToolCallIds.delete(toolUseId);
           results.push({
             ...base(),
             id: createId(),
@@ -96,6 +140,10 @@ export function mapSDKMessageToNormalized(message: SDKMessage): NormalizedMessag
 
   if (message.type === 'result') {
     const msg = message as SDKResultMessage;
+
+    // Flush any tool calls that are still open — shouldn't happen in normal flow
+    // but guards against Claude returning without closing all tool calls.
+    results.push(...flushSDKOpenToolCalls(state));
 
     if (msg.subtype === 'error_max_turns') {
       results.push({

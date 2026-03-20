@@ -43,8 +43,10 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify, toError } from '@saaskit-dev/agentbridge';
 import { getProcessTraceContext } from '@/telemetry';
 import { hashObject } from '@/utils/deterministicJson';
+import { getChildPids } from '@/utils/childProcessUtils';
 import type { AgentBackend, AgentStartOpts } from './AgentBackend';
 import type { NormalizedMessage, AgentType, SessionSummary, SessionInitiator } from './types';
+import { createNormalizedEvent } from './types';
 import type { IPCServerMessage } from '@/daemon/ipc/protocol';
 import type { SessionCapabilities } from './capabilities';
 import { persistSession, eraseSession } from './sessionPersistence';
@@ -70,8 +72,8 @@ export interface AgentSessionOpts {
   cwd: string;
   /** Resume a previous Claude Code session */
   resumeSessionId?: string;
-  /** Server-side session tag (UUID generated if omitted) */
-  sessionTag?: string;
+  /** Client-generated session ID (UUID generated if omitted) */
+  sessionId?: string;
   /** Extra env vars passed to the agent process */
   env?: Record<string, string>;
   permissionMode?: PermissionMode;
@@ -134,10 +136,12 @@ export abstract class AgentSession<TMode> {
   private startedAt = new Date().toISOString();
   protected userId: string | undefined;
   private keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+  /** PID of the agent child process, detected via pgrep diff after backend.start(). */
+  private _childPid: number | undefined;
   private streamingTextMessageId: string | null = null;
   private streamingFullText = '';
-  /** Session tag used with getOrCreateSession — saved for recovery persistence. */
-  private sessionTag!: string;
+  /** Client-generated session ID used with getOrCreateSession. */
+  private generatedSessionId!: string;
 
   /** Messages arriving before initialize() completes are buffered here. */
   private readonly PRE_INIT_QUEUE_LIMIT = 32;
@@ -161,7 +165,10 @@ export abstract class AgentSession<TMode> {
 
   createModeHasher(): (mode: TMode) => string {
     return (mode: TMode) =>
-      hashObject({ permissionMode: (mode as any).permissionMode, model: (mode as any).model ?? '' });
+      hashObject({
+        permissionMode: (mode as any).permissionMode,
+        model: (mode as any).model ?? '',
+      });
   }
 
   /** Default mode used when CLI sends input without meta (no permissionMode override) */
@@ -203,6 +210,11 @@ export abstract class AgentSession<TMode> {
     return this.session.sessionId;
   }
 
+  /** PID of the agent child process (detected after backend.start via pgrep diff). */
+  get childPid(): number | undefined {
+    return this._childPid;
+  }
+
   toSummary(): SessionSummary {
     return {
       sessionId: this.session?.sessionId ?? 'uninitialized',
@@ -230,7 +242,7 @@ export abstract class AgentSession<TMode> {
       agentType: this.agentType,
       resumeSessionId: id,
     });
-    this.persistCurrentState().catch((err) =>
+    this.persistCurrentState().catch(err =>
       logger.warn('[AgentSession] failed to persist updated resumeId', { error: String(err) })
     );
   }
@@ -238,7 +250,6 @@ export abstract class AgentSession<TMode> {
   private buildPersistedData(): PersistedSession {
     return {
       sessionId: this.session.sessionId,
-      sessionTag: this.sessionTag,
       agentType: this.agentType,
       cwd: this.opts.cwd,
       resumeSessionId: this.opts.resumeSessionId,
@@ -291,7 +302,11 @@ export abstract class AgentSession<TMode> {
       if (this.preInitQueue.length < this.PRE_INIT_QUEUE_LIMIT) {
         this.preInitQueue.push({ text });
       } else {
-        logger.debug('[AgentSession] preInitQueue full, dropping message', { userId: this.userId, cwd: this.opts.cwd, queueSize: this.PRE_INIT_QUEUE_LIMIT });
+        logger.debug('[AgentSession] preInitQueue full, dropping message', {
+          userId: this.userId,
+          cwd: this.opts.cwd,
+          queueSize: this.PRE_INIT_QUEUE_LIMIT,
+        });
       }
       return;
     }
@@ -356,22 +371,32 @@ export abstract class AgentSession<TMode> {
   // ---------------------------------------------------------------------------
 
   async initialize(): Promise<void> {
-    logger.info('[AgentSession] initializing', { userId: this.userId, agentType: this.agentType, cwd: this.opts.cwd, startedBy: this.opts.startedBy, machineId: this.opts.machineId });
+    logger.info('[AgentSession] initializing', {
+      userId: this.userId,
+      agentType: this.agentType,
+      cwd: this.opts.cwd,
+      startedBy: this.opts.startedBy,
+      machineId: this.opts.machineId,
+    });
     this.api = await ApiClient.create(this.opts.credential);
     this.messageQueue = new MessageQueue2<TMode>(this.createModeHasher());
 
-    const tag = this.opts.sessionTag ?? randomUUID();
-    this.sessionTag = tag;
+    const sid = this.opts.sessionId ?? randomUUID();
+    this.generatedSessionId = sid;
     if (this.opts.resumeSessionId) {
-      logger.info('[AgentSession] resuming previous session', { userId: this.userId, resumeSessionId: this.opts.resumeSessionId, agentType: this.agentType });
+      logger.info('[AgentSession] resuming previous session', {
+        userId: this.userId,
+        resumeSessionId: this.opts.resumeSessionId,
+        agentType: this.agentType,
+      });
     }
     const { metadata, state } = this.buildSessionMetadata();
 
-    const response = await this.api.getOrCreateSession({ tag, metadata, state });
+    const response = await this.api.getOrCreateSession({ id: sid, metadata, state });
 
     const result = setupOfflineReconnection({
       api: this.api,
-      sessionTag: tag,
+      sessionId: sid,
       metadata,
       state,
       response,
@@ -385,9 +410,13 @@ export abstract class AgentSession<TMode> {
           this.session = newSession;
           this.freeServer = newFreeServer;
           // Stop old server AFTER swap — failure here is non-fatal
-          try { oldFreeServer?.stop(); } catch { /* ignore */ }
+          try {
+            oldFreeServer?.stop();
+          } catch {
+            /* ignore */
+          }
           // Re-register mobile message handler on new session object
-          newSession.onUserMessage((msg) => {
+          newSession.onUserMessage(msg => {
             if (!this.messageQueue) return;
             logger.info('[AgentSession] app user message received after session swap', {
               userId: this.userId,
@@ -419,11 +448,17 @@ export abstract class AgentSession<TMode> {
           });
           // Re-register DB-archived fallback on new session
           this.listenForServerArchived();
-          logger.info('[AgentSession] onSessionSwap succeeded', { userId: this.userId, newSessionId: newSession.sessionId });
+          logger.info('[AgentSession] onSessionSwap succeeded', {
+            userId: this.userId,
+            newSessionId: newSession.sessionId,
+          });
         } catch (err) {
-          logger.error('[AgentSession] onSessionSwap failed, retaining old session',
-            toError(err),
-            { userId: this.userId, sessionId: this.session?.sessionId, newSessionId: newSession.sessionId, traceId: getProcessTraceContext()?.traceId });
+          logger.error('[AgentSession] onSessionSwap failed, retaining old session', toError(err), {
+            userId: this.userId,
+            sessionId: this.session?.sessionId,
+            newSessionId: newSession.sessionId,
+            traceId: getProcessTraceContext()?.traceId,
+          });
         }
       },
     });
@@ -436,7 +471,7 @@ export abstract class AgentSession<TMode> {
     }
 
     // Register mobile message handler (Server → WebSocket → ApiSessionClient → here)
-    this.session.onUserMessage((msg) => {
+    this.session.onUserMessage(msg => {
       if (!this.messageQueue) return;
       logger.info('[AgentSession] app user message received', {
         userId: this.userId,
@@ -481,11 +516,10 @@ export abstract class AgentSession<TMode> {
     logger.info('[AgentSession] persisting session for crash recovery', {
       sessionId: this.session.sessionId,
       agentType: this.agentType,
-      sessionTag: this.sessionTag,
       resumeSessionId: this.opts.resumeSessionId,
       startingMode: this.opts.startingMode,
     });
-    this.persistCurrentState().catch((err) =>
+    this.persistCurrentState().catch(err =>
       logger.warn('[AgentSession] failed to persist session state', { error: String(err) })
     );
 
@@ -553,13 +587,14 @@ export abstract class AgentSession<TMode> {
           if (this.pendingExit || this._isShuttingDown) break;
           // Backend failed to start — enter dormant mode rather than dying.
           // The session stays alive so the user can retry or archive.
-          logger.error('[AgentSession] backend start failed, entering dormant mode',
-            toError(err),
-            { sessionId: this.session?.sessionId, agentType: this.agentType });
+          logger.error('[AgentSession] backend start failed, entering dormant mode', toError(err), {
+            sessionId: this.session?.sessionId,
+            agentType: this.agentType,
+          });
           this.publishVisibleError(
             new Error(`Agent failed to start. Send a message to retry, or archive this session.`),
             'backend start failed — waiting for user action',
-            true,
+            true
           );
           this.shouldExit = false;
           this.backendRestartCount = 0;
@@ -596,7 +631,10 @@ export abstract class AgentSession<TMode> {
         restartCount: this.backendRestartCount,
       });
       this.lastBackendStartTime = Date.now();
+      const pidsBefore = await getChildPids(process.pid);
+      const pidsBeforeSet = new Set(pidsBefore);
       await this.backend.start(backendStartOpts);
+      this._childPid = await AgentSession.detectNewChildPid(pidsBeforeSet);
 
       if (this.backendRestartCount === 0) {
         // Only register RPC handlers on first start (they persist across restarts)
@@ -644,9 +682,11 @@ export abstract class AgentSession<TMode> {
             restartCount: this.backendRestartCount,
           });
           this.publishVisibleError(
-            new Error(`Agent process crashed ${this.backendRestartCount} times. Send a message to restart, or archive this session.`),
+            new Error(
+              `Agent process crashed ${this.backendRestartCount} times. Send a message to restart, or archive this session.`
+            ),
             'backend restart limit reached — waiting for user action',
-            true,
+            true
           );
 
           // Wait for user to send a new message (or kill/archive to arrive)
@@ -671,9 +711,11 @@ export abstract class AgentSession<TMode> {
           exitReason: exitInfo?.reason,
         });
         this.publishVisibleError(
-          new Error(`Agent process crashed — restarting (attempt ${this.backendRestartCount}/${AgentSession.MAX_BACKEND_RESTARTS})`),
+          new Error(
+            `Agent process crashed — restarting (attempt ${this.backendRestartCount}/${AgentSession.MAX_BACKEND_RESTARTS})`
+          ),
           'backend crashed',
-          true,
+          true
         );
         const cooldownMs = (this.constructor as typeof AgentSession).RESTART_COOLDOWN_MS;
         const elapsed = Date.now() - this.lastBackendStartTime;
@@ -690,7 +732,9 @@ export abstract class AgentSession<TMode> {
   }
 
   private canRestartBackend(): boolean {
-    if (this.backendRestartCount >= (this.constructor as typeof AgentSession).MAX_BACKEND_RESTARTS) {
+    if (
+      this.backendRestartCount >= (this.constructor as typeof AgentSession).MAX_BACKEND_RESTARTS
+    ) {
       logger.error('[AgentSession] backend restart limit reached, giving up', undefined, {
         sessionId: this.session.sessionId,
         agentType: this.agentType,
@@ -703,7 +747,12 @@ export abstract class AgentSession<TMode> {
 
   private async messageLoop(): Promise<void> {
     while (!this.shouldExit) {
-      logger.debug('[AgentSession] waiting for message', { userId: this.userId, sessionId: this.session.sessionId, traceId: getProcessTraceContext()?.traceId, spanId: getProcessTraceContext()?.spanId });
+      logger.debug('[AgentSession] waiting for message', {
+        userId: this.userId,
+        sessionId: this.session.sessionId,
+        traceId: getProcessTraceContext()?.traceId,
+        spanId: getProcessTraceContext()?.spanId,
+      });
       const item = await this.messageQueue.waitForMessagesAndGetAsString();
       if (!item) break;
       // Re-check after await: backend may have died while we were blocked on the queue
@@ -727,11 +776,20 @@ export abstract class AgentSession<TMode> {
       } catch (err) {
         this.resetStreamingText();
         this.publishVisibleError(err, 'backend send failed', true);
-        // Don't exit — transient errors (API 500, timeout) should not kill the session.
-        // The user can send another message to retry. If the backend process actually
-        // died, pipeBackendOutput() will set shouldExit when the output stream ends.
+        if (this.lastStatus === 'working') {
+          this.forwardOutputMessage(createNormalizedEvent({ type: 'status', state: 'idle' }));
+        }
       }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Child process PID detection — pgrep diff before/after backend.start()
+  // ---------------------------------------------------------------------------
+
+  private static async detectNewChildPid(before: Set<number>): Promise<number | undefined> {
+    const after = await getChildPids(process.pid);
+    return after.find(pid => !before.has(pid));
   }
 
   async shutdown(reason: string): Promise<void> {
@@ -773,17 +831,25 @@ export abstract class AgentSession<TMode> {
     }
 
     if (this.session) {
-      this.session.updateMetadata((m) => ({
-        ...m,
-        lifecycleState: 'archived',
-        lifecycleStateSince: Date.now(),
-        archivedBy: 'daemon',
-        archiveReason: reason,
-      }));
-      this.session.sendSessionDeath();
-      // flush has built-in 10s timeout; race adds extra 5s safety net
-      await Promise.race([this.session.flush(), new Promise((r) => setTimeout(r, 5000))]);
-      await this.session.close();
+      if (this._keepStateForRecovery) {
+        // Daemon is shutting down for recovery (SIGTERM/SIGINT/HTTP stop).
+        // Do NOT send session-end — that would archive the session on the server and
+        // release the tag, making it unresumable. Instead let the WebSocket disconnect
+        // naturally so the server marks the session 'offline' (resumable).
+        await this.session.close();
+      } else {
+        this.session.updateMetadata(m => ({
+          ...m,
+          lifecycleState: 'archived',
+          lifecycleStateSince: Date.now(),
+          archivedBy: 'daemon',
+          archiveReason: reason,
+        }));
+        this.session.sendSessionDeath();
+        // flush has built-in 10s timeout; race adds extra 5s safety net
+        await Promise.race([this.session.flush(), new Promise(r => setTimeout(r, 5000))]);
+        await this.session.close();
+      }
     }
 
     this.freeServer?.stop();
@@ -792,10 +858,16 @@ export abstract class AgentSession<TMode> {
     // Only keep persisted state when the daemon itself is shutting down (SIGTERM/SIGINT)
     // so it can be recovered on next start. For session-level kills and archives, erase it.
     if (this.session && !this._keepStateForRecovery) {
-      logger.info('[AgentSession] erasing persisted state (session ended)', { sessionId: this.session.sessionId, reason });
+      logger.info('[AgentSession] erasing persisted state (session ended)', {
+        sessionId: this.session.sessionId,
+        reason,
+      });
       eraseSession(this.session.sessionId).catch(() => {});
     } else if (this.session) {
-      logger.info('[AgentSession] keeping persisted state for recovery (daemon shutting down)', { sessionId: this.session.sessionId, reason });
+      logger.info('[AgentSession] keeping persisted state for recovery (daemon shutting down)', {
+        sessionId: this.session.sessionId,
+        reason,
+      });
     }
 
     logger.info('[AgentSession] shutdown completed', {
@@ -933,15 +1005,11 @@ export abstract class AgentSession<TMode> {
 
   private publishVisibleError(error: unknown, context: string, retryable = false): void {
     const message = safeStringify(error);
-    logger.error(
-      `[AgentSession] ${context}`,
-      toError(error),
-      {
-        userId: this.userId,
-        sessionId: this.session?.sessionId,
-        traceId: getProcessTraceContext()?.traceId,
-      }
-    );
+    logger.error(`[AgentSession] ${context}`, toError(error), {
+      userId: this.userId,
+      sessionId: this.session?.sessionId,
+      traceId: getProcessTraceContext()?.traceId,
+    });
 
     if (!this.session) {
       return;
@@ -977,9 +1045,11 @@ export abstract class AgentSession<TMode> {
         this.shouldExit = true;
         this.messageQueue?.close();
       } catch (err) {
-        logger.error('[AgentSession] output pipe broken, triggering shutdown',
-          toError(err),
-          { userId: this.userId, sessionId: this.session?.sessionId, traceId: getProcessTraceContext()?.traceId });
+        logger.error('[AgentSession] output pipe broken, triggering shutdown', toError(err), {
+          userId: this.userId,
+          sessionId: this.session?.sessionId,
+          traceId: getProcessTraceContext()?.traceId,
+        });
         this.shouldExit = true;
         this.messageQueue?.close();
       }
@@ -999,9 +1069,11 @@ export abstract class AgentSession<TMode> {
           this.forwardCapabilities(capabilities);
         }
       } catch (err) {
-        logger.error('[AgentSession] capabilities pipe broken',
-          toError(err),
-          { userId: this.userId, sessionId: this.session?.sessionId, traceId: getProcessTraceContext()?.traceId });
+        logger.error('[AgentSession] capabilities pipe broken', toError(err), {
+          userId: this.userId,
+          sessionId: this.session?.sessionId,
+          traceId: getProcessTraceContext()?.traceId,
+        });
       }
     })();
   }
@@ -1039,6 +1111,7 @@ export abstract class AgentSession<TMode> {
       mode: this.opts.mode,
       startingMode: this.opts.startingMode,
       broadcast: this.opts.broadcast,
+      onSessionIdResolved: id => this.updateResumeId(id),
     };
   }
 

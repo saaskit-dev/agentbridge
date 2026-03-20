@@ -49,6 +49,10 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   protected permissionHandler: AcpPermissionHandler | null = null;
   protected currentPermissionMode: PermissionMode = 'accept-edits';
   protected apiSessionId: string | null = null;
+  private resumeSessionId: string | null = null;
+  private startCwd: string = '';
+  private startMcpServerUrl: string = '';
+  private onSessionIdResolved: ((id: string) => void) | null = null;
 
   constructor(protected readonly logger: Logger) {}
 
@@ -92,6 +96,10 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.publishedCapabilitiesSnapshot = {};
     this.isFirstMessage = true;
     this.desiredConfigSelections.clear();
+    this.resumeSessionId = opts.resumeSessionId ?? null;
+    this.startCwd = opts.cwd;
+    this.startMcpServerUrl = opts.mcpServerUrl;
+    this.onSessionIdResolved = opts.onSessionIdResolved ?? null;
 
     backend.onMessage((msg: AgentMessage) => {
       if (process.env.APP_ENV === 'development') {
@@ -173,18 +181,23 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     });
 
     if (!this.acpSessionId) {
-      this.logger.debug(`[${this.agentType}] creating session`, { preview: prompt.slice(0, 100) });
-      const { sessionId } = await this.acpBackend.startSession();
+      const { sessionId, resumed } = await this.resolveAcpSession();
       this.acpSessionId = sessionId;
-      this.logger.info(`[${this.agentType}] session created`, {
+      this.logger.info(`[${this.agentType}] session ${resumed ? 'resumed' : 'created'}`, {
         apiSessionId: this.apiSessionId,
         acpSessionId: sessionId,
+        resumed,
         requestedInitialModel: this.initialModel,
         requestedInitialMode: this.initialMode,
       });
-      await this.applyInitialModeIfNeeded(sessionId);
-      await this.applyInitialModelIfNeeded(sessionId);
-      await this.applyInitialConfigSelectionsIfNeeded(sessionId);
+      if (resumed) {
+        // Skip title injection on a resumed session — it already has a title.
+        this.isFirstMessage = false;
+      } else {
+        await this.applyInitialModeIfNeeded(sessionId);
+        await this.applyInitialModelIfNeeded(sessionId);
+        await this.applyInitialConfigSelectionsIfNeeded(sessionId);
+      }
     }
 
     this.logger.debug(`[${this.agentType}] sending prompt`, {
@@ -203,6 +216,49 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       apiSessionId: this.apiSessionId,
       acpSessionId: this.acpSessionId,
     });
+  }
+
+  /**
+   * Resolve the ACP session ID: resume an existing session if the backend supports it,
+   * otherwise start a new one. Calls onSessionIdResolved so AgentSession can persist the ID.
+   */
+  private async resolveAcpSession(): Promise<{ sessionId: string; resumed: boolean }> {
+    if (
+      this.resumeSessionId &&
+      this.capabilityBackend?.supportsLoadSession?.()
+    ) {
+      this.logger.info(`[${this.agentType}] attempting session resume via loadSession`, {
+        apiSessionId: this.apiSessionId,
+        resumeSessionId: this.resumeSessionId,
+      });
+      try {
+        const { sessionId } = await this.capabilityBackend.loadSession!(
+          this.resumeSessionId,
+          this.startCwd,
+          this.buildMcpServersArray()
+        );
+        this.onSessionIdResolved?.(sessionId);
+        return { sessionId, resumed: true };
+      } catch (err) {
+        this.logger.warn(`[${this.agentType}] loadSession failed, falling back to new session`, {
+          apiSessionId: this.apiSessionId,
+          resumeSessionId: this.resumeSessionId,
+          error: safeStringify(err),
+        });
+      }
+    }
+    const { sessionId } = await this.acpBackend!.startSession();
+    this.onSessionIdResolved?.(sessionId);
+    return { sessionId, resumed: false };
+  }
+
+  /** Convert the MCP server URL into the array format expected by loadSession. */
+  private buildMcpServersArray():
+    | Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }>
+    | undefined {
+    if (!this.startMcpServerUrl) return undefined;
+    const config = createFreeMcpServerConfig(this.startMcpServerUrl);
+    return [{ name: 'free', command: config.command, args: config.args }];
   }
 
   async abort(): Promise<void> {
@@ -315,6 +371,15 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
           value,
         })
       );
+      return;
+    }
+
+    // If this config option is the model selector, route through setModel so that
+    // setSessionModel (the actual runtime model switch) is also called, not just
+    // setSessionConfigOption (which only updates the UI config state).
+    const modelOptionId = getModelConfigOptionId(this.capabilitiesSnapshot);
+    if (optionId === modelOptionId) {
+      await this.setModel(value);
       return;
     }
 
@@ -503,27 +568,45 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   ): Promise<void> {
     const modeOptionId = getModeConfigOptionId(this.capabilitiesSnapshot);
 
-    if (modeOptionId && this.capabilityBackend?.setSessionConfigOption) {
-      this.logger.info(`[${this.agentType}] applying mode via configOption`, {
-        sessionId,
-        modeId,
-        modeOptionId,
-      });
-      await this.capabilityBackend.setSessionConfigOption(sessionId, modeOptionId, modeId);
-    }
-
+    // Try set_mode first — the direct ACP API for switching mode.
+    // If it succeeds, update UI optimistically and skip set_config_option entirely.
+    // If it fails, fall back to set_config_option with the mode config option ID.
     if (this.capabilityBackend?.setSessionMode) {
-      await this.capabilityBackend.setSessionMode(sessionId, modeId);
+      try {
+        await this.capabilityBackend.setSessionMode(sessionId, modeId);
+        this.appliedModeSelection = modeId;
+        if (this.capabilitiesSnapshot.modes) {
+          this.publishOptimisticCapabilities({
+            modeId,
+            ...(modeOptionId ? { optionId: modeOptionId, value: modeId } : {}),
+          });
+        }
+        return;
+      } catch (err) {
+        this.logger.debug(`[${this.agentType}] setSessionMode failed, falling back to setSessionConfigOption`, {
+          modeId,
+          error: String(err),
+        });
+      }
     }
 
-    this.appliedModeSelection = modeId;
-
-    if (this.capabilitiesSnapshot.modes) {
-      this.publishOptimisticCapabilities({
-        modeId,
-        ...(modeOptionId ? { optionId: modeOptionId, value: modeId } : {}),
-      });
+    if (modeOptionId && this.capabilityBackend?.setSessionConfigOption) {
+      await this.capabilityBackend.setSessionConfigOption(sessionId, modeOptionId, modeId);
+      this.appliedModeSelection = modeId;
+      if (this.capabilitiesSnapshot.modes) {
+        this.publishOptimisticCapabilities({
+          modeId,
+          optionId: modeOptionId,
+          value: modeId,
+        });
+      }
+      return;
     }
+
+    this.logger.warn(`[${this.agentType}] mode selection not applied: set_mode unavailable and no mode config option`, {
+      sessionId,
+      modeId,
+    });
   }
 
   private async applyModelSelection(
@@ -531,36 +614,60 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     modelId: string,
     modelOptionId: string | null
   ): Promise<void> {
-    let configOptionsResponse: SessionConfigOption[] | null | undefined;
+    // Try set_model (unstable) first — it's the direct API for switching the runtime model.
+    // If it succeeds, update UI optimistically and skip set_config_option entirely.
+    // If it fails for any reason (not supported by this connection, account restriction, etc.),
+    // fall back to set_config_option, which is the stable ACP RPC that also switches the model.
+    if (this.capabilityBackend?.setSessionModel) {
+      try {
+        await this.capabilityBackend.setSessionModel(sessionId, modelId);
+        this.appliedModelSelection = modelId;
+        if (this.capabilitiesSnapshot.models) {
+          this.publishOptimisticCapabilities({
+            modelId,
+            ...(modelOptionId ? { optionId: modelOptionId, value: modelId } : {}),
+          });
+        }
+        return;
+      } catch (err) {
+        this.logger.debug(`[${this.agentType}] setSessionModel failed, falling back to setSessionConfigOption`, {
+          modelId,
+          error: String(err),
+        });
+      }
+    }
 
+    // Fallback: set_config_option with the model config option ID.
+    // This is the stable ACP RPC; it both switches the model and returns updated config options.
     if (modelOptionId && this.capabilityBackend?.setSessionConfigOption) {
       const response = await this.capabilityBackend.setSessionConfigOption(
         sessionId,
         modelOptionId,
         modelId
       );
-      configOptionsResponse = response?.configOptions;
-    } else if (this.capabilityBackend?.setSessionModel) {
-      await this.capabilityBackend.setSessionModel(sessionId, modelId);
-    }
-
-    this.appliedModelSelection = modelId;
-
-    if (configOptionsResponse) {
-      this.publishCapabilities(
-        mergeAcpSessionCapabilities(this.capabilitiesSnapshot, {
-          sessionUpdate: 'config_option_update',
-          configOptions: configOptionsResponse,
-        })
-      );
+      this.appliedModelSelection = modelId;
+      if (response?.configOptions) {
+        this.publishCapabilities(
+          mergeAcpSessionCapabilities(this.capabilitiesSnapshot, {
+            sessionUpdate: 'config_option_update',
+            configOptions: response.configOptions,
+          })
+        );
+        return;
+      }
+      if (this.capabilitiesSnapshot.models) {
+        this.publishOptimisticCapabilities({
+          modelId,
+          optionId: modelOptionId,
+          value: modelId,
+        });
+      }
       return;
     }
 
-    if (this.capabilitiesSnapshot.models) {
-      this.publishOptimisticCapabilities({
-        modelId,
-        ...(modelOptionId ? { optionId: modelOptionId, value: modelId } : {}),
-      });
-    }
+    this.logger.warn(`[${this.agentType}] model selection not applied: set_model unavailable and no model config option`, {
+      sessionId,
+      modelId,
+    });
   }
 }

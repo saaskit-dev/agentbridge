@@ -161,6 +161,31 @@ describe('AgentSession.shutdown()', () => {
     );
     expect(archived).toHaveLength(1);
   });
+
+  it('does NOT call sendSessionDeath when _keepStateForRecovery is set (daemon shutdown path)', async () => {
+    const session = new TestAgentSession(makeOpts());
+    const mockSession = makeMockSession('sess-recovery');
+    session.injectSession(mockSession);
+
+    // Simulate daemon SIGTERM/HTTP stop — sets _keepStateForRecovery = true
+    session.handleSigterm();
+    await session.shutdown('daemon_stop');
+
+    expect(mockSession.sendSessionDeath).not.toHaveBeenCalled();
+    // close() is still called to tidy up the WebSocket
+    expect(mockSession.close).toHaveBeenCalled();
+  });
+
+  it('calls sendSessionDeath when shutting down normally (session-level kill)', async () => {
+    const session = new TestAgentSession(makeOpts());
+    const mockSession = makeMockSession('sess-normal');
+    session.injectSession(mockSession);
+
+    // No handleSigterm — normal session end
+    await session.shutdown('user_kill');
+
+    expect(mockSession.sendSessionDeath).toHaveBeenCalled();
+  });
 });
 
 describe('AgentSession.sendInput()', () => {

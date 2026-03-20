@@ -352,10 +352,11 @@ export type MessageMeta = z.infer<typeof MessageMetaSchema>;
 export const CreateSessionResponseSchema = z.object({
   session: z.object({
     id: z.string(),
-    tag: z.string(),
+    tag: z.string().nullable(),
     seq: z.number(),
     createdAt: z.number(),
     updatedAt: z.number(),
+    status: z.enum(['active', 'offline', 'archived', 'deleted']),
     metadata: z.string(),
     metadataVersion: z.number(),
     agentState: z.string().nullable(),

@@ -19,11 +19,11 @@ function isDevProcess(cmd: string): boolean {
 function isFreeCLIProcess(name: string, cmd: string): boolean {
   // Explicit Free CLI markers
   if (cmd.includes('free-cli') || cmd.includes('@saaskit-dev/free')) return true;
-  // The compiled entrypoint lives at apps/free/cli/dist/cli.mjs — but we must
-  // exclude other cli.mjs files (e.g. tsx's own cli.mjs used by the server).
-  if (name === 'node' && cmd.includes('dist/cli.mjs') && !cmd.includes('tsx/dist/')) return true;
-  // Catch 'free' binary name (e.g. installed via npm/curl)
-  if (name === 'free') return true;
+  // The compiled entrypoint lives at apps/free/cli/dist/cli.mjs (or cli-dev.mjs) —
+  // but we must exclude other cli.mjs files (e.g. tsx's own cli.mjs used by the server).
+  if (name === 'node' && (cmd.includes('dist/cli.mjs') || cmd.includes('dist/cli-dev.mjs')) && !cmd.includes('tsx/dist/')) return true;
+  // Catch 'free' or 'free-dev' binary name (e.g. installed via npm/curl or link:dev)
+  if (name === 'free' || name === 'free-dev') return true;
   return false;
 }
 

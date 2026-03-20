@@ -85,7 +85,7 @@ describe('Api server error handling', () => {
       mockPost.mockRejectedValue({ code: 'ECONNREFUSED' });
 
       const result = await api.getOrCreateSession({
-        tag: 'test-tag',
+        id: 'test-id',
         metadata: testMetadata,
         state: null,
       });
@@ -106,7 +106,7 @@ describe('Api server error handling', () => {
       mockPost.mockRejectedValue({ code: 'ENOTFOUND' });
 
       const result = await api.getOrCreateSession({
-        tag: 'test-tag',
+        id: 'test-id',
         metadata: testMetadata,
         state: null,
       });
@@ -127,7 +127,7 @@ describe('Api server error handling', () => {
       mockPost.mockRejectedValue({ code: 'ETIMEDOUT' });
 
       const result = await api.getOrCreateSession({
-        tag: 'test-tag',
+        id: 'test-id',
         metadata: testMetadata,
         state: null,
       });
@@ -151,7 +151,7 @@ describe('Api server error handling', () => {
       });
 
       const result = await api.getOrCreateSession({
-        tag: 'test-tag',
+        id: 'test-id',
         metadata: testMetadata,
         state: null,
       });
@@ -179,7 +179,7 @@ describe('Api server error handling', () => {
       });
 
       const result = await api.getOrCreateSession({
-        tag: 'test-tag',
+        id: 'test-id',
         metadata: testMetadata,
         state: null,
       });
@@ -202,7 +202,7 @@ describe('Api server error handling', () => {
       });
 
       const result = await api.getOrCreateSession({
-        tag: 'test-tag',
+        id: 'test-id',
         metadata: testMetadata,
         state: null,
       });
@@ -221,7 +221,7 @@ describe('Api server error handling', () => {
       mockPost.mockRejectedValue(authError);
 
       await expect(
-        api.getOrCreateSession({ tag: 'test-tag', metadata: testMetadata, state: null })
+        api.getOrCreateSession({ id: 'test-id', metadata: testMetadata, state: null })
       ).rejects.toThrow('Failed to get or create session: Invalid API key');
 
       // Should not show the offline mode message

@@ -226,7 +226,12 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
                 : type.includes('daemon')
                   ? chalk.blue
                   : chalk.gray;
-          console.log(`  ${color(`PID ${pid}`)}: ${chalk.gray(command)}`);
+          // Inject --variant into display for processes that don't have it (e.g. user-launched)
+          let displayCmd = command;
+          if (!command.includes('--variant ') && command.includes('dist/cli.mjs')) {
+            displayCmd = command.replace('dist/cli.mjs', `dist/cli.mjs --variant ${configuration.variant}`);
+          }
+          console.log(`  ${color(`PID ${pid}`)}: ${chalk.gray(displayCmd)}`);
         });
       });
     } else {

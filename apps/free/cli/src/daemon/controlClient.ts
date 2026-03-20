@@ -107,10 +107,9 @@ export async function stopDaemonSession(sessionId: string): Promise<boolean> {
 export async function spawnDaemonSession(
   directory: string,
   sessionId?: string,
-  sessionTag?: string,
   agent?: AgentType
 ): Promise<any> {
-  const result = await daemonPost('/spawn-session', { directory, sessionId, sessionTag, agent });
+  const result = await daemonPost('/spawn-session', { directory, sessionId, agent });
   return result;
 }
 

@@ -20,8 +20,7 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
   let token: string;
 
   beforeAll(async () => {
-    const env = await ensureLocalServerAndCredentials();
-    serverProcess = env.serverProcess;
+    await ensureLocalServerAndCredentials();
 
     const credentials = await readCredentials();
     if (!credentials) throw new Error('Missing test credentials');
@@ -31,7 +30,7 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
     await appClient.connectUserSocket();
 
     session = await appClient.createSession({
-      tag: `cli-server-roundtrip-${randomUUID()}`,
+      id: randomUUID(),
     });
     sessionId = session.id;
 
@@ -55,7 +54,7 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
       }
     }
 
-    await stopSpawnedProcess(serverProcess);
+    // Server is managed by globalSetup — no stopSpawnedProcess needed
   });
 
   it('delivers app user messages into the real CLI session client', async () => {
@@ -80,6 +79,9 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
 
   it('persists cli agent output and broadcasts it back to the app substitute', async () => {
     const replyText = `cli-agent-reply-${randomUUID()}`;
+
+    // Discard stale broadcasts from previous tests so waitForUpdate only matches fresh events.
+    appClient.drainUpdates();
 
     cliClient.sendNormalizedMessage({
       id: `agent-${randomUUID()}`,

@@ -41,7 +41,8 @@ import { PermissionHandler } from '@/claude/utils/permissionHandler';
 import type { AgentBackend, AgentStartOpts, BackendExitInfo } from '@/daemon/sessions/AgentBackend';
 import type { NormalizedMessage } from '@/daemon/sessions/types';
 import { createNormalizedEvent } from '@/daemon/sessions/types';
-import { mapSDKMessageToNormalized } from './mapSDKMessageToNormalized';
+import { mapSDKMessageToNormalized, createSDKMapperState, flushSDKOpenToolCalls } from './mapSDKMessageToNormalized';
+import type { SDKMapperState } from './mapSDKMessageToNormalized';
 import type { PermissionMode } from '@/api/types';
 
 const logger = new Logger('backends/claude/ClaudeBackend');
@@ -69,6 +70,7 @@ export class ClaudeBackend implements AgentBackend {
   private innerQueue: MessageQueue2<EnhancedMode> | undefined;
   private abortController = new AbortController();
   private startOpts!: AgentStartOpts;
+  private sdkMapperState: SDKMapperState = createSDKMapperState();
   private ptyProcess: pty.IPty | null = null;
   private ptyExitPromise: Promise<{ exitCode: number | undefined; signal: number | undefined }> | null = null;
   private permissionHandler: PermissionHandler | null = null;
@@ -139,7 +141,7 @@ export class ClaudeBackend implements AgentBackend {
         }
         // Notify permission handler to track tool call IDs (needed for canCallTool resolution)
         permissionHandler.onMessage(msg);
-        const normalized = mapSDKMessageToNormalized(msg);
+        const normalized = mapSDKMessageToNormalized(msg, this.sdkMapperState);
         for (const n of normalized) {
           this.output.push(n);
         }
@@ -167,6 +169,12 @@ export class ClaudeBackend implements AgentBackend {
         }));
       }
     }).finally(() => {
+      // Flush any tool calls that were in-flight when the session ended or was aborted.
+      // If the session ended normally, the result message already flushed them (no-op here).
+      // If aborted, no result message arrives, so this closes any stuck tool calls.
+      for (const n of flushSDKOpenToolCalls(this.sdkMapperState)) {
+        this.output.push(n);
+      }
       if (!this.output.done) {
         this.output.end();
       }
@@ -355,6 +363,18 @@ export class ClaudeBackend implements AgentBackend {
 
   onSessionChange(newSession: ApiSessionClient): void {
     this.permissionHandler?.updateSession(newSession);
+  }
+
+  async setModel(modelId: string): Promise<void> {
+    logger.warn('[ClaudeBackend] setModel called but runtime model switching is not supported in PTY/SDK mode', { modelId });
+  }
+
+  async setMode(modeId: string): Promise<void> {
+    logger.warn('[ClaudeBackend] setMode called but runtime mode switching is not supported in PTY/SDK mode', { modeId });
+  }
+
+  async setConfig(optionId: string, value: string): Promise<void> {
+    logger.warn('[ClaudeBackend] setConfig called but runtime config switching is not supported in PTY/SDK mode', { optionId, value });
   }
 
   async abort(): Promise<void> {

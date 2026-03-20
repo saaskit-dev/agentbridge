@@ -17,6 +17,8 @@ export type ClaudeSessionProtocolState = {
   hiddenParentToolCalls?: Set<string>;
   startedSubagents?: Set<string>;
   activeSubagents?: Set<string>;
+  /** Tool call IDs that have been started but not yet closed via tool_result. */
+  openToolCallIds?: Set<string>;
 };
 
 type ClaudeMapperResult = {
@@ -146,6 +148,13 @@ function getActiveSubagents(state: ClaudeSessionProtocolState): Set<string> {
     state.activeSubagents = new Set<string>();
   }
   return state.activeSubagents;
+}
+
+function getOpenToolCallIds(state: ClaudeSessionProtocolState): Set<string> {
+  if (!state.openToolCallIds) {
+    state.openToolCallIds = new Set<string>();
+  }
+  return state.openToolCallIds;
 }
 
 function pickUuid(message: RawJSONLines): string | undefined {
@@ -440,6 +449,15 @@ function closeTurn(
   if (!state.currentTurnId) {
     return;
   }
+
+  // Flush any tool calls that were started but never closed (e.g. session aborted
+  // mid-tool-call before the tool_result message arrived).
+  const turnId = state.currentTurnId;
+  const openToolCallIds = getOpenToolCallIds(state);
+  for (const call of openToolCallIds) {
+    envelopes.push(createEnvelope('agent', { t: 'tool-call-end', call }, { turn: turnId, time }));
+  }
+  openToolCallIds.clear();
 
   envelopes.push(
     createEnvelope('agent', { t: 'turn-end', status }, { turn: state.currentTurnId, time })
@@ -759,6 +777,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             { turn: turnId, subagent, time }
           )
         );
+        getOpenToolCallIds(state).add(call);
         const buffered = consumeBufferedSubagentMessages(state, call);
         for (const bufferedMessage of buffered) {
           const replay = mapClaudeLogMessageToSessionEnvelopesInternal(bufferedMessage, state);
@@ -832,6 +851,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, time, envelopes);
           }
         }
+        getOpenToolCallIds(state).delete(block.tool_use_id);
         envelopes.push(
           createEnvelope(
             'agent',

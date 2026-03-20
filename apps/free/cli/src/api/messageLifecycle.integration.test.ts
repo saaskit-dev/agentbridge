@@ -36,8 +36,9 @@ function waitForEvent<T>(
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const check = () => {
-      const match = events.find(predicate);
-      if (match) {
+      const idx = events.findIndex(predicate);
+      if (idx !== -1) {
+        const [match] = events.splice(idx, 1);
         resolve(match);
         return;
       }
@@ -65,8 +66,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
   const sessionUpdates: any[] = [];
 
   beforeAll(async () => {
-    const env = await ensureLocalServerAndCredentials();
-    serverProcess = env.serverProcess;
+    await ensureLocalServerAndCredentials();
 
     const creds = await readCredentials();
     if (!creds) throw new Error('Missing test credentials');
@@ -76,7 +76,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
     await appClient.connectUserSocket();
 
     session = await appClient.createSession({
-      tag: `integration-${randomUUID()}`,
+      id: randomUUID(),
     });
 
     sessionId = session.id;
@@ -145,7 +145,6 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
         // ignore cleanup failures
       }
     }
-    await stopSpawnedProcess(serverProcess);
   });
 
   it('broadcasts encrypted user and agent messages to both user-scoped and session-scoped sockets', async () => {

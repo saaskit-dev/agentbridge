@@ -16,4 +16,10 @@ export interface CapabilityAwareAcpBackend extends IAgentBackend {
   ): Promise<{
     configOptions?: NewSessionResponse['configOptions'];
   }>;
+  supportsLoadSession?(): boolean;
+  loadSession?(
+    sessionId: string,
+    cwd: string,
+    mcpServers?: Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }>
+  ): Promise<{ sessionId: string }>;
 }

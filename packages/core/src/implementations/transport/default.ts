@@ -463,7 +463,7 @@ export class CodexTransport extends DefaultTransport {
 
     const missingBinary =
       trimmed.includes('Failed to locate @zed-industries/codex-acp-') ||
-      trimmed.includes('Cannot find package \'@zed-industries/codex-acp-') ||
+      trimmed.includes("Cannot find package '@zed-industries/codex-acp-") ||
       trimmed.includes('Cannot find package "@zed-industries/codex-acp-') ||
       trimmed.includes('Error resolving package:');
 
@@ -504,10 +504,10 @@ export class ClaudeAcpTransport extends DefaultTransport {
   }
 
   /**
-   * Claude needs ~10s init timeout
+   * Claude needs ~60s init timeout (can be slow on large projects / many MCP servers)
    */
   getInitTimeout(): number {
-    return 10_000;
+    return 60_000;
   }
 }
 

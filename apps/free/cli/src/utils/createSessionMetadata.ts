@@ -69,7 +69,7 @@ export interface SessionMetadataResult {
  *     startedBy: opts.startedBy
  * });
  *
- * const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+ * const response = await api.getOrCreateSession({ id: sessionId, metadata, state });
  * ```
  */
 export function createSessionMetadata(opts: CreateSessionMetadataOptions): SessionMetadataResult {

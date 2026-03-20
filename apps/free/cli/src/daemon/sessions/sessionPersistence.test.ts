@@ -15,7 +15,6 @@ let tempDir: string;
 function makeSession(overrides: Partial<PersistedSession> = {}): PersistedSession {
   return {
     sessionId: 'sess-1',
-    sessionTag: 'tag-1',
     agentType: 'claude',
     cwd: '/tmp/test',
     startedBy: 'cli',
@@ -85,7 +84,6 @@ describe('sessionPersistence', () => {
   it('persists all fields correctly', async () => {
     const data = makeSession({
       sessionId: 'full',
-      sessionTag: 'tag-full',
       agentType: 'gemini',
       cwd: '/home/user/project',
       resumeSessionId: 'resume-123',

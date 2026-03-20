@@ -9,6 +9,8 @@ export class MessageBuffer {
   private messages: BufferedMessage[] = [];
   private listeners: Array<(messages: BufferedMessage[]) => void> = [];
   private nextId = 1;
+  /** When true, the next updateLastMessage('assistant') call starts a new message instead of appending. */
+  private pendingNewAssistantTurn = true;
 
   addMessage(content: string, type: BufferedMessage['type'] = 'assistant'): void {
     const message: BufferedMessage = {
@@ -25,7 +27,18 @@ export class MessageBuffer {
    * Update the last message of a specific type by appending content to it
    * Useful for streaming responses where deltas should accumulate in one message
    */
+  /** Mark that the next assistant text block should start a new message (new turn boundary). */
+  markNewAssistantTurn(): void {
+    this.pendingNewAssistantTurn = true;
+  }
+
   updateLastMessage(contentDelta: string, type: BufferedMessage['type'] = 'assistant'): void {
+    // For assistant messages: if a new turn was signalled, always create a fresh message.
+    if (type === 'assistant' && this.pendingNewAssistantTurn) {
+      this.pendingNewAssistantTurn = false;
+      this.addMessage(contentDelta, type);
+      return;
+    }
     // Find the last message of the specified type
     for (let i = this.messages.length - 1; i >= 0; i--) {
       if (this.messages[i].type === type) {
@@ -42,7 +55,6 @@ export class MessageBuffer {
       }
     }
     // If no message of this type exists, create a new one
-    // This can happen if updateLastMessage is called before the first message is added
     this.addMessage(contentDelta, type);
   }
 
@@ -68,6 +80,7 @@ export class MessageBuffer {
   clear(): void {
     this.messages = [];
     this.nextId = 1;
+    this.pendingNewAssistantTurn = true;
     this.notifyListeners();
   }
 

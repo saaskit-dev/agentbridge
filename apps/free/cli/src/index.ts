@@ -6,10 +6,27 @@
  * Simple argument parsing without any CLI framework dependencies
  */
 
+// Re-exec with --variant injected so every `free` process is identifiable by variant in `ps`
+import { execFileSync } from 'node:child_process';
+if (!process.argv.includes('--variant')) {
+  const variant = process.env.APP_ENV === 'development' ? 'development' : 'production';
+  const [runtime, entrypoint, ...rest] = process.argv;
+  try {
+    execFileSync(runtime, [...process.execArgv, entrypoint, '--variant', variant, ...rest], {
+      stdio: 'inherit',
+      env: process.env,
+    });
+  } catch (e: any) {
+    // Map signal-killed child to conventional exit codes (128 + signal number)
+    const code = e.status ?? (e.signal === 'SIGINT' ? 130 : e.signal === 'SIGTERM' ? 143 : 1);
+    process.exit(code);
+  }
+  process.exit(0);
+}
+
 import { initCliTelemetry, shutdownTelemetry } from './telemetry';
 initCliTelemetry();
 
-import { execFileSync } from 'node:child_process';
 import chalk from 'chalk';
 import { z } from 'zod';
 import packageJson from '../package.json';
@@ -44,8 +61,6 @@ import { safeStringify } from '@saaskit-dev/agentbridge';
 import { configuration, stripVariantArgs } from '@/configuration';
 import { extractNoSandboxFlag } from './utils/sandboxFlags';
 import { runWithDaemonIPC } from '@/client/CLIClient';
-import { IPCClient } from '@/daemon/ipc/IPCClient';
-import type { IPCServerMessage } from '@/daemon/ipc/protocol';
 import { resolveInitialClaudePermissionMode, applySandboxPermissionPolicy } from '@/claude/utils/permissionMode';
 import type { PermissionMode } from '@/api/types';
 
@@ -145,54 +160,6 @@ async function ensureDaemonRunning(): Promise<void> {
   logger.warn('daemon did not become ready within timeout, proceeding anyway');
 }
 
-/**
- * Query the daemon for truly orphaned sessions (active but no CLI clients attached)
- * and return the most recent one's ID, or undefined if none exist.
- *
- * Only sessions with attachedClients === 0 are considered orphans.
- * Sessions that already have a CLI attached (e.g. another terminal) are NOT
- * candidates — attaching to them would steal another terminal's session
- * and make concurrent sessions impossible.
- */
-async function discoverOrphanSession(): Promise<string | undefined> {
-  let ipc: IPCClient | undefined;
-  try {
-    ipc = new IPCClient();
-    await ipc.connect(configuration.daemonSocketPath);
-    const sessions = await new Promise<Array<{ sessionId: string; state: string; startedAt: string; attachedClients?: number }>>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        ipc!.off('session_list', handler);
-        reject(new Error('list_sessions timeout'));
-      }, 5_000);
-      const handler = (msg: IPCServerMessage) => {
-        if (msg.type !== 'session_list') return;
-        clearTimeout(timeout);
-        ipc!.off('session_list', handler);
-        resolve(msg.sessions as Array<{ sessionId: string; state: string; startedAt: string; attachedClients?: number }>);
-      };
-      ipc!.on('session_list', handler);
-      ipc!.send({ type: 'list_sessions' });
-    });
-
-    // Only consider sessions that are active AND have zero attached CLI clients.
-    // This prevents hijacking sessions already being used in another terminal.
-    const orphanSessions = sessions.filter(
-      s => s.state !== 'archived' && (s.attachedClients ?? 0) === 0
-    );
-    if (orphanSessions.length > 0) {
-      orphanSessions.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-      const target = orphanSessions[0];
-      console.log(chalk.yellow(`Found ${orphanSessions.length} orphan session(s). Re-attaching to ${target.sessionId}...`));
-      return target.sessionId;
-    }
-    return undefined;
-  } catch {
-    logger.debug('orphan session discovery failed, proceeding with new session');
-    return undefined;
-  } finally {
-    ipc?.disconnect();
-  }
-}
 
 (async () => {
   const args = stripVariantArgs(process.argv.slice(2));
@@ -281,10 +248,6 @@ async function discoverOrphanSession(): Promise<string | undefined> {
         sandboxEnabled
       );
 
-      const codexAttachSessionId = resumeSessionId
-        ? undefined
-        : await discoverOrphanSession();
-
       await runWithDaemonIPC({
         spawnOpts: {
           agent: 'codex',
@@ -293,7 +256,6 @@ async function discoverOrphanSession(): Promise<string | undefined> {
           permissionMode,
           startedBy: 'cli',
         },
-        attachSessionId: codexAttachSessionId,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), safeStringify(error));
@@ -496,10 +458,6 @@ async function discoverOrphanSession(): Promise<string | undefined> {
 
       await ensureDaemonRunning();
 
-      const geminiAttachSessionId = resumeSessionId
-        ? undefined
-        : await discoverOrphanSession();
-
       await runWithDaemonIPC({
         spawnOpts: {
           agent: 'gemini',
@@ -507,7 +465,6 @@ async function discoverOrphanSession(): Promise<string | undefined> {
           resumeAgentSessionId: resumeSessionId,
           startedBy: 'cli',
         },
-        attachSessionId: geminiAttachSessionId,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), safeStringify(error));
@@ -530,10 +487,6 @@ async function discoverOrphanSession(): Promise<string | undefined> {
 
       await ensureDaemonRunning();
 
-      const opencodeAttachSessionId = resumeSessionId
-        ? undefined
-        : await discoverOrphanSession();
-
       await runWithDaemonIPC({
         spawnOpts: {
           agent: 'opencode',
@@ -541,7 +494,6 @@ async function discoverOrphanSession(): Promise<string | undefined> {
           resumeAgentSessionId: resumeSessionId,
           startedBy: 'cli',
         },
-        attachSessionId: opencodeAttachSessionId,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), safeStringify(error));
@@ -1022,12 +974,6 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       sandboxEnabled
     );
 
-    // Discover orphan sessions: if active sessions exist, auto-attach to the most recent one.
-    // Skip when user explicitly wants to resume a specific Claude session (--resume-session-id).
-    const attachSessionId = options.resumeSessionId
-      ? undefined
-      : await discoverOrphanSession();
-
     // Start the CLI via daemon IPC
     logger.debug('step 3/4: connecting to daemon IPC...');
     try {
@@ -1038,10 +984,8 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
           resumeAgentSessionId: options.resumeSessionId,
           permissionMode,
           model: options.model,
-          sessionTag: process.env.FREE_SESSION_TAG,
           startedBy: 'cli',
         },
-        attachSessionId,
       });
     } catch (error) {
       console.error(chalk.red('Error:'), safeStringify(error));

@@ -122,8 +122,6 @@ export interface SpawnSessionOptions {
   directory: string;
   sessionId?: string;
   startedBy?: 'cli' | 'daemon' | 'app';
-  /** Session tag to use when creating/finding session. Enables test sessions to be shared with daemon. */
-  sessionTag?: string;
   /** Claude Code session ID to resume (passed as --resume-session-id). Only applies to claude agent. */
   resumeAgentSessionId?: string;
   approvedNewDirectoryCreation?: boolean;

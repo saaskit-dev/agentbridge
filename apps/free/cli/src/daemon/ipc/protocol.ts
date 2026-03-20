@@ -24,7 +24,6 @@ export interface SpawnSessionOptions {
   agent?: AgentType;
   directory: string;
   resumeAgentSessionId?: string;
-  sessionTag?: string;
   startedBy?: SessionInitiator;
   permissionMode?: PermissionMode;
   model?: string;

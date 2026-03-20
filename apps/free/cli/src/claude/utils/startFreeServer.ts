@@ -3,7 +3,6 @@
  * Provides Free CLI specific tools including chat session title management
  */
 
-import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -19,13 +18,7 @@ export async function startFreeServer(client: ApiSessionClient) {
   const handler = async (title: string) => {
     logger.debug('[freeMCP] Changing title to:', title);
     try {
-      // Send title as a summary message, similar to title generator
-      client.sendClaudeSessionMessage({
-        type: 'summary',
-        summary: title,
-        leafUuid: randomUUID(),
-      });
-
+      client.updateMetadata((m) => ({ ...m, summary: { text: title, updatedAt: Date.now() } }));
       return { success: true };
     } catch (error) {
       return { success: false, error: safeStringify(error) };

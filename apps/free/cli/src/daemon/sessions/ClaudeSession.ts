@@ -19,7 +19,11 @@ import { hashObject } from '@/utils/deterministicJson';
 import type { EnhancedMode } from '@/claude/sessionTypes';
 import { claudeRemote } from '@/claude/claudeRemote';
 import { PermissionHandler } from '@/claude/utils/permissionHandler';
-import { mapSDKMessageToNormalized } from '@/backends/claude/mapSDKMessageToNormalized';
+import { mapSDKMessageToNormalized, createSDKMapperState, flushSDKOpenToolCalls } from '@/backends/claude/mapSDKMessageToNormalized';
+import {
+  mapClaudeLogMessageToNormalizedMessages,
+  type ClaudeSessionProtocolState,
+} from '@/claude/utils/sessionProtocolMapper';
 import type { AgentStartOpts } from './AgentBackend';
 import type { AgentBackend } from './AgentBackend';
 import { AgentSession } from './AgentSession';
@@ -58,6 +62,13 @@ export class ClaudeSession extends AgentSession<EnhancedMode> {
   private remoteLegAbort: AbortController | null = null;
   /** Timestamp (ms) when the last mode switch was initiated, for timing diagnostics. */
   private switchTimestamp = 0;
+
+  /**
+   * When true, sessionScanner's onMessage callback is suppressed.
+   * In remote mode, the SDK's onMessage callback already sends messages;
+   * letting the scanner also send them causes every message to appear twice.
+   */
+  private scannerPaused = false;
   private switchSequence = 0;
 
   /**
@@ -67,6 +78,9 @@ export class ClaudeSession extends AgentSession<EnhancedMode> {
    * Array (not Set) so identical texts sent twice are handled correctly.
    */
   private appSentTexts: string[] = [];
+
+  /** State for the JSONL → NormalizedMessage mapper (local PTY scanner path). */
+  private readonly claudeJsonlMapperState: ClaudeSessionProtocolState = { currentTurnId: null };
 
   createBackend(): AgentBackend {
     return new ClaudeBackend();
@@ -172,6 +186,10 @@ export class ClaudeSession extends AgentSession<EnhancedMode> {
         sessionId: this.opts.resumeSessionId ?? null,
         workingDirectory: this.opts.cwd,
         onMessage: (message) => {
+          // In remote mode the SDK onMessage callback already forwards everything;
+          // skip scanner output to prevent every message appearing twice.
+          if (this.scannerPaused) return;
+
           // Deduplicate user messages sent from the app.
           if (message.type === 'user') {
             const jsonlText = extractJSONLUserText(message);
@@ -189,7 +207,10 @@ export class ClaudeSession extends AgentSession<EnhancedMode> {
           }
 
           if (message.type !== 'summary') {
-            this.session.sendClaudeSessionMessage(message);
+            const mapped = mapClaudeLogMessageToNormalizedMessages(message, this.claudeJsonlMapperState);
+            for (const n of mapped.messages) {
+              this.session.sendNormalizedMessage(n);
+            }
           }
           if (message.type === 'user') {
             this.lastStatus = 'working';
@@ -277,6 +298,8 @@ export class ClaudeSession extends AgentSession<EnhancedMode> {
         });
 
         if (mode === 'local') {
+          this.scannerPaused = false;
+          logger.debug('[ClaudeSession] scanner resumed (local mode)');
           const result = await this.runLocalLeg();
           if (result === 'switch') {
             logger.info('[ClaudeSession] local→remote: local leg ended', {
@@ -286,6 +309,10 @@ export class ClaudeSession extends AgentSession<EnhancedMode> {
           }
           break; // exit
         } else {
+          // Pause scanner — remote SDK onMessage already sends all messages.
+          // Letting both run causes every message to be delivered twice.
+          this.scannerPaused = true;
+          logger.debug('[ClaudeSession] scanner paused (remote mode)');
           await this.runRemoteLeg();
           logger.info('[ClaudeSession] remote→local: remote leg ended', {
             switchSeq: this.switchSequence,
@@ -384,6 +411,7 @@ export class ClaudeSession extends AgentSession<EnhancedMode> {
     });
 
     const remoteLegStart = Date.now();
+    const sdkMapperState = createSDKMapperState();
     logger.info('[ClaudeSession] remote leg starting', {
       switchSeq: this.switchSequence,
     });
@@ -447,7 +475,7 @@ export class ClaudeSession extends AgentSession<EnhancedMode> {
 
         onMessage: (msg) => {
           permissionHandler.onMessage(msg);
-          const normalized = mapSDKMessageToNormalized(msg);
+          const normalized = mapSDKMessageToNormalized(msg, sdkMapperState);
           for (const n of normalized) {
             this.forwardOutputMessage(n);
           }
@@ -466,6 +494,10 @@ export class ClaudeSession extends AgentSession<EnhancedMode> {
           toError(err));
       }
     } finally {
+      // Flush any tool calls that were in-flight when the remote leg ended or was aborted.
+      for (const n of flushSDKOpenToolCalls(sdkMapperState)) {
+        await this.forwardOutputMessage(n);
+      }
       logger.info('[ClaudeSession] remote leg finished', {
         switchSeq: this.switchSequence,
         sinceStart: Date.now() - remoteLegStart,

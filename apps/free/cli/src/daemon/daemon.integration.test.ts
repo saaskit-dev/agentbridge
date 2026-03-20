@@ -4,9 +4,9 @@
  * Tests the full flow of daemon startup, session tracking, and shutdown
  *
  * IMPORTANT: These tests MUST be run with the integration test environment:
- * yarn test:integration-test-env
+ * pnpm test:integration-test-env
  *
- * DO NOT run with regular 'npm test' or 'yarn test' - it will use the wrong environment
+ * DO NOT run with regular 'pnpm test' - it will use the wrong environment
  * and the daemon will not work properly!
  *
  * The integration test environment uses .env.integration-test which sets:
@@ -49,16 +49,11 @@ async function waitFor(
 
 describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
   let daemonPid: number;
-  let serverProcess: ChildProcess | null = null;
 
   beforeAll(async () => {
     process.env.FREE_DAEMON_HEARTBEAT_INTERVAL = '5000';
-    const env = await ensureLocalServerAndCredentials();
-    serverProcess = env.serverProcess;
-  });
-
-  afterAll(async () => {
-    await stopSpawnedProcess(serverProcess);
+    // Server is started by globalSetup (test-setup.ts) — just ensure credentials exist
+    await ensureLocalServerAndCredentials();
   });
 
   beforeEach(async () => {
@@ -141,9 +136,12 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
       'Not all sessions reported stopped'
     ).toBe(true);
 
-    // Verify all sessions are stopped
-    const emptySessions = await listDaemonSessions();
-    expect(emptySessions).toHaveLength(0);
+    // Wait for all sessions to actually finish shutting down (stop is fire-and-forget)
+    await waitFor(
+      async () => (await listDaemonSessions()).length === 0,
+      10_000,
+      200
+    );
   });
 
   it('should handle daemon stop request gracefully', async () => {
@@ -289,7 +287,7 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
    *
    * 1. Test starts daemon with original version (e.g., 0.9.0-6) compiled into dist/
    * 2. Test modifies package.json to new version (e.g., 0.0.0-integration-test-*)
-   * 3. Test runs `yarn build` to recompile with new version
+   * 3. Test runs `pnpm build` to recompile with new version
    * 4. Daemon's heartbeat (every 30s) reads package.json and compares to its compiled version
    * 5. Daemon detects mismatch: package.json != configuration.currentCliVersion
    * 6. Daemon spawns new daemon via spawnFreeCLI(['daemon', 'start'])
@@ -300,25 +298,9 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
     'should detect daemon version/build mismatch after rebuild',
     { timeout: 60_000 },
     async () => {
-      // Read current package.json to get version
-      const packagePath = path.join(process.cwd(), 'package.json');
-      const packageJsonOriginalRawText = readFileSync(packagePath, 'utf8');
-      const originalPackage = JSON.parse(packageJsonOriginalRawText);
-      const originalVersion = originalPackage.version;
-      const testVersion = `0.0.0-integration-test-should-be-auto-cleaned-up-${Math.floor(
-        Math.random() * 100000
-      )
-        .toString()
-        .padStart(5, '0')}`;
-
-      expect(
-        originalVersion,
-        'Your current cli version was not cleaned up from previous test it seems'
-      ).not.toBe(testVersion);
-
-      // Modify package.json version
-      const modifiedPackage = { ...originalPackage, version: testVersion };
-      writeFileSync(packagePath, JSON.stringify(modifiedPackage, null, 2));
+      const originalVersion = JSON.parse(
+        readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')
+      ).version;
 
       try {
         // Get initial daemon state
@@ -327,34 +309,36 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
         expect(initialState!.startedWithCliVersion).toBe(originalVersion);
         const initialPid = initialState!.pid;
 
-        // Re-build the CLI with the new package.json version
-        execSync('yarn build', { stdio: 'ignore' });
+        // Tamper with the build hash on disk to simulate a rebuild.
+        // This is instant (no pnpm build needed) and avoids the daemon heartbeat
+        // detecting a package.json version change and auto-restarting during the test.
+        const hashPath = path.join(process.cwd(), 'dist', '.hash');
+        const originalHash = readFileSync(hashPath, 'utf-8');
+        writeFileSync(hashPath, 'fake-hash-for-mismatch-test');
 
-        console.log(
-          `[TEST] Current daemon running with version ${originalVersion}, PID: ${initialPid}`
-        );
+        console.log(`[TEST] Current daemon running with version ${originalVersion}, PID: ${initialPid}`);
+        console.log(`[TEST] Tampered dist/.hash to simulate rebuild`);
 
-        console.log(`[TEST] Changed package.json version to ${testVersion}`);
+        // Client-side detection: build hash on disk differs from daemon state → mismatch
+        expect(await isDaemonRunningCurrentlyInstalledFreeVersion()).toBe(false);
 
-        await waitFor(
-          async () => !(await isDaemonRunningCurrentlyInstalledFreeVersion()),
-          15_000,
-          500
-        );
-
+        // Daemon should still be the SAME process (package.json untouched, heartbeat won't trigger)
         const finalState = await readDaemonState();
         expect(finalState).toBeDefined();
         expect(finalState!.startedWithCliVersion).toBe(originalVersion);
         expect(finalState!.pid).toBe(initialPid);
-        expect(await isDaemonRunningCurrentlyInstalledFreeVersion()).toBe(false);
         console.log('[TEST] Daemon version/build mismatch detected successfully');
-      } finally {
-        // CRITICAL: Restore original package.json version
-        writeFileSync(packagePath, packageJsonOriginalRawText);
-        console.log(`[TEST] Restored package.json version to ${originalVersion}`);
 
-        // Lets rebuild it so we keep it as we found it
-        execSync('yarn build', { stdio: 'ignore' });
+        // Restore original hash
+        writeFileSync(hashPath, originalHash);
+        console.log(`[TEST] Restored dist/.hash`);
+      } finally {
+        // Safety restore in case the test threw before the inline restore
+        const hashPath = path.join(process.cwd(), 'dist', '.hash');
+        const currentHash = readFileSync(hashPath, 'utf-8');
+        if (currentHash === 'fake-hash-for-mismatch-test') {
+          execSync('node scripts/generate-build-hash.cjs', { stdio: 'ignore' });
+        }
       }
     }
   );
@@ -480,7 +464,7 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
   });
 
   it('should clean up invalid persisted sessions that fail recovery', { timeout: 30_000 }, async () => {
-    // 1. Manually write a persisted session with invalid data (bad sessionTag)
+    // 1. Manually write a persisted session with invalid data (bad sessionId)
     const daemonSessionsDir = join(configuration.freeHomeDir, 'daemon-sessions');
     if (!existsSync(daemonSessionsDir)) {
       const { mkdirSync } = require('fs');
@@ -489,8 +473,7 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
 
     const badData = {
       sessionId: 'bad-session-test',
-      sessionTag: 'nonexistent-tag',
-      agentType: 'claude',
+      agentType: 'nonexistent-agent-type', // unregistered agent → AgentSessionFactory.create throws
       cwd: '/tmp',
       startedBy: 'cli',
       createdAt: Date.now(),
