@@ -1,6 +1,6 @@
 # RFC-010: WebSocket-Only Message Transport + Local SQLite Cache
 
-> Status: Draft
+> Status: Implemented
 > Created: 2026-03-18
 > Author: AgentBridge Team
 

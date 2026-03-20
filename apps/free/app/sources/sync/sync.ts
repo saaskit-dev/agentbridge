@@ -47,10 +47,11 @@ import { Session, Machine } from './storageTypes';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { apiSocket } from '@/sync/apiSocket';
-import { setSessionTrace, getSessionTrace, clearSessionTrace } from '@/sync/appTraceStore';
+import { setSessionTrace, clearSessionTrace } from '@/sync/appTraceStore';
 import { Encryption } from '@/sync/encryption/encryption';
 import { InvalidateSync } from '@/utils/sync';
 import type { PermissionMode } from './sessionCapabilities';
+import { messageDB } from './messageDB';
 
 const logger = new Logger('app/sync');
 
@@ -61,19 +62,6 @@ function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boo
   );
 }
 
-type V3GetSessionMessagesResponse = {
-  messages: ApiMessage[];
-  hasMore: boolean;
-};
-
-type V3PostSessionMessagesResponse = {
-  messages: Array<{
-    id: string;
-    seq: number;
-    createdAt: number;
-    updatedAt: number;
-  }>;
-};
 
 /**
  * Minimal wire trace — mirrors packages/core WireTrace without adding a Node.js dependency.
@@ -142,6 +130,9 @@ class Sync {
   private lastRecalculationTime = 0;
 
   constructor() {
+    // Initialize local SQLite message cache (RFC-010 §7)
+    messageDB.init().catch((e: unknown) => logger.warn('[sync] messageDB init failed', { error: String(e) }));
+
     this.sessionsSync = new InvalidateSync(this.fetchSessions);
     this.settingsSync = new InvalidateSync(this.syncSettings);
     this.profileSync = new InvalidateSync(this.fetchProfile);
@@ -277,12 +268,47 @@ class Sync {
       });
   }
 
-  onSessionVisible = (sessionId: string) => {
+  onSessionVisible = async (sessionId: string) => {
     logger.debug('[sync] onSessionVisible', { sessionId });
 
-    // Only fetch messages if we haven't loaded any yet for this session.
-    // Once loaded, the WS fast path handles incremental updates.
+    // Load cached messages from local SQLite first (instant render)
     if (!this.sessionLastSeq.has(sessionId)) {
+      try {
+        const cachedSeq = await messageDB.getLastSeq(sessionId);
+        if (cachedSeq > 0) {
+          this.sessionLastSeq.set(sessionId, cachedSeq);
+          // Load latest 500 messages (DESC via beforeSeq, then reversed in applyMessages sort)
+          const cached = await messageDB.getMessages(sessionId, { limit: 500, beforeSeq: cachedSeq + 1 });
+          if (cached.length > 0) {
+            // Track oldest loaded seq for "load older" pagination
+            const minSeq = Math.min(...cached.map(m => m.seq));
+            this.sessionOldestSeq.set(sessionId, minSeq);
+            // If we hit the limit, there are probably older messages
+            if (cached.length >= 500) {
+              storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: true });
+            }
+
+            const encryption = this.encryption.getSessionEncryption(sessionId);
+            if (encryption) {
+              const normalized: NormalizedMessage[] = [];
+              for (const msg of cached) {
+                try {
+                  const raw = JSON.parse(msg.content);
+                  const n = normalizeRawMessage(msg.id, msg.created_at, raw);
+                  if (n) normalized.push(n);
+                } catch { /* skip corrupt cache entries */ }
+              }
+              if (normalized.length > 0) {
+                this.enqueueMessages(sessionId, normalized);
+                logger.debug('[sync] loaded from SQLite cache', { sessionId, count: normalized.length, lastSeq: cachedSeq, oldestSeq: minSeq });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        logger.debug('[sync] SQLite cache read failed, will fetch from server', { sessionId, error: String(error) });
+      }
+      // Always fetch from server to get latest (incremental if we have cached lastSeq)
       this.getMessagesSync(sessionId).invalidate();
     }
 
@@ -1670,7 +1696,7 @@ class Sync {
     }
   };
 
-  /** Server accepts at most 100 messages per POST. */
+  /** Server accepts at most 100 messages per batch. */
   private static readonly FLUSH_BATCH_SIZE = 100;
 
   private flushOutbox = async (sessionId: string) => {
@@ -1684,41 +1710,35 @@ class Sync {
       return;
     }
 
-    // Drain in batches — server schema limits each POST to 100 messages.
+    // Drain in batches via WebSocket emitWithAck (RFC-010).
     while (pending.length > 0) {
       const batch = pending.slice(0, Sync.FLUSH_BATCH_SIZE);
       logger.debug('flushOutbox: sending batch', { sessionId, batchSize: batch.length, total: pending.length });
-      const controller = new AbortController();
-      this.sendAbortControllers.set(sessionId, controller);
       try {
-        const response = await apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
-          method: 'POST',
-          body: JSON.stringify({
-            messages: batch.map(message => ({
-              id: message.id,
-              content: message.content,
-              ...(message._trace ? { _trace: message._trace } : {}),
-            })),
-          }),
-          headers: {
-            'Content-Type': 'application/json',
-            // RFC §7.2: carry trace context in HTTP headers for server-side log correlation
-            ...(batch[0]?._trace ? { 'X-Trace-Id': batch[0]._trace.tid, 'X-Span-Id': batch[0]._trace.sid } : {}),
-          },
-          signal: controller.signal,
+        const ack = await apiSocket.emitWithAck<{
+          ok: boolean;
+          messages?: Array<{ id: string; seq: number }>;
+          error?: string;
+        }>('send-messages', {
+          sessionId,
+          messages: batch.map(message => ({
+            id: message.id,
+            content: message.content,
+            ...(message._trace ? { _trace: message._trace } : {}),
+          })),
         });
-        if (!response.ok) {
-          throw new Error(`Failed to send messages for ${sessionId}: ${response.status}`);
+
+        if (!ack.ok) {
+          throw new Error(`Failed to send messages for ${sessionId}: ${ack.error}`);
         }
 
-        const data = (await response.json()) as V3PostSessionMessagesResponse;
         logger.debug('flushOutbox: batch sent successfully', { sessionId, batchSize: batch.length, remaining: pending.length - batch.length });
         pending.splice(0, batch.length);
         this.persistOutbox();
-        if (Array.isArray(data.messages) && data.messages.length > 0) {
+        if (Array.isArray(ack.messages) && ack.messages.length > 0) {
           const currentLastSeq = this.sessionLastSeq.get(sessionId) ?? 0;
           let maxSeq = currentLastSeq;
-          for (const message of data.messages) {
+          for (const message of ack.messages) {
             if (message.seq > maxSeq) {
               maxSeq = message.seq;
             }
@@ -1733,8 +1753,6 @@ class Sync {
         });
         this.maybeStartBackgroundSendWatchdog();
         throw error;
-      } finally {
-        this.sendAbortControllers.delete(sessionId);
       }
     }
 
@@ -1751,8 +1769,11 @@ class Sync {
     }
   };
 
+  /** Maximum pages to fetch in a single paginated run (safety cap). */
+  private static readonly MAX_FETCH_PAGES = 20;
+
   private fetchMessages = async (sessionId: string) => {
-    logger.debug(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
+    logger.debug(`💬 fetchMessages starting for session ${sessionId}`);
 
     const encryption = this.encryption.getSessionEncryption(sessionId);
     if (!encryption) {
@@ -1763,19 +1784,26 @@ class Sync {
     let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
     let hasMore = true;
     let totalNormalized = 0;
+    let pageCount = 0;
 
-    while (hasMore) {
-      const sessionTrace = getSessionTrace(sessionId);
-      const response = await apiSocket.request(
-        `/v3/sessions/${sessionId}/messages?after_seq=${afterSeq}&limit=100`,
-        // RFC §7.2: carry trace context in HTTP headers for server-side log correlation
-        sessionTrace ? { headers: { 'X-Trace-Id': sessionTrace.tid, 'X-Span-Id': sessionTrace.sid } } : undefined
-      );
-      if (!response.ok) {
-        throw new Error(`Failed to fetch messages for ${sessionId}: ${response.status}`);
+    while (hasMore && pageCount < Sync.MAX_FETCH_PAGES) {
+      pageCount++;
+      const ack = await apiSocket.emitWithAck<{
+        ok: boolean;
+        messages?: ApiMessage[];
+        hasMore?: boolean;
+        error?: string;
+      }>('fetch-messages', {
+        sessionId,
+        after_seq: afterSeq,
+        limit: 100,
+      });
+
+      if (!ack.ok) {
+        throw new Error(`Failed to fetch messages for ${sessionId}: ${ack.error}`);
       }
-      const data = (await response.json()) as V3GetSessionMessagesResponse;
-      const messages = Array.isArray(data.messages) ? data.messages : [];
+
+      const messages = Array.isArray(ack.messages) ? ack.messages : [];
 
       let maxSeq = afterSeq;
       for (const message of messages) {
@@ -1805,10 +1833,23 @@ class Sync {
       if (normalizedMessages.length > 0) {
         totalNormalized += normalizedMessages.length;
         this.enqueueMessages(sessionId, normalizedMessages);
+
+        // Write to local SQLite cache (fire-and-forget, don't block rendering)
+        const cacheEntries = normalizedMessages.map((n, i) => ({
+          id: n.id,
+          session_id: sessionId,
+          seq: messages[i]?.seq ?? 0,
+          content: JSON.stringify(decryptedMessages[i]?.content),
+          role: n.role ?? 'agent',
+          created_at: n.createdAt ?? Date.now(),
+          updated_at: Date.now(),
+        }));
+        messageDB.upsertMessages(sessionId, cacheEntries).catch(e => logger.debug('[sync] messageDB upsert failed', { sessionId, error: String(e) }));
       }
 
       this.sessionLastSeq.set(sessionId, maxSeq);
-      hasMore = !!data.hasMore;
+      messageDB.updateLastSeq(sessionId, maxSeq).catch(e => logger.debug('[sync] messageDB updateLastSeq failed', { sessionId, error: String(e) }));
+      hasMore = !!ack.hasMore;
       if (hasMore && maxSeq === afterSeq) {
         logger.debug(
           `💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`
@@ -1818,11 +1859,95 @@ class Sync {
       afterSeq = maxSeq;
     }
 
+    if (hasMore && pageCount >= Sync.MAX_FETCH_PAGES) {
+      logger.info(
+        `💬 fetchMessages: hit page cap (${Sync.MAX_FETCH_PAGES}) for ${sessionId}, stopped at seq ${afterSeq}`
+      );
+    }
+
     storage.getState().applyMessagesLoaded(sessionId);
     logger.debug(
-      `💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages`
+      `💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages in ${pageCount} pages`
     );
   };
+
+  /** Tracks the minimum seq loaded per session — used as cursor for "load older" */
+  private sessionOldestSeq = new Map<string, number>();
+
+  /**
+   * Load older messages for a session (triggered by scroll-up in ChatList).
+   */
+  async loadOlderMessages(sessionId: string) {
+    const sessionMessages = storage.getState().sessionMessages[sessionId];
+    if (!sessionMessages || sessionMessages.isLoadingOlder || !sessionMessages.hasOlderMessages) return;
+
+    const beforeSeq = this.sessionOldestSeq.get(sessionId);
+    if (beforeSeq == null || beforeSeq <= 1) {
+      storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: false });
+      return;
+    }
+
+    storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: true });
+    try {
+      const encryption = this.encryption.getSessionEncryption(sessionId);
+      if (!encryption) return;
+
+      const ack = await apiSocket.emitWithAck<{
+        ok: boolean;
+        messages?: ApiMessage[];
+        hasOlderMessages?: boolean;
+        error?: string;
+      }>('fetch-messages', {
+        sessionId,
+        before_seq: beforeSeq,
+        limit: 100,
+      });
+
+      if (!ack.ok || !Array.isArray(ack.messages) || ack.messages.length === 0) {
+        storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: false, isLoadingOlder: false });
+        return;
+      }
+
+      // Update oldest seq cursor
+      const minSeq = Math.min(...ack.messages.map(m => m.seq));
+      this.sessionOldestSeq.set(sessionId, minSeq);
+
+      const decryptedMessages = await encryption.decryptMessages(ack.messages);
+      const normalizedMessages: NormalizedMessage[] = [];
+      for (let i = 0; i < decryptedMessages.length; i++) {
+        const decrypted = decryptedMessages[i];
+        if (!decrypted) continue;
+        const n = normalizeRawMessage(decrypted.id, decrypted.createdAt, decrypted.content);
+        if (n) {
+          if (decrypted.traceId) n.traceId = decrypted.traceId;
+          normalizedMessages.push(n);
+        }
+      }
+
+      if (normalizedMessages.length > 0) {
+        this.enqueueMessages(sessionId, normalizedMessages);
+        // Cache to SQLite
+        const cacheEntries = normalizedMessages.map((n, i) => ({
+          id: n.id,
+          session_id: sessionId,
+          seq: ack.messages![i]?.seq ?? 0,
+          content: JSON.stringify(decryptedMessages[i]?.content),
+          role: n.role ?? 'agent',
+          created_at: n.createdAt ?? Date.now(),
+          updated_at: Date.now(),
+        }));
+        messageDB.upsertMessages(sessionId, cacheEntries).catch(e => logger.debug('[sync] messageDB upsert failed', { sessionId, error: String(e) }));
+      }
+
+      storage.getState().setSessionOlderMessagesState(sessionId, {
+        hasOlderMessages: ack.hasOlderMessages !== false,
+        isLoadingOlder: false,
+      });
+    } catch (error) {
+      logger.error('[sync] loadOlderMessages failed', undefined, { sessionId, error: String(error) });
+      storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: false });
+    }
+  }
 
   private registerPushToken = async () => {
     logger.debug('registerPushToken');
@@ -2075,6 +2200,7 @@ class Sync {
       this.sessionMessageQueue.delete(sessionId);
       this.sessionQueueProcessing.delete(sessionId);
       clearSessionTrace(sessionId);
+      messageDB.deleteSession(sessionId).catch(e => logger.debug('[sync] messageDB deleteSession failed', { sessionId, error: String(e) }));
 
       logger.debug(`🗑️ Session ${sessionId} deleted from local storage`);
     } else if (updateData.body.t === 'update-session') {
@@ -2507,6 +2633,17 @@ class Sync {
     if (updateData.type === 'activity') {
       // logger.debug('adding activity update ' + updateData.id);
       this.activityAccumulator.addUpdate(updateData);
+    }
+
+    // Handle batched activity updates (server aggregates multiple session heartbeats into one)
+    if (updateData.type === 'batch-activity') {
+      for (const activity of updateData.activities) {
+        this.activityAccumulator.addUpdate({
+          type: 'activity',
+          ...activity,
+        });
+      }
+      return;
     }
 
     // Handle machine activity updates
