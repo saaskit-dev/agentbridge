@@ -1,4 +1,4 @@
-# RFC-004: OpenTUI 统一 CLI 渲染层
+# RFC-005: OpenTUI 统一 CLI 渲染层
 
 - **Status**: Partially Implemented（统一渲染已实现，OpenTUI 未引入，Claude local PTY 模式仍在）
 - **Created**: 2026-03-13

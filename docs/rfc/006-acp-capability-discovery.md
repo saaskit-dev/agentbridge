@@ -1,4 +1,4 @@
-# RFC-005: ACP 能力发现与动态配置
+# RFC-006: ACP 能力发现与动态配置
 
 - **Status**: Implemented ✅（Phase 1-6 全部完成）
 - **Created**: 2026-03-14

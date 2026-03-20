@@ -1,4 +1,4 @@
-# RFC-007: CLI-Server Testing Strategy
+# RFC-008: CLI-Server Testing Strategy
 
 - **Status**: Partially Implemented（核心基础设施已就绪，覆盖持续扩展中）
 - **Created**: 2026-03-15
