@@ -13,9 +13,8 @@ import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('daemon/controlServer');
 const AgentTypeSchema = z.enum([
   'claude',
-  'claude-acp',
+  'claude-native',
   'codex',
-  'codex-acp',
   'gemini',
   'opencode',
 ]);

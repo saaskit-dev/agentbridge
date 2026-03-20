@@ -3,10 +3,8 @@ import { ApiSessionClient } from './apiSession';
 import { createCipher, encryptToWireString, decryptFromWireString } from './encryption';
 import type { Update } from './types';
 
-const { mockIo, mockAxiosGet, mockAxiosPost, mockBackoff, mockDelay } = vi.hoisted(() => ({
+const { mockIo, mockBackoff, mockDelay } = vi.hoisted(() => ({
   mockIo: vi.fn(),
-  mockAxiosGet: vi.fn(),
-  mockAxiosPost: vi.fn(),
   mockBackoff: vi.fn(async <T>(callback: () => Promise<T>) => {
     let lastError: unknown;
     for (let i = 0; i < 20; i += 1) {
@@ -23,13 +21,6 @@ const { mockIo, mockAxiosGet, mockAxiosPost, mockBackoff, mockDelay } = vi.hoist
 
 vi.mock('socket.io-client', () => ({
   io: mockIo,
-}));
-
-vi.mock('axios', () => ({
-  default: {
-    get: mockAxiosGet,
-    post: mockAxiosPost,
-  },
 }));
 
 vi.mock('@/configuration', () => ({
@@ -144,12 +135,15 @@ describe('ApiSessionClient v3 messages API migration', () => {
       }),
       off: vi.fn(),
       emit: vi.fn(),
+      timeout: vi.fn(function (this: any) { return this; }),
       emitWithAck: vi.fn(async () => ({ result: 'error' })),
       volatile: {
         emit: vi.fn(),
       },
       close: vi.fn(),
     };
+    // Bind timeout so it returns mockSocket regardless of call context
+    mockSocket.timeout = vi.fn(() => mockSocket);
 
     mockIo.mockReturnValue(mockSocket);
   });
@@ -169,26 +163,27 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
   it('queues codex message to v3 outbox, sends once, and drains outbox', async () => {
     const client = new ApiSessionClient('fake-token', session);
-    mockAxiosPost.mockResolvedValueOnce({
-      data: {
-        messages: [
-          {
-            id: 'msg-1',
-            seq: 1,
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        ],
-      },
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [
+        {
+          id: 'msg-1',
+          seq: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
     });
 
     client.sendCodexMessage({ type: 'delta', text: 'hello' });
 
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
 
-    const payload = mockAxiosPost.mock.calls[0][1];
+    const [event, payload] = mockSocket.emitWithAck.mock.calls[0];
+    expect(event).toBe('send-messages');
+    expect(payload.sessionId).toBe('test-session-id');
     expect(payload.messages).toHaveLength(1);
     expect(typeof payload.messages[0].id).toBe('string');
     expect((client as any).pendingOutbox).toHaveLength(0);
@@ -214,52 +209,49 @@ describe('ApiSessionClient v3 messages API migration', () => {
   it('accumulates multiple pending outbox messages into one follow-up batch', async () => {
     const client = new ApiSessionClient('fake-token', session);
 
-    type PostResponse = {
-      data: {
-        messages: Array<{
-          id: string;
-          seq: number;
-          createdAt: number;
-          updatedAt: number;
-        }>;
-      };
+    type AckResponse = {
+      ok: true;
+      messages: Array<{
+        id: string;
+        seq: number;
+        createdAt: number;
+        updatedAt: number;
+      }>;
     };
-    let resolveFirstPost!: (value: PostResponse) => void;
-    mockAxiosPost
+    let resolveFirstAck!: (value: AckResponse) => void;
+    mockSocket.emitWithAck
       .mockImplementationOnce(
         () =>
-          new Promise<PostResponse>(resolve => {
-            resolveFirstPost = resolve;
+          new Promise<AckResponse>(resolve => {
+            resolveFirstAck = resolve;
           })
       )
       .mockResolvedValueOnce({
-        data: {
-          messages: [
-            { id: 'msg-2', seq: 2, createdAt: 2, updatedAt: 2 },
-            { id: 'msg-3', seq: 3, createdAt: 3, updatedAt: 3 },
-          ],
-        },
+        ok: true,
+        messages: [
+          { id: 'msg-2', seq: 2, createdAt: 2, updatedAt: 2 },
+          { id: 'msg-3', seq: 3, createdAt: 3, updatedAt: 3 },
+        ],
       });
 
     client.sendCodexMessage({ type: 'first' });
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
 
     client.sendCodexMessage({ type: 'second' });
     client.sendCodexMessage({ type: 'third' });
 
-    resolveFirstPost({
-      data: {
-        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
-      },
+    resolveFirstAck({
+      ok: true,
+      messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
     });
 
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(2);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
     });
 
-    const secondPayload = mockAxiosPost.mock.calls[1][1];
+    const [, secondPayload] = mockSocket.emitWithAck.mock.calls[1];
     expect(secondPayload.messages).toHaveLength(2);
     expect((client as any).pendingOutbox).toHaveLength(0);
     expect((client as any).lastSeq).toBe(3);
@@ -268,16 +260,15 @@ describe('ApiSessionClient v3 messages API migration', () => {
   it('retries failed POST and succeeds without dropping queued messages', async () => {
     const client = new ApiSessionClient('fake-token', session);
 
-    mockAxiosPost.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce({
-      data: {
-        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
-      },
+    mockSocket.emitWithAck.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce({
+      ok: true,
+      messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
     });
 
     client.sendCodexMessage({ type: 'retry-me' });
 
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(2);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
     });
 
     expect((client as any).pendingOutbox).toHaveLength(0);
@@ -286,10 +277,9 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
   it('sends session protocol messages through enqueueMessage with session envelope', async () => {
     const client = new ApiSessionClient('fake-token', session);
-    mockAxiosPost.mockResolvedValueOnce({
-      data: {
-        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
-      },
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
     });
 
     const envelope = {
@@ -302,10 +292,11 @@ describe('ApiSessionClient v3 messages API migration', () => {
     client.sendSessionProtocolMessage(envelope);
 
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
 
-    const payload = mockAxiosPost.mock.calls[0][1];
+    const [event, payload] = mockSocket.emitWithAck.mock.calls[0];
+    expect(event).toBe('send-messages');
     const decrypted = await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
@@ -326,10 +317,9 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
   it('sends ACP agent messages through enqueueMessage', async () => {
     const client = new ApiSessionClient('fake-token', session);
-    mockAxiosPost.mockResolvedValueOnce({
-      data: {
-        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
-      },
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
     });
 
     client.sendAgentMessage('codex', {
@@ -338,10 +328,11 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
 
-    const payload = mockAxiosPost.mock.calls[0][1];
+    const [event, payload] = mockSocket.emitWithAck.mock.calls[0];
+    expect(event).toBe('send-messages');
     const decrypted = await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
@@ -366,19 +357,19 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
   it('sends session events as direct normalized messages', async () => {
     const client = new ApiSessionClient('fake-token', session);
-    mockAxiosPost.mockResolvedValueOnce({
-      data: {
-        messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
-      },
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
     });
 
     client.sendSessionEvent({ type: 'ready' }, 'event-1');
 
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
 
-    const payload = mockAxiosPost.mock.calls[0][1];
+    const [event, payload] = mockSocket.emitWithAck.mock.calls[0];
+    expect(event).toBe('send-messages');
     const decrypted = await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
@@ -409,31 +400,30 @@ describe('ApiSessionClient v3 messages API migration', () => {
       },
     };
 
-    mockAxiosGet.mockResolvedValueOnce({
-      data: {
-        messages: [
-          {
-            id: 'msg-1',
-            seq: 1,
-            content: {
-              t: 'encrypted',
-              c: await encryptContent(session, userMessage),
-            },
-            createdAt: 1000,
-            updatedAt: 1000,
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [
+        {
+          id: 'msg-1',
+          seq: 1,
+          content: {
+            t: 'encrypted',
+            c: await encryptContent(session, userMessage),
           },
-        ],
-        hasMore: false,
-      },
+          createdAt: 1000,
+          updatedAt: 1000,
+        },
+      ],
+      hasMore: false,
     });
 
     await (client as any).fetchMessages();
 
-    expect(mockAxiosGet).toHaveBeenCalledTimes(1);
-    expect(mockAxiosGet.mock.calls[0][0]).toBe(
-      'https://server.test/v3/sessions/test-session-id/messages'
-    );
-    expect(mockAxiosGet.mock.calls[0][1].params).toEqual({
+    expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
+    const [event, payload] = mockSocket.emitWithAck.mock.calls[0];
+    expect(event).toBe('fetch-messages');
+    expect(payload).toEqual({
+      sessionId: 'test-session-id',
       after_seq: 0,
       limit: 100,
     });
@@ -457,41 +447,39 @@ describe('ApiSessionClient v3 messages API migration', () => {
       content: { type: 'text', text: 'm4' },
     };
 
-    mockAxiosGet
+    mockSocket.emitWithAck
       .mockResolvedValueOnce({
-        data: {
-          messages: [
-            {
-              id: 'msg-3',
-              seq: 3,
-              content: { t: 'encrypted', c: await encryptContent(session, message3) },
-              createdAt: 3000,
-              updatedAt: 3000,
-            },
-          ],
-          hasMore: true,
-        },
+        ok: true,
+        messages: [
+          {
+            id: 'msg-3',
+            seq: 3,
+            content: { t: 'encrypted', c: await encryptContent(session, message3) },
+            createdAt: 3000,
+            updatedAt: 3000,
+          },
+        ],
+        hasMore: true,
       })
       .mockResolvedValueOnce({
-        data: {
-          messages: [
-            {
-              id: 'msg-4',
-              seq: 4,
-              content: { t: 'encrypted', c: await encryptContent(session, message4) },
-              createdAt: 4000,
-              updatedAt: 4000,
-            },
-          ],
-          hasMore: false,
-        },
+        ok: true,
+        messages: [
+          {
+            id: 'msg-4',
+            seq: 4,
+            content: { t: 'encrypted', c: await encryptContent(session, message4) },
+            createdAt: 4000,
+            updatedAt: 4000,
+          },
+        ],
+        hasMore: false,
       });
 
     await (client as any).fetchMessages();
 
-    expect(mockAxiosGet).toHaveBeenCalledTimes(2);
-    expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(2);
-    expect(mockAxiosGet.mock.calls[1][1].params.after_seq).toBe(3);
+    expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
+    expect(mockSocket.emitWithAck.mock.calls[0][1].after_seq).toBe(2);
+    expect(mockSocket.emitWithAck.mock.calls[1][1].after_seq).toBe(3);
     expect(onUserMessage).toHaveBeenCalledTimes(2);
     expect((client as any).lastSeq).toBe(4);
   });
@@ -500,19 +488,18 @@ describe('ApiSessionClient v3 messages API migration', () => {
     const client = new ApiSessionClient('fake-token', session);
     (client as any).lastSeq = 2;
 
-    mockAxiosGet
+    mockSocket.emitWithAck
       .mockResolvedValueOnce({
-        data: {
-          messages: [],
-          hasMore: true,
-        },
+        ok: true,
+        messages: [],
+        hasMore: true,
       })
       .mockRejectedValueOnce(new Error('should not request another page when cursor is stalled'));
 
     await expect((client as any).fetchMessages()).resolves.toBeUndefined();
 
-    expect(mockAxiosGet).toHaveBeenCalledTimes(1);
-    expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(2);
+    expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
+    expect(mockSocket.emitWithAck.mock.calls[0][1].after_seq).toBe(2);
     expect((client as any).lastSeq).toBe(2);
   });
 
@@ -535,26 +522,25 @@ describe('ApiSessionClient v3 messages API migration', () => {
       },
     };
 
-    mockAxiosGet.mockResolvedValueOnce({
-      data: {
-        messages: [
-          {
-            id: 'msg-1',
-            seq: 1,
-            content: { t: 'encrypted', c: await encryptContent(session, userMessage) },
-            createdAt: 1000,
-            updatedAt: 1000,
-          },
-          {
-            id: 'msg-2',
-            seq: 2,
-            content: { t: 'encrypted', c: await encryptContent(session, agentMessage) },
-            createdAt: 2000,
-            updatedAt: 2000,
-          },
-        ],
-        hasMore: false,
-      },
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [
+        {
+          id: 'msg-1',
+          seq: 1,
+          content: { t: 'encrypted', c: await encryptContent(session, userMessage) },
+          createdAt: 1000,
+          updatedAt: 1000,
+        },
+        {
+          id: 'msg-2',
+          seq: 2,
+          content: { t: 'encrypted', c: await encryptContent(session, agentMessage) },
+          createdAt: 2000,
+          updatedAt: 2000,
+        },
+      ],
+      hasMore: false,
     });
 
     await (client as any).fetchMessages();
@@ -583,18 +569,21 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
     expect(onUserMessage).toHaveBeenCalledWith(userMessage);
     expect((client as any).lastSeq).toBe(2);
-    expect(mockAxiosGet).not.toHaveBeenCalled();
+    // emitWithAck should not have been called for fetch-messages
+    const fetchCalls = mockSocket.emitWithAck.mock.calls.filter(
+      (call: any[]) => call[0] === 'fetch-messages'
+    );
+    expect(fetchCalls).toHaveLength(0);
   });
 
   it('invalidates receive sync and fetches on seq gap', async () => {
     const client = new ApiSessionClient('fake-token', session);
     (client as any).lastSeq = 1;
 
-    mockAxiosGet.mockResolvedValueOnce({
-      data: {
-        messages: [],
-        hasMore: false,
-      },
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [],
+      hasMore: false,
     });
 
     emitSocketEvent(
@@ -609,19 +598,24 @@ describe('ApiSessionClient v3 messages API migration', () => {
     );
 
     await waitForCheck(() => {
-      expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+      const fetchCalls = mockSocket.emitWithAck.mock.calls.filter(
+        (call: any[]) => call[0] === 'fetch-messages'
+      );
+      expect(fetchCalls).toHaveLength(1);
     });
-    expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(1);
+    const fetchCall = mockSocket.emitWithAck.mock.calls.find(
+      (call: any[]) => call[0] === 'fetch-messages'
+    );
+    expect(fetchCall![1].after_seq).toBe(1);
   });
 
   it('invalidates receive sync on first message when lastSeq is 0', async () => {
     const client = new ApiSessionClient('fake-token', session);
 
-    mockAxiosGet.mockResolvedValueOnce({
-      data: {
-        messages: [],
-        hasMore: false,
-      },
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [],
+      hasMore: false,
     });
 
     emitSocketEvent(
@@ -636,20 +630,25 @@ describe('ApiSessionClient v3 messages API migration', () => {
     );
 
     await waitForCheck(() => {
-      expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+      const fetchCalls = mockSocket.emitWithAck.mock.calls.filter(
+        (call: any[]) => call[0] === 'fetch-messages'
+      );
+      expect(fetchCalls).toHaveLength(1);
     });
-    expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(0);
+    const fetchCall = mockSocket.emitWithAck.mock.calls.find(
+      (call: any[]) => call[0] === 'fetch-messages'
+    );
+    expect(fetchCall![1].after_seq).toBe(0);
   });
 
   it('invalidates receive sync for duplicate and stale seq values', async () => {
     const client = new ApiSessionClient('fake-token', session);
     (client as any).lastSeq = 5;
 
-    mockAxiosGet.mockResolvedValue({
-      data: {
-        messages: [],
-        hasMore: false,
-      },
+    mockSocket.emitWithAck.mockResolvedValue({
+      ok: true,
+      messages: [],
+      hasMore: false,
     });
 
     emitSocketEvent(
@@ -674,37 +673,41 @@ describe('ApiSessionClient v3 messages API migration', () => {
     );
 
     await waitForCheck(() => {
-      expect(mockAxiosGet).toHaveBeenCalledTimes(2);
+      const fetchCalls = mockSocket.emitWithAck.mock.calls.filter(
+        (call: any[]) => call[0] === 'fetch-messages'
+      );
+      expect(fetchCalls).toHaveLength(2);
     });
-    expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(5);
-    expect(mockAxiosGet.mock.calls[1][1].params.after_seq).toBe(5);
+    const fetchCalls = mockSocket.emitWithAck.mock.calls.filter(
+      (call: any[]) => call[0] === 'fetch-messages'
+    );
+    expect(fetchCalls[0][1].after_seq).toBe(5);
+    expect(fetchCalls[1][1].after_seq).toBe(5);
   });
 
   it('updates lastSeq after successful outbox flush and never moves it backward', async () => {
     const client = new ApiSessionClient('fake-token', session);
     (client as any).lastSeq = 10;
 
-    mockAxiosPost.mockResolvedValueOnce({
-      data: {
-        messages: [{ id: 'msg-9', seq: 9, createdAt: 9, updatedAt: 9 }],
-      },
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [{ id: 'msg-9', seq: 9, createdAt: 9, updatedAt: 9 }],
     });
 
     client.sendCodexMessage({ type: 'older' });
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
     expect((client as any).lastSeq).toBe(10);
 
-    mockAxiosPost.mockResolvedValueOnce({
-      data: {
-        messages: [{ id: 'msg-11', seq: 11, createdAt: 11, updatedAt: 11 }],
-      },
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [{ id: 'msg-11', seq: 11, createdAt: 11, updatedAt: 11 }],
     });
 
     client.sendCodexMessage({ type: 'newer' });
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(2);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
     });
     expect((client as any).lastSeq).toBe(11);
   });
@@ -712,8 +715,9 @@ describe('ApiSessionClient v3 messages API migration', () => {
   it('flushOutbox sends in batches when outbox exceeds FLUSH_BATCH_SIZE', async () => {
     const client = new ApiSessionClient('fake-token', session);
 
-    mockAxiosPost.mockImplementation(async () => ({
-      data: { messages: [] },
+    mockSocket.emitWithAck.mockImplementation(async () => ({
+      ok: true,
+      messages: [],
     }));
 
     // Directly populate pendingOutbox with 150 pre-encrypted messages
@@ -731,7 +735,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
 
     // Every batch must be <= 100 and total sent must equal 150
-    const batchSizes = mockAxiosPost.mock.calls.map(
+    const sendCalls = mockSocket.emitWithAck.mock.calls.filter(
+      (call: any[]) => call[0] === 'send-messages'
+    );
+    const batchSizes = sendCalls.map(
       (call: any[]) => (call[1].messages as unknown[]).length
     );
     expect(batchSizes.length).toBeGreaterThanOrEqual(2);
@@ -739,56 +746,106 @@ describe('ApiSessionClient v3 messages API migration', () => {
     expect(batchSizes.reduce((a: number, b: number) => a + b, 0)).toBe(totalMessages);
   });
 
-  it('flushOutbox tolerates missing response.data.messages and keeps lastSeq unchanged', async () => {
+  it('flushOutbox tolerates missing ack.messages and keeps lastSeq unchanged', async () => {
     const client = new ApiSessionClient('fake-token', session);
     (client as any).lastSeq = 7;
 
-    mockAxiosPost.mockResolvedValueOnce({
-      data: {},
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
     });
 
     client.sendCodexMessage({ type: 'no-messages-field' });
     await waitForCheck(() => {
-      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
 
     expect((client as any).lastSeq).toBe(7);
     expect((client as any).pendingOutbox).toHaveLength(0);
   });
 
-  it('triggers receive catch-up fetch on socket reconnect', async () => {
-    new ApiSessionClient('fake-token', session);
+  it('recovery replay only updates lastSeq without routing messages', async () => {
+    const client = new ApiSessionClient('fake-token', session);
+    const routed: unknown[] = [];
+    client.on('message', (msg: unknown) => routed.push(msg));
 
-    mockAxiosGet.mockResolvedValueOnce({
-      data: {
-        messages: [],
-        hasMore: false,
-      },
-    });
-
+    // First connect → recovery mode
     emitSocketEvent('connect');
 
-    await waitForCheck(() => {
-      expect(mockAxiosGet).toHaveBeenCalledTimes(1);
+    const encrypted = await encryptContent(session, { type: 'agent-output', text: 'hello' });
+    emitSocketEvent('replay', {
+      sessionId: 'test-session-id',
+      messages: [
+        { id: 'msg-1', seq: 1, content: { t: 'encrypted', c: encrypted } },
+        { id: 'msg-2', seq: 5, content: { t: 'encrypted', c: encrypted } },
+      ],
+      hasMore: false,
     });
-    expect(mockAxiosGet.mock.calls[0][1].params.after_seq).toBe(0);
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+    // Recovery mode: lastSeq updated but no messages routed
+    expect((client as any).lastSeq).toBe(5);
+    expect(routed).toHaveLength(0);
+  });
+
+  it('reconnect replay routes missed user messages to callback', async () => {
+    const client = new ApiSessionClient('fake-token', session);
+    const receivedMessages: string[] = [];
+    client.onUserMessage(msg => receivedMessages.push(msg.content.text));
+
+    // First connect → recovery
+    emitSocketEvent('connect');
+    const agentMsg = await encryptContent(session, { type: 'agent-output', text: 'old' });
+    emitSocketEvent('replay', {
+      sessionId: 'test-session-id',
+      messages: [{ id: 'msg-1', seq: 1, content: { t: 'encrypted', c: agentMsg } }],
+      hasMore: false,
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect((client as any).lastSeq).toBe(1);
+
+    // Simulate disconnect + reconnect
+    emitSocketEvent('connect');
+
+    // Reconnect replay with a new user message (seq 2) that was missed during disconnect
+    const userMsg = await encryptContent(session, {
+      role: 'user',
+      content: { type: 'text', text: 'missed-message' },
+    });
+    emitSocketEvent('replay', {
+      sessionId: 'test-session-id',
+      messages: [{ id: 'msg-2', seq: 2, content: { t: 'encrypted', c: userMsg } }],
+      hasMore: false,
+    });
+
+    await waitForCheck(() => {
+      expect(receivedMessages).toHaveLength(1);
+    });
+    expect(receivedMessages[0]).toBe('missed-message');
+    expect((client as any).lastSeq).toBe(2);
+  });
+
+  it('auth object uses getter so reconnect sends current lastSeq', () => {
+    const client = new ApiSessionClient('fake-token', session);
+    // Simulate lastSeq advancement
+    (client as any).lastSeq = 42;
+
+    // The auth option passed to io() should be an object with a dynamic lastSeq
+    const ioCall = mockIo.mock.calls[0];
+    const authOption = ioCall[1].auth;
+    expect(typeof authOption).toBe('object');
+
+    // Reading lastSeq should return the current value (42), not the initial value (0)
+    expect(authOption.lastSeq).toBe(42);
+    expect(authOption.sessionId).toBe('test-session-id');
+
+    // Advance again — getter should track the change
+    (client as any).lastSeq = 100;
+    expect(authOption.lastSeq).toBe(100);
   });
 
   it('stops send and receive sync loops on close', async () => {
     const client = new ApiSessionClient('fake-token', session);
     await client.close();
-
-    mockAxiosGet.mockResolvedValue({
-      data: {
-        messages: [],
-        hasMore: false,
-      },
-    });
-    mockAxiosPost.mockResolvedValue({
-      data: {
-        messages: [],
-      },
-    });
 
     emitSocketEvent(
       'update',
@@ -805,7 +862,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
     await new Promise(resolve => setTimeout(resolve, 20));
 
     expect(mockSocket.close).toHaveBeenCalledTimes(1);
-    expect(mockAxiosGet).not.toHaveBeenCalled();
-    expect(mockAxiosPost).not.toHaveBeenCalled();
+    // No send-messages or fetch-messages calls should have been made
+    const sendOrFetchCalls = mockSocket.emitWithAck.mock.calls.filter(
+      (call: any[]) => call[0] === 'send-messages' || call[0] === 'fetch-messages'
+    );
+    expect(sendOrFetchCalls).toHaveLength(0);
   });
 });

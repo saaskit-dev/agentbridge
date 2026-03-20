@@ -157,7 +157,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
       },
     };
     const userLocalId = `user-${randomUUID()}`;
-    const { response: userResponse } = await appClient.sendUserTextMessage(
+    const { ack: userAck } = await appClient.sendUserTextMessage(
       session,
       userMessage.content.text,
       {
@@ -166,7 +166,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
       }
     );
 
-    expect(userResponse.status).toBe(200);
+    expect(userAck.ok).toBe(true);
 
     await waitForEvent(
       userUpdates,
@@ -188,21 +188,12 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
     };
     const encryptedAgentContent = await encryptToWireString(encKey, encVariant, agentMessage);
 
-    const agentResponse = await fetch(
-      `${configuration.serverUrl}/v3/sessions/${sessionId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [{ id: agentLocalId, content: encryptedAgentContent }],
-        }),
-      }
-    );
+    const agentAck = await sessionSocket.timeout(30000).emitWithAck('send-messages', {
+      sessionId,
+      messages: [{ id: agentLocalId, content: encryptedAgentContent }],
+    });
 
-    expect(agentResponse.status).toBe(200);
+    expect(agentAck.ok).toBe(true);
 
     const agentUpdate = await waitForEvent(
       userUpdates,
@@ -225,8 +216,8 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
 
   it('fetches and decrypts persisted messages via FakeAppClient', async () => {
     const text = `persisted-message-${randomUUID()}`;
-    const { response } = await appClient.sendUserTextMessage(session, text);
-    expect(response.status).toBe(200);
+    const { ack } = await appClient.sendUserTextMessage(session, text);
+    expect(ack.ok).toBe(true);
 
     const fetched = await appClient.fetchMessages(session);
     let persisted: unknown = undefined;

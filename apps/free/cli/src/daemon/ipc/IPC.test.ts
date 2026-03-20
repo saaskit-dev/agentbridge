@@ -105,7 +105,7 @@ describe('IPC Protocol', () => {
     const { client } = await setupPair();
 
     const resultPromise = waitForMessage(client, 'spawn_result');
-    client.send({ type: 'spawn_session', opts: { directory: '/tmp', agent: 'claude' } });
+    client.send({ type: 'spawn_session', opts: { directory: '/tmp', agent: 'claude-native' } });
 
     const result = await resultPromise;
     expect(result.type).toBe('spawn_result');

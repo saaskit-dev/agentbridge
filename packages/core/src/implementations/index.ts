@@ -23,12 +23,14 @@ export {
   type CreateAcpBackendOptions,
   createGeminiBackend,
   createCodexBackend,
-  createClaudeAcpBackend,
+  createClaudeBackend,
   createOpenCodeBackend,
+  createCursorBackend,
   type GeminiBackendOptions,
   type CodexBackendOptions,
-  type ClaudeAcpBackendOptions,
+  type ClaudeBackendOptions,
   type OpenCodeBackendOptions,
+  type CursorBackendOptions,
 } from './agent';
 
 // Session update handlers
@@ -63,5 +65,7 @@ export {
   CodexTransport,
   ClaudeAcpTransport,
   OpenCodeTransport,
+  CursorTransport,
   defaultTransport,
+  cursorTransport,
 } from './transport';

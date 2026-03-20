@@ -20,9 +20,8 @@ import { projectPath } from '@/projectPath';
  */
 export type BackendFlavor =
   | 'claude'
-  | 'claude-acp'
+  | 'claude-native'
   | 'codex'
-  | 'codex-acp'
   | 'gemini'
   | 'opencode';
 

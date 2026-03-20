@@ -122,7 +122,10 @@ export class FakeAppClient {
       id?: string;
       meta?: UserMessage['meta'];
     }
-  ): Promise<{ id: string; response: Response }> {
+  ): Promise<{ id: string; ack: { ok: boolean; messages?: any[]; error?: string } }> {
+    if (!this.userSocket?.connected) {
+      throw new Error('FakeAppClient user socket not connected');
+    }
     const id = opts?.id ?? `fake-app-msg-${randomUUID()}`;
     const payload: UserMessage = {
       role: 'user',
@@ -133,50 +136,33 @@ export class FakeAppClient {
       session.encryptionKey, session.encryptionVariant, payload
     );
 
-    const response = await fetch(
-      `${configuration.serverUrl}/v3/sessions/${session.id}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.credentials.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [{ id, content: encryptedContent }],
-        }),
-      }
-    );
+    const ack = await this.userSocket.timeout(30000).emitWithAck('send-messages', {
+      sessionId: session.id,
+      messages: [{ id, content: encryptedContent }],
+    });
 
-    return { id, response };
+    return { id, ack };
   }
 
   async fetchMessages(
     session: Session,
     opts?: { afterSeq?: number; limit?: number }
   ): Promise<V3GetSessionMessagesResponse> {
-    const params = new URLSearchParams();
-    if (opts?.afterSeq !== undefined) {
-      params.set('after_seq', String(opts.afterSeq));
-    }
-    if (opts?.limit !== undefined) {
-      params.set('limit', String(opts.limit));
+    if (!this.userSocket?.connected) {
+      throw new Error('FakeAppClient user socket not connected');
     }
 
-    const query = params.size > 0 ? `?${params.toString()}` : '';
-    const response = await fetch(
-      `${configuration.serverUrl}/v3/sessions/${session.id}/messages${query}`,
-      {
-        headers: {
-          Authorization: `Bearer ${this.credentials.token}`,
-        },
-      }
-    );
+    const ack = await this.userSocket.timeout(30000).emitWithAck('fetch-messages', {
+      sessionId: session.id,
+      after_seq: opts?.afterSeq ?? 0,
+      limit: opts?.limit ?? 100,
+    });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch session messages: HTTP ${response.status}`);
+    if (!ack.ok) {
+      throw new Error(`Failed to fetch session messages: ${ack.error}`);
     }
 
-    return (await response.json()) as V3GetSessionMessagesResponse;
+    return { messages: ack.messages ?? [], hasMore: ack.hasMore ?? false };
   }
 
   async decryptSessionMessage(session: Session, message: SessionMessage): Promise<unknown> {

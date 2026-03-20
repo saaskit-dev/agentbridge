@@ -10,13 +10,15 @@ export {
   createAcpBackend,
   createGeminiBackend,
   createCodexBackend,
-  createClaudeAcpBackend,
+  createClaudeBackend,
   createOpenCodeBackend,
+  createCursorBackend,
   type CreateAcpBackendOptions,
   type GeminiBackendOptions,
   type CodexBackendOptions,
-  type ClaudeAcpBackendOptions,
+  type ClaudeBackendOptions,
   type OpenCodeBackendOptions,
+  type CursorBackendOptions,
 } from './factories';
 
 // Session update handlers and types

@@ -138,7 +138,7 @@ export class ApiClient {
 
       if (response.status === 409) {
         const { randomUUID } = await import('node:crypto');
-        sessionId = randomUUID();
+        sessionId = randomUUID().replace(/-/g, '');
         logger.debug(`Session ID conflict, retrying with new ID (attempt ${attempt + 1})`);
         continue;
       }

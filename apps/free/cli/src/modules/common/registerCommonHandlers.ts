@@ -125,7 +125,7 @@ export interface SpawnSessionOptions {
   /** Claude Code session ID to resume (passed as --resume-session-id). Only applies to claude agent. */
   resumeAgentSessionId?: string;
   approvedNewDirectoryCreation?: boolean;
-  agent?: 'claude' | 'claude-acp' | 'codex' | 'codex-acp' | 'gemini' | 'opencode';
+  agent?: 'claude' | 'claude-native' | 'codex' | 'gemini' | 'opencode';
   model?: string;
   mode?: string;
   token?: string; // OAuth token for authentication

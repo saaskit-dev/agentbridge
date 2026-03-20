@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { decryptFromWireString, encryptToWireString } from './encryption';
@@ -105,19 +104,6 @@ type V3SessionMessage = {
   updatedAt: number;
 };
 
-type V3GetSessionMessagesResponse = {
-  messages: V3SessionMessage[];
-  hasMore: boolean;
-};
-
-type V3PostSessionMessagesResponse = {
-  messages: Array<{
-    id: string;
-    seq: number;
-    createdAt: number;
-    updatedAt: number;
-  }>;
-};
 
 function decodeUserId(token: string): string | undefined {
   try {
@@ -149,7 +135,13 @@ export class ApiSessionClient extends EventEmitter {
   private capabilitiesLock = new AsyncLock();
   private encryptionKey: Uint8Array;
   private encryptionVariant: 'legacy' | 'dataKey';
-  private lastSeq = 0;
+  private lastSeq: number;
+  /** True until the first successful connection completes. */
+  private isFirstConnect = true;
+  /** Set by `connect` handler, consumed by `replay` handler.
+   *  'recovery' — first connect after creation: only update lastSeq, don't route
+   *  'reconnect' — subsequent connect: decrypt and route messages normally */
+  private nextReplayMode: 'recovery' | 'reconnect' = 'recovery';
   private pendingOutbox: Array<{ content: string; id: string; _trace?: WireTrace }> = [];
   private readonly sendSync: InvalidateSync;
   private readonly receiveSync: InvalidateSync;
@@ -167,6 +159,7 @@ export class ApiSessionClient extends EventEmitter {
     this.capabilitiesVersion = session.capabilitiesVersion ?? 0;
     this.encryptionKey = session.encryptionKey;
     this.encryptionVariant = session.encryptionVariant;
+    this.lastSeq = session.lastSeq ?? 0;
     this.sendSync = new InvalidateSync(() => this.flushOutbox());
     this.receiveSync = new InvalidateSync(() => this.fetchMessages());
 
@@ -183,12 +176,20 @@ export class ApiSessionClient extends EventEmitter {
     // Create socket
     //
 
+    // Auth object with a dynamic lastSeq getter so every reconnect handshake
+    // sends the current watermark — not the stale value from construction time.
+    const authData: Record<string, unknown> = {
+      token: this.token,
+      clientType: 'session-scoped' as const,
+      sessionId: this.sessionId,
+    };
+    Object.defineProperty(authData, 'lastSeq', {
+      get: () => this.lastSeq,
+      enumerable: true,
+    });
+
     this.socket = io(configuration.serverUrl, {
-      auth: {
-        token: this.token,
-        clientType: 'session-scoped' as const,
-        sessionId: this.sessionId,
-      },
+      auth: authData,
       path: '/v1/updates',
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -210,9 +211,16 @@ export class ApiSessionClient extends EventEmitter {
     //
 
     this.socket.on('connect', () => {
-      logger.info('[CLI] Session connected', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId });
+      logger.info('[CLI] Session connected', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId, isFirstConnect: this.isFirstConnect, lastSeq: this.lastSeq });
+      // Set replay mode BEFORE clearing flag — replay handler fires after connect
+      this.nextReplayMode = this.isFirstConnect ? 'recovery' : 'reconnect';
+      this.isFirstConnect = false;
+      // lastSeq is now read dynamically via function-based auth — no manual update needed
       this.rpcHandlerManager.onSocketConnect(this.socket);
-      this.receiveSync.invalidate();
+      // Server sends `replay` event on connection (RFC-010 §3.3), which handles
+      // delivering missed messages. Do NOT call receiveSync.invalidate() here —
+      // it would trigger a parallel fetchMessages() that processes the same messages
+      // as the replay, causing user messages to be routed to the agent twice.
       // Flush any messages that were queued while disconnected
       this.sendSync.invalidate();
     });
@@ -242,6 +250,42 @@ export class ApiSessionClient extends EventEmitter {
       if (data?.sid === this.sessionId) {
         logger.info('[CLI] Server notified session archived in DB', { userId: this.userId, sessionId: this.sessionId });
         this.emit('archived');
+      }
+    });
+
+    // Server replay after reconnection (RFC-010 §3.3)
+    this.socket.on('replay', async (data: { sessionId: string; messages: any[]; hasMore: boolean }) => {
+      if (data?.sessionId !== this.sessionId || !Array.isArray(data.messages)) return;
+      const mode = this.nextReplayMode;
+      logger.info('[CLI] Replay received', {
+        sessionId: this.sessionId,
+        count: data.messages.length,
+        hasMore: data.hasMore,
+        replayMode: mode,
+      });
+
+      if (mode === 'recovery') {
+        // Recovery (first connect): agent has conversation history via --resume.
+        // Only update lastSeq — do NOT route messages (would cause duplicate responses).
+        for (const message of data.messages) {
+          if (message.seq > this.lastSeq) this.lastSeq = message.seq;
+        }
+        if (data.hasMore) this.fetchRemainingSeqs();
+      } else {
+        // Reconnect: agent is running but missed messages during disconnect.
+        // Decrypt and route so the agent sees user messages sent while offline.
+        for (const message of data.messages) {
+          if (message.seq > this.lastSeq) this.lastSeq = message.seq;
+          if (message.content?.t !== 'encrypted') continue;
+          if (message.traceId) setCurrentTurnTrace(resumeTrace(message.traceId));
+          try {
+            const body = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, message.content.c);
+            this.routeIncomingMessage(body);
+          } catch (error) {
+            logger.error('[CLI] Replay decrypt failed', undefined, { sessionId: this.sessionId, messageId: message.id, error: safeStringify(error) });
+          }
+        }
+        if (data.hasMore) this.receiveSync.invalidate();
       }
     });
 
@@ -356,6 +400,10 @@ export class ApiSessionClient extends EventEmitter {
     this.socket.connect();
   }
 
+  getLastSeq(): number {
+    return this.lastSeq;
+  }
+
   onUserMessage(callback: (data: UserMessage) => void) {
     this.pendingMessageCallback = callback;
     logger.info('[apiSession] onUserMessage callback registered', {
@@ -376,16 +424,6 @@ export class ApiSessionClient extends EventEmitter {
       });
       callback(msg);
     }
-  }
-
-  private authHeaders() {
-    const ctx = getProcessTraceContext();
-    return {
-      Authorization: `Bearer ${this.token}`,
-      'Content-Type': 'application/json',
-      // RFC §7.2: carry trace context in HTTP headers so server can correlate logs
-      ...(ctx ? { 'X-Trace-Id': ctx.traceId, 'X-Span-Id': ctx.spanId } : {}),
-    };
   }
 
   private routeIncomingMessage(message: unknown) {
@@ -430,34 +468,36 @@ export class ApiSessionClient extends EventEmitter {
   private async fetchMessages() {
     let afterSeq = this.lastSeq;
     while (true) {
-      let response: Awaited<ReturnType<typeof axios.get<V3GetSessionMessagesResponse>>>;
+      let ack: { ok: boolean; messages?: V3SessionMessage[]; hasMore?: boolean; error?: string };
       try {
-        response = await axios.get<V3GetSessionMessagesResponse>(
-          `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-          {
-            params: {
-              after_seq: afterSeq,
-              limit: 100,
-            },
-            headers: this.authHeaders(),
-            timeout: 60000,
-          }
-        );
+        ack = await this.socket.timeout(60000).emitWithAck('fetch-messages', {
+          sessionId: this.sessionId,
+          after_seq: afterSeq,
+          limit: 100,
+        });
       } catch (err: any) {
-        // Session deleted on the server — stop polling permanently, don't retry.
-        if (err?.response?.status === 404) {
-          logger.debug('[API] fetchMessages: session not found (404), stopping sync', {
+        logger.error('[API] fetchMessages WS failed', undefined, {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          traceId: getProcessTraceContext()?.traceId,
+          error: safeStringify(err),
+        });
+        throw err;
+      }
+
+      if (!ack.ok) {
+        if (ack.error === 'Session not found') {
+          logger.debug('[API] fetchMessages: session not found, stopping sync', {
             userId: this.userId,
             sessionId: this.sessionId,
-            traceId: getProcessTraceContext()?.traceId,
           });
           this.receiveSync.stop();
           return;
         }
-        throw err;
+        throw new Error(`fetch-messages failed: ${ack.error}`);
       }
 
-      const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+      const messages = Array.isArray(ack.messages) ? ack.messages : [];
       let maxSeq = afterSeq;
 
       for (const message of messages) {
@@ -469,7 +509,6 @@ export class ApiSessionClient extends EventEmitter {
           continue;
         }
 
-        // RFC §19.3: restore trace context from DB-stored traceId for HTTP sync path
         if (message.traceId) {
           setCurrentTurnTrace(resumeTrace(message.traceId));
         }
@@ -491,7 +530,7 @@ export class ApiSessionClient extends EventEmitter {
       }
 
       this.lastSeq = Math.max(this.lastSeq, maxSeq);
-      const hasMore = !!response.data.hasMore;
+      const hasMore = !!ack.hasMore;
       if (hasMore && maxSeq === afterSeq) {
         logger.debug('[API] fetchMessages pagination stalled, stopping to avoid infinite loop', {
           userId: this.userId,
@@ -508,7 +547,49 @@ export class ApiSessionClient extends EventEmitter {
     }
   }
 
-  /** Server accepts at most 100 messages per POST. */
+  /**
+   * Fetch remaining messages after replay to bring lastSeq up to date.
+   * Only updates lastSeq — does NOT route messages to the agent.
+   */
+  /** Max pages when catching up lastSeq during recovery. */
+  private static readonly MAX_SEQ_CATCHUP_PAGES = 50;
+
+  private async fetchRemainingSeqs() {
+    let afterSeq = this.lastSeq;
+    let pages = 0;
+    while (pages < ApiSessionClient.MAX_SEQ_CATCHUP_PAGES) {
+      pages++;
+      let ack: { ok: boolean; messages?: V3SessionMessage[]; hasMore?: boolean; error?: string };
+      try {
+        ack = await this.socket.timeout(60000).emitWithAck('fetch-messages', {
+          sessionId: this.sessionId,
+          after_seq: afterSeq,
+          limit: 100,
+        });
+      } catch (err: any) {
+        logger.error('[API] fetchRemainingSeqs failed', undefined, {
+          sessionId: this.sessionId,
+          error: safeStringify(err),
+        });
+        return;
+      }
+      if (!ack.ok) return;
+
+      const messages = Array.isArray(ack.messages) ? ack.messages : [];
+      let maxSeq = afterSeq;
+      for (const message of messages) {
+        if (message.seq > maxSeq) maxSeq = message.seq;
+      }
+      this.lastSeq = Math.max(this.lastSeq, maxSeq);
+
+      const hasMore = !!ack.hasMore;
+      if (!hasMore || maxSeq === afterSeq) break;
+      afterSeq = maxSeq;
+    }
+    logger.debug('[API] fetchRemainingSeqs done', { sessionId: this.sessionId, lastSeq: this.lastSeq, pages });
+  }
+
+  /** Server accepts at most 100 messages per batch. */
   private static readonly FLUSH_BATCH_SIZE = 100;
 
   private async flushOutbox() {
@@ -516,8 +597,7 @@ export class ApiSessionClient extends EventEmitter {
       return;
     }
 
-    // Drain in batches — server schema limits each POST to 100 messages.
-    // NOTE: outbox flushing uses HTTP POST and works regardless of WebSocket state.
+    // Drain in batches via WebSocket emitWithAck (RFC-010).
     while (this.pendingOutbox.length > 0) {
       const batch = this.pendingOutbox.slice(0, ApiSessionClient.FLUSH_BATCH_SIZE);
       logger.debug('[apiSession] flushing outbox', {
@@ -529,23 +609,13 @@ export class ApiSessionClient extends EventEmitter {
         traceIds: batch.map(m => m._trace?.tid).filter(Boolean),
       });
 
-      let response: Awaited<ReturnType<typeof axios.post<V3PostSessionMessagesResponse>>>;
+      let ack: { ok: boolean; messages?: Array<{ id: string; seq: number }>; error?: string };
       try {
-        response = await axios.post<V3PostSessionMessagesResponse>(
-          `${configuration.serverUrl}/v3/sessions/${encodeURIComponent(this.sessionId)}/messages`,
-          {
-            messages: batch,
-          },
-          {
-            headers: {
-              ...this.authHeaders(),
-              'X-Socket-Id': this.socket.id ?? '',
-            },
-            timeout: 60000,
-          }
-        );
+        ack = await this.socket.timeout(60000).emitWithAck('send-messages', {
+          sessionId: this.sessionId,
+          messages: batch,
+        });
       } catch (err: unknown) {
-        const status = (err as { response?: { status?: number } })?.response?.status;
         const errorMessage = safeStringify(err);
         logger.error('[apiSession] outbox flush failed', undefined, {
           userId: this.userId,
@@ -553,20 +623,22 @@ export class ApiSessionClient extends EventEmitter {
           traceId: getProcessTraceContext()?.traceId,
           count: batch.length,
           ids: batch.map(m => m.id),
-          status,
           error: errorMessage,
         });
-        // Session deleted on the server — stop sending permanently, don't retry.
-        if (status === 404) {
+        throw err;
+      }
+
+      if (!ack.ok) {
+        if (ack.error === 'Session not found') {
           this.sendSync.stop();
           return;
         }
-        throw err;
+        throw new Error(`send-messages failed: ${ack.error}`);
       }
 
       this.pendingOutbox.splice(0, batch.length);
 
-      const messages = Array.isArray(response.data.messages) ? response.data.messages : [];
+      const messages = Array.isArray(ack.messages) ? ack.messages : [];
       const maxSeq = messages.reduce(
         (acc, message) => (message.seq > acc ? message.seq : acc),
         this.lastSeq

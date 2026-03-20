@@ -39,7 +39,7 @@ export function buildAgentAuthEnv(
   agentType: AgentType,
   token?: string
 ): Record<string, string> {
-  if (agentType === 'codex' || agentType === 'codex-acp') {
+  if (agentType === 'codex') {
     return buildCodexEnv();
   }
 
@@ -47,7 +47,7 @@ export function buildAgentAuthEnv(
     return {};
   }
 
-  if (agentType === 'claude' || agentType === 'claude-acp') {
+  if (agentType === 'claude-native' || agentType === 'claude') {
     return {
       CLAUDE_CODE_OAUTH_TOKEN: token,
     };

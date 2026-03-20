@@ -31,7 +31,7 @@ import {
 const runRealSdkMatrix = process.env.FREE_RUN_ACP_SDK_MATRIX === '1';
 
 type AgentSpec = {
-  id: 'claude-acp' | 'codex-acp' | 'gemini' | 'opencode';
+  id: 'claude' | 'codex' | 'gemini' | 'opencode';
   command: string;
   args: string[];
   env?: Record<string, string>;
@@ -93,13 +93,13 @@ function getCodexAcpCommandArgs(): string[] {
 
 const agentMatrix: AgentSpec[] = [
   {
-    id: 'claude-acp',
+    id: 'claude',
     command: 'npx',
     args: ['-y', '@zed-industries/claude-agent-acp'],
     timeoutMs: 180_000,
   },
   {
-    id: 'codex-acp',
+    id: 'codex',
     command: 'npx',
     args: getCodexAcpCommandArgs(),
     timeoutMs: 180_000,
@@ -139,7 +139,7 @@ function getSkipReason(spec: AgentSpec): string | null {
     return `command '${spec.command}' not found`;
   }
 
-  if (spec.id === 'codex-acp' && !process.env.OPENAI_API_KEY) {
+  if (spec.id === 'codex' && !process.env.OPENAI_API_KEY) {
     return 'OPENAI_API_KEY not set';
   }
 
