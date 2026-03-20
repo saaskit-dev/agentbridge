@@ -193,11 +193,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
                 </Text>
               )}
             </View>
-            {tool.state === 'running' && (
-              <View style={styles.elapsedContainer}>
-                <ElapsedView from={tool.createdAt} />
-              </View>
-            )}
+            <ToolDuration tool={tool} />
             {statusIcon}
           </View>
         </TouchableOpacity>
@@ -216,11 +212,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
                 </Text>
               )}
             </View>
-            {tool.state === 'running' && (
-              <View style={styles.elapsedContainer}>
-                <ElapsedView from={tool.createdAt} />
-              </View>
-            )}
+            <ToolDuration tool={tool} />
             {statusIcon}
           </View>
         </View>
@@ -311,6 +303,33 @@ export const ToolView = React.memo<ToolViewProps>(props => {
     </View>
   );
 });
+
+function ToolDuration({ tool }: { tool: ToolCall }) {
+  if (tool.state === 'running') {
+    return (
+      <View style={styles.elapsedContainer}>
+        <ElapsedView from={tool.createdAt} />
+      </View>
+    );
+  }
+  if ((tool.state === 'completed' || tool.state === 'error') && tool.completedAt) {
+    const duration = (tool.completedAt - tool.createdAt) / 1000;
+    if (duration < 0.5) return null;
+    return (
+      <View style={styles.elapsedContainer}>
+        <Text style={styles.elapsedText}>{formatDuration(duration)}</Text>
+      </View>
+    );
+  }
+  return null;
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}m${secs}s`;
+}
 
 function ElapsedView(props: { from: number }) {
   const { from } = props;
