@@ -970,109 +970,6 @@ export const knownTools = {
       return t('tools.names.applyChanges');
     },
   },
-  GeminiBash: {
-    title: t('tools.names.terminal'),
-    icon: ICON_TERMINAL,
-    minimal: true,
-    hideDefaultError: true,
-    isMutable: true,
-    input: z
-      .object({
-        command: z.array(z.string()).describe('The command array to execute'),
-        cwd: z.string().optional().describe('Current working directory'),
-      })
-      .partial()
-      .passthrough(),
-    extractSubtitle: (opts: { metadata: Metadata | null; tool: ToolCall }) => {
-      if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
-        const cmdArray = opts.tool.input.command;
-        // Remove shell wrapper prefix if present (bash/zsh with -lc flag)
-        if (
-          cmdArray.length >= 3 &&
-          (cmdArray[0] === 'bash' ||
-            cmdArray[0] === '/bin/bash' ||
-            cmdArray[0] === 'zsh' ||
-            cmdArray[0] === '/bin/zsh') &&
-          cmdArray[1] === '-lc'
-        ) {
-          return cmdArray[2];
-        }
-        return cmdArray.join(' ');
-      }
-      return null;
-    },
-  },
-  GeminiPatch: {
-    title: t('tools.names.applyChanges'),
-    icon: ICON_EDIT,
-    minimal: true,
-    hideDefaultError: true,
-    isMutable: true,
-    input: z
-      .object({
-        auto_approved: z.boolean().optional().describe('Whether changes were auto-approved'),
-        changes: z
-          .record(
-            z.string(),
-            z
-              .object({
-                add: z
-                  .object({
-                    content: z.string(),
-                  })
-                  .optional(),
-                modify: z
-                  .object({
-                    old_content: z.string(),
-                    new_content: z.string(),
-                  })
-                  .optional(),
-                delete: z
-                  .object({
-                    content: z.string(),
-                  })
-                  .optional(),
-              })
-              .passthrough()
-          )
-          .describe('File changes to apply'),
-      })
-      .partial()
-      .passthrough(),
-    extractSubtitle: (opts: { metadata: Metadata | null; tool: ToolCall }) => {
-      // Show the first file being modified
-      if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
-        const files = Object.keys(opts.tool.input.changes);
-        if (files.length > 0) {
-          const path = resolvePath(files[0], opts.metadata);
-          const fileName = path.split('/').pop() || path;
-          if (files.length > 1) {
-            return t('tools.desc.modifyingMultipleFiles', {
-              file: fileName,
-              count: files.length - 1,
-            });
-          }
-          return fileName;
-        }
-      }
-      return null;
-    },
-    extractDescription: (opts: { metadata: Metadata | null; tool: ToolCall }) => {
-      // Show the number of files being modified
-      if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
-        const files = Object.keys(opts.tool.input.changes);
-        const fileCount = files.length;
-        if (fileCount === 1) {
-          const path = resolvePath(files[0], opts.metadata);
-          const fileName = path.split('/').pop() || path;
-          return t('tools.desc.modifyingFile', { file: fileName });
-        } else if (fileCount > 1) {
-          return t('tools.desc.modifyingFiles', { count: fileCount });
-        }
-      }
-      return t('tools.names.applyChanges');
-    },
-  },
   CodexDiff: {
     title: t('tools.names.viewDiff'),
     icon: ICON_EDIT,
@@ -1093,49 +990,6 @@ export const knownTools = {
       .passthrough(),
     extractSubtitle: (opts: { metadata: Metadata | null; tool: ToolCall }) => {
       // Try to extract filename from unified diff
-      if (opts.tool.input?.unified_diff && typeof opts.tool.input.unified_diff === 'string') {
-        const diffLines = opts.tool.input.unified_diff.split('\n');
-        for (const line of diffLines) {
-          if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
-            const fileName = line.replace(/^\+\+\+ (b\/)?/, '');
-            const basename = fileName.split('/').pop() || fileName;
-            return basename;
-          }
-        }
-      }
-      return null;
-    },
-    extractDescription: (opts: { metadata: Metadata | null; tool: ToolCall }) => {
-      return t('tools.desc.showingDiff');
-    },
-  },
-  GeminiDiff: {
-    title: t('tools.names.viewDiff'),
-    icon: ICON_EDIT,
-    minimal: false, // Show full diff view
-    hideDefaultError: true,
-    noStatus: true, // Always successful, stateless like Task
-    input: z
-      .object({
-        unified_diff: z.string().optional().describe('Unified diff content'),
-        filePath: z.string().optional().describe('File path'),
-        description: z.string().optional().describe('Edit description'),
-      })
-      .partial()
-      .passthrough(),
-    result: z
-      .object({
-        status: z.literal('completed').describe('Always completed'),
-      })
-      .partial()
-      .passthrough(),
-    extractSubtitle: (opts: { metadata: Metadata | null; tool: ToolCall }) => {
-      // Try to extract filename from filePath first
-      if (opts.tool.input?.filePath && typeof opts.tool.input.filePath === 'string') {
-        const basename = opts.tool.input.filePath.split('/').pop() || opts.tool.input.filePath;
-        return basename;
-      }
-      // Fall back to extracting from unified diff
       if (opts.tool.input?.unified_diff && typeof opts.tool.input.unified_diff === 'string') {
         const diffLines = opts.tool.input.unified_diff.split('\n');
         for (const line of diffLines) {
@@ -1201,6 +1055,45 @@ export const knownTools = {
         return t('tools.askUserQuestion.multipleQuestions', { count });
       }
       return null;
+    },
+  },
+  ToolSearch: {
+    title: (opts: { metadata: Metadata | null; tool: ToolCall }) => {
+      if (typeof opts.tool.input.query === 'string') {
+        const q = opts.tool.input.query;
+        return q.length > 40 ? q.substring(0, 40) + '…' : q;
+      }
+      return t('tools.names.toolSearch');
+    },
+    icon: ICON_SEARCH,
+    minimal: false,
+    input: z
+      .object({
+        query: z.string().describe('Query to find deferred tools'),
+        max_results: z.number().optional().describe('Maximum number of results to return'),
+      })
+      .partial()
+      .passthrough(),
+    result: z
+      .object({
+        tools: z
+          .array(
+            z
+              .object({
+                type: z.string(),
+                tool_name: z.string(),
+              })
+              .passthrough()
+          )
+          .optional(),
+      })
+      .passthrough(),
+    extractDescription: (opts: { metadata: Metadata | null; tool: ToolCall }) => {
+      if (typeof opts.tool.input.query === 'string') {
+        const q = opts.tool.input.query;
+        return q.length > 50 ? q.substring(0, 50) + '…' : q;
+      }
+      return t('tools.names.toolSearch');
     },
   },
 } satisfies Record<

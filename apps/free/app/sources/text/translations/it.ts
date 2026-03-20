@@ -557,6 +557,7 @@ export const it: TranslationStructure = {
       editNotebook: 'Modifica notebook',
       todoList: 'Elenco attività',
       webSearch: 'Ricerca web',
+      toolSearch: 'Ricerca strumenti',
       reasoning: 'Ragionamento',
       applyChanges: 'Aggiorna file',
       viewDiff: 'Modifiche file attuali',

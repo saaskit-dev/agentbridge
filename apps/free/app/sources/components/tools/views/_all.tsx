@@ -13,6 +13,7 @@ import { GeminiExecuteView } from './GeminiExecuteView';
 import { MultiEditView } from './MultiEditView';
 import { TaskView } from './TaskView';
 import { TodoView } from './TodoView';
+import { ToolSearchView } from './ToolSearchView';
 import { WriteView } from './WriteView';
 import type { ToolViewComponent } from './types';
 
@@ -32,6 +33,7 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
   MultiEdit: MultiEditView,
   Task: TaskView,
   AskUserQuestion: AskUserQuestionView,
+  ToolSearch: ToolSearchView,
   // Gemini tools (lowercase)
   edit: GeminiEditView,
   execute: GeminiExecuteView,
@@ -68,3 +70,4 @@ export { TaskView } from './TaskView';
 export { AskUserQuestionView } from './AskUserQuestionView';
 export { GeminiEditView } from './GeminiEditView';
 export { GeminiExecuteView } from './GeminiExecuteView';
+export { ToolSearchView } from './ToolSearchView';

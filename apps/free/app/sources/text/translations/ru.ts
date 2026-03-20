@@ -564,6 +564,7 @@ export const ru: TranslationStructure = {
       editNotebook: 'Редактирование блокнота',
       todoList: 'Список задач',
       webSearch: 'Веб-поиск',
+      toolSearch: 'Поиск инструментов',
       reasoning: 'Рассуждение',
       applyChanges: 'Обновить файл',
       viewDiff: 'Текущие изменения файла',

@@ -84,20 +84,20 @@ describe('mapOpenCodeRawToNormalized', () => {
     expect(usage?.input_tokens).toBe(100);
   });
 
-  it('maps exec-approval-request to OpenCodeBash tool-call', () => {
+  it('maps exec-approval-request to CodexBash tool-call', () => {
     const msg = { type: 'exec-approval-request', call_id: 'exec-1', command: 'ls' } as AgentMessage;
     const result = mapOpenCodeRawToNormalized(msg);
     const block = result?.role === 'agent' ? result.content[0] : null;
     expect(block?.type).toBe('tool-call');
-    expect((block as { name: string } | null)?.name).toBe('OpenCodeBash');
+    expect((block as { name: string } | null)?.name).toBe('CodexBash');
   });
 
-  it('maps patch-apply-begin to OpenCodePatch tool-call', () => {
+  it('maps patch-apply-begin to CodexPatch tool-call', () => {
     const msg = { type: 'patch-apply-begin', call_id: 'patch-1', changes: {} } as unknown as AgentMessage;
     const result = mapOpenCodeRawToNormalized(msg);
     const block = result?.role === 'agent' ? result.content[0] : null;
     expect(block?.type).toBe('tool-call');
-    expect((block as { name: string } | null)?.name).toBe('OpenCodePatch');
+    expect((block as { name: string } | null)?.name).toBe('CodexPatch');
   });
 
   it('maps patch-apply-end to tool-result', () => {

@@ -33,10 +33,10 @@ import {
   handleAgentThoughtChunk,
   handleToolCallUpdate,
   handleToolCall,
-      handleLegacyMessageChunk,
-      handlePlanUpdate,
-      handleThinkingUpdate,
-      shouldLogUnhandledSessionUpdate,
+  handleLegacyMessageChunk,
+  handlePlanUpdate,
+  handleThinkingUpdate,
+  shouldLogUnhandledSessionUpdate,
 } from './sessionUpdateHandlers';
 
 // Types from @agentclientprotocol/sdk (duplicated here to avoid import issues when SDK not installed)
@@ -117,11 +117,7 @@ type ClientSideConnectionType = {
     configId: string;
     value: string;
   }): Promise<SetSessionConfigOptionResponse>;
-  loadSession?(request: {
-    sessionId: string;
-    cwd: string;
-    mcpServers?: unknown;
-  }): Promise<void>;
+  loadSession?(request: { sessionId: string; cwd: string; mcpServers?: unknown }): Promise<void>;
 };
 
 type NdJsonStreamType = (
@@ -251,7 +247,6 @@ type StreamLogHooks = {
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-
 
 function serializeForLog(value: unknown): string {
   try {
@@ -622,7 +617,11 @@ export class AcpBackend implements IAgentBackend {
 
       this.process.on('exit', (code, signal) => {
         if (!this.disposed && code !== 0 && code !== null) {
-          logger.error('[ACP] Process exit', undefined, { agent: this.transport.agentName, code, signal: signal || 'none' });
+          logger.error('[ACP] Process exit', undefined, {
+            agent: this.transport.agentName,
+            code,
+            signal: signal || 'none',
+          });
           this.emit({ type: 'status', status: 'stopped', detail: `Exit code: ${code}` });
         }
       });
@@ -889,16 +888,19 @@ export class AcpBackend implements IAgentBackend {
           const defaultOptionId =
             proceedOnceOption?.optionId ||
             (options.length > 0 && firstOpt?.optionId ? firstOpt.optionId : 'proceed_once');
-          logger.warn('[AcpBackend] No permission handler attached, auto-approving permission request', {
-            toolName,
-            toolCallId,
-            selectedOptionId: defaultOptionId,
-            options: options.map((opt: { optionId?: string; name?: string; kind?: string }) => ({
-              optionId: opt.optionId ?? null,
-              name: opt.name ?? null,
-              kind: opt.kind ?? null,
-            })),
-          });
+          logger.warn(
+            '[AcpBackend] No permission handler attached, auto-approving permission request',
+            {
+              toolName,
+              toolCallId,
+              selectedOptionId: defaultOptionId,
+              options: options.map((opt: { optionId?: string; name?: string; kind?: string }) => ({
+                optionId: opt.optionId ?? null,
+                name: opt.name ?? null,
+                kind: opt.kind ?? null,
+              })),
+            }
+          );
           const acpResponse = { outcome: { outcome: 'selected', optionId: defaultOptionId } };
           this.logAcpResponse('request_permission', acpResponse, {
             toolCallId,
@@ -1049,18 +1051,19 @@ export class AcpBackend implements IAgentBackend {
       // Send initial prompt if provided
       if (initialPrompt) {
         this.sendPrompt(sessionId, initialPrompt).catch(error => {
-          logger.error('[ACP] Initial prompt send failed', undefined, { agent: this.transport.agentName, error: safeStringify(error) });
+          logger.error('[ACP] Initial prompt send failed', undefined, {
+            agent: this.transport.agentName,
+            error: safeStringify(error),
+          });
           this.emit({ type: 'status', status: 'error', detail: safeStringify(error) });
         });
       }
 
       return { sessionId };
     } catch (error) {
-      logger.error('[ACP] Session start failed', toError(error), { agent: this.transport.agentName, error: safeStringify(error) });
-      this.emit({
-        type: 'status',
-        status: 'error',
-        detail: safeStringify(error),
+      logger.error('[ACP] Session start failed', toError(error), {
+        agent: this.transport.agentName,
+        error: safeStringify(error),
       });
       throw error;
     }
@@ -1139,7 +1142,10 @@ export class AcpBackend implements IAgentBackend {
 
       return { sessionId };
     } catch (error) {
-      logger.error('[ACP] Session load failed', toError(error), { agent: this.transport.agentName, error: safeStringify(error) });
+      logger.error('[ACP] Session load failed', toError(error), {
+        agent: this.transport.agentName,
+        error: safeStringify(error),
+      });
       this.emit({
         type: 'status',
         status: 'error',
@@ -1161,6 +1167,7 @@ export class AcpBackend implements IAgentBackend {
       toolCallIdToNameMap: this.toolCallIdToNameMap,
       idleTimeout: this.idleTimeout,
       toolCallCountSincePrompt: this.toolCallCountSincePrompt,
+      mcpServerNames: Object.keys(this.config.mcpServers ?? {}),
       emit: msg => this.emit(msg),
       emitIdleStatus: () => this.emitIdleStatus(),
       clearIdleTimeout: () => {
@@ -1303,22 +1310,28 @@ export class AcpBackend implements IAgentBackend {
         promptLength: prompt.length,
       });
       await this.connection.prompt(promptRequest);
-      this.logAcpResponse('prompt', { ok: true }, {
-        promptLength: prompt.length,
-      });
+      this.logAcpResponse(
+        'prompt',
+        { ok: true },
+        {
+          promptLength: prompt.length,
+        }
+      );
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
 
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
       // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
     } catch (error) {
-      logger.error('[ACP] Prompt send failed', toError(error), { agent: this.transport.agentName, error: safeStringify(error) });
+      logger.error('[ACP] Prompt send failed', toError(error), {
+        agent: this.transport.agentName,
+        error: safeStringify(error),
+      });
       this.waitingForResponse = false;
 
-      this.emit({
-        type: 'status',
-        status: 'error',
-        detail: safeStringify(error),
-      });
+      // Don't emit status:error here — the caller (messageLoop) already
+      // catches the throw and calls publishVisibleError().  Emitting AND
+      // throwing causes the same error to reach the server twice via two
+      // independent paths (onMessage→drainBackendOutput vs catch→publishVisibleError).
       throw error;
     }
   }
@@ -1349,15 +1362,15 @@ export class AcpBackend implements IAgentBackend {
       this.idleResolver = null;
       this.waitingForResponse = false;
       const timeoutMin = Math.round(timeoutMs / 60000);
-      
+
       // Cancel the current LLM turn on timeout
       await this.cancelCurrentTurn();
-      
+
       if (rejecter) {
         rejecter(
           new Error(
             `Response timed out after ${timeoutMin} minutes. ` +
-            `The LLM may still be running. You can continue sending messages.`
+              `The LLM may still be running. You can continue sending messages.`
           )
         );
       }
@@ -1371,13 +1384,17 @@ export class AcpBackend implements IAgentBackend {
     if (!this.acpSessionId || !this.connection) {
       return;
     }
-    
+
     try {
       const cancelRequest = { sessionId: this.acpSessionId };
       this.logAcpRequest('cancel', cancelRequest, { reason: 'response-timeout' });
       await this.connection.cancel(cancelRequest);
       this.logAcpResponse('cancel', { ok: true }, { reason: 'response-timeout' });
-      this.emit({ type: 'status', status: 'stopped', detail: 'Response timed out after inactivity' });
+      this.emit({
+        type: 'status',
+        status: 'stopped',
+        detail: 'Response timed out after inactivity',
+      });
     } catch (error) {
       logger.debug('[AcpBackend] Error cancelling turn on timeout:', error);
     }
@@ -1471,10 +1488,7 @@ export class AcpBackend implements IAgentBackend {
     return response;
   }
 
-  async setSessionModel(
-    _sessionId: SessionId,
-    modelId: string
-  ): Promise<SetSessionModelResponse> {
+  async setSessionModel(_sessionId: SessionId, modelId: string): Promise<SetSessionModelResponse> {
     if (!this.connection || !this.acpSessionId) {
       throw new Error('Session not started');
     }

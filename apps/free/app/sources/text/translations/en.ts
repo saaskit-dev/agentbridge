@@ -560,6 +560,7 @@ export const en: TranslationStructure = {
       editNotebook: 'Edit Notebook',
       todoList: 'Todo List',
       webSearch: 'Web Search',
+      toolSearch: 'Tool Search',
       reasoning: 'Reasoning',
       applyChanges: 'Update file',
       viewDiff: 'Current file changes',

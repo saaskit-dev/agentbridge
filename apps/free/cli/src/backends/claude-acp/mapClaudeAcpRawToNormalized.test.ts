@@ -28,12 +28,12 @@ describe('mapClaudeAcpRawToNormalized', () => {
     expect(block?.type).toBe('thinking');
   });
 
-  it('maps exec-approval-request to ClaudeAcpBash tool-call', () => {
+  it('maps exec-approval-request to CodexBash tool-call', () => {
     const msg = { type: 'exec-approval-request', call_id: 'exec-1', command: 'ls' } as AgentMessage;
     const result = mapClaudeAcpRawToNormalized(msg);
     const block = result?.role === 'agent' ? result.content[0] : null;
     expect(block?.type).toBe('tool-call');
-    expect((block as { name: string } | null)?.name).toBe('ClaudeAcpBash');
+    expect((block as { name: string } | null)?.name).toBe('CodexBash');
   });
 
   it('returns null for unknown message types', () => {

@@ -548,6 +548,7 @@ export const ca: TranslationStructure = {
       editNotebook: 'Edita quadern',
       todoList: 'Llista de tasques',
       webSearch: 'Cerca web',
+      toolSearch: 'Cerca eines',
       reasoning: 'Raonament',
       applyChanges: 'Actualitza fitxer',
       viewDiff: 'Canvis del fitxer actual',

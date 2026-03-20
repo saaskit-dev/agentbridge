@@ -541,6 +541,7 @@ export const zhHans: TranslationStructure = {
       editNotebook: '编辑 Notebook',
       todoList: '待办列表',
       webSearch: 'Web 搜索',
+      toolSearch: '工具搜索',
       reasoning: '推理',
       applyChanges: '更新文件',
       viewDiff: '当前文件更改',

@@ -16,6 +16,24 @@ import { t } from '@/text';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/tools/PermissionFooter');
 
+// Tool classification helpers — avoid hardcoded tool name lists throughout the file.
+// These cover all agent variants (Claude PascalCase, Gemini/OpenCode lowercase, ACP synthetic names).
+const BASH_TOOLS = new Set(['Bash', 'CodexBash', 'shell', 'execute']);
+const EDIT_OR_PLAN_TOOLS = new Set([
+  'Edit', 'MultiEdit', 'Write', 'NotebookEdit',
+  'edit', // Gemini/OpenCode lowercase
+  'CodexPatch', 'CodexDiff',
+  'ExitPlanMode', 'exit_plan_mode',
+]);
+
+function isBashLikeTool(name: string): boolean {
+  return BASH_TOOLS.has(name);
+}
+
+function isEditOrPlanTool(name: string): boolean {
+  return EDIT_OR_PLAN_TOOLS.has(name);
+}
+
 interface PermissionFooterProps {
   permission: {
     id: string;
@@ -108,11 +126,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
 
     setLoadingForSession(true);
     try {
-      // Special handling for Bash tool - include exact command
+      // Special handling for Bash-like tools - include exact command
       let toolIdentifier = toolName;
-      if (toolName === 'Bash' && toolInput?.command) {
+      if (isBashLikeTool(toolName) && toolInput?.command) {
         const command = toolInput.command;
-        toolIdentifier = `Bash(${command})`;
+        toolIdentifier = `${toolName}(${command})`;
       }
 
       await sessionAllow(sessionId, permission.id, undefined, [toolIdentifier]);
@@ -197,10 +215,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     // Direct match for non-Bash tools
     if (allowedTools.includes(toolName)) return true;
 
-    // For Bash, check exact command match
-    if (toolName === 'Bash' && toolInput?.command) {
+    // For Bash-like tools, check exact command match
+    if (isBashLikeTool(toolName) && toolInput?.command) {
       const command = toolInput.command;
-      return allowedTools.includes(`Bash(${command})`);
+      return allowedTools.includes(`${toolName}(${command})`);
     }
 
     return false;
@@ -482,13 +500,8 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
           )}
         </TouchableOpacity>
 
-        {/* Allow All Edits button - only show for Edit and MultiEdit tools */}
-        {(toolName === 'Edit' ||
-          toolName === 'MultiEdit' ||
-          toolName === 'Write' ||
-          toolName === 'NotebookEdit' ||
-          toolName === 'exit_plan_mode' ||
-          toolName === 'ExitPlanMode') && (
+        {/* Allow All Edits button - show for edit/patch/plan tools across all agents */}
+        {isEditOrPlanTool(toolName) && (
           <TouchableOpacity
             style={[
               styles.button,

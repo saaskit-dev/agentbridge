@@ -141,7 +141,7 @@ export function mapGeminiRawToNormalized(msg: AgentMessage): NormalizedMessage |
           content: [{
             type: 'tool-call',
             id: callId,
-            name: 'GeminiBash',
+            name: 'CodexBash',
             input: inputs,
             description: null,
             uuid: id,
@@ -158,7 +158,7 @@ export function mapGeminiRawToNormalized(msg: AgentMessage): NormalizedMessage |
           content: [{
             type: 'tool-call',
             id: callId,
-            name: 'GeminiPatch',
+            name: 'CodexPatch',
             input: { auto_approved: m.auto_approved, changes: m.changes },
             description: null,
             uuid: id,

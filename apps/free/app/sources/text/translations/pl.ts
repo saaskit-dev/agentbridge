@@ -564,6 +564,7 @@ export const pl: TranslationStructure = {
       editNotebook: 'Edytuj notatnik',
       todoList: 'Lista zadań',
       webSearch: 'Wyszukiwanie w sieci',
+      toolSearch: 'Wyszukiwanie narzędzi',
       reasoning: 'Rozumowanie',
       applyChanges: 'Zaktualizuj plik',
       viewDiff: 'Bieżące zmiany pliku',
