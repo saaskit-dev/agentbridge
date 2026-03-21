@@ -42,6 +42,8 @@ export interface PersistedSession {
   createdAt: number;
   /** Unique ID of the daemon instance that owns this session. Not a PID — immune to PID reuse. */
   daemonInstanceId: string;
+  /** Server message seq watermark — avoids re-fetching all messages after recovery. */
+  lastSeq?: number;
 }
 
 // ---------------------------------------------------------------------------
