@@ -220,9 +220,18 @@ export type EphemeralEvent =
       timestamp: number;
     };
 
-// Extended ephemeral events for Free server (typewriter effect)
+// Extended ephemeral events for Free server (typewriter effect + batched activity)
 export type FreeEphemeralEvent =
   | EphemeralEvent
+  | {
+      type: 'batch-activity';
+      activities: Array<{
+        id: string;
+        active: boolean;
+        activeAt: number;
+        thinking: boolean;
+      }>;
+    }
   | {
       type: 'text_delta';
       sessionId: string;

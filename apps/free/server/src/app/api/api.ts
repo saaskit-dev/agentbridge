@@ -22,7 +22,6 @@ import { getAnalyticsEnabled } from './utils/analyticsSettingsCache';
 import { userRoutes } from './routes/userRoutes';
 import { feedRoutes } from './routes/feedRoutes';
 import { kvRoutes } from './routes/kvRoutes';
-import { v3SessionRoutes } from './routes/v3SessionRoutes';
 import { capabilitiesRoutes } from './routes/capabilitiesRoutes';
 import { telemetryRoutes } from './routes/telemetryRoutes';
 import { register } from '@/app/monitoring/metrics2';
@@ -145,7 +144,6 @@ export async function startApi() {
   userRoutes(typed);
   feedRoutes(typed);
   kvRoutes(typed);
-  v3SessionRoutes(typed);
   capabilitiesRoutes(typed);
   telemetryRoutes(typed);
 

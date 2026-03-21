@@ -267,6 +267,19 @@ export const ApiEphemeralThinkingDeltaSchema = z.object({
   timestamp: z.number(),
 });
 
+// Batched activity updates (server aggregates multiple session-alive heartbeats into one emission)
+export const ApiEphemeralBatchActivityUpdateSchema = z.object({
+  type: z.literal('batch-activity'),
+  activities: z.array(
+    z.object({
+      id: z.string(),
+      active: z.boolean(),
+      activeAt: z.number(),
+      thinking: z.boolean(),
+    })
+  ),
+});
+
 export const ApiEphemeralUpdateSchema = z.union([
   ApiEphemeralActivityUpdateSchema,
   ApiEphemeralUsageUpdateSchema,
@@ -274,9 +287,11 @@ export const ApiEphemeralUpdateSchema = z.union([
   ApiEphemeralTextDeltaSchema,
   ApiEphemeralTextCompleteSchema,
   ApiEphemeralThinkingDeltaSchema,
+  ApiEphemeralBatchActivityUpdateSchema,
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;
+export type ApiEphemeralBatchActivityUpdate = z.infer<typeof ApiEphemeralBatchActivityUpdateSchema>;
 export type ApiEphemeralTextDelta = z.infer<typeof ApiEphemeralTextDeltaSchema>;
 export type ApiEphemeralTextComplete = z.infer<typeof ApiEphemeralTextCompleteSchema>;
 export type ApiEphemeralThinkingDelta = z.infer<typeof ApiEphemeralThinkingDeltaSchema>;

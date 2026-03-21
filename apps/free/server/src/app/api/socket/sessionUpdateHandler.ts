@@ -8,8 +8,9 @@ import {
 } from '@/app/events/eventRouter';
 import { sessionAliveEventsCounter, websocketEventsCounter } from '@/app/monitoring/metrics2';
 import { activityCache } from '@/app/presence/sessionCache';
+import { activityBroadcaster } from '@/app/api/socket/activityBroadcaster';
 import { db } from '@/storage/db';
-import { allocateSessionSeq, allocateUserSeq } from '@/storage/seq';
+import { allocateSessionSeq, allocateSessionSeqBatch, allocateUserSeq } from '@/storage/seq';
 import { AsyncLock } from '@/utils/lock';
 import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
@@ -341,10 +342,12 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       if (validity === 'archived' || validity === 'deleted') {
         // Session was intentionally ended — tell the daemon to shut down
         log.info('[session-alive] session archived/deleted in DB, notifying daemon', { userId, sid });
+        activityBroadcaster.remove(userId, sid);
         socket.emit('session-archived', { sid });
         return;
       }
       if (validity === 'invalid') {
+        activityBroadcaster.remove(userId, sid);
         return;
       }
       if (validity === 'offline') {
@@ -361,90 +364,244 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         activityCache.queueSessionUpdate(sid, t);
       }
 
-      // Emit session activity update
-      const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false);
-      eventRouter.emitEphemeral({
-        userId,
-        payload: sessionActivity,
-        recipientFilter: { type: 'user-scoped-only' },
-      });
-      log.debug('[session-alive] activity ephemeral emitted', { userId, sid, thinking: thinking || false });
+      // Queue activity for batched broadcast (flushes every 3s; thinking changes emit immediately)
+      activityBroadcaster.queue(userId, sid, true, t, thinking || false);
+      log.debug('[session-alive] activity queued', { userId, sid, thinking: thinking || false });
     } catch (error) {
       log.error('Error in session-alive', undefined, { userId, sid: data?.sid, error: safeStringify(error) });
     }
   });
 
-  const receiveMessageLock = new AsyncLock();
-  socket.on('message', async (data: any) => {
-    await receiveMessageLock.inLock(async () => {
+  /** Per-message content character limit. Default: 10M chars. */
+  const MESSAGE_CONTENT_MAX_CHARS = parseInt(process.env.MESSAGE_CONTENT_MAX_CHARS ?? '10000000', 10);
+
+  const sendMessagesLock = new AsyncLock();
+  socket.on('send-messages', async (data: any, callback: (response: any) => void) => {
+    await sendMessagesLock.inLock(async () => {
+      const requestStart = Date.now();
       try {
-        websocketEventsCounter.inc({ event_type: 'message' });
-        const { sid, message, id } = data;
-        const trace = extractWireTrace(data);
+        websocketEventsCounter.inc({ event_type: 'send-messages' });
+        const { sessionId: sid, messages } = data ?? {};
 
-        // Validate message size (1MB limit prevents OOM from malicious payloads)
-        if (typeof message !== 'string' || message.length > 1_000_000) {
-          log.warn('[message] invalid or oversized message rejected', { userId, sid, size: typeof message === 'string' ? message.length : 0 });
+        // Validate input
+        if (!sid || typeof sid !== 'string') {
+          callback({ ok: false, error: 'Missing sessionId' });
           return;
         }
-        if (typeof id !== 'string' || !id) {
-          log.warn('[message] missing message id', { userId, sid });
+        if (!Array.isArray(messages) || messages.length === 0 || messages.length > 100) {
+          callback({ ok: false, error: 'messages must be an array of 1-100 items' });
           return;
         }
 
-        log.info('Received message', { userId, sid, messageLength: message.length, connectionType: connection.connectionType });
+        // Validate each message
+        for (const msg of messages) {
+          if (typeof msg.id !== 'string' || !msg.id) {
+            callback({ ok: false, error: 'Each message must have a string id' });
+            return;
+          }
+          if (typeof msg.content !== 'string' || msg.content.length > MESSAGE_CONTENT_MAX_CHARS) {
+            callback({ ok: false, error: `Message content too large or invalid (id: ${msg.id})` });
+            return;
+          }
+        }
+
+        log.debug('[send-messages] received', {
+          sid, userId, messageCount: messages.length,
+          ids: messages.map((m: any) => m.id),
+        });
 
         // Resolve session
-        const session = await db.session.findUnique({
+        const session = await db.session.findFirst({
           where: { id: sid, accountId: userId },
+          select: { id: true },
         });
         if (!session) {
-          log.debug('[message] session not found', { userId, sid });
+          log.debug('[send-messages] session not found', { sid, userId });
+          callback({ ok: false, error: 'Session not found' });
           return;
         }
 
-        // Create encrypted message
-        const msgContent: PrismaJson.SessionMessageContent = {
-          t: 'encrypted',
-          c: message,
-        };
-
-        // Resolve seq
-        const updSeq = await allocateUserSeq(userId);
-        const msgSeq = await allocateSessionSeq(sid);
-
-        // Check if message already exists (dedup by client-provided id)
-        const existing = await db.sessionMessage.findUnique({
-          where: { id },
-        });
-        if (existing) {
-          log.debug('[message] duplicate skipped', { userId, sid, id });
-          return;
+        // Deduplicate within the batch by id
+        const firstMessageById = new Map<string, { id: string; content: string; _trace?: any }>();
+        for (const message of messages) {
+          if (!firstMessageById.has(message.id)) {
+            firstMessageById.set(message.id, message);
+          }
         }
 
-        // Create message
-        const msg = await db.sessionMessage.create({
-          data: {
-            id,
-            sessionId: sid,
-            seq: msgSeq,
-            content: msgContent,
-            traceId: trace?.tid ?? null,
-          },
+        const uniqueMessages = Array.from(firstMessageById.values());
+        const contentById = new Map(uniqueMessages.map(m => [m.id, m.content]));
+        const traceById = new Map<string, WireTrace>(
+          uniqueMessages
+            .filter(m => m._trace && typeof m._trace === 'object' && typeof m._trace.tid === 'string')
+            .map(m => [m.id, m._trace as WireTrace])
+        );
+
+        const txResult = await db.$transaction(async tx => {
+          const ids = uniqueMessages.map(m => m.id);
+          const existing = await tx.sessionMessage.findMany({
+            where: { sessionId: sid, id: { in: ids } },
+            select: { id: true, seq: true, traceId: true, createdAt: true, updatedAt: true },
+          });
+
+          const existingIds = new Set(existing.map(m => m.id));
+          const newMessages = uniqueMessages.filter(m => !existingIds.has(m.id));
+          const seqs = await allocateSessionSeqBatch(sid, newMessages.length, tx);
+
+          const createdMessages: Array<{ id: string; seq: number; traceId: string | null; createdAt: Date; updatedAt: Date }> = [];
+          for (let i = 0; i < newMessages.length; i++) {
+            const message = newMessages[i];
+            const trace = traceById.get(message.id);
+            const created = await tx.sessionMessage.create({
+              data: {
+                id: message.id,
+                sessionId: sid,
+                seq: seqs[i],
+                content: { t: 'encrypted', c: message.content },
+                traceId: trace?.tid ?? null,
+              },
+              select: { id: true, seq: true, content: true, traceId: true, createdAt: true, updatedAt: true },
+            });
+            createdMessages.push(created);
+          }
+
+          return {
+            responseMessages: [...existing, ...createdMessages].sort((a, b) => a.seq - b.seq),
+            createdMessages,
+          };
         });
 
-        // Emit new message update to relevant clients (forward _trace for cross-layer correlation)
-        const updatePayload = buildNewMessageUpdate(msg, sid, updSeq, randomKeyNaked(12), trace);
-        eventRouter.emitUpdate({
-          userId,
-          payload: updatePayload,
-          recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
-          skipSenderConnection: connection,
+        log.debug('[send-messages] stored', {
+          sid, userId,
+          newCount: txResult.createdMessages.length,
+          seqs: txResult.createdMessages.map(m => m.seq),
+          elapsed: Date.now() - requestStart,
+        });
+
+        // Broadcast new messages to other connected clients (skip sender to prevent self-echo)
+        for (const message of txResult.createdMessages) {
+          const content = contentById.get(message.id);
+          if (!content) continue;
+          const updSeq = await allocateUserSeq(userId);
+          const trace = traceById.get(message.id);
+          const updatePayload = buildNewMessageUpdate(
+            { ...message, content: { t: 'encrypted', c: content } },
+            sid, updSeq, randomKeyNaked(12), trace
+          );
+          eventRouter.emitUpdate({
+            userId,
+            payload: updatePayload,
+            recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
+            skipSenderConnection: connection,
+          });
+        }
+
+        callback({
+          ok: true,
+          messages: txResult.responseMessages.map(m => ({
+            id: m.id,
+            seq: m.seq,
+            ...(m.traceId ? { traceId: m.traceId } : {}),
+            createdAt: m.createdAt.getTime(),
+            updatedAt: m.updatedAt.getTime(),
+          })),
+        });
+
+        log.info('[send-messages] complete', {
+          sid, userId,
+          requestedCount: messages.length,
+          createdCount: txResult.createdMessages.length,
+          elapsed: Date.now() - requestStart,
         });
       } catch (error) {
-        log.error('Error in message handler', undefined, { userId, sid: data?.sid, error: safeStringify(error) });
+        log.error('Error in send-messages', undefined, { userId, sid: data?.sessionId, error: safeStringify(error) });
+        if (callback) callback({ ok: false, error: 'Internal error' });
       }
     });
+  });
+
+  socket.on('fetch-messages', async (data: any, callback: (response: any) => void) => {
+    try {
+      websocketEventsCounter.inc({ event_type: 'fetch-messages' });
+      const { sessionId: sid, after_seq, before_seq, limit: rawLimit } = data ?? {};
+
+      if (!sid || typeof sid !== 'string') {
+        callback({ ok: false, error: 'Missing sessionId' });
+        return;
+      }
+      const limit = typeof rawLimit === 'number' && rawLimit >= 1 && rawLimit <= 500 ? Math.floor(rawLimit) : 100;
+
+      const session = await db.session.findFirst({
+        where: { id: sid, accountId: userId },
+        select: { id: true },
+      });
+      if (!session) {
+        callback({ ok: false, error: 'Session not found' });
+        return;
+      }
+
+      // Reverse pagination: fetch older messages (seq < before_seq, DESC then reversed to ASC)
+      if (typeof before_seq === 'number' && before_seq > 0) {
+        const beforeSeq = Math.floor(before_seq);
+        const messages = await db.sessionMessage.findMany({
+          where: { sessionId: sid, seq: { lt: beforeSeq } },
+          orderBy: { seq: 'desc' },
+          take: limit + 1,
+          select: { id: true, seq: true, content: true, traceId: true, createdAt: true, updatedAt: true },
+        });
+        const hasOlderMessages = messages.length > limit;
+        const page = hasOlderMessages ? messages.slice(0, limit) : messages;
+        page.reverse(); // Back to ASC order
+
+        log.debug('[fetch-messages] older', { sid, userId, beforeSeq, count: page.length, hasOlderMessages });
+
+        callback({
+          ok: true,
+          messages: page.map(m => ({
+            id: m.id,
+            seq: m.seq,
+            content: m.content,
+            ...(m.traceId ? { traceId: m.traceId } : {}),
+            createdAt: m.createdAt.getTime(),
+            updatedAt: m.updatedAt.getTime(),
+          })),
+          hasMore: false,
+          hasOlderMessages,
+        });
+        return;
+      }
+
+      // Forward pagination: fetch newer messages (seq > after_seq, ASC)
+      const afterSeq = typeof after_seq === 'number' && after_seq >= 0 ? Math.floor(after_seq) : 0;
+
+      const messages = await db.sessionMessage.findMany({
+        where: { sessionId: sid, seq: { gt: afterSeq } },
+        orderBy: { seq: 'asc' },
+        take: limit + 1,
+        select: { id: true, seq: true, content: true, traceId: true, createdAt: true, updatedAt: true },
+      });
+
+      const hasMore = messages.length > limit;
+      const page = hasMore ? messages.slice(0, limit) : messages;
+
+      log.debug('[fetch-messages]', { sid, userId, afterSeq, count: page.length, hasMore });
+
+      callback({
+        ok: true,
+        messages: page.map(m => ({
+          id: m.id,
+          seq: m.seq,
+          content: m.content,
+          ...(m.traceId ? { traceId: m.traceId } : {}),
+          createdAt: m.createdAt.getTime(),
+          updatedAt: m.updatedAt.getTime(),
+        })),
+        hasMore,
+      });
+    } catch (error) {
+      log.error('Error in fetch-messages', undefined, { userId, sid: data?.sessionId, error: safeStringify(error) });
+      if (callback) callback({ ok: false, error: 'Internal error' });
+    }
   });
 
   socket.on('session-end', async (data: { sid: string; time: number }) => {
@@ -480,6 +637,8 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
       // Evict from activity cache so subsequent session-alive checks see the archived state
       activityCache.evictSession(sid);
+      // Remove from batched broadcaster to avoid stale active=true emission
+      activityBroadcaster.remove(userId, sid);
 
       // Emit session activity update
       const sessionActivity = buildSessionActivityEphemeral(sid, false, t, false);

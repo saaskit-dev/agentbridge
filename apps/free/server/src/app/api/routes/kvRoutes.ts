@@ -25,9 +25,6 @@ export function kvRoutes(app: Fastify) {
               version: z.number(),
             })
             .nullable(),
-          404: z.object({
-            error: z.literal('Key not found'),
-          }),
           500: z.object({
             error: z.literal('Failed to get value'),
           }),
@@ -40,11 +37,6 @@ export function kvRoutes(app: Fastify) {
 
       try {
         const result = await kvGet({ uid: userId }, key);
-
-        if (!result) {
-          return reply.code(404).send({ error: 'Key not found' });
-        }
-
         return reply.send(result);
       } catch (error) {
         log.error(`Failed to get KV value: ${error}`);

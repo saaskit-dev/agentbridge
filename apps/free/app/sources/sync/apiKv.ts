@@ -96,15 +96,15 @@ export async function kvGet(credentials: AuthCredentials, key: string): Promise<
       },
     });
 
-    if (response.status === 404) {
-      return null;
-    }
-
     if (!response.ok) {
       throw new Error(`Failed to get KV value: ${response.status}`);
     }
 
-    const data = (await response.json()) as KvItem;
+    const data = (await response.json()) as KvItem | null;
+    if (!data) {
+      return null;
+    }
+
     return {
       ...data,
       value: decodeKvValue(data.value),
