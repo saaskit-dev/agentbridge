@@ -197,12 +197,11 @@ const stylesheet = StyleSheet.create(theme => ({
 }));
 
 const FALLBACK_AGENT_TYPES: AppAgentFlavor[] = [
-  'claude-acp',
-  'codex-acp',
-  'gemini',
-  'opencode',
   'claude',
   'codex',
+  'gemini',
+  'opencode',
+  'claude-native',
 ];
 
 type AgentSection = {

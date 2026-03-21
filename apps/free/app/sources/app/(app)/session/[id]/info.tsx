@@ -149,7 +149,7 @@ function SessionInfoContent({ session }: { session: Session }) {
   const handleCopySessionId = useCallback(async () => {
     if (!session) return;
     try {
-      await Clipboard.setStringAsync(session.id);
+      await Clipboard.setStringAsync(session.id.replace(/-/g, ''));
       Modal.alert(t('common.success'), t('sessionInfo.freeSessionIdCopied'));
     } catch (error) {
       Modal.alert(t('common.error'), t('sessionInfo.failedToCopySessionId'));
@@ -293,19 +293,19 @@ function SessionInfoContent({ session }: { session: Session }) {
         <ItemGroup>
           <Item
             title={t('sessionInfo.freeSessionId')}
-            subtitle={`${session.id.substring(0, 8)}...${session.id.substring(session.id.length - 8)}`}
+            subtitle={(() => { const compact = session.id.replace(/-/g, ''); return `${compact.substring(0, 8)}...${compact.substring(compact.length - 8)}`; })()}
             icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
             onPress={handleCopySessionId}
           />
           {(session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId) && (
             <Item
               title={t('sessionInfo.agentSessionId')}
-              subtitle={(() => { const sid = (session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId)!; return `${sid.substring(0, 8)}...${sid.substring(sid.length - 8)}`; })()}
+              subtitle={(() => { const sid = (session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId)!.replace(/-/g, ''); return `${sid.substring(0, 8)}...${sid.substring(sid.length - 8)}`; })()}
               icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
               onPress={async () => {
                 try {
                   const sid = (session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId)!;
-                  await Clipboard.setStringAsync(sid);
+                  await Clipboard.setStringAsync(sid.replace(/-/g, ''));
                   Modal.alert(t('common.success'), t('sessionInfo.agentSessionIdCopied'));
                 } catch (error) {
                   Modal.alert(t('common.error'), t('sessionInfo.failedToCopyAgentSessionId'));

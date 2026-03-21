@@ -189,7 +189,7 @@ function NewSessionWizard() {
       if (tempSessionData?.agentType) {
         const requestedAgentType = coerceAgentType(tempSessionData.agentType);
         if (isExperimentalAgent(requestedAgentType) && !experimentsEnabled) {
-          return 'claude-acp';
+          return 'claude';
         }
         return requestedAgentType;
       }
@@ -199,16 +199,15 @@ function NewSessionWizard() {
           return savedAgentType;
         }
       }
-      return 'claude-acp';
+      return 'claude';
     }
   );
   const [supportedAgentTypes, setSupportedAgentTypes] = React.useState<AppAgentFlavor[]>([
-    'claude-acp',
-    'codex-acp',
-    'gemini',
-    'opencode',
     'claude',
     'codex',
+    'gemini',
+    'opencode',
+    'claude-native',
   ]);
 
   // Persist agent selection changes (separate from setState to avoid race condition)
@@ -435,7 +434,7 @@ function NewSessionWizard() {
       const discoveredAgentTypes = agentTypes.map(agentType => coerceAgentType(agentType));
       setSupportedAgentTypes(discoveredAgentTypes);
       if (!discoveredAgentTypes.includes(agentType)) {
-        setAgentType(discoveredAgentTypes[0] ?? 'claude-acp');
+        setAgentType(discoveredAgentTypes[0] ?? 'claude');
       }
     });
     return () => {
@@ -445,21 +444,21 @@ function NewSessionWizard() {
 
   const isAgentAvailable = React.useCallback(
     (candidate: string): boolean => {
+      if (candidate === 'claude-native') return cliAvailability.claudeNative !== false;
       if (candidate === 'claude') return cliAvailability.claude !== false;
-      if (candidate === 'claude-acp') return cliAvailability.claudeAcp !== false;
       if (candidate === 'codex') return cliAvailability.codex !== false;
-      if (candidate === 'codex-acp') return cliAvailability.codexAcp !== false;
       if (candidate === 'gemini') return experimentsEnabled && cliAvailability.gemini !== false;
       if (candidate === 'opencode') return experimentsEnabled && cliAvailability.opencode !== false;
+      if (candidate === 'cursor') return experimentsEnabled && cliAvailability.cursor !== false;
       return true;
     },
     [
+      cliAvailability.claudeNative,
       cliAvailability.claude,
-      cliAvailability.claudeAcp,
       cliAvailability.codex,
-      cliAvailability.codexAcp,
       cliAvailability.gemini,
       cliAvailability.opencode,
+      cliAvailability.cursor,
       experimentsEnabled,
     ]
   );
@@ -483,12 +482,12 @@ function NewSessionWizard() {
     }
   }, [
     cliAvailability.timestamp,
+    cliAvailability.claudeNative,
     cliAvailability.claude,
-    cliAvailability.claudeAcp,
     cliAvailability.codex,
-    cliAvailability.codexAcp,
     cliAvailability.gemini,
     cliAvailability.opencode,
+    cliAvailability.cursor,
     agentType,
     experimentsEnabled,
     isAgentAvailable,
@@ -732,13 +731,13 @@ function NewSessionWizard() {
       isPulsing: isOnline,
       cliStatus: includeCLI
           ? {
-              claude: cliAvailability.claude,
-              'claude-acp': cliAvailability.claudeAcp,
-              codex: cliAvailability.codex,
-              'codex-acp': cliAvailability.codexAcp,
+              'claude-native': cliAvailability.claudeNative,
+              'claude': cliAvailability.claude,
+              'codex': cliAvailability.codex,
               ...(experimentsEnabled && {
                 gemini: cliAvailability.gemini,
                 opencode: cliAvailability.opencode,
+                cursor: cliAvailability.cursor,
             }),
           }
         : undefined,

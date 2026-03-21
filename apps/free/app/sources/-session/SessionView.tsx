@@ -10,7 +10,6 @@ import { AgentInput } from '@/components/AgentInput';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
-import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -579,7 +578,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
 
   const content = (
       <>
-      <Deferred>{messages.length > 0 && <ChatList session={session} footerNotice={footerNotice} />}</Deferred>
+      {messages.length > 0 && <ChatList session={session} footerNotice={footerNotice} />}
     </>
   );
   const placeholder =

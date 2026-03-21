@@ -29,12 +29,13 @@ function CopyableBadge({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  const compact = value.replace(/-/g, '');
   const handlePress = React.useCallback(async () => {
-    await Clipboard.setStringAsync(value);
+    await Clipboard.setStringAsync(compact);
     setCopied(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setCopied(false), 1200);
-  }, [value]);
+  }, [compact]);
   return (
     <Pressable
       onPress={handlePress}
@@ -53,7 +54,7 @@ function CopyableBadge({ label, value }: { label: string; value: string }) {
           color: copied ? '#4ade80' : '#0f0',
         }}
       >
-        {copied ? 'copied!' : `${label}:${value}`}
+        {copied ? 'copied!' : `${label}:${compact}`}
       </Text>
     </Pressable>
   );
