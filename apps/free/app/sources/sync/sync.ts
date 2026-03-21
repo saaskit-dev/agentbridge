@@ -66,16 +66,11 @@ function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boo
 /**
  * Minimal wire trace — mirrors packages/core WireTrace without adding a Node.js dependency.
  * Must stay in sync with packages/core/src/telemetry/types.ts WireTrace.
- * App generates tid/sid/ses; machineId (mid) is added by the daemon layer if needed.
- * pid (parentSpanId) is set when continuing a trace from server.
  */
-type WireTrace = { tid: string; sid: string; pid?: string; ses?: string; mid?: string };
+type WireTrace = { tid: string; ses?: string; mid?: string };
 
 function makeWireTrace(sessionId: string): WireTrace {
-  const traceId = randomUUID();
-  // spanId: 12-char hex, consistent with core's generateSpanId()
-  const spanId = randomUUID().replace(/-/g, '').slice(0, 12);
-  return { tid: traceId, sid: spanId, ses: sessionId };
+  return { tid: randomUUID(), ses: sessionId };
 }
 
 type OutboxMessage = {
@@ -337,7 +332,7 @@ class Sync {
     if (this.outboxPersistTimer) return;
     this.outboxPersistTimer = setTimeout(() => {
       this.outboxPersistTimer = null;
-      const obj: Record<string, Array<{ id: string; content: string; _trace?: { tid: string; sid: string; pid?: string; ses?: string; mid?: string } }>> = {};
+      const obj: Record<string, Array<{ id: string; content: string; _trace?: WireTrace }>> = {};
       for (const [sid, msgs] of this.pendingOutbox) {
         if (msgs.length > 0) obj[sid] = msgs;
       }
@@ -2019,15 +2014,12 @@ class Sync {
     // RFC §9.1 Step 8: extract _trace from incoming server update before Zod strips it
     const rawWireTrace = (update && typeof update === 'object') ? (update as Record<string, unknown>)._trace : undefined;
     let traceCtx: TraceContext | undefined;
-    if (rawWireTrace && typeof (rawWireTrace as any).tid === 'string' && typeof (rawWireTrace as any).sid === 'string') {
-      const wt = rawWireTrace as { tid: string; sid: string; ses?: string; mid?: string };
-      traceCtx = continueTrace({ traceId: wt.tid, spanId: wt.sid, sessionId: wt.ses, machineId: wt.mid });
+    if (rawWireTrace && typeof (rawWireTrace as any).tid === 'string') {
+      const wt = rawWireTrace as WireTrace;
+      traceCtx = continueTrace({ traceId: wt.tid, sessionId: wt.ses, machineId: wt.mid });
       // RFC §7.1: keep session trace fresh so subsequent RPC calls carry the correct trace
-      // Include all fields: tid, sid, pid (parentSpanId), ses (sessionId), mid (machineId)
       if (wt.ses) setSessionTrace(wt.ses, {
         tid: traceCtx.traceId,
-        sid: traceCtx.spanId,
-        pid: traceCtx.parentSpanId,
         ses: traceCtx.sessionId,
         mid: traceCtx.machineId,
       });

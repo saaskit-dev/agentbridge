@@ -3,8 +3,6 @@
 
 export interface TraceContext {
   readonly traceId: string
-  readonly spanId: string
-  readonly parentSpanId?: string
   readonly sessionId?: string
   readonly machineId?: string
   readonly userId?: string
@@ -16,8 +14,6 @@ export interface LogEntry {
   layer: string
   component: string
   traceId?: string
-  spanId?: string
-  parentSpanId?: string
   sessionId?: string
   machineId?: string
   userId?: string
@@ -46,8 +42,6 @@ export function levelValue(level: Level): number {
 
 export interface WireTrace {
   tid: string
-  sid: string
-  pid?: string
   ses?: string
   mid?: string
 }

@@ -115,8 +115,6 @@ const logEntrySchema = z.object({
   component: z.string().max(128),
   message: z.string().max(8192),
   traceId: z.string().max(64).optional(),
-  spanId: z.string().max(64).optional(),
-  parentSpanId: z.string().max(64).optional(),
   sessionId: z.string().max(128).optional(),
   machineId: z.string().max(128).optional(),
   data: z.record(z.unknown()).optional(),

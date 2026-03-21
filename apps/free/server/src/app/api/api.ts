@@ -27,7 +27,7 @@ import { telemetryRoutes } from './routes/telemetryRoutes';
 import { register } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
 import { isLocalStorage, getLocalFilesDir } from '@/storage/files';
-import { Logger, continueTrace, resumeTrace } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, resumeTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { createFastifyLogger } from '@/utils/fastifyLogger';
 import { runWithTrace } from '@/utils/requestTrace';
 import { onShutdown, SHUTDOWN_PHASE } from '@/utils/shutdown';
@@ -54,7 +54,6 @@ export async function startApi() {
       'Content-Type',
       'Authorization',
       'X-Trace-Id',
-      'X-Span-Id',
       'X-Socket-Id',
     ],
     methods: ['GET', 'POST', 'DELETE'],
@@ -82,15 +81,10 @@ export async function startApi() {
 
   // Extract trace context from HTTP headers and propagate via AsyncLocalStorage.
   // Must be registered AFTER authentication so it runs early in the request lifecycle.
-  // Covers: X-Trace-Id (required), X-Span-Id (optional, becomes parentSpanId on server).
   app.addHook('onRequest', (request, _reply, done) => {
     const traceId = request.headers['x-trace-id'] as string | undefined;
-    const spanId = request.headers['x-span-id'] as string | undefined;
     if (traceId) {
-      const ctx = spanId
-        ? continueTrace({ traceId, spanId })
-        : resumeTrace(traceId);
-      runWithTrace(ctx, done);
+      runWithTrace(resumeTrace(traceId), done);
     } else {
       done();
     }

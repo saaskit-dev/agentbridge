@@ -7,7 +7,7 @@
 
 import type { TraceContext } from '@saaskit-dev/agentbridge/telemetry';
 
-export type AppWireTrace = { tid: string; sid: string; pid?: string; ses?: string; mid?: string };
+export type AppWireTrace = { tid: string; ses?: string; mid?: string };
 
 const _sessionTraces = new Map<string, AppWireTrace>();
 
@@ -36,8 +36,6 @@ export function clearSessionTrace(sessionId: string): void {
 export function wireTraceToContext(trace: AppWireTrace): TraceContext {
   return {
     traceId: trace.tid,
-    spanId: trace.sid,
-    parentSpanId: trace.pid,
     sessionId: trace.ses,
     machineId: trace.mid,
   };

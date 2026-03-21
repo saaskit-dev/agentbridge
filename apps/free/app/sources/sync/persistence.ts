@@ -284,7 +284,7 @@ export function retrieveTempText(id: string): string | null {
 type PersistedOutboxMessage = {
   id: string;
   content: string;
-  _trace?: { tid: string; sid: string; pid?: string; ses?: string; mid?: string };
+  _trace?: { tid: string; ses?: string; mid?: string };
 };
 
 const OUTBOX_KEY = 'pending-outbox-v1';

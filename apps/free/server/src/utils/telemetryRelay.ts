@@ -102,8 +102,6 @@ export class TelemetryRelay {
               component: e.component,
               layer: e.layer,
               ...(e.traceId ? { traceId: e.traceId } : {}),
-              ...(e.spanId ? { spanId: e.spanId } : {}),
-              ...(e.parentSpanId ? { parentSpanId: e.parentSpanId } : {}),
               ...(e.sessionId ? { sessionId: e.sessionId } : {}),
               ...(e.machineId ? { machineId: e.machineId } : {}),
               ...(e.durationMs != null ? { durationMs: e.durationMs } : {}),

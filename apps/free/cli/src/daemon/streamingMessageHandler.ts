@@ -138,7 +138,7 @@ export class StreamingMessageHandler extends EventEmitter {
     // Capture current turn's trace context at stream start (RFC §11.5)
     const ctx = getProcessTraceContext();
     const trace: WireTrace | undefined = ctx
-      ? { tid: ctx.traceId, sid: ctx.spanId, ses: ctx.sessionId, mid: ctx.machineId }
+      ? { tid: ctx.traceId, ses: ctx.sessionId, mid: ctx.machineId }
       : undefined;
 
     this.streamingStates.set(sessionId, {

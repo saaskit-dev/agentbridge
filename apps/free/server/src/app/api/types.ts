@@ -53,7 +53,7 @@ declare module 'fastify' {
   interface FastifyRequest {
     userId: string;
     startTime?: number;
-    /** Trace context extracted from X-Trace-Id / X-Span-Id headers (RFC §7.2) */
+    /** Trace context extracted from X-Trace-Id header (RFC §7.2) */
     traceCtx?: TraceContext;
   }
   interface FastifyInstance {

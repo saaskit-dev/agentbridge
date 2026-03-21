@@ -194,7 +194,7 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
 
   logger.debug('step 2/5: session spawned', { sessionId });
 
-  // All subsequent logs include sessionId (+ traceId/spanId from global context provider)
+  // All subsequent logs include sessionId (+ traceId from global context provider)
   const ctx = getProcessTraceContext();
   const log: ScopedLogger | Logger = ctx
     ? logger.withContext(continueTrace({ ...ctx, sessionId }))

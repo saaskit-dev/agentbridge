@@ -49,7 +49,6 @@ export async function startSocket(app: Fastify) {
         'Content-Type',
         'Authorization',
         'X-Trace-Id',
-        'X-Span-Id',
         'X-Socket-Id',
       ],
     },
@@ -262,10 +261,9 @@ export async function startSocket(app: Fastify) {
     const connectionSessionId = connection.connectionType === 'session-scoped' ? connection.sessionId : undefined;
     socket.use(([_event, data], next) => {
       const wire = data && typeof data === 'object' ? (data as any)._trace : undefined;
-      if (wire && typeof wire.tid === 'string' && typeof wire.sid === 'string') {
+      if (wire && typeof wire.tid === 'string') {
         const ctx = continueTrace({
           traceId: wire.tid,
-          spanId: wire.sid,
           sessionId: wire.ses ?? connectionSessionId,
           ...(wire.mid ? { machineId: wire.mid } : {}),
         });

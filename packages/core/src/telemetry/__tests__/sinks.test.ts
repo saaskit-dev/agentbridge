@@ -697,8 +697,6 @@ describe('NewRelicBackend', () => {
     )!
     const attrs = JSON.parse(req.body)[0].logs[0].attributes
     expect('traceId' in attrs).toBe(false)
-    expect('spanId' in attrs).toBe(false)
-    expect('parentSpanId' in attrs).toBe(false)
     expect('sessionId' in attrs).toBe(false)
     expect('durationMs' in attrs).toBe(false)
     // machineId, env, serverIp in common should also be omitted when not provided
@@ -711,12 +709,11 @@ describe('NewRelicBackend', () => {
   it('includes optional attributes when present', () => {
     const backend = new NewRelicBackend({ licenseKey: 'key' })
     const req = backend.buildRequest(
-      [makeEntry({ traceId: 'tid', spanId: 'sid', durationMs: 42 })],
+      [makeEntry({ traceId: 'tid', durationMs: 42 })],
       { deviceId: 'dev-1', appVersion: '1.0', layer: 'cli', machineId: 'machine-1', env: 'production', serverIp: '10.0.1.5' },
     )!
     const attrs = JSON.parse(req.body)[0].logs[0].attributes
     expect(attrs.traceId).toBe('tid')
-    expect(attrs.spanId).toBe('sid')
     expect(attrs.durationMs).toBe(42)
     const common = JSON.parse(req.body)[0].common.attributes
     expect(common['machine.id']).toBe('machine-1')

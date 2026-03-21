@@ -771,7 +771,6 @@ export abstract class AgentSession<TMode> {
         userId: this.userId,
         sessionId: this.session.sessionId,
         traceId: getProcessTraceContext()?.traceId,
-        spanId: getProcessTraceContext()?.spanId,
       });
       const item = await this.messageQueue.waitForMessagesAndGetAsString();
       if (!item) break;
@@ -782,7 +781,6 @@ export abstract class AgentSession<TMode> {
         userId: this.userId,
         sessionId: this.session.sessionId,
         traceId: getProcessTraceContext()?.traceId,
-        spanId: getProcessTraceContext()?.spanId,
         preview: item.message.slice(0, 100),
       });
       this.resetStreamingText();
@@ -966,7 +964,6 @@ export abstract class AgentSession<TMode> {
           userId: this.userId,
           sessionId: this.session.sessionId,
           traceId: getProcessTraceContext()?.traceId,
-          spanId: getProcessTraceContext()?.spanId,
           id: msg.id,
           state: c.state,
         });
@@ -978,7 +975,6 @@ export abstract class AgentSession<TMode> {
             userId: this.userId,
             sessionId: this.session.sessionId,
             traceId: getProcessTraceContext()?.traceId,
-            spanId: getProcessTraceContext()?.spanId,
             id: msg.id,
             name: block.name,
             toolUseId: block.id,
@@ -988,7 +984,6 @@ export abstract class AgentSession<TMode> {
             userId: this.userId,
             sessionId: this.session.sessionId,
             traceId: getProcessTraceContext()?.traceId,
-            spanId: getProcessTraceContext()?.spanId,
             id: msg.id,
             toolUseId: block.tool_use_id,
             isError: block.is_error ?? false,
