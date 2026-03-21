@@ -20,9 +20,17 @@ export const GEMINI_MODEL_ENV = 'GEMINI_MODEL';
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro';
 
 /**
- * Instruction for changing chat title
- * Used in system prompts to instruct agents to call change_title function
+ * Instruction for changing chat title.
+ * Used in prompts to instruct agents to call the change_title MCP tool.
+ *
+ * The tool is exposed via the "free" MCP server. All ACP agents see the
+ * same tool, but the old `functions.free__change_title` phrasing caused
+ * Cursor agent to treat it as a codebase reference (grep for the symbol)
+ * instead of a tool-call intent — especially in workspaces that contain
+ * source files mentioning `change_title`.
+ *
+ * Using a natural-language description avoids this ambiguity.
  */
 export const CHANGE_TITLE_INSTRUCTION = trimIdent(
-  `Based on this message, call functions.free__change_title to change chat session title that would represent the current task. If chat idea would change dramatically - call this function again to update the title.`
+  `Based on this message, call the change_title tool (from the "free" MCP server) to set a short chat session title that represents the current task. If the topic changes dramatically, call it again to update the title.`
 );

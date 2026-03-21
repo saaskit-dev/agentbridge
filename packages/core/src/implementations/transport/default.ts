@@ -500,7 +500,7 @@ export class CodexTransport extends DefaultTransport {
  */
 export class ClaudeAcpTransport extends DefaultTransport {
   constructor() {
-    super('claude-acp');
+    super('claude');
   }
 
   /**
@@ -515,15 +515,56 @@ export class ClaudeAcpTransport extends DefaultTransport {
 // Registration
 // ============================================================================
 
+// ============================================================================
+// Cursor Transport Handler
+// ============================================================================
+
+/**
+ * Cursor Transport Handler
+ *
+ * Cursor agent uses clean ACP with no special quirks.
+ * Detects auth errors in stderr.
+ */
+export class CursorTransport extends DefaultTransport {
+  constructor() {
+    super('cursor');
+  }
+
+  handleStderr(text: string, _context: StderrContext): StderrResult {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return { message: null, suppress: true };
+    }
+
+    if (
+      trimmed.includes('Authentication required') ||
+      trimmed.includes('not logged in') ||
+      trimmed.includes('CURSOR_API_KEY')
+    ) {
+      return {
+        message: {
+          type: 'status' as const,
+          status: 'error' as const,
+          detail: 'Cursor Agent not authenticated. Run `cursor-agent login` or set CURSOR_API_KEY.',
+        },
+      };
+    }
+
+    return { message: null };
+  }
+}
+
 // Register default transport handlers
 registerTransportHandler('generic-acp', () => new DefaultTransport());
 registerTransportHandler('gemini', () => new GeminiTransport());
-registerTransportHandler('codex-acp', () => new CodexTransport());
-registerTransportHandler('claude-acp', () => new ClaudeAcpTransport());
+registerTransportHandler('codex', () => new CodexTransport());
+registerTransportHandler('claude', () => new ClaudeAcpTransport());
+registerTransportHandler('cursor', () => new CursorTransport());
 
 // Export singleton for convenience
 export const defaultTransport = new DefaultTransport();
 export const geminiTransport = new GeminiTransport();
+export const cursorTransport = new CursorTransport();
 
 // ============================================================================
 // OpenCode Transport Handler

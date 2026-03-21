@@ -15,6 +15,13 @@ export {
   type GeminiBackendResult,
 } from './gemini';
 
+// Cursor factory
+export {
+  createCursorBackend,
+  registerCursorAgent,
+  type CursorBackendOptions,
+} from './cursor';
+
 // Future factories:
 // export { createCodexBackend, registerCodexAgent, type CodexBackendOptions } from './codex';
 // export { createClaudeBackend, registerClaudeAgent, type ClaudeBackendOptions } from './claude';

@@ -132,6 +132,7 @@ export interface ServerToClientEvents {
     thinking: boolean;
   }) => void;
   'session-archived': (data: { sid: string }) => void;
+  replay: (data: { sessionId: string; messages: any[]; hasMore: boolean }) => void;
   auth: (data: { success: boolean; user: string }) => void;
   error: (data: { message: string }) => void;
 }
@@ -251,6 +252,14 @@ export interface ClientToServerEvents {
     timestamp: number;
     _trace?: WireTrace;
   }) => void;
+  'send-messages': (
+    data: { sessionId: string; messages: Array<{ id: string; content: string; _trace?: WireTrace }> },
+    cb: (response: { ok: boolean; messages?: Array<{ id: string; seq: number; createdAt: number; updatedAt: number }>; error?: string }) => void,
+  ) => void;
+  'fetch-messages': (
+    data: { sessionId: string; after_seq: number; limit: number },
+    cb: (response: { ok: boolean; messages?: any[]; hasMore?: boolean; error?: string }) => void,
+  ) => void;
 }
 
 /**
@@ -267,6 +276,8 @@ export type Session = {
   agentStateVersion: number;
   capabilities?: SessionCapabilities | null;
   capabilitiesVersion?: number;
+  /** Restored from persistence — avoids re-fetching all messages after recovery. */
+  lastSeq?: number;
 };
 
 /**

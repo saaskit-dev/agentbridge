@@ -31,6 +31,22 @@ export async function startFreeServer(client: ApiSessionClient) {
   const createMcpInstance = () => {
     const mcp = new McpServer({ name: 'Free MCP', version: '1.0.0' });
 
+    mcp.registerResource(
+      'available_tools',
+      'free://tools',
+      {
+        description: 'Lists tools available on this Free MCP server',
+        mimeType: 'application/json',
+      },
+      async () => ({
+        contents: [{
+          uri: 'free://tools',
+          text: JSON.stringify({ tools: ['change_title'] }),
+          mimeType: 'application/json',
+        }],
+      })
+    );
+
     mcp.registerTool(
       'change_title',
       {

@@ -96,6 +96,9 @@ export interface AgentSessionOpts {
 
   /** Unique ID for the current daemon instance. Used for session recovery ownership. */
   daemonInstanceId: string;
+
+  /** Restored from persistence — server message seq watermark to avoid re-fetching everything. */
+  lastSeq?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +201,17 @@ export abstract class AgentSession<TMode> {
     return this._isShuttingDown;
   }
 
+  /** Whether the agent is currently processing a turn (working) vs waiting for input (idle). */
+  get isWorking(): boolean {
+    return this.lastStatus === 'working';
+  }
+
+  /** Flush pending outbox messages to the server. Has a built-in 10s timeout. */
+  async flushOutbox(): Promise<void> {
+    if (!this.session) return;
+    await this.session.flush();
+  }
+
   /** Stop only the backend subprocess without running full shutdown (preserves persisted state).
    *  Used by graceful restart — sets pendingExit to prevent auto-restart. */
   async stopBackend(): Promise<void> {
@@ -261,6 +275,7 @@ export abstract class AgentSession<TMode> {
       env: this.opts.env,
       createdAt: new Date(this.startedAt).getTime(),
       daemonInstanceId: this.opts.daemonInstanceId,
+      lastSeq: this.session.getLastSeq(),
     };
   }
 
@@ -381,7 +396,7 @@ export abstract class AgentSession<TMode> {
     this.api = await ApiClient.create(this.opts.credential);
     this.messageQueue = new MessageQueue2<TMode>(this.createModeHasher());
 
-    const sid = this.opts.sessionId ?? randomUUID();
+    const sid = this.opts.sessionId ?? randomUUID().replace(/-/g, '');
     this.generatedSessionId = sid;
     if (this.opts.resumeSessionId) {
       logger.info('[AgentSession] resuming previous session', {
@@ -393,6 +408,11 @@ export abstract class AgentSession<TMode> {
     const { metadata, state } = this.buildSessionMetadata();
 
     const response = await this.api.getOrCreateSession({ id: sid, metadata, state });
+
+    // Restore lastSeq from persistence so replay/fetch starts from the right point
+    if (response && this.opts.lastSeq != null && this.opts.lastSeq > 0) {
+      response.lastSeq = this.opts.lastSeq;
+    }
 
     const result = setupOfflineReconnection({
       api: this.api,
@@ -922,10 +942,22 @@ export abstract class AgentSession<TMode> {
     }
   }
 
+  /** Daemon-only event types that don't need server persistence.
+   *  status/token_count are delivered via ephemeral channels (session-alive, usage).
+   *  error is only useful for local IPC clients. */
+  private static readonly DAEMON_ONLY_EVENTS = new Set(['status', 'token_count', 'error']);
+
   /** Forward a single NormalizedMessage to the server and broadcast to IPC clients. */
   protected async forwardOutputMessage(msg: NormalizedMessage): Promise<void> {
     this.maybeStreamOutputMessage(msg);
-    await this.session.sendNormalizedMessage(msg);
+
+    // Skip server persistence for daemon-only events — they're delivered via
+    // ephemeral channels (session-alive, usage) or only relevant to local IPC.
+    const isDaemonOnly = msg.role === 'event' && AgentSession.DAEMON_ONLY_EVENTS.has(msg.content.type);
+    if (!isDaemonOnly) {
+      await this.session.sendNormalizedMessage(msg);
+    }
+
     if (msg.role === 'event') {
       const c = msg.content;
       if (c.type === 'status') {
@@ -1015,7 +1047,11 @@ export abstract class AgentSession<TMode> {
       return;
     }
 
-    this.forwardOutputMessage({
+    // Send directly to server instead of going through forwardOutputMessage,
+    // because forwardOutputMessage filters 'error' events as daemon-only.
+    // Visible errors (crash notices, dormant mode prompts) must reach the App
+    // so the user can see what happened and take action.
+    const msg: NormalizedMessage = {
       id: randomUUID(),
       createdAt: Date.now(),
       role: 'event',
@@ -1025,7 +1061,9 @@ export abstract class AgentSession<TMode> {
         message,
         retryable,
       },
-    });
+    };
+    this.maybeStreamOutputMessage(msg);
+    this.session.sendNormalizedMessage(msg);
   }
 
   private pipeBackendOutput(): void {
@@ -1104,6 +1142,7 @@ export abstract class AgentSession<TMode> {
       cwd: this.opts.cwd,
       env: this.opts.env ?? {},
       mcpServerUrl: this.freeServer?.url ?? '',
+      freeMcpToolNames: this.freeServer?.toolNames ?? [],
       session: this.session,
       resumeSessionId: this.opts.resumeSessionId,
       permissionMode: this.opts.permissionMode,

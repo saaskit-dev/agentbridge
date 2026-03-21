@@ -222,7 +222,7 @@ export function createCodexBackend(options: CodexBackendOptions): IAgentBackend 
 
   const config: AcpAgentConfig = {
     cwd: options.cwd,
-    agentName: 'codex-acp',
+    agentName: 'codex',
     transport: 'acp',
     command: 'npx',
     // Work around upstream Zed release/install issues by explicitly installing
@@ -241,13 +241,13 @@ export function createCodexBackend(options: CodexBackendOptions): IAgentBackend 
 }
 
 // ============================================================================
-// Claude ACP Backend Factory
+// Claude Backend Factory (ACP)
 // ============================================================================
 
 /**
- * Options for creating a Claude ACP backend
+ * Options for creating a Claude backend (ACP)
  */
-export interface ClaudeAcpBackendOptions {
+export interface ClaudeBackendOptions {
   /** Working directory for the agent */
   cwd: string;
   /** Environment variables to pass to the agent */
@@ -263,10 +263,10 @@ export interface ClaudeAcpBackendOptions {
  *
  * Uses the official Zed ACP adapter for Claude Agent SDK.
  */
-export function createClaudeAcpBackend(options: ClaudeAcpBackendOptions): IAgentBackend {
+export function createClaudeBackend(options: ClaudeBackendOptions): IAgentBackend {
   const config: AcpAgentConfig = {
     cwd: options.cwd,
-    agentName: 'claude-acp',
+    agentName: 'claude',
     transport: 'acp',
     command: 'npx',
     args: ['-y', '@zed-industries/claude-agent-acp'],
@@ -292,7 +292,7 @@ registerAgentFactory('gemini', config =>
   })
 );
 
-registerAgentFactory('codex-acp', config =>
+registerAgentFactory('codex', config =>
   createCodexBackend({
     cwd: config.cwd,
     env: config.env,
@@ -300,8 +300,8 @@ registerAgentFactory('codex-acp', config =>
   })
 );
 
-registerAgentFactory('claude-acp', config =>
-  createClaudeAcpBackend({
+registerAgentFactory('claude', config =>
+  createClaudeBackend({
     cwd: config.cwd,
     env: config.env,
     mcpServers: config.mcpServers,
@@ -358,13 +358,68 @@ export function createOpenCodeBackend(options: OpenCodeBackendOptions): IAgentBa
   return new AcpBackend(config);
 }
 
-// Import OpenCodeTransport
-import { OpenCodeTransport } from '../transport/default';
+// Import transports
+import { OpenCodeTransport, CursorTransport } from '../transport/default';
 import { AcpBackend } from './acp';
 
 // Register OpenCode factory
 registerAgentFactory('opencode', config =>
   createOpenCodeBackend({
+    cwd: config.cwd,
+    env: config.env,
+    mcpServers: config.mcpServers,
+  })
+);
+
+// ============================================================================
+// Cursor Backend Factory
+// ============================================================================
+
+/**
+ * Options for creating a Cursor backend
+ */
+export interface CursorBackendOptions {
+  /** Working directory for the agent */
+  cwd: string;
+  /** Environment variables to pass to the agent */
+  env?: Record<string, string>;
+  /** MCP servers to make available to the agent */
+  mcpServers?: Record<string, McpServerConfig>;
+  /** Optional permission handler for tool approval */
+  permissionHandler?: AcpPermissionHandler;
+}
+
+/**
+ * Create a Cursor backend using ACP.
+ *
+ * Uses `cursor-agent acp` to launch the Cursor agent in ACP mode.
+ * Requires prior authentication via `cursor-agent login` or CURSOR_API_KEY.
+ *
+ * Cursor agent specifics:
+ * - Handles file I/O and terminal execution internally
+ * - Only uses requestPermission for tool approval
+ * - Supports 26+ models (GPT-5.x, Claude 4.x, Gemini 3.x, Grok, Kimi)
+ * - Three modes: agent, plan, ask
+ */
+export function createCursorBackend(options: CursorBackendOptions): IAgentBackend {
+  const config: AcpAgentConfig = {
+    cwd: options.cwd,
+    agentName: 'cursor',
+    transport: 'acp',
+    command: 'cursor-agent',
+    args: ['acp'],
+    env: options.env,
+    mcpServers: options.mcpServers,
+    permissionHandler: options.permissionHandler,
+    transportHandler: new CursorTransport(),
+  };
+
+  return new AcpBackend(config);
+}
+
+// Register Cursor factory
+registerAgentFactory('cursor', config =>
+  createCursorBackend({
     cwd: config.cwd,
     env: config.env,
     mcpServers: config.mcpServers,

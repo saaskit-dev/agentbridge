@@ -114,17 +114,17 @@ describe.skipIf(!runRealAgentSmoke)(
       await stopDaemon();
     }, 120_000);
 
-    it('claude-acp surfaces initial capabilities or a visible error instead of failing silently', async () => {
+    it('claude surfaces initial capabilities or a visible error instead of failing silently', async () => {
       const session = await appClient.createSession();
 
       try {
-        const spawnResult = await spawnDaemonSession('/tmp', undefined, 'claude-acp');
+        const spawnResult = await spawnDaemonSession('/tmp', undefined, 'claude');
         expect(spawnResult).toHaveProperty('success', true);
         expect(spawnResult.sessionId).toBe(session.id);
 
         await waitForTrackedDaemonSession(session.id);
 
-        const { response } = await appClient.sendUserTextMessage(
+        const { ack } = await appClient.sendUserTextMessage(
           session,
           'Reply with one short sentence.',
           {
@@ -134,7 +134,7 @@ describe.skipIf(!runRealAgentSmoke)(
             },
           }
         );
-        expect(response.status).toBe(200);
+        expect(ack.ok).toBe(true);
 
         const outcome = await waitForSmokeOutcome(appClient, session, session.id, 45_000);
         expectSmokeOutcome(outcome);
@@ -144,17 +144,17 @@ describe.skipIf(!runRealAgentSmoke)(
       }
     });
 
-    it('codex-acp surfaces either initial capabilities or a visible error instead of failing silently', async () => {
+    it('codex surfaces either initial capabilities or a visible error instead of failing silently', async () => {
       const session = await appClient.createSession();
 
       try {
-        const spawnResult = await spawnDaemonSession('/tmp', undefined, 'codex-acp');
+        const spawnResult = await spawnDaemonSession('/tmp', undefined, 'codex');
         expect(spawnResult).toHaveProperty('success', true);
         expect(spawnResult.sessionId).toBe(session.id);
 
         await waitForTrackedDaemonSession(session.id);
 
-        const { response } = await appClient.sendUserTextMessage(
+        const { ack } = await appClient.sendUserTextMessage(
           session,
           'Reply with one short sentence.',
           {
@@ -164,7 +164,7 @@ describe.skipIf(!runRealAgentSmoke)(
             },
           }
         );
-        expect(response.status).toBe(200);
+        expect(ack.ok).toBe(true);
 
         const outcome = await waitForSmokeOutcome(appClient, session, session.id, 140_000);
         expectSmokeOutcome(outcome);

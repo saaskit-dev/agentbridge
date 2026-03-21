@@ -36,6 +36,8 @@ export interface AgentStartOpts {
   env: Record<string, string>;
   /** URL returned by startFreeServer(); empty string in offline mode */
   mcpServerUrl: string;
+  /** Tool names exposed by the Free MCP server (e.g. ['change_title']) */
+  freeMcpToolNames: string[];
   /** ApiSessionClient for the current session (Claude launcher needs this wrapped in Session) */
   session: ApiSessionClient;
   resumeSessionId?: string;

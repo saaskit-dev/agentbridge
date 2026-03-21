@@ -13,12 +13,12 @@ import { IPCServer } from './ipc/IPCServer';
 import type { SpawnSessionOptions as IPCSpawnSessionOptions, SpawnSessionResult as IPCSpawnSessionResult } from './ipc/protocol';
 import { SessionManager } from './sessions/SessionManager';
 import { AgentSessionFactory } from './sessions/AgentSessionFactory';
-import { ClaudeSession } from './sessions/ClaudeSession';
-import { CodexSession } from './sessions/CodexSession';
+import { ClaudeNativeSession } from './sessions/ClaudeNativeSession';
 import { GeminiSession } from './sessions/GeminiSession';
 import { OpenCodeSession } from './sessions/OpenCodeSession';
-import { ClaudeAcpSession } from './sessions/ClaudeAcpSession';
-import { CodexAcpSession } from './sessions/CodexAcpSession';
+import { ClaudeSession } from './sessions/ClaudeSession';
+import { CodexSession } from './sessions/CodexSession';
+import { CursorSession } from './sessions/CursorSession';
 import { ApiClient } from '@/api/api';
 import { MachineMetadata, DaemonState } from '@/api/types';
 import { configuration } from '@/configuration';
@@ -47,12 +47,12 @@ import { getChildProcStats } from '@/utils/childProcessUtils';
 import { readAllPersistedSessions, eraseSession as erasePersistedSession } from './sessions/sessionPersistence';
 
 // Register all agent session types at module load time
+AgentSessionFactory.register('claude-native', ClaudeNativeSession);
 AgentSessionFactory.register('claude', ClaudeSession);
-AgentSessionFactory.register('claude-acp', ClaudeAcpSession);
 AgentSessionFactory.register('codex', CodexSession);
-AgentSessionFactory.register('codex-acp', CodexAcpSession);
 AgentSessionFactory.register('gemini', GeminiSession);
 AgentSessionFactory.register('opencode', OpenCodeSession);
+AgentSessionFactory.register('cursor', CursorSession);
 
 import { readBuildMeta } from '@/utils/buildMeta';
 
@@ -544,6 +544,7 @@ export async function startDaemon(): Promise<void> {
             env: data.env,
             broadcast: (sid: string, msg: any) => ipcServer!.broadcast(sid, msg),
             daemonInstanceId,
+            lastSeq: data.lastSeq,
           });
 
           await session.initialize();
@@ -660,10 +661,43 @@ export async function startDaemon(): Promise<void> {
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
 
-        // Stop agent backends but keep persisted state for recovery by the new daemon.
-        // We do NOT call session.shutdown() here (which would delete persisted files).
+        // Wait for all agents to finish their current turn before restarting.
+        // Version updates are not urgent — avoid losing in-flight responses.
         if (sessionManager) {
           const activeSessions = sessionManager.list();
+          const busySessions = activeSessions.filter(s => s.isWorking);
+          if (busySessions.length > 0) {
+            logger.info('[DAEMON RUN] Waiting for busy sessions to finish current turn before restart', {
+              busyCount: busySessions.length,
+              busySessionIds: busySessions.map(s => s.sessionId),
+            });
+            const WAIT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max wait
+            const POLL_INTERVAL_MS = 1000;
+            const deadline = Date.now() + WAIT_TIMEOUT_MS;
+            while (Date.now() < deadline) {
+              const stillBusy = activeSessions.filter(s => s.isWorking);
+              if (stillBusy.length === 0) break;
+              await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+            }
+            const timedOut = activeSessions.filter(s => s.isWorking);
+            if (timedOut.length > 0) {
+              logger.warn('[DAEMON RUN] Timed out waiting for sessions to finish, proceeding with restart', {
+                timedOutCount: timedOut.length,
+                timedOutSessionIds: timedOut.map(s => s.sessionId),
+              });
+            } else {
+              logger.info('[DAEMON RUN] All sessions finished current turn, proceeding with restart');
+            }
+          }
+
+          // Flush all outbox messages to the server before stopping backends.
+          if (activeSessions.length > 0) {
+            logger.info('[DAEMON RUN] Flushing outbox for all sessions before restart');
+            await Promise.allSettled(activeSessions.map(s => s.flushOutbox()));
+          }
+
+          // Stop agent backends but keep persisted state for recovery by the new daemon.
+          // We do NOT call session.shutdown() here (which would delete persisted files).
           if (activeSessions.length > 0) {
             const sessionIds = activeSessions.map(s => s.sessionId);
             logger.info('[DAEMON RUN] Suspending sessions for recovery after restart', {

@@ -165,13 +165,15 @@ export { AcpBackend, createAcpBackendFactory, createAcpBackend, ClaudeBackend } 
 export {
   createGeminiBackend,
   createCodexBackend,
-  createClaudeAcpBackend,
+  createClaudeBackend,
   createOpenCodeBackend,
+  createCursorBackend,
   type CreateAcpBackendOptions,
   type GeminiBackendOptions,
   type CodexBackendOptions,
-  type ClaudeAcpBackendOptions,
+  type ClaudeBackendOptions,
   type OpenCodeBackendOptions,
+  type CursorBackendOptions,
 } from './implementations';
 
 // Transport handlers
@@ -181,7 +183,9 @@ export {
   CodexTransport,
   ClaudeAcpTransport,
   OpenCodeTransport,
+  CursorTransport,
   defaultTransport,
+  cursorTransport,
 } from './implementations';
 
 // Session update handlers

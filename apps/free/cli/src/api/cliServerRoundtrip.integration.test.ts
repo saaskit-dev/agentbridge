@@ -59,13 +59,13 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
 
   it('delivers app user messages into the real CLI session client', async () => {
     const text = `cli-inbound-${randomUUID()}`;
-    const { response } = await appClient.sendUserTextMessage(session, text, {
+    const { ack } = await appClient.sendUserTextMessage(session, text, {
       meta: {
         sentFrom: 'integration-test',
         permissionMode: 'read-only',
       },
     });
-    expect(response.status).toBe(200);
+    expect(ack.ok).toBe(true);
 
     const message = await cliClient.waitForUserMessage(
       (candidate) => candidate.content.text === text,

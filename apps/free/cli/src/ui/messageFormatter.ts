@@ -26,7 +26,7 @@ export function formatClaudeMessage(
       const sysMsg = message as SDKSystemMessage;
       if (sysMsg.subtype === 'init') {
         console.log(chalk.gray('─'.repeat(60)));
-        console.log(chalk.blue.bold('🚀 Session initialized:'), chalk.cyan(sysMsg.session_id));
+        console.log(chalk.blue.bold('🚀 Session initialized:'), chalk.cyan(sysMsg.session_id?.replace(/-/g, '')));
         console.log(chalk.gray(`  Model: ${sysMsg.model}`));
         console.log(chalk.gray(`  CWD: ${sysMsg.cwd}`));
         if (sysMsg.tools && sysMsg.tools.length > 0) {
