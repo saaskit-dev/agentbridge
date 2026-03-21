@@ -264,16 +264,17 @@ export class ApiSessionClient extends EventEmitter {
         replayMode: mode,
       });
 
-      if (mode === 'recovery') {
-        // Recovery (first connect): agent has conversation history via --resume.
-        // Only update lastSeq — do NOT route messages (would cause duplicate responses).
+      if (mode === 'recovery' && this.lastSeq > 0) {
+        // Crash recovery (first connect, agent already has history via --resume):
+        // only update lastSeq — routing would cause duplicate responses since the
+        // agent has already seen these messages.
         for (const message of data.messages) {
           if (message.seq > this.lastSeq) this.lastSeq = message.seq;
         }
         if (data.hasMore) this.fetchRemainingSeqs();
       } else {
-        // Reconnect: agent is running but missed messages during disconnect.
-        // Decrypt and route so the agent sees user messages sent while offline.
+        // Reconnect, OR first connect on a brand-new session (lastSeq === 0):
+        // agent has no prior history, so route messages so the agent sees them.
         for (const message of data.messages) {
           if (message.seq > this.lastSeq) this.lastSeq = message.seq;
           if (message.content?.t !== 'encrypted') continue;
