@@ -48,7 +48,7 @@ export class ActivityBroadcaster {
       });
       // Remove from pending to avoid duplicate emission in next batch flush
       this.pending.get(userId)?.delete(sid);
-      log.debug('[activityBroadcaster] immediate flush (thinking changed)', { userId, sid, thinking });
+      log.debug('[activityBroadcaster] immediate flush (thinking changed)', { userId, sessionId: sid, thinking });
       return;
     }
 
