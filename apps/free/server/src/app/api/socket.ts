@@ -22,7 +22,7 @@ import {
   ClientConnection,
   eventRouter,
 } from '@/app/events/eventRouter';
-import { Logger, continueTrace } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, continueTrace, createTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { runWithTrace } from '@/utils/requestTrace';
 import { onShutdown, SHUTDOWN_PHASE } from '@/utils/shutdown';
 import { db } from '@/storage/db';
@@ -255,15 +255,23 @@ export async function startSocket(app: Fastify) {
     // Propagate _trace from incoming socket events into AsyncLocalStorage so every
     // Logger call inside any handler automatically carries the traceId.
     // This runs before ALL event handlers on this socket — no per-handler changes needed.
+    //
+    // For session-scoped connections, also inject the connection-level sessionId so that
+    // events without a _trace (e.g. heartbeats) still get sessionId in their log entries,
+    // making all server-side logs searchable by sessionId in New Relic (same field as daemon).
+    const connectionSessionId = connection.connectionType === 'session-scoped' ? connection.sessionId : undefined;
     socket.use(([_event, data], next) => {
       const wire = data && typeof data === 'object' ? (data as any)._trace : undefined;
       if (wire && typeof wire.tid === 'string' && typeof wire.sid === 'string') {
         const ctx = continueTrace({
           traceId: wire.tid,
           spanId: wire.sid,
-          ...(wire.ses ? { sessionId: wire.ses } : {}),
+          sessionId: wire.ses ?? connectionSessionId,
           ...(wire.mid ? { machineId: wire.mid } : {}),
         });
+        runWithTrace(ctx, next);
+      } else if (connectionSessionId) {
+        const ctx = createTrace({ sessionId: connectionSessionId });
         runWithTrace(ctx, next);
       } else {
         next();
