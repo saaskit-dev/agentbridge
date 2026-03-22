@@ -26,7 +26,7 @@ export const ca: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: 'Safata',
-    sessions: 'Terminals',
+    sessions: 'Sessions',
     settings: 'Configuració',
   },
 
@@ -84,12 +84,15 @@ export const ca: TranslationStructure = {
     connecting: 'connectant',
     disconnected: 'desconnectat',
     error: 'error',
+    authError: 'sessió caducada, tancant sessió...',
     online: 'en línia',
     offline: 'fora de línia',
     lastSeen: ({ time }: { time: string }) => `vist per última vegada ${time}`,
     permissionRequired: 'permís requerit',
     activeNow: 'Actiu ara',
     unknown: 'desconegut',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0 ? 'sense màquines' : `${count} ${count === 1 ? 'màquina' : 'màquines'} en línia`,
   },
 
   time: {
@@ -220,10 +223,7 @@ export const ca: TranslationStructure = {
     enhancedSessionWizardEnabled: 'Llançador de sessió amb perfil actiu',
     enhancedSessionWizardDisabled: 'Usant el llançador de sessió estàndard',
 
-    // Default permission mode
-    defaultPermissionMode: 'Mode de permisos predeterminat',
-    defaultPermissionModeSubtitle: 'Mode de permisos predeterminat per a noves sessions',
-  },
+},
 
   errors: {
     networkError: 'Error de connexió',
@@ -828,6 +828,20 @@ export const ca: TranslationStructure = {
     unknownTime: 'temps desconegut',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: 'Estira per actualitzar',
+    releaseToRefresh: 'Deixa anar per actualitzar',
+    refreshing: 'Actualitzant...',
+    pullToLoadEarlier: 'Estira per carregar anteriors',
+    releaseToLoadEarlier: 'Deixa anar per carregar anteriors',
+    loadingEarlier: 'Carregant...',
+    scrollToBottom: 'Anar a baix',
+    newMessages: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'missatge nou' : 'missatges nous'}`,
+    today: 'Avui',
+    yesterday: 'Ahir',
   },
 
   codex: {

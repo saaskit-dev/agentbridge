@@ -62,12 +62,12 @@ export const TabBar = React.memo(({ activeTab, onTabPress }: TabBarProps) => {
     return [
       {
         key: 'sessions',
-        icon: require('@/assets/images/brutalist/Brutalism 15.png'),
+        icon: require('@/assets/images/brutalist/Brutalism-15.png'),
         label: t('tabs.sessions'),
       },
       {
         key: 'settings',
-        icon: require('@/assets/images/brutalist/Brutalism 9.png'),
+        icon: require('@/assets/images/brutalist/Brutalism-9.png'),
         label: t('tabs.settings'),
       },
     ];

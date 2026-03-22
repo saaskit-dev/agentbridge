@@ -117,13 +117,7 @@ export default function RootLayout() {
           headerTitle: t('settings.features'),
         }}
       />
-      <Stack.Screen
-        name="settings/features/permissionMode"
-        options={{
-          headerTitle: t('agentInput.permissionMode.title'),
-        }}
-      />
-      <Stack.Screen
+<Stack.Screen
         name="settings/diagnostics"
         options={{
           headerTitle: t('diagnostics.title'),

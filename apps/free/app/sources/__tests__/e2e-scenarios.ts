@@ -497,16 +497,16 @@ async function test_bash(ctx: TestContext) {
 
 // --- 7.1 修改设置 ---
 async function test_changeSettings(ctx: TestContext) {
-  const before = ctx.storage.getState().settings.defaultPermissionMode;
+  const before = ctx.storage.getState().settings.hideInactiveSessions;
 
-  ctx.sync.applySettings({ defaultPermissionMode: 'yolo' });
+  ctx.sync.applySettings({ hideInactiveSessions: !before });
   await sleep(500);
-  const after1 = ctx.storage.getState().settings.defaultPermissionMode;
+  const after1 = ctx.storage.getState().settings.hideInactiveSessions;
 
   // 还原
-  ctx.sync.applySettings({ defaultPermissionMode: before || 'accept-edits' });
+  ctx.sync.applySettings({ hideInactiveSessions: before });
   await sleep(500);
-  const after2 = ctx.storage.getState().settings.defaultPermissionMode;
+  const after2 = ctx.storage.getState().settings.hideInactiveSessions;
 
   return { before, changed: after1, restored: after2 };
 }

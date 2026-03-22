@@ -57,9 +57,11 @@ class Configuration {
   public readonly daemonSystemdFile: string;
 
   constructor() {
-    // Server configuration - priority: environment > default (localhost for development)
-    this.serverUrl = process.env.FREE_SERVER_URL || 'https://free-server.saaskit.app';
-    this.webappUrl = process.env.FREE_WEBAPP_URL || 'https://free.saaskit.app';
+    const isDev = process.env.APP_ENV === 'development';
+
+    // Server configuration - priority: environment > dev defaults > production defaults
+    this.serverUrl = process.env.FREE_SERVER_URL || (isDev ? 'http://localhost:3000' : 'https://free-server.saaskit.app');
+    this.webappUrl = process.env.FREE_WEBAPP_URL || (isDev ? 'http://localhost:8081' : 'https://free.saaskit.app');
 
     // Check if we're running as daemon based on process args
     const args = stripVariantArgs(process.argv.slice(2));

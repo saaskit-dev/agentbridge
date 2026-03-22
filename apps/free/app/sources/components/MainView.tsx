@@ -16,6 +16,7 @@ import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { Typography } from '@/constants/Typography';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { isUsingCustomServer } from '@/sync/serverConfig';
+import { useMachineStatus } from '@/hooks/useMachineStatus';
 import { useSocketStatus, useRealtimeStatus } from '@/sync/storage';
 import { t } from '@/text';
 import { useIsTablet } from '@/utils/responsive';
@@ -105,12 +106,21 @@ const TAB_TITLES = {
 // Active tabs
 type ActiveTabType = 'sessions' | 'settings';
 
-// Header title component with connection status
+// Header title component with connection status + machine count
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
   const { theme } = useUnistyles();
   const socketStatus = useSocketStatus();
+  const { machines, onlineCount } = useMachineStatus();
 
   const connectionStatus = React.useMemo(() => {
+    // Auth error takes priority — show clear re-login prompt
+    if (socketStatus.authError) {
+      return {
+        color: theme.colors.status.error,
+        isPulsing: false,
+        text: t('status.authError') ?? 'Auth expired, please re-login',
+      };
+    }
     const { status } = socketStatus;
     switch (status) {
       case 'connected':
@@ -146,6 +156,10 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     }
   }, [socketStatus, theme]);
 
+  const machineStatusText = t('status.machinesOnline', { count: onlineCount });
+  const machineStatusColor =
+    onlineCount > 0 ? theme.colors.status.connected : theme.colors.status.disconnected;
+
   return (
     <View style={styles.titleContainer}>
       <Text style={styles.titleText}>{t(TAB_TITLES[activeTab])}</Text>
@@ -160,6 +174,16 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
           <Text style={[styles.statusText, { color: connectionStatus.color }]}>
             {connectionStatus.text}
           </Text>
+          {socketStatus.status === 'connected' && machines.length > 0 && (
+            <>
+              <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginHorizontal: 4 }]}>
+                ·
+              </Text>
+              <Text style={[styles.statusText, { color: machineStatusColor }]}>
+                {machineStatusText}
+              </Text>
+            </>
+          )}
         </View>
       )}
     </View>

@@ -8,6 +8,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { FABWide } from './FABWide';
 import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
+import { useMachineStatus } from '@/hooks/useMachineStatus';
 import { useSocketStatus, useFriendRequests, useSettings } from '@/sync/storage';
 import { useRealtimeStatus } from '@/sync/storage';
 import { t } from '@/text';
@@ -140,6 +141,7 @@ export const SidebarView = React.memo(() => {
   const friendRequests = useFriendRequests();
   const inboxHasContent = useInboxHasContent();
   const settings = useSettings();
+  const { machines, onlineCount } = useMachineStatus();
 
   // Compute connection status once per render (theme-reactive, no stale memoization)
   const connectionStatus = (() => {
@@ -195,6 +197,10 @@ export const SidebarView = React.memo(() => {
     router.push('/new');
   }, [router]);
 
+  const machineStatusText = t('status.machinesOnline', { count: onlineCount });
+  const machineStatusColor =
+    onlineCount > 0 ? styles.statusConnected.color : styles.statusDisconnected.color;
+
   // Title content used in both centered and left-justified modes (DRY)
   const titleContent = (
     <>
@@ -210,6 +216,16 @@ export const SidebarView = React.memo(() => {
           <Text style={[styles.statusText, { color: connectionStatus.textColor }]}>
             {connectionStatus.text}
           </Text>
+          {socketStatus.status === 'connected' && machines.length > 0 && (
+            <>
+              <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginHorizontal: 4 }]}>
+                ·
+              </Text>
+              <Text style={[styles.statusText, { color: machineStatusColor }]}>
+                {machineStatusText}
+              </Text>
+            </>
+          )}
         </View>
       )}
     </>
@@ -232,7 +248,7 @@ export const SidebarView = React.memo(() => {
             {/* NOTE: Inbox button temporarily hidden */}
             <Pressable onPress={() => router.push('/settings')} hitSlop={15}>
               <Image
-                source={require('@/assets/images/brutalist/Brutalism 9.png')}
+                source={require('@/assets/images/brutalist/Brutalism-9.png')}
                 contentFit="contain"
                 style={[{ width: 32, height: 32 }]}
                 tintColor={theme.colors.header.tint}

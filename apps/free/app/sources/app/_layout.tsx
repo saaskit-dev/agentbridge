@@ -195,19 +195,26 @@ export default function RootLayout() {
         void loadPersistedTelemetry();
         await loadFonts();
         await sodium.ready;
-        const credentials = await TokenStorage.getCredentials();
+        let credentials = await TokenStorage.getCredentials();
         logger.debug('credentials', credentials);
         // Wire RemoteSink auth token so telemetry can upload after login (RFC §21.2)
         // Respect the user's analytics opt-in preference from synced Settings (RFC §8.1)
         const { settings } = loadSettings();
         setAnalyticsEnabled(settings.analyticsEnabled !== false, credentials?.token);
         if (credentials) {
-          await syncRestore(credentials);
+          try {
+            await syncRestore(credentials);
+          } catch (syncError) {
+            logger.error('Sync restore failed, clearing invalid credentials', toError(syncError));
+            await TokenStorage.removeCredentials();
+            credentials = null;
+          }
         }
 
         setInitState({ credentials });
       } catch (error) {
         logger.error('Error initializing:', toError(error));
+        setInitState({ credentials: null });
       }
     })();
   }, []);

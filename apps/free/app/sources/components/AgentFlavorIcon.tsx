@@ -4,7 +4,7 @@ import type { ImageStyle, StyleProp } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import type { SessionFlavor } from '@/sync/agentFlavor';
 import { normalizeAgentFlavor } from '@/sync/agentFlavor';
-import { getAgentFlavorIconSource } from '@/sync/agentIcons';
+import { getAgentFlavorIconSource, isMonochromeFlavor } from '@/sync/agentIcons';
 
 export interface AgentFlavorIconProps {
   /** Raw session / agent flavor string; normalized the same way as `Avatar`. */
@@ -14,7 +14,7 @@ export interface AgentFlavorIconProps {
   style?: StyleProp<ImageStyle>;
   contentFit?: 'contain' | 'cover' | 'fill' | 'scale-down' | 'none';
   /**
-   * Tint override: `undefined` = Codex uses theme text (matches `Avatar`), `null` = never tint.
+   * Tint override: `undefined` = monochrome flavors (codex/cursor/opencode) use theme text, `null` = never tint.
    */
   tintColor?: string | null;
 }
@@ -39,7 +39,7 @@ export const AgentFlavorIcon = React.memo(function AgentFlavorIcon({
   const resolvedTint =
     tintColor !== undefined
       ? (tintColor ?? undefined)
-      : effectiveFlavor === 'codex'
+      : isMonochromeFlavor(effectiveFlavor)
         ? theme.colors.text
         : undefined;
 

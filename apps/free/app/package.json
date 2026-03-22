@@ -36,9 +36,6 @@
     "tauri:build:dev": "tauri build --config src-tauri/tauri.dev.conf.json",
     "tauri:build:production": "tauri build"
   },
-  "jest": {
-    "preset": "jest-expo"
-  },
   "dependencies": {
     "@bacons/apple-targets": "^4.0.6",
     "@config-plugins/react-native-webrtc": "^12.0.0",
@@ -66,11 +63,6 @@
     "@shopify/react-native-skia": "2.2.12",
     "@tauri-apps/cli": "^2.8.1",
     "@tauri-apps/plugin-http": "^2.5.2",
-    "@types/libsodium-wrappers": "^0.7.14",
-    "@types/qrcode": "^1.5.5",
-    "@types/react-syntax-highlighter": "^15.5.13",
-    "@types/resolve-path": "^1.4.3",
-    "@types/uuid": "^10.0.0",
     "axios": "^1.10.0",
     "color": "^5.0.0",
     "diff": "^8.0.2",
@@ -170,7 +162,6 @@
     "socket.io-client": "^4.8.1",
     "twrnc": "^4.9.1",
     "uuid": "^11.1.0",
-    "vitest": "^3.2.4",
     "zod": "3.25.76",
     "zustand": "^5.0.6"
   },
@@ -183,7 +174,12 @@
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native-stack": "^7.3.12",
     "@stablelib/hex": "^2.0.1",
+    "@types/libsodium-wrappers": "^0.7.14",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "~19.1.10",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/resolve-path": "^1.4.3",
+    "@types/uuid": "^10.0.0",
     "babel-plugin-transform-remove-console": "^6.9.4",
     "babel-preset-expo": "~54.0.0",
     "cross-env": "^10.1.0",
@@ -191,8 +187,8 @@
     "patch-package": "^8.0.0",
     "react-test-renderer": "19.0.0",
     "tsx": "^4.20.4",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
   },
-  "private": true,
-  "packageManager": "yarn@1.22.22"
+  "private": true
 }

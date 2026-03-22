@@ -26,7 +26,7 @@ export const it: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: 'Posta',
-    sessions: 'Terminali',
+    sessions: 'Sessioni',
     settings: 'Impostazioni',
   },
 
@@ -84,12 +84,15 @@ export const it: TranslationStructure = {
     connecting: 'connessione in corso',
     disconnected: 'disconnesso',
     error: 'errore',
+    authError: 'sessione scaduta, disconnessione...',
     online: 'online',
     offline: 'offline',
     lastSeen: ({ time }: { time: string }) => `visto l'ultima volta ${time}`,
     permissionRequired: 'permesso richiesto',
     activeNow: 'Attivo ora',
     unknown: 'sconosciuto',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0 ? 'nessuna macchina' : `${count} ${count === 1 ? 'macchina' : 'macchine'} online`,
   },
 
   time: {
@@ -221,10 +224,7 @@ export const it: TranslationStructure = {
     enhancedSessionWizardEnabled: 'Avvio sessioni con profili attivo',
     enhancedSessionWizardDisabled: 'Usando avvio sessioni standard',
 
-    // Default permission mode
-    defaultPermissionMode: 'Modalità di autorizzazione predefinita',
-    defaultPermissionModeSubtitle: 'Modalità di autorizzazione predefinita per le nuove sessioni',
-  },
+},
 
   errors: {
     networkError: 'Si è verificato un errore di rete',
@@ -829,6 +829,20 @@ export const it: TranslationStructure = {
     unknownTime: 'ora sconosciuta',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: 'Scorri per aggiornare',
+    releaseToRefresh: 'Rilascia per aggiornare',
+    refreshing: 'Aggiornamento...',
+    pullToLoadEarlier: 'Scorri per caricare i precedenti',
+    releaseToLoadEarlier: 'Rilascia per caricare i precedenti',
+    loadingEarlier: 'Caricamento...',
+    scrollToBottom: 'Vai in fondo',
+    newMessages: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'nuovo messaggio' : 'nuovi messaggi'}`,
+    today: 'Oggi',
+    yesterday: 'Ieri',
   },
 
   codex: {

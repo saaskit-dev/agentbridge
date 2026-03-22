@@ -146,4 +146,10 @@ export const messageDB: MessageDB = {
       `DELETE FROM messages WHERE session_id = '${sid}'; DELETE FROM session_sync WHERE session_id = '${sid}'`
     );
   },
+
+  async deleteAll() {
+    const state = await getDB();
+    if (!state) return;
+    await exec('DELETE FROM messages; DELETE FROM session_sync');
+  },
 };

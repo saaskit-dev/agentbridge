@@ -39,6 +39,9 @@ export interface MessageDB {
 
   /** Delete all cached data for a session. */
   deleteSession(sessionId: string): Promise<void>;
+
+  /** Delete all cached data for every session. */
+  deleteAll(): Promise<void>;
 }
 
 export const SCHEMA_SQL = `

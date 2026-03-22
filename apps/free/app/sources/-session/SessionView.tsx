@@ -229,9 +229,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const isCliOutdated = cliVersion && !isVersionSupported(cliVersion, MINIMUM_CLI_VERSION);
   const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
   const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
-  // Get permission mode from session object, fall back to global default
-  const globalDefaultPermissionMode = useSetting('defaultPermissionMode');
-  const permissionMode = session.permissionMode || globalDefaultPermissionMode || 'accept-edits';
+  // Get permission mode from session object
+  const permissionMode = session.permissionMode || 'accept-edits';
   const desiredModelMode =
     session.modelMode ||
     (session.metadata?.flavor === 'gemini'

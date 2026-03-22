@@ -39,7 +39,7 @@ export const ru: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: 'Входящие',
-    sessions: 'Терминалы',
+    sessions: 'Сессии',
     settings: 'Настройки',
   },
 
@@ -205,10 +205,7 @@ export const ru: TranslationStructure = {
     enhancedSessionWizardEnabled: 'Лаунчер с профилем активен',
     enhancedSessionWizardDisabled: 'Используется стандартный лаунчер',
 
-    // Default permission mode
-    defaultPermissionMode: 'Режим разрешений по умолчанию',
-    defaultPermissionModeSubtitle: 'Режим разрешений по умолчанию для новых сессий',
-  },
+},
 
   errors: {
     networkError: 'Произошла ошибка сети',
@@ -451,12 +448,17 @@ export const ru: TranslationStructure = {
     connecting: 'подключение',
     disconnected: 'отключено',
     error: 'ошибка',
+    authError: 'сессия истекла, выход...',
     online: 'online',
     offline: 'offline',
     lastSeen: ({ time }: { time: string }) => `в сети ${time}`,
     permissionRequired: 'требуется разрешение',
     activeNow: 'Активен сейчас',
     unknown: 'неизвестно',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0
+        ? 'нет машин'
+        : `${count} ${count === 1 ? 'машина' : count < 5 ? 'машины' : 'машин'} онлайн`,
   },
 
   time: {
@@ -831,6 +833,20 @@ export const ru: TranslationStructure = {
     unknownTime: 'неизвестное время',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: 'Потяните для обновления',
+    releaseToRefresh: 'Отпустите для обновления',
+    refreshing: 'Обновление...',
+    pullToLoadEarlier: 'Потяните для загрузки ранних сообщений',
+    releaseToLoadEarlier: 'Отпустите для загрузки ранних сообщений',
+    loadingEarlier: 'Загрузка...',
+    scrollToBottom: 'Вниз',
+    newMessages: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'новое сообщение' : count < 5 ? 'новых сообщения' : 'новых сообщений'}`,
+    today: 'Сегодня',
+    yesterday: 'Вчера',
   },
 
   codex: {

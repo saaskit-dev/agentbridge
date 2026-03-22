@@ -1,6 +1,5 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useMemo } from 'react';
-import { Platform } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { CommandPalette } from './CommandPalette';
 import { Command } from './types';
@@ -125,7 +124,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
   }, [router, logout, sessions]);
 
   const showCommandPalette = useCallback(() => {
-    if (Platform.OS !== 'web' || !commandPaletteEnabled) return;
+    if (!commandPaletteEnabled) return;
 
     const { Modal } = require('@/modal');
     Modal.show({

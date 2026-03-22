@@ -39,7 +39,7 @@ export const pl: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: 'Skrzynka',
-    sessions: 'Terminale',
+    sessions: 'Sesje',
     settings: 'Ustawienia',
   },
 
@@ -97,12 +97,15 @@ export const pl: TranslationStructure = {
     connecting: 'łączenie',
     disconnected: 'rozłączono',
     error: 'błąd',
+    authError: 'sesja wygasła, wylogowywanie...',
     online: 'online',
     offline: 'offline',
     lastSeen: ({ time }: { time: string }) => `ostatnio widziano ${time}`,
     permissionRequired: 'wymagane uprawnienie',
     activeNow: 'Aktywny teraz',
     unknown: 'nieznane',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0 ? 'brak maszyn' : `${count} ${count === 1 ? 'maszyna' : count < 5 ? 'maszyny' : 'maszyn'} online`,
   },
 
   time: {
@@ -234,10 +237,7 @@ export const pl: TranslationStructure = {
     enhancedSessionWizardEnabled: 'Aktywny launcher z profilem',
     enhancedSessionWizardDisabled: 'Używanie standardowego launchera sesji',
 
-    // Default permission mode
-    defaultPermissionMode: 'Domyślny tryb uprawnień',
-    defaultPermissionModeSubtitle: 'Domyślny tryb uprawnień dla nowych sesji',
-  },
+},
 
   errors: {
     networkError: 'Wystąpił błąd sieci',
@@ -845,6 +845,20 @@ export const pl: TranslationStructure = {
     unknownTime: 'nieznany czas',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: 'Pociągnij, aby odświeżyć',
+    releaseToRefresh: 'Puść, aby odświeżyć',
+    refreshing: 'Odświeżanie...',
+    pullToLoadEarlier: 'Pociągnij, aby załadować wcześniejsze',
+    releaseToLoadEarlier: 'Puść, aby załadować wcześniejsze',
+    loadingEarlier: 'Ładowanie...',
+    scrollToBottom: 'Na dół',
+    newMessages: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'nowa wiadomość' : count < 5 ? 'nowe wiadomości' : 'nowych wiadomości'}`,
+    today: 'Dzisiaj',
+    yesterday: 'Wczoraj',
   },
 
   codex: {

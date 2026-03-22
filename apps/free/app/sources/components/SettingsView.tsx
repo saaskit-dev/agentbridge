@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -31,6 +32,8 @@ export const SettingsView = React.memo(function SettingsView() {
   const { theme } = useUnistyles();
   const router = useRouter();
   const appVersion = Constants.expoConfig?.version || '1.0.0';
+  const buildNumber = Application.nativeBuildVersion;
+  const buildTime = Constants.expoConfig?.extra?.app?.buildTime as string | undefined;
   const auth = useAuth();
   const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
   const isPro = useEntitlement('pro');
@@ -408,7 +411,8 @@ export const SettingsView = React.memo(function SettingsView() {
         )}
         <Item
           title={t('common.version')}
-          detail={appVersion}
+          detail={`${appVersion}${buildNumber ? ` (${buildNumber})` : ''}`}
+          subtitle={buildTime ? new Date(buildTime).toLocaleString() : undefined}
           icon={
             <Ionicons
               name="information-circle-outline"

@@ -152,10 +152,14 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
           onSelectionChange(selection);
         }
         if (onStateChange) {
-          onStateChange({ text: value, selection });
+          // Read text directly from the DOM element instead of the `value` prop.
+          // A `select` event can fire right after `change` in the same tick;
+          // the closure's `value` may still be the pre-change string, which
+          // would overwrite the correct state that handleChange just set.
+          onStateChange({ text: target.value, selection });
         }
       },
-      [value, onSelectionChange, onStateChange]
+      [onSelectionChange, onStateChange]
     );
 
     // Imperative handle for direct control

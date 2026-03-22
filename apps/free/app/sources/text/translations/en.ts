@@ -41,7 +41,7 @@ export const en: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: 'Inbox',
-    sessions: 'Terminals',
+    sessions: 'Sessions',
     settings: 'Settings',
   },
 
@@ -99,12 +99,15 @@ export const en: TranslationStructure = {
     connecting: 'connecting',
     disconnected: 'disconnected',
     error: 'error',
+    authError: 'session expired, logging out...',
     online: 'online',
     offline: 'offline',
     lastSeen: ({ time }: { time: string }) => `last seen ${time}`,
     permissionRequired: 'permission required',
     activeNow: 'Active now',
     unknown: 'unknown',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0 ? 'no machines' : `${count} machine${count !== 1 ? 's' : ''} online`,
   },
 
   time: {
@@ -232,10 +235,7 @@ export const en: TranslationStructure = {
     enhancedSessionWizardEnabled: 'Profile-first session launcher active',
     enhancedSessionWizardDisabled: 'Using standard session launcher',
 
-    // Default permission mode
-    defaultPermissionMode: 'Default Permission Mode',
-    defaultPermissionModeSubtitle: 'Default permission mode for new sessions',
-  },
+},
 
   errors: {
     networkError: 'Network error occurred',
@@ -836,6 +836,20 @@ export const en: TranslationStructure = {
     unknownTime: 'unknown time',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: 'Pull to refresh',
+    releaseToRefresh: 'Release to refresh',
+    refreshing: 'Refreshing...',
+    pullToLoadEarlier: 'Pull to load earlier',
+    releaseToLoadEarlier: 'Release to load earlier',
+    loadingEarlier: 'Loading...',
+    scrollToBottom: 'Scroll to bottom',
+    newMessages: ({ count }: { count: number }) =>
+      `${count} new ${count === 1 ? 'message' : 'messages'}`,
+    today: 'Today',
+    yesterday: 'Yesterday',
   },
 
   codex: {

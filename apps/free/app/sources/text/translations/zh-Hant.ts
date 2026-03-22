@@ -28,7 +28,7 @@ export const zhHant: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: '收件匣',
-    sessions: '終端',
+    sessions: '會話',
     settings: '設定',
   },
 
@@ -86,12 +86,15 @@ export const zhHant: TranslationStructure = {
     connecting: '連線中',
     disconnected: '已中斷連線',
     error: '錯誤',
+    authError: '工作階段已過期，正在登出...',
     online: '線上',
     offline: '離線',
     lastSeen: ({ time }: { time: string }) => `最後活躍時間 ${time}`,
     permissionRequired: '需要權限',
     activeNow: '目前活躍',
     unknown: '未知',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0 ? '無裝置' : `${count} 台裝置在線`,
   },
 
   time: {
@@ -219,10 +222,7 @@ export const zhHant: TranslationStructure = {
     enhancedSessionWizardEnabled: '設定檔優先的工作階段啟動器已啟用',
     enhancedSessionWizardDisabled: '使用標準工作階段啟動器',
 
-    // Default permission mode
-    defaultPermissionMode: '預設權限模式',
-    defaultPermissionModeSubtitle: '新工作階段的預設權限模式',
-  },
+},
 
   errors: {
     networkError: '發生網路錯誤',
@@ -806,6 +806,19 @@ export const zhHant: TranslationStructure = {
     unknownTime: '未知時間',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: '下拉重新整理',
+    releaseToRefresh: '放開以重新整理',
+    refreshing: '重新整理中...',
+    pullToLoadEarlier: '上拉載入更早訊息',
+    releaseToLoadEarlier: '放開以載入更早訊息',
+    loadingEarlier: '載入中...',
+    scrollToBottom: '回到底部',
+    newMessages: ({ count }: { count: number }) => `${count} 則新訊息`,
+    today: '今天',
+    yesterday: '昨天',
   },
 
   codex: {

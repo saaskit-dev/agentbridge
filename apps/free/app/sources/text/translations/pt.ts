@@ -26,7 +26,7 @@ export const pt: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: 'Caixa de entrada',
-    sessions: 'Terminais',
+    sessions: 'Sessões',
     settings: 'Configurações',
   },
 
@@ -84,12 +84,15 @@ export const pt: TranslationStructure = {
     connecting: 'conectando',
     disconnected: 'desconectado',
     error: 'erro',
+    authError: 'sessão expirada, saindo...',
     online: 'online',
     offline: 'offline',
     lastSeen: ({ time }: { time: string }) => `visto por último ${time}`,
     permissionRequired: 'permissão necessária',
     activeNow: 'Ativo agora',
     unknown: 'desconhecido',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0 ? 'sem máquinas' : `${count} ${count === 1 ? 'máquina' : 'máquinas'} online`,
   },
 
   time: {
@@ -220,10 +223,7 @@ export const pt: TranslationStructure = {
     enhancedSessionWizardEnabled: 'Lançador de sessão com perfil ativo',
     enhancedSessionWizardDisabled: 'Usando o lançador de sessão padrão',
 
-    // Default permission mode
-    defaultPermissionMode: 'Modo de permissão padrão',
-    defaultPermissionModeSubtitle: 'Modo de permissão padrão para novas sessões',
-  },
+},
 
   errors: {
     networkError: 'Ocorreu um erro de rede',
@@ -832,6 +832,20 @@ export const pt: TranslationStructure = {
     unknownTime: 'horário desconhecido',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: 'Puxe para atualizar',
+    releaseToRefresh: 'Solte para atualizar',
+    refreshing: 'Atualizando...',
+    pullToLoadEarlier: 'Puxe para carregar anteriores',
+    releaseToLoadEarlier: 'Solte para carregar anteriores',
+    loadingEarlier: 'Carregando...',
+    scrollToBottom: 'Ir para o final',
+    newMessages: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'nova mensagem' : 'novas mensagens'}`,
+    today: 'Hoje',
+    yesterday: 'Ontem',
   },
 
   codex: {

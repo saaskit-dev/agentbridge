@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -9,7 +8,6 @@ import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
 
 export default function FeaturesSettingsScreen() {
-  const router = useRouter();
   const [experiments, setExperiments] = useSettingMutable('experiments');
   const [agentInputEnterToSend, setAgentInputEnterToSend] =
     useSettingMutable('agentInputEnterToSend');
@@ -17,7 +15,6 @@ export default function FeaturesSettingsScreen() {
     useLocalSettingMutable('commandPaletteEnabled');
   const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
   const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
-  const [defaultPermissionMode] = useSettingMutable('defaultPermissionMode');
   return (
     <ItemList style={{ paddingTop: 0 }}>
       {/* Experimental Features */}
@@ -51,19 +48,6 @@ export default function FeaturesSettingsScreen() {
             <Switch value={hideInactiveSessions} onValueChange={setHideInactiveSessions} />
           }
           showChevron={false}
-        />
-      </ItemGroup>
-
-      {/* Default Permission Mode */}
-      <ItemGroup
-        title={t('settingsFeatures.defaultPermissionMode')}
-        footer={t('settingsFeatures.defaultPermissionModeSubtitle')}
-      >
-        <Item
-          title={t('settingsFeatures.defaultPermissionMode')}
-          subtitle={defaultPermissionMode}
-          icon={<Ionicons name="shield-checkmark-outline" size={29} color="#34C759" />}
-          onPress={() => router.push('/settings/features/permissionMode')}
         />
       </ItemGroup>
 

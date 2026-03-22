@@ -22,11 +22,6 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
     setSelectedIndex,
   } = useCommandPalette(commands, onClose);
 
-  // Only render on web
-  if (Platform.OS !== 'web') {
-    return null;
-  }
-
   return (
     <View style={styles.container}>
       <CommandPaletteInput

@@ -558,9 +558,8 @@ class Sync {
     const sandboxEnabled = isSandboxEnabled(session.metadata);
     // Read permission mode from session state.
     // If sandbox is enabled, force yolo. Otherwise fall back to global default.
-    const globalDefault = storage.getState().settings.defaultPermissionMode ?? 'accept-edits';
     const permissionMode: PermissionMode =
-      session.permissionMode || (sandboxEnabled ? 'yolo' : globalDefault);
+      session.permissionMode || (sandboxEnabled ? 'yolo' : 'accept-edits');
 
     // Read model mode - for Gemini, default to gemini-2.5-pro if not set
     // Read model mode - for Gemini, default to gemini-2.5-pro if not set. OpenCode uses profile config.
@@ -873,6 +872,8 @@ class Sync {
     }
 
     const data = await response.json();
+    // eslint-disable-next-line no-console
+    console.warn('[DEV-DIAG] fetchSessions: got', Array.isArray(data.sessions) ? data.sessions.length : 0, 'sessions');
     const sessions = data.sessions as Array<{
       id: string;
       tag: string | null;
@@ -1711,11 +1712,8 @@ class Sync {
           apiKey = config.revenueCatStripeKey;
         }
 
-        if (!apiKey) {
-          logger.debug(`[RevenueCat] No API key for platform: ${Platform.OS}`);
-          logger.debug(`[RevenueCat] Apple: ${config.revenueCatAppleKey ? '已设置' : '未设置'}`);
-          logger.debug(`[RevenueCat] Google: ${config.revenueCatGoogleKey ? '已设置' : '未设置'}`);
-          logger.debug(`[RevenueCat] Stripe: ${config.revenueCatStripeKey ? '已设置' : '未设置'}`);
+        if (!apiKey || apiKey.includes('_here')) {
+          logger.debug(`[RevenueCat] Skipping init: ${!apiKey ? 'no API key' : 'placeholder key'} for platform ${Platform.OS}`);
           return;
         }
 
@@ -1978,6 +1976,20 @@ class Sync {
     }
 
     storage.getState().applyMessagesLoaded(sessionId);
+
+    // Reconcile hasOlderMessages with sessionOldestSeq.
+    // This fixes a race where onSessionVisible sets hasOlderMessages before
+    // the session state exists (no-op), and fetchMessages with startAfterSeq > 0
+    // skips the minSeqSeen block. After applyMessagesLoaded the state is guaranteed
+    // to exist, so we can safely set it here.
+    const oldestSeq = this.sessionOldestSeq.get(sessionId);
+    if (oldestSeq != null && oldestSeq > 1) {
+      const sm = storage.getState().sessionMessages[sessionId];
+      if (sm && !sm.hasOlderMessages) {
+        storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: true });
+      }
+    }
+
     logger.debug(
       `💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages in ${pageCount} pages`
     );
@@ -1985,6 +1997,14 @@ class Sync {
 
   /** Tracks the minimum seq loaded per session — used as cursor for "load older" */
   private sessionOldestSeq = new Map<string, number>();
+
+  /**
+   * Pull-to-refresh: re-fetch latest messages from server for the given session.
+   * Returns a promise that resolves when the fetch completes.
+   */
+  async refreshMessages(sessionId: string): Promise<void> {
+    await this.getMessagesSync(sessionId).invalidateAndAwait();
+  }
 
   /**
    * Load older messages for a session (triggered by scroll-up in ChatList).
@@ -2073,6 +2093,17 @@ class Sync {
       });
       storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: false });
     }
+  }
+
+  /**
+   * Clear the local SQLite message cache and reset seq tracking so
+   * the next onSessionVisible() re-fetches everything from the server.
+   */
+  async clearMessageCache(): Promise<void> {
+    await messageDB.deleteAll();
+    this.sessionLastSeq.clear();
+    this.sessionOldestSeq.clear();
+    logger.info('[sync] message cache cleared');
   }
 
   private registerPushToken = async () => {
@@ -2913,14 +2944,33 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     throw new Error(`Invalid secret key length: ${secretKey.length}, expected 32`);
   }
   const encryption = await Encryption.create(secretKey);
+  if (!encryption) {
+    throw new Error('Failed to initialize encryption — invalid credentials');
+  }
 
   // Initialize socket connection
   const API_ENDPOINT = getServerUrl();
+  // eslint-disable-next-line no-console
+  console.warn('[DEV-DIAG] syncInit serverUrl:', API_ENDPOINT);
   apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);
 
   // Wire socket status to storage
   apiSocket.onStatusChange(status => {
     storage.getState().setSocketStatus(status);
+  });
+
+  // Auth errors: stop retrying and notify UI so user can re-login
+  apiSocket.onAuthError(message => {
+    logger.error('[syncInit] Auth error from server, forcing re-login', { message });
+    storage.getState().setAuthError(message);
+    // Auto-logout after a short delay to let the UI show the error
+    setTimeout(() => {
+      const { getCurrentAuth } = require('@/auth/AuthContext');
+      const auth = getCurrentAuth();
+      if (auth) {
+        auth.logout();
+      }
+    }, 3000);
   });
 
   // Initialize sessions engine

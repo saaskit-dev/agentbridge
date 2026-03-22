@@ -29,7 +29,7 @@ export const ja: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: '受信トレイ',
-    sessions: 'ターミナル',
+    sessions: 'セッション',
     settings: '設定',
   },
 
@@ -87,12 +87,15 @@ export const ja: TranslationStructure = {
     connecting: '接続中',
     disconnected: '切断済み',
     error: 'エラー',
+    authError: 'セッションが期限切れ、ログアウト中...',
     online: 'オンライン',
     offline: 'オフライン',
     lastSeen: ({ time }: { time: string }) => `最終アクセス: ${time}`,
     permissionRequired: '権限が必要です',
     activeNow: 'アクティブ',
     unknown: '不明',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0 ? 'マシンなし' : `${count} 台オンライン`,
   },
 
   time: {
@@ -220,10 +223,7 @@ export const ja: TranslationStructure = {
     enhancedSessionWizardEnabled: 'プロファイル優先セッションランチャーが有効',
     enhancedSessionWizardDisabled: '標準セッションランチャーを使用',
 
-    // Default permission mode
-    defaultPermissionMode: 'デフォルト権限モード',
-    defaultPermissionModeSubtitle: '新しいセッションのデフォルト権限モード',
-  },
+},
 
   errors: {
     networkError: 'ネットワークエラーが発生しました',
@@ -824,6 +824,19 @@ export const ja: TranslationStructure = {
     unknownTime: '不明な時間',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: '引っ張って更新',
+    releaseToRefresh: '離して更新',
+    refreshing: '更新中...',
+    pullToLoadEarlier: '引っ張って前のメッセージを読み込む',
+    releaseToLoadEarlier: '離して前のメッセージを読み込む',
+    loadingEarlier: '読み込み中...',
+    scrollToBottom: '一番下へ',
+    newMessages: ({ count }: { count: number }) => `${count}件の新しいメッセージ`,
+    today: '今日',
+    yesterday: '昨日',
   },
 
   codex: {

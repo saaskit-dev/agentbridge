@@ -25,6 +25,14 @@ export function getAgentFlavorIconSource(
 }
 
 /**
+ * Whether this flavor's icon is a monochrome silhouette that needs tinting to match the theme.
+ * Icons: codex (GPT knot), cursor (cube), opencode (terminal) are black-on-transparent.
+ */
+export function isMonochromeFlavor(flavor: DisplayAgentFlavor): boolean {
+  return flavor === 'codex' || flavor === 'cursor' || flavor === 'opencode';
+}
+
+/**
  * Diameter of the circular badge behind the overlay icon in `Avatar` (fraction of avatar size).
  */
 export function getAgentFlavorBadgeContainerSize(avatarSize: number): number {
@@ -38,11 +46,12 @@ export function getAgentFlavorBadgeIconSize(
   avatarSize: number,
   flavor: DisplayAgentFlavor
 ): number {
-  if (flavor === 'codex') {
-    return Math.round(avatarSize * 0.25);
-  }
   if (flavor === 'claude') {
     return Math.round(avatarSize * 0.28);
   }
-  return Math.round(avatarSize * 0.35);
+  if (flavor === 'gemini') {
+    return Math.round(avatarSize * 0.35);
+  }
+  // Monochrome silhouettes (codex, cursor, opencode) use a slightly smaller size
+  return Math.round(avatarSize * 0.25);
 }

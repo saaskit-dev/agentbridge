@@ -9,8 +9,11 @@ const variant = process.env.APP_ENV || 'development';
 
 const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
 
-/** 自动发现本机局域网 IP（取第一个非 internal 的 IPv4 地址） */
+/** 自动发现本机局域网 IP，优先使用 REACT_NATIVE_PACKAGER_HOSTNAME（由 ./run 统一设置） */
 function getLanIp() {
+  if (process.env.REACT_NATIVE_PACKAGER_HOSTNAME) {
+    return process.env.REACT_NATIVE_PACKAGER_HOSTNAME;
+  }
   for (const addrs of Object.values(os.networkInterfaces())) {
     for (const addr of addrs) {
       if (addr.family === 'IPv4' && !addr.internal) return addr.address;
@@ -44,7 +47,7 @@ export default {
     name,
     slug: 'free',
     version,
-    runtimeVersion: '18',
+    runtimeVersion: { policy: 'fingerprint' },
     orientation: 'default',
     icon: './sources/assets/images/icon.png',
     scheme: 'free',
@@ -68,6 +71,13 @@ export default {
         NSLocalNetworkUsageDescription:
           'Allow $(PRODUCT_NAME) to find and connect to local devices on your network.',
         NSBonjourServices: ['_http._tcp', '_https._tcp'],
+        // Dev: allow HTTP to LAN IPs (ATS blocks non-localhost HTTP by default)
+        ...(variant === 'development' && {
+          NSAppTransportSecurity: {
+            NSAllowsArbitraryLoads: true,
+            NSAllowsLocalNetworking: true,
+          },
+        }),
       },
       googleServicesFile,
       associatedDomains: variant !== 'development' ? ['applinks:free-server.saaskit.app'] : [],
@@ -201,9 +211,6 @@ export default {
     ],
     updates: {
       url: 'https://u.expo.dev/79f0465e-eaa6-47f9-91e0-09e5a5661790',
-      requestHeaders: {
-        'expo-channel-name': 'production',
-      },
     },
     experiments: {
       typedRoutes: true,
@@ -218,14 +225,13 @@ export default {
       app: {
         isDev: variant === 'development',
         serverUrl,
+        buildTime: new Date().toISOString(),
         postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
         revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,
         revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
         revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
       },
     },
-    // TODO: Configure your own Expo account
-    // Get from: https://expo.dev
-    // owner: "your-expo-username"
+    owner: 'saaskit-dev',
   },
 };

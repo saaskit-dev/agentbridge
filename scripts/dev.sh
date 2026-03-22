@@ -26,8 +26,12 @@ WEB_PORT=8081
 # Dev 环境变量 — 全局设置，确保 cleanup 和 start 阶段都使用 dev variant
 export APP_ENV=development
 export FREE_HOME_DIR=~/.free-dev
-export FREE_SERVER_URL="http://localhost:$SERVER_PORT"
-export FREE_WEBAPP_URL="http://localhost:$WEB_PORT"
+# Use LAN IP from ./run (REACT_NATIVE_PACKAGER_HOSTNAME) so physical devices can connect
+_DEV_HOST="${REACT_NATIVE_PACKAGER_HOSTNAME:-localhost}"
+export FREE_SERVER_URL="http://${_DEV_HOST}:$SERVER_PORT"
+export FREE_WEBAPP_URL="http://${_DEV_HOST}:$WEB_PORT"
+unset _DEV_HOST
+
 
 # 日志目录
 LOG_DIR="$PROJECT_ROOT/.dev-logs"
@@ -99,8 +103,11 @@ stop_all() {
     # Server 已收到 SIGINT（同进程组），等它 graceful shutdown，超时强杀
     wait_port_close $SERVER_PORT "Server" 15
 
-    # Daemon
-    free-dev daemon stop 2>/dev/null || true
+    # Daemon — 直接 launchctl unload，不依赖 free-dev
+    local dev_plist="$HOME/Library/LaunchAgents/app.saaskit.free.daemon-dev.plist"
+    if [ -f "$dev_plist" ]; then
+        launchctl unload "$dev_plist" 2>/dev/null || true
+    fi
 
     # Web/Expo 不需要 graceful shutdown，直接杀
     kill_port $WEB_PORT "Web"
@@ -120,8 +127,12 @@ cleanup_all() {
     pkill -f "expo" 2>/dev/null || true
     pkill -f "node.*standalone" 2>/dev/null || true
 
-    # 停止 daemon
+    # 停止 daemon — 直接 launchctl unload，不依赖 free-dev（cli/dist 可能已被上次清理删掉）
     log_info "停止 daemon..."
+    local dev_plist="$HOME/Library/LaunchAgents/app.saaskit.free.daemon-dev.plist"
+    if [ -f "$dev_plist" ]; then
+        launchctl unload "$dev_plist" 2>/dev/null || true
+    fi
     free-dev daemon stop 2>/dev/null || true
 
     # 清理 PGlite 锁文件（如果存在）

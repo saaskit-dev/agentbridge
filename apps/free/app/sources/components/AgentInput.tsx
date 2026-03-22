@@ -432,16 +432,7 @@ export const AgentInput = React.memo(
         cliStatus?.cursor,
       ]
     );
-    const capabilityStatusText = React.useMemo(() => {
-      const items: string[] = [];
-      if (props.actualModeLabel) {
-        items.push(`Mode: ${props.actualModeLabel}`);
-      }
-      if (props.actualModelLabel) {
-        items.push(`Model: ${props.actualModelLabel}`);
-      }
-      return items.join('  ');
-    }, [props.actualModelLabel, props.actualModeLabel]);
+    const hasCapabilityStatus = !!(props.actualModeLabel || props.actualModelLabel);
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
@@ -1168,7 +1159,7 @@ export const AgentInput = React.memo(
           {/* Connection status, context warning, and permission mode */}
           {(props.connectionStatus ||
             contextWarning ||
-            capabilityStatusText ||
+            hasCapabilityStatus ||
             props.pendingCapabilityLabel) && (
             <View
               style={{
@@ -1264,8 +1255,8 @@ export const AgentInput = React.memo(
                 style={{
                   flexDirection: 'column',
                   alignItems: 'flex-end',
-                  minWidth: 150, // Fixed minimum width to prevent layout shift
-                  gap: 2,
+                  flexShrink: 1,
+                  gap: 1,
                 }}
               >
                 {props.pendingCapabilityLabel ? (
@@ -1279,7 +1270,7 @@ export const AgentInput = React.memo(
                     {props.pendingCapabilityLabel}
                   </Text>
                 ) : null}
-                {capabilityStatusText ? (
+                {props.actualModeLabel ? (
                   <Text
                     style={{
                       fontSize: 11,
@@ -1287,7 +1278,18 @@ export const AgentInput = React.memo(
                       ...Typography.default(),
                     }}
                   >
-                    {capabilityStatusText}
+                    Mode: {props.actualModeLabel}
+                  </Text>
+                ) : null}
+                {props.actualModelLabel ? (
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color: theme.colors.textSecondary,
+                      ...Typography.default(),
+                    }}
+                  >
+                    Model: {props.actualModelLabel}
                   </Text>
                 ) : null}
               </View>
