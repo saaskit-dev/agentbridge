@@ -13,6 +13,7 @@ import { sync } from '@/sync/sync';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/sync/typesMessage';
 import { AgentEvent } from '@/sync/typesRaw';
 import { apiSocket } from '@/sync/apiSocket';
+import { Modal } from '@/modal';
 import { t } from '@/text';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/MessageView');
@@ -134,7 +135,16 @@ function DevTraceBadge(props: {
 function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
   const handleOptionPress = React.useCallback(
     (option: Option) => {
-      sync.sendMessage(props.sessionId, option.title);
+      void sync.sendMessage(props.sessionId, option.title).then(result => {
+        if (!result.ok) {
+          Modal.alert(
+            t('common.error'),
+            result.reason === 'server_disconnected'
+              ? t('session.sendBlockedServerDisconnected')
+              : t('session.sendBlockedDaemonOffline')
+          );
+        }
+      });
     },
     [props.sessionId]
   );
@@ -159,7 +169,16 @@ function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string })
   const experiments = useSetting('experiments');
   const handleOptionPress = React.useCallback(
     (option: Option) => {
-      sync.sendMessage(props.sessionId, option.title);
+      void sync.sendMessage(props.sessionId, option.title).then(result => {
+        if (!result.ok) {
+          Modal.alert(
+            t('common.error'),
+            result.reason === 'server_disconnected'
+              ? t('session.sendBlockedServerDisconnected')
+              : t('session.sendBlockedDaemonOffline')
+          );
+        }
+      });
     },
     [props.sessionId]
   );

@@ -538,20 +538,44 @@ class Sync {
     this.backgroundSendStartedAt = null;
   }
 
-  async sendMessage(sessionId: string, text: string, displayText?: string) {
-    // Get encryption
-    const encryption = this.encryption.getSessionEncryption(sessionId);
-    if (!encryption) {
-      // Should never happen
-      logger.error(`Session ${sessionId} not found`);
-      return;
+  async sendMessage(
+    sessionId: string,
+    text: string,
+    displayText?: string,
+    opts?: { skipPresenceCheck?: boolean }
+  ): Promise<{ ok: true } | { ok: false; reason: 'server_disconnected' | 'daemon_offline' }> {
+    // Pre-check: server socket must be connected
+    if (apiSocket.getStatus() !== 'connected') {
+      logger.info('[App] sendMessage blocked: server socket not connected', {
+        sessionId,
+        socketStatus: apiSocket.getStatus(),
+      });
+      return { ok: false, reason: 'server_disconnected' };
     }
 
     // Get session data from storage
     const session = storage.getState().sessions[sessionId];
     if (!session) {
       logger.error(`Session ${sessionId} not found in storage`);
-      return;
+      return { ok: false, reason: 'server_disconnected' };
+    }
+
+    // Pre-check: daemon must be online (presence kept alive by keepAlive every 2s)
+    // Skip for newly created sessions where keepAlive hasn't arrived yet.
+    if (!opts?.skipPresenceCheck && session.presence !== 'online') {
+      logger.info('[App] sendMessage blocked: daemon not online', {
+        sessionId,
+        presence: session.presence,
+      });
+      return { ok: false, reason: 'daemon_offline' };
+    }
+
+    // Get encryption
+    const encryption = this.encryption.getSessionEncryption(sessionId);
+    if (!encryption) {
+      // Should never happen
+      logger.error(`Session ${sessionId} not found`);
+      return { ok: false, reason: 'server_disconnected' };
     }
 
     const flavor = session.metadata?.flavor;
@@ -661,6 +685,7 @@ class Sync {
 
     this.getSendSync(sessionId).invalidate();
     this.maybeStartBackgroundSendWatchdog();
+    return { ok: true as const };
   }
 
   /** Manually retry sending pending messages for a session. */
@@ -1903,6 +1928,8 @@ class Sync {
 
       const decryptedMessages = await encryption.decryptMessages(messages);
       const normalizedMessages: NormalizedMessage[] = [];
+      // Track the original index so SQLite cache writes use the correct seq/content.
+      const normalizedOriginalIndices: number[] = [];
       for (let i = 0; i < decryptedMessages.length; i++) {
         const decrypted = decryptedMessages[i];
         if (!decrypted) {
@@ -1916,6 +1943,7 @@ class Sync {
         if (normalized) {
           if (decrypted.traceId) normalized.traceId = decrypted.traceId;
           normalizedMessages.push(normalized);
+          normalizedOriginalIndices.push(i);
         }
       }
 
@@ -1924,15 +1952,18 @@ class Sync {
         this.enqueueMessages(sessionId, normalizedMessages);
 
         // Write to local SQLite cache (fire-and-forget, don't block rendering)
-        const cacheEntries = normalizedMessages.map((n, i) => ({
-          id: n.id,
-          session_id: sessionId,
-          seq: messages[i]?.seq ?? 0,
-          content: JSON.stringify(decryptedMessages[i]?.content),
-          role: n.role ?? 'agent',
-          created_at: n.createdAt ?? Date.now(),
-          updated_at: Date.now(),
-        }));
+        const cacheEntries = normalizedMessages.map((n, idx) => {
+          const origIdx = normalizedOriginalIndices[idx];
+          return {
+            id: n.id,
+            session_id: sessionId,
+            seq: messages[origIdx]?.seq ?? 0,
+            content: JSON.stringify(decryptedMessages[origIdx]?.content),
+            role: n.role ?? 'agent',
+            created_at: n.createdAt ?? Date.now(),
+            updated_at: Date.now(),
+          };
+        });
         messageDB
           .upsertMessages(sessionId, cacheEntries)
           .catch(e =>

@@ -39,6 +39,10 @@ class ApiSocket {
   > = new Set();
   private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
 
+  getStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
+    return this.currentStatus;
+  }
+
   //
   // Initialization
   //

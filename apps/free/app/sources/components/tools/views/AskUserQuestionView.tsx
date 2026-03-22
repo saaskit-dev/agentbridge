@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ToolSectionView } from '../ToolSectionView';
 import { ToolViewProps } from './types';
+import { Modal } from '@/modal';
 import { sessionAllow } from '@/sync/ops';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
@@ -250,7 +251,16 @@ export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId 
         await sessionAllow(sessionId, tool.permission.id);
       }
       // 2. Send the answer as a message
-      await sync.sendMessage(sessionId, responseText);
+      const result = await sync.sendMessage(sessionId, responseText);
+      if (!result.ok) {
+        Modal.alert(
+          t('common.error'),
+          result.reason === 'server_disconnected'
+            ? t('session.sendBlockedServerDisconnected')
+            : t('session.sendBlockedDaemonOffline')
+        );
+        return;
+      }
     } catch (error) {
       logger.error('Failed to submit answer', toError(error), { sessionId });
     } finally {

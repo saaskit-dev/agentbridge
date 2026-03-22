@@ -362,6 +362,8 @@ export const en = {
   session: {
     inputPlaceholder: 'Type a message ...',
     sendFailed: 'Send failed. Tap to retry.',
+    sendBlockedServerDisconnected: 'Server disconnected, cannot send message',
+    sendBlockedDaemonOffline: 'Session offline, cannot send message',
   },
 
   commandPalette: {

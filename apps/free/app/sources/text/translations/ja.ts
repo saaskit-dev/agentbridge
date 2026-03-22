@@ -365,6 +365,8 @@ export const ja: TranslationStructure = {
   session: {
     inputPlaceholder: 'メッセージを入力...',
     sendFailed: '送信に失敗しました。タップしてリトライ',
+    sendBlockedServerDisconnected: 'サーバーが切断されました。メッセージを送信できません',
+    sendBlockedDaemonOffline: 'セッションがオフラインです。メッセージを送信できません',
   },
 
   commandPalette: {

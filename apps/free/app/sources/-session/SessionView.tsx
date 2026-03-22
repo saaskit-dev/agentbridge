@@ -641,10 +641,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
         onSend={() => {
           if (message.trim()) {
             const trimmedMessage = message.trim();
-            setMessage('');
-            clearDraft();
             const command = resolveCommandInput(sessionId, trimmedMessage);
             if (command?.commandId && trimmedMessage === `/${command.command}`) {
+              setMessage('');
+              clearDraft();
               setFooterNotice(null);
               setIsSettingsBusy(true);
               void sessionRunCommand(sessionId, command.commandId)
@@ -660,8 +660,21 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
                 });
               return;
             }
-            setFooterNotice(null);
-            sync.sendMessage(sessionId, trimmedMessage);
+            void sync.sendMessage(sessionId, trimmedMessage).then(result => {
+              if (!result.ok) {
+                Modal.alert(
+                  t('common.error'),
+                  result.reason === 'server_disconnected'
+                    ? t('session.sendBlockedServerDisconnected')
+                    : t('session.sendBlockedDaemonOffline')
+                );
+                return;
+              }
+              // Only clear input on successful send
+              setMessage('');
+              clearDraft();
+              setFooterNotice(null);
+            });
           }
         }}
         onMicPress={micButtonState.onMicPress}
