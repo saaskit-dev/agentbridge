@@ -56,9 +56,7 @@ export const MermaidRenderer = React.memo((props: { content: string }) => {
           }
         } catch (error) {
           if (isMounted) {
-            logger.warn(
-              `[Mermaid] ${t('markdown.mermaidRenderFailed')}: ${safeStringify(error)}`
-            );
+            logger.warn(`[Mermaid] ${t('markdown.mermaidRenderFailed')}: ${safeStringify(error)}`);
             setHasError(true);
           }
         }

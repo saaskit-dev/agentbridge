@@ -12,7 +12,7 @@ export async function createMetricsServer() {
   app.get('/metrics', async (_request, reply) => {
     try {
       // Get Prisma metrics in Prometheus format
-      const prismaMetrics = await (db as any).$metrics?.prometheus?.() ?? '';
+      const prismaMetrics = (await (db as any).$metrics?.prometheus?.()) ?? '';
 
       // Get custom application metrics
       const appMetrics = await register.metrics();

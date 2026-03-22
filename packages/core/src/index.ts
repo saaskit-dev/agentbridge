@@ -161,7 +161,12 @@ export { FsStorage, EncryptedFsStorage } from './implementations';
 export { AxiosHttpClient } from './implementations';
 export { SocketIoClient, SocketIoServer, SocketIoSocket } from './implementations';
 export { NodeProcess, NodeProcessManager } from './implementations';
-export { AcpBackend, createAcpBackendFactory, createAcpBackend, ClaudeBackend } from './implementations';
+export {
+  AcpBackend,
+  createAcpBackendFactory,
+  createAcpBackend,
+  ClaudeBackend,
+} from './implementations';
 export {
   createGeminiBackend,
   createCodexBackend,

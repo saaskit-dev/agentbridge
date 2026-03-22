@@ -54,7 +54,7 @@ export async function ensureLocalServerAndCredentials(): Promise<void> {
 export async function stopSpawnedProcess(child: ChildProcess | null): Promise<void> {
   if (!child || child.killed || child.exitCode !== null) return;
   child.kill('SIGTERM');
-  await new Promise<void>((resolve) => {
+  await new Promise<void>(resolve => {
     child.once('exit', () => resolve());
     setTimeout(() => resolve(), 5000);
   });

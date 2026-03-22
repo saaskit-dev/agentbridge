@@ -35,24 +35,24 @@ On launch, a QR code is displayed for connecting the [Free mobile app](https://g
 
 ### Agent Sessions
 
-| Command | Description |
-|---|---|
-| `free` | Start Claude Code session (default) |
-| `free gemini` | Start Gemini CLI session |
-| `free codex` | Start Codex session |
-| `free opencode` | Start OpenCode session |
+| Command         | Description                         |
+| --------------- | ----------------------------------- |
+| `free`          | Start Claude Code session (default) |
+| `free gemini`   | Start Gemini CLI session            |
+| `free codex`    | Start Codex session                 |
+| `free opencode` | Start OpenCode session              |
 
 ### Management
 
-| Command | Description |
-|---|---|
-| `free auth` | Manage authentication |
-| `free connect [vendor]` | Store AI vendor API keys (gemini, claude, codex) |
-| `free connect status` | Show connection status for all vendors |
-| `free daemon start\|stop\|status` | Manage background daemon |
-| `free doctor` | System diagnostics & troubleshooting |
-| `free sandbox configure\|status\|disable` | Configure sandbox runtime |
-| `free notify` | Send push notification to your devices |
+| Command                                   | Description                                      |
+| ----------------------------------------- | ------------------------------------------------ |
+| `free auth`                               | Manage authentication                            |
+| `free connect [vendor]`                   | Store AI vendor API keys (gemini, claude, codex) |
+| `free connect status`                     | Show connection status for all vendors           |
+| `free daemon start\|stop\|status`         | Manage background daemon                         |
+| `free doctor`                             | System diagnostics & troubleshooting             |
+| `free sandbox configure\|status\|disable` | Configure sandbox runtime                        |
+| `free notify`                             | Send push notification to your devices           |
 
 ### Claude Options
 
@@ -69,15 +69,15 @@ On launch, a QR code is displayed for connecting the [Free mobile app](https://g
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|---|---|---|
-| `FREE_SERVER_URL` | Custom server URL | `https://free-server.saaskit.app` |
-| `FREE_WEBAPP_URL` | Custom web app URL | `https://free-server.saaskit.app` |
-| `FREE_HOME_DIR` | Custom home directory for Free data | `~/.free` |
-| `FREE_DISABLE_CAFFEINATE` | Disable macOS sleep prevention | - |
-| `FREE_EXPERIMENTAL` | Enable experimental features | - |
-| `GEMINI_MODEL` | Override default Gemini model | - |
-| `GOOGLE_CLOUD_PROJECT` | Google Cloud Project ID (for Workspace accounts) | - |
+| Variable                  | Description                                      | Default                           |
+| ------------------------- | ------------------------------------------------ | --------------------------------- |
+| `FREE_SERVER_URL`         | Custom server URL                                | `https://free-server.saaskit.app` |
+| `FREE_WEBAPP_URL`         | Custom web app URL                               | `https://free-server.saaskit.app` |
+| `FREE_HOME_DIR`           | Custom home directory for Free data              | `~/.free`                         |
+| `FREE_DISABLE_CAFFEINATE` | Disable macOS sleep prevention                   | -                                 |
+| `FREE_EXPERIMENTAL`       | Enable experimental features                     | -                                 |
+| `GEMINI_MODEL`            | Override default Gemini model                    | -                                 |
+| `GOOGLE_CLOUD_PROJECT`    | Google Cloud Project ID (for Workspace accounts) | -                                 |
 
 ## Architecture
 

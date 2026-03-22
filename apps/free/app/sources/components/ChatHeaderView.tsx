@@ -28,7 +28,12 @@ interface ChatHeaderViewProps {
 function CopyableBadge({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  React.useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    []
+  );
   const compact = value.replace(/-/g, '');
   const handlePress = React.useCallback(async () => {
     await Clipboard.setStringAsync(compact);

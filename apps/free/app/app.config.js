@@ -200,9 +200,7 @@ export default {
       ],
     ],
     updates: {
-      // TODO: Configure your own Expo updates URL
-      // Get from: https://expo.dev/accounts/[your-account]/projects/free
-      // url: "https://u.expo.dev/YOUR_PROJECT_ID",
+      url: 'https://u.expo.dev/79f0465e-eaa6-47f9-91e0-09e5a5661790',
       requestHeaders: {
         'expo-channel-name': 'production',
       },

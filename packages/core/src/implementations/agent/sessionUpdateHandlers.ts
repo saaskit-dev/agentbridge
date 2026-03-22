@@ -75,7 +75,11 @@ export function shouldLogUnhandledSessionUpdate(update: SessionUpdate): boolean 
     return false;
   }
 
-  if (HANDLED_SESSION_UPDATE_TYPES.includes(updateType as (typeof HANDLED_SESSION_UPDATE_TYPES)[number])) {
+  if (
+    HANDLED_SESSION_UPDATE_TYPES.includes(
+      updateType as (typeof HANDLED_SESSION_UPDATE_TYPES)[number]
+    )
+  ) {
     return false;
   }
 
@@ -197,7 +201,8 @@ export function startToolCall(
   // 3. transport.extractToolNameFromId (e.g. Gemini embeds name in callId)
   // 4. toolKindStr fallback
   const metaToolName = (update as any)?._meta?.claudeCode?.toolName as string | undefined;
-  const titleToolName = typeof (update as any)?.title === 'string' ? (update as any).title : undefined;
+  const titleToolName =
+    typeof (update as any)?.title === 'string' ? (update as any).title : undefined;
   const extractedName = ctx.transport.extractToolNameFromId?.(toolCallId);
   const rawToolName = metaToolName || titleToolName || extractedName || toolKindStr || 'unknown';
   const realToolName = normalizeMcpToolName(rawToolName, ctx.mcpServerNames);

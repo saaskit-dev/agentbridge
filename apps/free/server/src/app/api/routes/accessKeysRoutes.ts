@@ -288,7 +288,11 @@ export function accessKeysRoutes(app: Fastify) {
           });
         }
 
-        log.info(`Updated access key to version ${expectedVersion + 1}`, { userId, sessionId, machineId });
+        log.info(`Updated access key to version ${expectedVersion + 1}`, {
+          userId,
+          sessionId,
+          machineId,
+        });
 
         return reply.send({
           success: true,

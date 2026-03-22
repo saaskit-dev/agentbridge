@@ -115,4 +115,3 @@ export async function readAllPersistedSessions(): Promise<PersistedSession[]> {
   }
   return results;
 }
-

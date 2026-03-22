@@ -55,15 +55,15 @@ FREE_MASTER_SECRET=your-secret-key node dist/bundle.cjs serve
 
 ## 环境变量
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `FREE_MASTER_SECRET` | 主加密密钥，用于认证和数据加密 | **必填** |
-| `PORT` | 服务器监听端口 | `3000` |
-| `DATA_DIR` | 数据目录（PGlite、日志等） | `./data` |
-| `PGLITE_DIR` | PGlite 数据库目录 | `DATA_DIR/pglite` |
-| `DATABASE_URL` | 外部 PostgreSQL 连接字符串（设置后使用 PG 而非 PGlite） | — |
-| `APP_ENV` | 设为 `development` 时放宽 CORS、禁用日志脱敏 | `production` |
-| `LOG_LEVEL` | 日志级别：`debug` / `info` / `warn` / `error` | `debug` |
+| 变量                 | 说明                                                    | 默认值            |
+| -------------------- | ------------------------------------------------------- | ----------------- |
+| `FREE_MASTER_SECRET` | 主加密密钥，用于认证和数据加密                          | **必填**          |
+| `PORT`               | 服务器监听端口                                          | `3000`            |
+| `DATA_DIR`           | 数据目录（PGlite、日志等）                              | `./data`          |
+| `PGLITE_DIR`         | PGlite 数据库目录                                       | `DATA_DIR/pglite` |
+| `DATABASE_URL`       | 外部 PostgreSQL 连接字符串（设置后使用 PG 而非 PGlite） | —                 |
+| `APP_ENV`            | 设为 `development` 时放宽 CORS、禁用日志脱敏            | `production`      |
+| `LOG_LEVEL`          | 日志级别：`debug` / `info` / `warn` / `error`           | `debug`           |
 
 ## 服务器命令
 

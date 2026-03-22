@@ -41,7 +41,10 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
     afterTx(tx, async () => {
       const updSeq = await allocateUserSeq(ctx.uid);
       const updatePayload = buildDeleteSessionUpdate(sessionId, updSeq, randomKeyNaked(12));
-      log.info('Emitting delete-session update to user-scoped connections', { userId: ctx.uid, sessionId });
+      log.info('Emitting delete-session update to user-scoped connections', {
+        userId: ctx.uid,
+        sessionId,
+      });
       eventRouter.emitUpdate({
         userId: ctx.uid,
         payload: updatePayload,

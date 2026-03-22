@@ -590,6 +590,15 @@ export abstract class AgentSession<TMode> {
       await this.runCommand(params.commandId);
       return { ok: true };
     });
+
+    this.session.rpcHandlerManager.registerHandler('abort', async (params: any) => {
+      logger.info('[AgentSession] session RPC abort received', {
+        userId: this.userId,
+        sessionId: this.session.sessionId,
+      });
+      await this.abort();
+      return { ok: true };
+    });
   }
 
   static MAX_BACKEND_RESTARTS = 3;
@@ -951,7 +960,8 @@ export abstract class AgentSession<TMode> {
 
     // Skip server persistence for daemon-only events — they're delivered via
     // ephemeral channels (session-alive, usage) or only relevant to local IPC.
-    const isDaemonOnly = msg.role === 'event' && AgentSession.DAEMON_ONLY_EVENTS.has(msg.content.type);
+    const isDaemonOnly =
+      msg.role === 'event' && AgentSession.DAEMON_ONLY_EVENTS.has(msg.content.type);
     if (!isDaemonOnly) {
       await this.session.sendNormalizedMessage(msg);
     }

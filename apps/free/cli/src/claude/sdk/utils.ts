@@ -140,7 +140,6 @@ export function getDefaultClaudeCodePath(): string {
   return globalPath;
 }
 
-
 /**
  * Stream async messages to stdin
  */

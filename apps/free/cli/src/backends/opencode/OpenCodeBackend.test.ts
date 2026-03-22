@@ -97,13 +97,13 @@ describe('OpenCodeBackend', () => {
 
     const capabilityEvents: SessionCapabilities[] = [];
     const iterator = backend.capabilities[Symbol.asyncIterator]();
-    const firstRead = iterator.next().then((result) => {
+    const firstRead = iterator.next().then(result => {
       if (!result.done) {
         capabilityEvents.push(result.value);
       }
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       models: {
@@ -114,12 +114,12 @@ describe('OpenCodeBackend', () => {
     });
     await firstRead;
 
-    const secondRead = iterator.next().then((result) => {
+    const secondRead = iterator.next().then(result => {
       if (!result.done) {
         capabilityEvents.push(result.value);
       }
     });
-    const updateHandler = mockOnSessionUpdate.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const updateHandler = mockOnSessionUpdate.mock.calls[0]?.[0] as (value: unknown) => void;
     updateHandler({
       sessionUpdate: 'available_commands_update',
       availableCommands: [{ name: '/compact', description: 'Compact context' }],

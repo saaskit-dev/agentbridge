@@ -225,6 +225,12 @@ export const ru: TranslationStructure = {
     sessionNotFound: 'Сессия не найдена',
     voiceSessionFailed: 'Не удалось запустить голосовую сессию',
     voiceServiceUnavailable: 'Голосовой сервис временно недоступен',
+    voiceNotConfigured: 'Voice feature is not configured. Please contact support.',
+    voiceNotInitialized:
+      'Voice service failed to initialize. Please restart the app and try again.',
+    voiceMicPermissionWeb:
+      'Microphone access is required for voice. Please allow microphone permission in your browser settings.',
+    voiceTokenRejected: 'Voice service is not available on this server.',
     oauthInitializationFailed: 'Не удалось инициализировать процесс OAuth',
     tokenStorageFailed: 'Не удалось сохранить токены аутентификации',
     oauthStateMismatch: 'Ошибка проверки безопасности. Попробуйте снова',
@@ -289,14 +295,16 @@ export const ru: TranslationStructure = {
       success: 'Worktree успешно создан',
     },
     inputPlaceholder: 'Над чем вы хотите поработать?',
-    capabilityDiscoveryNotice: 'Отправьте первое сообщение, чтобы загрузить режимы, модели и команды.',
+    capabilityDiscoveryNotice:
+      'Отправьте первое сообщение, чтобы загрузить режимы, модели и команды.',
   },
 
   agentPicker: {
     headerTitle: 'Выбрать агента',
     heroEyebrow: 'Выбор реализации',
     heroTitle: 'Выберите среду выполнения для начала работы.',
-    heroDescription: 'Каждый вариант ниже обнаруживается из зарегистрированных реализаций на выбранной машине. Классические и ACP записи намеренно разделены.',
+    heroDescription:
+      'Каждый вариант ниже обнаруживается из зарегистрированных реализаций на выбранной машине. Классические и ACP записи намеренно разделены.',
     experimentalSection: 'Экспериментальные',
     experimentalCaption: 'Необязательные агенты за настройкой экспериментов.',
     noAgentsTitle: 'Нет доступных агентов',
@@ -407,7 +415,8 @@ export const ru: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
-    updateCliInstructions: 'Пожалуйста, выполните curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    updateCliInstructions:
+      'Пожалуйста, выполните curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Удалить сессию',
     deleteSessionSubtitle: 'Удалить эту сессию навсегда',
     deleteSessionConfirm: 'Удалить сессию навсегда?',
@@ -820,8 +829,8 @@ export const ru: TranslationStructure = {
     unknownEvent: 'Неизвестное событие',
     usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
     unknownTime: 'неизвестное время',
-    permissionRequest: ({ toolName }: { toolName: string }) => "Permission request for " + toolName,
-    permissionMode: ({ mode }: { mode: string }) => "Permission mode: " + mode,
+    permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
+    permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
   },
 
   codex: {
@@ -1002,14 +1011,17 @@ export const ru: TranslationStructure = {
     copyToClipboard: 'Копировать в буфер обмена',
     copySubtitle: 'Скопировать данные логов в формате JSONL',
     whatIsIncluded: 'Что включено',
-    whatIsIncludedSubtitle: 'Диагностические логи приложения — без содержимого сообщений и личных данных',
-    privacyNote: 'Логи анонимизируются и очищаются перед экспортом. Содержимое сообщений и конфиденциальные данные никогда не включаются.',
+    whatIsIncludedSubtitle:
+      'Диагностические логи приложения — без содержимого сообщений и личных данных',
+    privacyNote:
+      'Логи анонимизируются и очищаются перед экспортом. Содержимое сообщений и конфиденциальные данные никогда не включаются.',
     noLogs: 'Нет логов',
     noLogsMessage: 'Нет записей логов для экспорта за выбранный период.',
     exported: 'Экспортировано',
     exportFailed: 'Ошибка экспорта',
     copied: 'Скопировано',
-    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'запись скопирована' : 'записей скопировано'} в буфер обмена`,
+    copiedToClipboard: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'запись скопирована' : 'записей скопировано'} в буфер обмена`,
   },
 } as const;
 

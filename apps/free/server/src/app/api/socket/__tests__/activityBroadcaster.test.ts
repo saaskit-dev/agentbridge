@@ -6,7 +6,12 @@ vi.mock('@/app/events/eventRouter', () => ({
   buildSessionActivityEphemeral: vi.fn(),
 }));
 vi.mock('@saaskit-dev/agentbridge/telemetry', () => ({
-  Logger: class { debug() {} error() {} info() {} warn() {} },
+  Logger: class {
+    debug() {}
+    error() {}
+    info() {}
+    warn() {}
+  },
 }));
 
 import { ActivityBroadcaster, type ActivityBroadcasterDeps } from '../activityBroadcaster';
@@ -150,7 +155,7 @@ describe('ActivityBroadcaster', () => {
 
   it('thinking false→true→false triggers two immediate emits', () => {
     broadcaster.queue('user1', 'sess-a', true, 1000, false); // baseline
-    broadcaster.queue('user1', 'sess-a', true, 2000, true);  // change → immediate
+    broadcaster.queue('user1', 'sess-a', true, 2000, true); // change → immediate
     broadcaster.queue('user1', 'sess-a', true, 3000, false); // change → immediate
 
     expect(deps.calls).toHaveLength(2);

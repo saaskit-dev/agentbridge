@@ -51,13 +51,15 @@ async function getDB(): Promise<{ sqlite3: any; db: number } | null> {
     const vfs = await (IDBBatchAtomicVFS as any).create('messageCache', wasmModule);
     sqlite3.vfs_register(vfs, true);
 
-    dbHandle = await sqlite3.open_v2('messageCache') as number;
+    dbHandle = (await sqlite3.open_v2('messageCache')) as number;
     await exec(SCHEMA_SQL);
 
     logger.info('[messageDB] web wa-sqlite initialized');
     return { sqlite3, db: dbHandle };
   } catch (error) {
-    logger.warn('[messageDB] web init failed, falling back to no-cache mode', { error: String(error) });
+    logger.warn('[messageDB] web init failed, falling back to no-cache mode', {
+      error: String(error),
+    });
     initFailed = true;
     return null;
   }
@@ -73,7 +75,9 @@ async function query<T>(sql: string): Promise<T[]> {
   const rows: T[] = [];
   await sqlite3.exec(dbHandle, sql, (row: any[], columns: string[]) => {
     const obj: any = {};
-    columns.forEach((col, i) => { obj[col] = row[i]; });
+    columns.forEach((col, i) => {
+      obj[col] = row[i];
+    });
     rows.push(obj as T);
   });
   return rows;
@@ -117,8 +121,9 @@ export const messageDB: MessageDB = {
     const state = await getDB();
     if (!state) return;
     const sid = escapeStr(sessionId);
-    const statements = messages.map(m =>
-      `INSERT OR REPLACE INTO messages (id, session_id, seq, content, role, created_at, updated_at)
+    const statements = messages.map(
+      m =>
+        `INSERT OR REPLACE INTO messages (id, session_id, seq, content, role, created_at, updated_at)
        VALUES ('${escapeStr(m.id)}', '${sid}', ${m.seq}, '${escapeStr(m.content)}', '${escapeStr(m.role)}', ${m.created_at}, ${m.updated_at})`
     );
     await exec(`BEGIN TRANSACTION; ${statements.join('; ')}; COMMIT;`);
@@ -137,6 +142,8 @@ export const messageDB: MessageDB = {
     const state = await getDB();
     if (!state) return;
     const sid = escapeStr(sessionId);
-    await exec(`DELETE FROM messages WHERE session_id = '${sid}'; DELETE FROM session_sync WHERE session_id = '${sid}'`);
+    await exec(
+      `DELETE FROM messages WHERE session_id = '${sid}'; DELETE FROM session_sync WHERE session_id = '${sid}'`
+    );
   },
 };

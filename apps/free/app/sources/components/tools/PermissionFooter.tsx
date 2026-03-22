@@ -20,10 +20,15 @@ const logger = new Logger('app/components/tools/PermissionFooter');
 // These cover all agent variants (Claude PascalCase, Gemini/OpenCode lowercase, ACP synthetic names).
 const BASH_TOOLS = new Set(['Bash', 'CodexBash', 'shell', 'execute']);
 const EDIT_OR_PLAN_TOOLS = new Set([
-  'Edit', 'MultiEdit', 'Write', 'NotebookEdit',
+  'Edit',
+  'MultiEdit',
+  'Write',
+  'NotebookEdit',
   'edit', // Gemini/OpenCode lowercase
-  'CodexPatch', 'CodexDiff',
-  'ExitPlanMode', 'exit_plan_mode',
+  'CodexPatch',
+  'CodexDiff',
+  'ExitPlanMode',
+  'exit_plan_mode',
 ]);
 
 function isBashLikeTool(name: string): boolean {
@@ -87,7 +92,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionAllow(sessionId, permission.id);
     } catch (error) {
-      logger.error('Failed to approve permission', toError(error), { sessionId, permissionId: permission.id, toolName });
+      logger.error('Failed to approve permission', toError(error), {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+      });
     } finally {
       setLoadingButton(null);
     }
@@ -108,7 +117,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
       // Update the session permission mode to 'accept-edits' for future permissions
       storage.getState().updateSessionPermissionMode(sessionId, 'accept-edits');
     } catch (error) {
-      logger.error('Failed to approve all edits', toError(error), { sessionId, permissionId: permission.id, toolName });
+      logger.error('Failed to approve all edits', toError(error), {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+      });
     } finally {
       setLoadingAllEdits(false);
     }
@@ -135,7 +148,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
 
       await sessionAllow(sessionId, permission.id, undefined, [toolIdentifier]);
     } catch (error) {
-      logger.error('Failed to approve for session', toError(error), { sessionId, permissionId: permission.id, toolName });
+      logger.error('Failed to approve for session', toError(error), {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+      });
     } finally {
       setLoadingForSession(false);
     }
@@ -154,7 +171,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionDeny(sessionId, permission.id);
     } catch (error) {
-      logger.error('Failed to deny permission', toError(error), { sessionId, permissionId: permission.id, toolName });
+      logger.error('Failed to deny permission', toError(error), {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+      });
     } finally {
       setLoadingButton(null);
     }
@@ -168,7 +189,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved');
     } catch (error) {
-      logger.error('Failed to approve permission', toError(error), { sessionId, permissionId: permission.id, toolName });
+      logger.error('Failed to approve permission', toError(error), {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+      });
     } finally {
       setLoadingButton(null);
     }
@@ -181,7 +206,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved_for_session');
     } catch (error) {
-      logger.error('Failed to approve for session', toError(error), { sessionId, permissionId: permission.id, toolName });
+      logger.error('Failed to approve for session', toError(error), {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+      });
     } finally {
       setLoadingForSession(false);
     }
@@ -194,7 +223,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     try {
       await sessionDeny(sessionId, permission.id, undefined, undefined, 'abort');
     } catch (error) {
-      logger.error('Failed to abort permission', toError(error), { sessionId, permissionId: permission.id, toolName });
+      logger.error('Failed to abort permission', toError(error), {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+      });
     } finally {
       setLoadingButton(null);
     }

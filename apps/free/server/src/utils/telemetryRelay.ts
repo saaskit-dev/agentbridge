@@ -34,9 +34,7 @@ export class TelemetryRelay {
   }) {
     this.licenseKey = opts.licenseKey;
     this.baseUrl =
-      opts.region === 'eu'
-        ? 'https://log-api.eu.newrelic.com'
-        : 'https://log-api.newrelic.com';
+      opts.region === 'eu' ? 'https://log-api.eu.newrelic.com' : 'https://log-api.newrelic.com';
     this.maxBuffer = opts.maxBuffer ?? 5000;
     this.batchSize = opts.batchSize ?? 200;
 
@@ -93,7 +91,7 @@ export class TelemetryRelay {
               ...(meta.machineId ? { 'machine.id': meta.machineId } : {}),
             },
           },
-          logs: entries.map((e) => ({
+          logs: entries.map(e => ({
             timestamp: new Date(e.timestamp).getTime(),
             message: e.message,
             level: e.level,

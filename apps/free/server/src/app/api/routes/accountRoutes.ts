@@ -43,7 +43,9 @@ export function accountRoutes(app: Fastify) {
         firstName: user.firstName,
         lastName: user.lastName,
         username: user.username,
-        avatar: user.avatar ? { ...(user.avatar as any), url: getPublicUrl((user.avatar as any).path) } : null,
+        avatar: user.avatar
+          ? { ...(user.avatar as any), url: getPublicUrl((user.avatar as any).path) }
+          : null,
         github: user.githubUser ? user.githubUser.profile : null,
         connectedServices: Array.from(connectedVendors),
       });
@@ -61,7 +63,11 @@ export function accountRoutes(app: Fastify) {
             settings: z.string().nullable(),
             settingsVersion: z.number(),
           }),
-          401: z.object({ error: z.string(), code: z.string().optional(), success: z.boolean().optional() }),
+          401: z.object({
+            error: z.string(),
+            code: z.string().optional(),
+            success: z.boolean().optional(),
+          }),
           500: z.object({
             error: z.literal('Failed to get account settings'),
           }),
@@ -111,7 +117,11 @@ export function accountRoutes(app: Fastify) {
               currentSettings: z.string().nullable(),
             }),
           ]),
-          401: z.object({ error: z.string(), code: z.string().optional(), success: z.boolean().optional() }),
+          401: z.object({
+            error: z.string(),
+            code: z.string().optional(),
+            success: z.boolean().optional(),
+          }),
           500: z.object({
             success: z.literal(false),
             error: z.literal('Failed to update account settings'),
@@ -168,7 +178,9 @@ export function accountRoutes(app: Fastify) {
             const parsedSettings = JSON.parse(settings);
             if (typeof parsedSettings.analyticsEnabled === 'boolean') {
               updateAnalyticsEnabledCache(userId, parsedSettings.analyticsEnabled);
-              log.debug(`Updated analytics cache for user ${userId}: ${parsedSettings.analyticsEnabled}`);
+              log.debug(
+                `Updated analytics cache for user ${userId}: ${parsedSettings.analyticsEnabled}`
+              );
             }
           } catch {
             // Invalid JSON, ignore

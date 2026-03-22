@@ -13,6 +13,8 @@ export async function uninstall(): Promise<void> {
     const { uninstallUserAgent } = await import('./linux/installUser');
     await uninstallUserAgent();
   } else {
-    throw new Error(`Daemon uninstallation is not supported on ${process.platform}. Supported platforms: macOS, Linux`);
+    throw new Error(
+      `Daemon uninstallation is not supported on ${process.platform}. Supported platforms: macOS, Linux`
+    );
   }
 }

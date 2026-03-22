@@ -40,30 +40,39 @@ function registerWebhookHandlers() {
 
   // Type-safe handlers for specific events
   webhooks.on('push', async ({ payload }: EmitterWebhookEvent<'push'>) => {
-    log.info(`Push to ${payload.repository.full_name} by ${payload.pusher.name}`, { event: 'push' });
+    log.info(`Push to ${payload.repository.full_name} by ${payload.pusher.name}`, {
+      event: 'push',
+    });
   });
 
-  webhooks.on(
-    'pull_request',
-    async ({ payload }: EmitterWebhookEvent<'pull_request'>) => {
-      log.info(`PR ${payload.action} on ${payload.repository.full_name}: #${payload.pull_request.number} - ${payload.pull_request.title}`, { event: 'pull_request' });
-    }
-  );
+  webhooks.on('pull_request', async ({ payload }: EmitterWebhookEvent<'pull_request'>) => {
+    log.info(
+      `PR ${payload.action} on ${payload.repository.full_name}: #${payload.pull_request.number} - ${payload.pull_request.title}`,
+      { event: 'pull_request' }
+    );
+  });
 
   webhooks.on('issues', async ({ payload }: EmitterWebhookEvent<'issues'>) => {
-    log.info(`Issue ${payload.action} on ${payload.repository.full_name}: #${payload.issue.number} - ${payload.issue.title}`, { event: 'issues' });
+    log.info(
+      `Issue ${payload.action} on ${payload.repository.full_name}: #${payload.issue.number} - ${payload.issue.title}`,
+      { event: 'issues' }
+    );
   });
 
   webhooks.on(
     ['star.created', 'star.deleted'],
     async ({ payload }: EmitterWebhookEvent<'star.created' | 'star.deleted'>) => {
       const action = payload.action === 'created' ? 'starred' : 'unstarred';
-      log.info(`Repository ${action}: ${payload.repository.full_name} by ${payload.sender.login}`, { event: 'star' });
+      log.info(`Repository ${action}: ${payload.repository.full_name} by ${payload.sender.login}`, {
+        event: 'star',
+      });
     }
   );
 
   webhooks.on('repository', async ({ payload }: EmitterWebhookEvent<'repository'>) => {
-    log.info(`Repository ${payload.action}: ${payload.repository.full_name}`, { event: 'repository' });
+    log.info(`Repository ${payload.action}: ${payload.repository.full_name}`, {
+      event: 'repository',
+    });
   });
 
   // Catch-all for unhandled events

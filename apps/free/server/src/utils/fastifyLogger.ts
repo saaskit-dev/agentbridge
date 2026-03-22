@@ -62,21 +62,14 @@ function slimFastifyLog(obj: any): any {
   return result;
 }
 
-function createPinoShim(
-  inner: Logger,
-  bindings?: Record<string, unknown>
-): PinoLikeLogger {
-  const dispatch = (
-    method: 'info' | 'warn' | 'error' | 'debug',
-    obj: any,
-    msg?: string
-  ): void => {
+function createPinoShim(inner: Logger, bindings?: Record<string, unknown>): PinoLikeLogger {
+  const dispatch = (method: 'info' | 'warn' | 'error' | 'debug', obj: any, msg?: string): void => {
     const slim = slimFastifyLog(obj);
     const data: Record<string, unknown> = bindings
       ? { ...bindings, ...(typeof slim === 'object' && slim !== null ? slim : { raw: slim }) }
       : typeof slim === 'object' && slim !== null
-      ? (slim as Record<string, unknown>)
-      : { raw: slim };
+        ? (slim as Record<string, unknown>)
+        : { raw: slim };
 
     const message = typeof slim === 'string' ? slim : (msg ?? '');
     if (method === 'error') {

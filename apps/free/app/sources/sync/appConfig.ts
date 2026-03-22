@@ -81,14 +81,18 @@ export function loadAppConfig(): AppConfig {
     process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE &&
     config.revenueCatGoogleKey !== process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE
   ) {
-    logger.debug('[loadAppConfig] Override revenueCatGoogleKey from EXPO_PUBLIC_REVENUE_CAT_GOOGLE');
+    logger.debug(
+      '[loadAppConfig] Override revenueCatGoogleKey from EXPO_PUBLIC_REVENUE_CAT_GOOGLE'
+    );
     config.revenueCatGoogleKey = process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE;
   }
   if (
     process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE &&
     config.revenueCatStripeKey !== process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE
   ) {
-    logger.debug('[loadAppConfig] Override revenueCatStripeKey from EXPO_PUBLIC_REVENUE_CAT_STRIPE');
+    logger.debug(
+      '[loadAppConfig] Override revenueCatStripeKey from EXPO_PUBLIC_REVENUE_CAT_STRIPE'
+    );
     config.revenueCatStripeKey = process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE;
   }
   if (

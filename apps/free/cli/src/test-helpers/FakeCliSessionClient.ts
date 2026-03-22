@@ -16,10 +16,10 @@ export class FakeCliSessionClient {
 
   private constructor(client: ApiSessionClient) {
     this.client = client;
-    this.client.onUserMessage((message) => {
+    this.client.onUserMessage(message => {
       this.userMessages.push(message);
     });
-    this.client.on('message', (message) => {
+    this.client.on('message', message => {
       this.inboundMessages.push(message);
     });
   }
@@ -37,7 +37,9 @@ export class FakeCliSessionClient {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    throw new Error(`FakeCliSessionClient waitForUserMessage timeout (${timeoutMs}ms): ${description}`);
+    throw new Error(
+      `FakeCliSessionClient waitForUserMessage timeout (${timeoutMs}ms): ${description}`
+    );
   }
 
   async waitForInboundMessage(
@@ -53,10 +55,14 @@ export class FakeCliSessionClient {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    throw new Error(`FakeCliSessionClient waitForInboundMessage timeout (${timeoutMs}ms): ${description}`);
+    throw new Error(
+      `FakeCliSessionClient waitForInboundMessage timeout (${timeoutMs}ms): ${description}`
+    );
   }
 
-  async sendNormalizedMessage(message: Pick<NormalizedMessage, 'role' | 'content'> & Partial<NormalizedMessage>): Promise<string> {
+  async sendNormalizedMessage(
+    message: Pick<NormalizedMessage, 'role' | 'content'> & Partial<NormalizedMessage>
+  ): Promise<string> {
     return this.client.sendNormalizedMessage(message);
   }
 

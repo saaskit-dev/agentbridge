@@ -11,7 +11,14 @@ import {
 } from '../modules/common/registerCommonHandlers';
 import { encryptToWireString, decryptFromWireString } from './encryption';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
-import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody, WireTrace } from './types';
+import {
+  MachineMetadata,
+  DaemonState,
+  Machine,
+  Update,
+  UpdateMachineBody,
+  WireTrace,
+} from './types';
 import { configuration } from '@/configuration';
 import { getProcessTraceContext } from '@/telemetry';
 import { injectTrace } from '@saaskit-dev/agentbridge/telemetry';
@@ -130,7 +137,12 @@ export class ApiMachineClient {
     registerCommonHandlers(this.rpcHandlerManager, process.cwd(), this.machine.id);
   }
 
-  setRPCHandlers({ spawnSession, stopSession, listSupportedAgents, requestShutdown }: MachineRpcHandlers) {
+  setRPCHandlers({
+    spawnSession,
+    stopSession,
+    listSupportedAgents,
+    requestShutdown,
+  }: MachineRpcHandlers) {
     // Register spawn session handler
     this.rpcHandlerManager.registerHandler('spawn-free-session', async (params: any) => {
       const {
@@ -182,7 +194,10 @@ export class ApiMachineClient {
           return { type: 'success', sessionId: result.sessionId };
 
         case 'requestToApproveDirectoryCreation':
-          logger.debug('[API MACHINE] Requesting directory creation approval', { machineId: this.machine.id, directory: result.directory });
+          logger.debug('[API MACHINE] Requesting directory creation approval', {
+            machineId: this.machine.id,
+            directory: result.directory,
+          });
           return { type: 'requestToApproveDirectoryCreation', directory: result.directory };
 
         case 'error':
@@ -243,7 +258,11 @@ export class ApiMachineClient {
 
       const answer = await this.socket.emitWithAck('machine-update-metadata', {
         machineId: this.machine.id,
-        metadata: await encryptToWireString(this.machine.encryptionKey, this.machine.encryptionVariant, updated),
+        metadata: await encryptToWireString(
+          this.machine.encryptionKey,
+          this.machine.encryptionVariant,
+          updated
+        ),
         expectedVersion: this.machine.metadataVersion,
         _trace: getWireTrace(),
       });
@@ -280,7 +299,11 @@ export class ApiMachineClient {
 
       const answer = await this.socket.emitWithAck('machine-update-state', {
         machineId: this.machine.id,
-        daemonState: await encryptToWireString(this.machine.encryptionKey, this.machine.encryptionVariant, updated),
+        daemonState: await encryptToWireString(
+          this.machine.encryptionKey,
+          this.machine.encryptionVariant,
+          updated
+        ),
         expectedVersion: this.machine.daemonStateVersion,
         _trace: getWireTrace(),
       });
@@ -292,7 +315,9 @@ export class ApiMachineClient {
           answer.daemonState
         );
         this.machine.daemonStateVersion = answer.version;
-        logger.debug('[API MACHINE] Daemon state updated successfully', { machineId: this.machine.id });
+        logger.debug('[API MACHINE] Daemon state updated successfully', {
+          machineId: this.machine.id,
+        });
       } else if (answer.result === 'version-mismatch') {
         if (answer.version > this.machine.daemonStateVersion) {
           this.machine.daemonStateVersion = answer.version;
@@ -337,7 +362,9 @@ export class ApiMachineClient {
         httpPort: this.machine.daemonState?.httpPort,
         startedAt: Date.now(),
       })).catch(err => {
-        logger.warn('[API MACHINE] Failed to update daemon state on connect', { error: err instanceof Error ? err.message : String(err) });
+        logger.warn('[API MACHINE] Failed to update daemon state on connect', {
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
 
       // Register all handlers
@@ -357,7 +384,10 @@ export class ApiMachineClient {
     this.socket.on(
       'rpc-request',
       async (data: { method: string; params: string }, callback: (response: string) => void) => {
-        logger.debug('[API MACHINE] Received RPC request', { machineId: this.machine.id, method: data.method });
+        logger.debug('[API MACHINE] Received RPC request', {
+          machineId: this.machine.id,
+          method: data.method,
+        });
         callback(await this.rpcHandlerManager.handleRequest(data));
       }
     );
@@ -373,7 +403,9 @@ export class ApiMachineClient {
         const update = data.body as UpdateMachineBody;
 
         if (update.metadata) {
-          logger.debug('[API MACHINE] Received external metadata update', { machineId: this.machine.id });
+          logger.debug('[API MACHINE] Received external metadata update', {
+            machineId: this.machine.id,
+          });
           this.machine.metadata = await decryptFromWireString(
             this.machine.encryptionKey,
             this.machine.encryptionVariant,
@@ -383,7 +415,9 @@ export class ApiMachineClient {
         }
 
         if (update.daemonState) {
-          logger.debug('[API MACHINE] Received external daemon state update', { machineId: this.machine.id });
+          logger.debug('[API MACHINE] Received external daemon state update', {
+            machineId: this.machine.id,
+          });
           this.machine.daemonState = await decryptFromWireString(
             this.machine.encryptionKey,
             this.machine.encryptionVariant,
@@ -392,16 +426,25 @@ export class ApiMachineClient {
           this.machine.daemonStateVersion = update.daemonState.version;
         }
       } else {
-        logger.debug('[API MACHINE] Received unknown update type', { machineId: this.machine.id, type: (data.body as any).t });
+        logger.debug('[API MACHINE] Received unknown update type', {
+          machineId: this.machine.id,
+          type: (data.body as any).t,
+        });
       }
     });
 
     this.socket.on('connect_error', error => {
-      logger.error('[DAEMON] Machine connect failed', undefined, { machineId: this.machine.id, error: error.message });
+      logger.error('[DAEMON] Machine connect failed', undefined, {
+        machineId: this.machine.id,
+        error: error.message,
+      });
     });
 
     this.socket.io.on('error', (error: any) => {
-      logger.debug('[API MACHINE] Socket error', { machineId: this.machine.id, error: safeStringify(error) });
+      logger.debug('[API MACHINE] Socket error', {
+        machineId: this.machine.id,
+        error: safeStringify(error),
+      });
     });
   }
 

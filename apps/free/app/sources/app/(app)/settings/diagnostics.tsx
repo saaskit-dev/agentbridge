@@ -61,7 +61,10 @@ export default function DiagnosticsScreen() {
 
       if (Platform.OS === 'web') {
         await Clipboard.setStringAsync(jsonl);
-        Modal.alert(t('diagnostics.exported'), t('diagnostics.copiedToClipboard', { count: entries.length }));
+        Modal.alert(
+          t('diagnostics.exported'),
+          t('diagnostics.copiedToClipboard', { count: entries.length })
+        );
         return;
       }
 
@@ -70,7 +73,10 @@ export default function DiagnosticsScreen() {
 
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
-        await Sharing.shareAsync(file.uri, { mimeType: 'application/x-ndjson', UTI: 'public.text' });
+        await Sharing.shareAsync(file.uri, {
+          mimeType: 'application/x-ndjson',
+          UTI: 'public.text',
+        });
       } else {
         Modal.alert(t('diagnostics.exported'), `Saved to: ${file.uri}`);
       }
@@ -89,7 +95,10 @@ export default function DiagnosticsScreen() {
 
     const jsonl = entries.map(e => JSON.stringify(e)).join('\n');
     await Clipboard.setStringAsync(jsonl);
-    Modal.alert(t('diagnostics.copied'), t('diagnostics.copiedToClipboard', { count: entries.length }));
+    Modal.alert(
+      t('diagnostics.copied'),
+      t('diagnostics.copiedToClipboard', { count: entries.length })
+    );
   };
 
   const chipStyle = (active: boolean) => ({
@@ -115,7 +124,12 @@ export default function DiagnosticsScreen() {
         <ItemGroup title={t('diagnostics.preview')}>
           <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-              <Ionicons name="document-text-outline" size={32} color="#007AFF" style={{ marginRight: 12 }} />
+              <Ionicons
+                name="document-text-outline"
+                size={32}
+                color="#007AFF"
+                style={{ marginRight: 12 }}
+              />
               <View>
                 <Text style={{ fontSize: 22, fontWeight: '700', color: theme.colors.text }}>
                   {entries.length.toLocaleString()}
@@ -127,7 +141,14 @@ export default function DiagnosticsScreen() {
             </View>
 
             {/* Time range selector */}
-            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 8, textTransform: 'uppercase' }}>
+            <Text
+              style={{
+                fontSize: 11,
+                color: theme.colors.textSecondary,
+                marginBottom: 8,
+                textTransform: 'uppercase',
+              }}
+            >
               {t('diagnostics.timeRange')}
             </Text>
             <View style={{ flexDirection: 'row' }}>
@@ -170,7 +191,13 @@ export default function DiagnosticsScreen() {
           <Item
             title={t('diagnostics.whatIsIncluded')}
             subtitle={t('diagnostics.whatIsIncludedSubtitle')}
-            icon={<Ionicons name="information-circle-outline" size={24} color={theme.colors.textSecondary} />}
+            icon={
+              <Ionicons
+                name="information-circle-outline"
+                size={24}
+                color={theme.colors.textSecondary}
+              />
+            }
             showChevron={false}
           />
         </ItemGroup>

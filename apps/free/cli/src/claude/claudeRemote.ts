@@ -83,16 +83,26 @@ export async function claudeRemote(opts: {
           // If next arg doesn't start with dash and contains dashes, it's likely a UUID
           if (!nextArg.startsWith('-') && nextArg.includes('-')) {
             startFrom = nextArg;
-            logger.info('[claudeRemote] Found --resume with session ID', { sessionId: startFrom, path: opts.path, traceId: getProcessTraceContext()?.traceId });
+            logger.info('[claudeRemote] Found --resume with session ID', {
+              sessionId: startFrom,
+              path: opts.path,
+              traceId: getProcessTraceContext()?.traceId,
+            });
             break;
           } else {
             // Just --resume without UUID - SDK doesn't support this
-            logger.debug('[claudeRemote] Found --resume without session ID - not supported in remote mode', { path: opts.path, traceId: getProcessTraceContext()?.traceId });
+            logger.debug(
+              '[claudeRemote] Found --resume without session ID - not supported in remote mode',
+              { path: opts.path, traceId: getProcessTraceContext()?.traceId }
+            );
             break;
           }
         } else {
           // --resume at end of args - SDK doesn't support this
-          logger.debug('[claudeRemote] Found --resume without session ID - not supported in remote mode', { path: opts.path, traceId: getProcessTraceContext()?.traceId });
+          logger.debug(
+            '[claudeRemote] Found --resume without session ID - not supported in remote mode',
+            { path: opts.path, traceId: getProcessTraceContext()?.traceId }
+          );
           break;
         }
       }
@@ -109,7 +119,10 @@ export async function claudeRemote(opts: {
   // Get initial message
   const initial = await opts.nextMessage();
   if (!initial) {
-    logger.info('[claudeRemote] no initial message, exiting', { sessionId: opts.sessionId, path: opts.path });
+    logger.info('[claudeRemote] no initial message, exiting', {
+      sessionId: opts.sessionId,
+      path: opts.path,
+    });
     return;
   }
 
@@ -195,13 +208,19 @@ export async function claudeRemote(opts: {
 
   updateThinking(true);
   try {
-    logger.info('[claudeRemote] Starting to iterate over response', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId });
+    logger.info('[claudeRemote] Starting to iterate over response', {
+      sessionId: opts.sessionId,
+      path: opts.path,
+      traceId: getProcessTraceContext()?.traceId,
+    });
 
     for await (const message of response) {
       if (message.type === 'assistant') {
         const assistantMsg = message as SDKAssistantMessage;
         const blocks = assistantMsg.message.content;
-        const toolCalls = blocks.filter(b => b.type === 'tool_use').map(b => ({ name: b.name, id: b.id }));
+        const toolCalls = blocks
+          .filter(b => b.type === 'tool_use')
+          .map(b => ({ name: b.name, id: b.id }));
         logger.info('[claudeRemote] assistant message', {
           sessionId: opts.sessionId,
           path: opts.path,
@@ -217,11 +236,21 @@ export async function claudeRemote(opts: {
             .filter(c => c.type === 'tool_result')
             .map(c => ({ tool_use_id: c.tool_use_id, is_error: c.is_error }));
           if (results.length > 0) {
-            logger.info('[claudeRemote] tool results received', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId, results });
+            logger.info('[claudeRemote] tool results received', {
+              sessionId: opts.sessionId,
+              path: opts.path,
+              traceId: getProcessTraceContext()?.traceId,
+              results,
+            });
           }
         }
       } else {
-        logger.debug('[claudeRemote] message received', { type: message.type, sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId });
+        logger.debug('[claudeRemote] message received', {
+          type: message.type,
+          sessionId: opts.sessionId,
+          path: opts.path,
+          traceId: getProcessTraceContext()?.traceId,
+        });
       }
 
       // Handle messages
@@ -249,7 +278,7 @@ export async function claudeRemote(opts: {
           const found = await Promise.race([
             awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`)),
             abortableWait(opts.signal),
-          ]).catch((e) => {
+          ]).catch(e => {
             if (e instanceof AbortError) return false;
             throw e;
           });
@@ -268,7 +297,11 @@ export async function claudeRemote(opts: {
       // Handle result messages
       if (message.type === 'result') {
         updateThinking(false);
-        logger.debug('[claudeRemote] Result received, exiting claudeRemote', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId });
+        logger.debug('[claudeRemote] Result received, exiting claudeRemote', {
+          sessionId: opts.sessionId,
+          path: opts.path,
+          traceId: getProcessTraceContext()?.traceId,
+        });
 
         // Send completion messages
         if (isCompactCommand) {
@@ -298,7 +331,12 @@ export async function claudeRemote(opts: {
         if (msg.message.role === 'user' && Array.isArray(msg.message.content)) {
           for (const c of msg.message.content) {
             if (c.type === 'tool_result' && c.tool_use_id && opts.isAborted(c.tool_use_id)) {
-              logger.debug('[claudeRemote] Tool aborted, exiting claudeRemote', { sessionId: opts.sessionId, path: opts.path, traceId: getProcessTraceContext()?.traceId, toolUseId: c.tool_use_id });
+              logger.debug('[claudeRemote] Tool aborted, exiting claudeRemote', {
+                sessionId: opts.sessionId,
+                path: opts.path,
+                traceId: getProcessTraceContext()?.traceId,
+                toolUseId: c.tool_use_id,
+              });
               return;
             }
           }
@@ -315,13 +353,17 @@ export async function claudeRemote(opts: {
       });
       // Ignore
     } else {
-      logger.error('[claudeRemote] unexpected error, rethrowing', e instanceof Error ? e : undefined, {
-        sessionId: opts.sessionId,
-        path: opts.path,
-        traceId: getProcessTraceContext()?.traceId,
-        remoteElapsed: Date.now() - remoteStart,
-        error: String(e),
-      });
+      logger.error(
+        '[claudeRemote] unexpected error, rethrowing',
+        e instanceof Error ? e : undefined,
+        {
+          sessionId: opts.sessionId,
+          path: opts.path,
+          traceId: getProcessTraceContext()?.traceId,
+          remoteElapsed: Date.now() - remoteStart,
+          error: String(e),
+        }
+      );
       throw e;
     }
   } finally {

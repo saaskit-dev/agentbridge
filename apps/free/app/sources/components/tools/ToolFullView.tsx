@@ -26,7 +26,9 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
   logger.debug('ToolFullView', devModeEnabled);
 
   return (
-    <ScrollView style={[toolFullViewStyles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
+    <ScrollView
+      style={[toolFullViewStyles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}
+    >
       <View style={toolFullViewStyles.contentWrapper}>
         {/* Tool-specific content or generic fallback */}
         {SpecializedFullView ? (
@@ -39,7 +41,9 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
               <View style={toolFullViewStyles.section}>
                 <View style={toolFullViewStyles.sectionHeader}>
                   <Ionicons name="information-circle" size={20} color="#5856D6" />
-                  <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.description')}</Text>
+                  <Text style={toolFullViewStyles.sectionTitle}>
+                    {t('tools.fullView.description')}
+                  </Text>
                 </View>
                 <Text style={toolFullViewStyles.description}>{tool.description}</Text>
               </View>
@@ -49,7 +53,9 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
               <View style={toolFullViewStyles.section}>
                 <View style={toolFullViewStyles.sectionHeader}>
                   <Ionicons name="log-in" size={20} color="#5856D6" />
-                  <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.inputParams')}</Text>
+                  <Text style={toolFullViewStyles.sectionTitle}>
+                    {t('tools.fullView.inputParams')}
+                  </Text>
                 </View>
                 <CodeView code={JSON.stringify(tool.input, null, 2)} />
               </View>
@@ -90,8 +96,12 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
               <View style={toolFullViewStyles.section}>
                 <View style={toolFullViewStyles.emptyOutputContainer}>
                   <Ionicons name="checkmark-circle-outline" size={48} color="#34C759" />
-                  <Text style={toolFullViewStyles.emptyOutputText}>{t('tools.fullView.completed')}</Text>
-                  <Text style={toolFullViewStyles.emptyOutputSubtext}>{t('tools.fullView.noOutput')}</Text>
+                  <Text style={toolFullViewStyles.emptyOutputText}>
+                    {t('tools.fullView.completed')}
+                  </Text>
+                  <Text style={toolFullViewStyles.emptyOutputSubtext}>
+                    {t('tools.fullView.noOutput')}
+                  </Text>
                 </View>
               </View>
             )}
@@ -103,7 +113,9 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
           <View style={toolFullViewStyles.section}>
             <View style={toolFullViewStyles.sectionHeader}>
               <Ionicons name="code-slash" size={20} color="#FF9500" />
-              <Text style={toolFullViewStyles.sectionTitle}>{t('tools.fullView.rawJsonDevMode')}</Text>
+              <Text style={toolFullViewStyles.sectionTitle}>
+                {t('tools.fullView.rawJsonDevMode')}
+              </Text>
             </View>
             <CodeView
               code={JSON.stringify(

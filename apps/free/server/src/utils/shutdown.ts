@@ -23,7 +23,11 @@ export const shutdownSignal = shutdownController.signal;
 let shutdownTriggered = false;
 let shutdownResolve: (() => void) | null = null;
 
-export function onShutdown(name: string, callback: () => Promise<void>, phase: number = SHUTDOWN_PHASE.APP): () => void {
+export function onShutdown(
+  name: string,
+  callback: () => Promise<void>,
+  phase: number = SHUTDOWN_PHASE.APP
+): () => void {
   if (shutdownSignal.aborted) {
     // If already shutting down, execute immediately
     callback();
@@ -94,7 +98,10 @@ export async function awaitShutdown() {
   shutdownController.abort();
 
   // Snapshot and group handlers by phase
-  const byPhase = new Map<number, Array<{ name: string; index: number; callback: () => Promise<void> }>>();
+  const byPhase = new Map<
+    number,
+    Array<{ name: string; index: number; callback: () => Promise<void> }>
+  >();
   for (const [name, entries] of shutdownHandlers) {
     for (let i = 0; i < entries.length; i++) {
       const { phase, callback } = entries[i];
@@ -120,7 +127,11 @@ export async function awaitShutdown() {
         const handlerStart = Date.now();
         return h.callback().then(
           () => log.info(`Phase ${phase} handler done: ${h.name} (${Date.now() - handlerStart}ms)`),
-          error => log.error(`Phase ${phase} handler error: ${h.name} (${Date.now() - handlerStart}ms)`, error)
+          error =>
+            log.error(
+              `Phase ${phase} handler error: ${h.name} (${Date.now() - handlerStart}ms)`,
+              error
+            )
         );
       })
     );

@@ -4,6 +4,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { AgentFlavorIcon } from '@/components/AgentFlavorIcon';
 import { Typography } from '@/constants/Typography';
 import { machineListSupportedAgents } from '@/sync/ops';
 import { useSetting } from '@/sync/storage';
@@ -211,13 +212,6 @@ type AgentSection = {
   items: AppAgentFlavor[];
 };
 
-function getAgentIcon(agentType: AppAgentFlavor): keyof typeof Ionicons.glyphMap {
-  if (agentType.startsWith('claude')) return 'sparkles-outline';
-  if (agentType.startsWith('codex')) return 'code-slash-outline';
-  if (agentType === 'gemini') return 'logo-google';
-  return 'terminal-outline';
-}
-
 function getAgentTags(agentType: AppAgentFlavor): string[] {
   const tags: string[] = [];
   if (agentType.endsWith('-acp')) {
@@ -323,9 +317,7 @@ export default function AgentPickerScreen() {
           <View style={styles.contentContainer}>
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>{t('agentPicker.noAgentsTitle')}</Text>
-              <Text style={styles.emptyText}>
-                {t('agentPicker.noAgentsDescription')}
-              </Text>
+              <Text style={styles.emptyText}>{t('agentPicker.noAgentsDescription')}</Text>
             </View>
           </View>
         </View>
@@ -352,9 +344,7 @@ export default function AgentPickerScreen() {
             <Text style={styles.heroEyebrowText}>{t('agentPicker.heroEyebrow')}</Text>
           </View>
           <Text style={styles.heroTitle}>{t('agentPicker.heroTitle')}</Text>
-          <Text style={styles.heroDescription}>
-            {t('agentPicker.heroDescription')}
-          </Text>
+          <Text style={styles.heroDescription}>{t('agentPicker.heroDescription')}</Text>
         </View>
 
         {sections.map(section => (
@@ -382,15 +372,7 @@ export default function AgentPickerScreen() {
                   >
                     <View style={styles.cardTopRow}>
                       <View style={[styles.iconWrap, selected && styles.iconWrapSelected]}>
-                        <Ionicons
-                          name={getAgentIcon(agentType)}
-                          size={20}
-                          color={
-                            selected
-                              ? theme.colors.button.primary.background
-                              : theme.colors.textSecondary
-                          }
-                        />
+                        <AgentFlavorIcon flavor={agentType} size={20} />
                       </View>
 
                       <View style={styles.cardText}>

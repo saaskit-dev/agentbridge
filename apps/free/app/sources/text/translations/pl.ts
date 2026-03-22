@@ -254,6 +254,12 @@ export const pl: TranslationStructure = {
     sessionNotFound: 'Sesja nie została znaleziona',
     voiceSessionFailed: 'Nie udało się uruchomić sesji głosowej',
     voiceServiceUnavailable: 'Usługa głosowa jest tymczasowo niedostępna',
+    voiceNotConfigured: 'Voice feature is not configured. Please contact support.',
+    voiceNotInitialized:
+      'Voice service failed to initialize. Please restart the app and try again.',
+    voiceMicPermissionWeb:
+      'Microphone access is required for voice. Please allow microphone permission in your browser settings.',
+    voiceTokenRejected: 'Voice service is not available on this server.',
     oauthInitializationFailed: 'Nie udało się zainicjować przepływu OAuth',
     tokenStorageFailed: 'Nie udało się zapisać tokenów uwierzytelniania',
     oauthStateMismatch: 'Weryfikacja bezpieczeństwa nie powiodła się. Spróbuj ponownie',
@@ -319,14 +325,16 @@ export const pl: TranslationStructure = {
       success: 'Worktree został utworzony pomyślnie',
     },
     inputPlaceholder: 'Nad czym chciałbyś pracować?',
-    capabilityDiscoveryNotice: 'Wyślij pierwszą wiadomość, aby załadować tryby, modele i polecenia.',
+    capabilityDiscoveryNotice:
+      'Wyślij pierwszą wiadomość, aby załadować tryby, modele i polecenia.',
   },
 
   agentPicker: {
     headerTitle: 'Wybierz agenta',
     heroEyebrow: 'Selektor implementacji',
     heroTitle: 'Wybierz środowisko uruchomieniowe, z którym chcesz rozpocząć.',
-    heroDescription: 'Każda poniższa opcja jest wykrywana z zarejestrowanych implementacji na wybranej maszynie. Wpisy klasyczne i ACP są celowo utrzymywane oddzielnie.',
+    heroDescription:
+      'Każda poniższa opcja jest wykrywana z zarejestrowanych implementacji na wybranej maszynie. Wpisy klasyczne i ACP są celowo utrzymywane oddzielnie.',
     experimentalSection: 'Eksperymentalne',
     experimentalCaption: 'Opcjonalni agenci za ustawieniem eksperymentów.',
     noAgentsTitle: 'Brak dostępnych agentów',
@@ -446,7 +454,8 @@ export const pl: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Zainstalowana wersja ${currentVersion}. Zaktualizuj do ${requiredVersion} lub nowszej`,
-    updateCliInstructions: 'Proszę uruchomić curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    updateCliInstructions:
+      'Proszę uruchomić curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Usuń sesję',
     deleteSessionSubtitle: 'Trwale usuń tę sesję',
     deleteSessionConfirm: 'Usunąć sesję na stałe?',
@@ -834,8 +843,8 @@ export const pl: TranslationStructure = {
     unknownEvent: 'Nieznane zdarzenie',
     usageLimitUntil: ({ time }: { time: string }) => `Osiągnięto limit użycia do ${time}`,
     unknownTime: 'nieznany czas',
-    permissionRequest: ({ toolName }: { toolName: string }) => "Permission request for " + toolName,
-    permissionMode: ({ mode }: { mode: string }) => "Permission mode: " + mode,
+    permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
+    permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
   },
 
   codex: {
@@ -1004,14 +1013,17 @@ export const pl: TranslationStructure = {
     copyToClipboard: 'Kopiuj do schowka',
     copySubtitle: 'Kopiuj dane logów jako tekst JSONL',
     whatIsIncluded: 'Co jest zawarte',
-    whatIsIncludedSubtitle: 'Logi diagnostyczne aplikacji — bez treści wiadomości ani danych osobowych',
-    privacyNote: 'Logi są anonimizowane i oczyszczane przed eksportem. Treść wiadomości i wrażliwe dane nigdy nie są uwzględniane.',
+    whatIsIncludedSubtitle:
+      'Logi diagnostyczne aplikacji — bez treści wiadomości ani danych osobowych',
+    privacyNote:
+      'Logi są anonimizowane i oczyszczane przed eksportem. Treść wiadomości i wrażliwe dane nigdy nie są uwzględniane.',
     noLogs: 'Brak logów',
     noLogsMessage: 'Brak wpisów logów do eksportu dla wybranego zakresu czasu.',
     exported: 'Wyeksportowano',
     exportFailed: 'Eksport nieudany',
     copied: 'Skopiowano',
-    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'wpis skopiowany' : 'wpisów skopiowanych'} do schowka`,
+    copiedToClipboard: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'wpis skopiowany' : 'wpisów skopiowanych'} do schowka`,
   },
 } as const;
 

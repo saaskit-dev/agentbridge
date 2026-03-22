@@ -241,6 +241,12 @@ export const it: TranslationStructure = {
     sessionNotFound: 'Sessione non trovata',
     voiceSessionFailed: 'Avvio della sessione vocale non riuscito',
     voiceServiceUnavailable: 'Il servizio vocale non è temporaneamente disponibile',
+    voiceNotConfigured: 'Voice feature is not configured. Please contact support.',
+    voiceNotInitialized:
+      'Voice service failed to initialize. Please restart the app and try again.',
+    voiceMicPermissionWeb:
+      'Microphone access is required for voice. Please allow microphone permission in your browser settings.',
+    voiceTokenRejected: 'Voice service is not available on this server.',
     oauthInitializationFailed: 'Impossibile inizializzare il flusso OAuth',
     tokenStorageFailed: 'Impossibile salvare i token di autenticazione',
     oauthStateMismatch: 'Convalida di sicurezza non riuscita. Riprova',
@@ -306,16 +312,18 @@ export const it: TranslationStructure = {
       success: 'Worktree creata con successo',
     },
     inputPlaceholder: 'Su cosa vorresti lavorare?',
-    capabilityDiscoveryNotice: 'Invia il tuo primo messaggio per caricare modalità, modelli e comandi.',
+    capabilityDiscoveryNotice:
+      'Invia il tuo primo messaggio per caricare modalità, modelli e comandi.',
   },
 
   agentPicker: {
     headerTitle: 'Seleziona agente',
     heroEyebrow: 'Selettore implementazione',
     heroTitle: 'Scegli il runtime con cui vuoi iniziare.',
-    heroDescription: 'Ogni opzione qui sotto viene scoperta dalle implementazioni registrate sulla macchina selezionata. Le voci classiche e ACP sono mantenute separate di proposito.',
+    heroDescription:
+      'Ogni opzione qui sotto viene scoperta dalle implementazioni registrate sulla macchina selezionata. Le voci classiche e ACP sono mantenute separate di proposito.',
     experimentalSection: 'Sperimentale',
-    experimentalCaption: 'Agenti opzionali dietro l\'impostazione degli esperimenti.',
+    experimentalCaption: "Agenti opzionali dietro l'impostazione degli esperimenti.",
     noAgentsTitle: 'Nessun agente disponibile',
     noAgentsDescription: 'Questa macchina non ha segnalato alcuna implementazione eseguibile.',
     tagAcp: 'ACP',
@@ -432,7 +440,8 @@ export const it: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Versione ${currentVersion} installata. Aggiorna a ${requiredVersion} o successiva`,
-    updateCliInstructions: 'Esegui curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    updateCliInstructions:
+      'Esegui curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Elimina sessione',
     deleteSessionSubtitle: 'Rimuovi definitivamente questa sessione',
     deleteSessionConfirm: 'Eliminare definitivamente la sessione?',
@@ -818,8 +827,8 @@ export const it: TranslationStructure = {
     unknownEvent: 'Evento sconosciuto',
     usageLimitUntil: ({ time }: { time: string }) => `Limite di utilizzo raggiunto fino a ${time}`,
     unknownTime: 'ora sconosciuta',
-    permissionRequest: ({ toolName }: { toolName: string }) => "Permission request for " + toolName,
-    permissionMode: ({ mode }: { mode: string }) => "Permission mode: " + mode,
+    permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
+    permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
   },
 
   codex: {
@@ -976,14 +985,17 @@ export const it: TranslationStructure = {
     copyToClipboard: 'Copia negli appunti',
     copySubtitle: 'Copia i dati del log come testo JSONL',
     whatIsIncluded: 'Cosa è incluso',
-    whatIsIncludedSubtitle: 'Log diagnostici dell\'app — nessun contenuto di messaggi, nessun dato personale',
-    privacyNote: 'I log vengono anonimizzati e sanificati prima dell\'esportazione. Il contenuto dei messaggi e i dati sensibili non vengono mai inclusi.',
+    whatIsIncludedSubtitle:
+      "Log diagnostici dell'app — nessun contenuto di messaggi, nessun dato personale",
+    privacyNote:
+      "I log vengono anonimizzati e sanificati prima dell'esportazione. Il contenuto dei messaggi e i dati sensibili non vengono mai inclusi.",
     noLogs: 'Nessun log',
-    noLogsMessage: 'Non ci sono voci di log da esportare per l\'intervallo di tempo selezionato.',
+    noLogsMessage: "Non ci sono voci di log da esportare per l'intervallo di tempo selezionato.",
     exported: 'Esportato',
     exportFailed: 'Esportazione fallita',
     copied: 'Copiato',
-    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'voce copiata' : 'voci copiate'} negli appunti`,
+    copiedToClipboard: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'voce copiata' : 'voci copiate'} negli appunti`,
   },
 } as const;
 

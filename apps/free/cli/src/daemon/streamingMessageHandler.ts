@@ -54,7 +54,14 @@ export interface StreamingMessageHandlerOptions {
  * Each variant carries an optional _trace for end-to-end trace correlation (RFC §11.5).
  */
 export type StreamingEphemeralEvent =
-  | { type: 'text_delta'; sessionId: string; messageId: string; delta: string; timestamp: number; _trace?: WireTrace }
+  | {
+      type: 'text_delta';
+      sessionId: string;
+      messageId: string;
+      delta: string;
+      timestamp: number;
+      _trace?: WireTrace;
+    }
   | {
       type: 'text_complete';
       sessionId: string;
@@ -196,6 +203,8 @@ export class StreamingMessageHandler extends EventEmitter {
 
   /**
    * Handle a thinking delta
+   * Throttled to avoid flooding the app with high-frequency thinking chunks
+   * that can freeze the React Native JS thread.
    */
   onThinkingDelta(sessionId: string, delta: string): void {
     if (!this.streamingEnabled || !serverCapabilities.supportsThinkingDelta()) {
@@ -207,15 +216,26 @@ export class StreamingMessageHandler extends EventEmitter {
       return;
     }
 
-    // Send thinking delta immediately (no throttling for thinking)
-    this.sendEphemeral({
-      type: 'thinking_delta',
-      sessionId,
-      messageId: state.messageId,
-      delta,
-      timestamp: Date.now(),
-      _trace: state.trace,
-    });
+    // Accumulate thinking delta (reuses the same state fields as text deltas)
+    state.accumulatedText += delta;
+
+    const now = Date.now();
+    const timeSinceLastSend = now - state.lastSentAt;
+
+    // Throttle thinking deltas at 2x the text throttle rate (100ms default)
+    // to reduce UI pressure while still feeling responsive
+    const thinkingThrottleMs = this.throttleMs * 2;
+    if (
+      state.accumulatedText.length >= this.maxBatchSize ||
+      timeSinceLastSend >= thinkingThrottleMs
+    ) {
+      this.flushThinking(sessionId);
+    } else if (!state.flushTimeout) {
+      const timeUntilFlush = thinkingThrottleMs - timeSinceLastSend;
+      state.flushTimeout = setTimeout(() => {
+        this.flushThinking(sessionId);
+      }, timeUntilFlush);
+    }
   }
 
   /**
@@ -302,6 +322,26 @@ export class StreamingMessageHandler extends EventEmitter {
     });
 
     // Reset state
+    state.accumulatedText = '';
+    state.lastSentAt = Date.now();
+    state.flushTimeout = null;
+  }
+
+  private flushThinking(sessionId: string): void {
+    const state = this.streamingStates.get(sessionId);
+    if (!state || state.accumulatedText.length === 0) {
+      return;
+    }
+
+    this.sendEphemeral({
+      type: 'thinking_delta',
+      sessionId,
+      messageId: state.messageId,
+      delta: state.accumulatedText,
+      timestamp: Date.now(),
+      _trace: state.trace,
+    });
+
     state.accumulatedText = '';
     state.lastSentAt = Date.now();
     state.flushTimeout = null;

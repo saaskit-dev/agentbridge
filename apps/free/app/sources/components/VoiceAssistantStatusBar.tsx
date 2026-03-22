@@ -22,7 +22,6 @@ export const VoiceAssistantStatusBar = React.memo(
     const realtimeStatus = useRealtimeStatus();
     const realtimeMode = useRealtimeMode();
 
-    // Don't render if disconnected
     if (realtimeStatus === 'disconnected') {
       return null;
     }

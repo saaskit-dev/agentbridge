@@ -142,7 +142,9 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       if (started) {
         console.log(chalk.green('✓ Daemon started'));
       } else {
-        console.log(chalk.red(`✗ Failed to start daemon. Please check logs at ${configuration.logsDir}`));
+        console.log(
+          chalk.red(`✗ Failed to start daemon. Please check logs at ${configuration.logsDir}`)
+        );
         process.exit(1);
       }
     } else {
@@ -163,10 +165,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       console.log(chalk.gray(`   ${safeStringify(error)}`));
     }
   } catch (error) {
-    console.error(
-      chalk.red('Authentication failed:'),
-      safeStringify(error)
-    );
+    console.error(chalk.red('Authentication failed:'), safeStringify(error));
     process.exit(1);
   }
 }
@@ -213,9 +212,7 @@ async function handleAuthLogout(): Promise<void> {
       console.log(chalk.green('✓ Successfully logged out'));
       console.log(chalk.gray('  Run "free auth login" to authenticate again'));
     } catch (error) {
-      throw new Error(
-        `Failed to logout: ${safeStringify(error)}`
-      );
+      throw new Error(`Failed to logout: ${safeStringify(error)}`);
     }
   } else {
     console.log(chalk.blue('Logout cancelled'));

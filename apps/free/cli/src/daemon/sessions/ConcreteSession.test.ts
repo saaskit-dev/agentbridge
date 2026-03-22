@@ -36,19 +36,29 @@ const mockedDeps = vi.hoisted(() => ({
 // ---------------------------------------------------------------------------
 
 vi.mock('@/backends/claude-native/ClaudeNativeBackend', () => ({
-  ClaudeNativeBackend: class MockClaudeNativeBackend { readonly __type = 'claude-native'; },
+  ClaudeNativeBackend: class MockClaudeNativeBackend {
+    readonly __type = 'claude-native';
+  },
 }));
 vi.mock('@/backends/claude/ClaudeBackend', () => ({
-  ClaudeBackend: class MockClaudeBackend { readonly __type = 'claude'; },
+  ClaudeBackend: class MockClaudeBackend {
+    readonly __type = 'claude';
+  },
 }));
 vi.mock('@/backends/codex/CodexBackend', () => ({
-  CodexBackend: class MockCodexBackend { readonly __type = 'codex'; },
+  CodexBackend: class MockCodexBackend {
+    readonly __type = 'codex';
+  },
 }));
 vi.mock('@/backends/gemini/GeminiBackend', () => ({
-  GeminiBackend: class MockGeminiBackend { readonly __type = 'gemini'; },
+  GeminiBackend: class MockGeminiBackend {
+    readonly __type = 'gemini';
+  },
 }));
 vi.mock('@/backends/opencode/OpenCodeBackend', () => ({
-  OpenCodeBackend: class MockOpenCodeBackend { readonly __type = 'opencode'; },
+  OpenCodeBackend: class MockOpenCodeBackend {
+    readonly __type = 'opencode';
+  },
 }));
 vi.mock('@/claude/utils/startHookServer', () => ({
   startHookServer: mockedDeps.startHookServerMock,
@@ -60,8 +70,8 @@ vi.mock('@/claude/utils/generateHookSettings', () => ({
 vi.mock('@/claude/utils/sessionScanner', () => ({
   createSessionScanner: mockedDeps.createSessionScannerMock,
 }));
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>;
+vi.mock('node:fs', async importOriginal => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return { ...actual, existsSync: vi.fn().mockReturnValue(false), unlinkSync: vi.fn() };
 });
 
@@ -127,7 +137,9 @@ describe('ClaudeSession', () => {
 
   it('extracts permissionMode and model from meta', () => {
     const session = new ClaudeSession(makeOpts());
-    const mode = (session as any).extractMode(makeUserMessage({ permissionMode: 'yolo', model: 'claude-opus' }));
+    const mode = (session as any).extractMode(
+      makeUserMessage({ permissionMode: 'yolo', model: 'claude-opus' })
+    );
     expect(mode.permissionMode).toBe('yolo');
     expect(mode.model).toBe('claude-opus');
   });
@@ -194,7 +206,9 @@ describe('ClaudeNativeSession', () => {
     });
 
     it('falls back to opts values when meta is missing', () => {
-      const session = new ClaudeNativeSession(makeOpts({ permissionMode: 'accept-edits', model: 'haiku' }));
+      const session = new ClaudeNativeSession(
+        makeOpts({ permissionMode: 'accept-edits', model: 'haiku' })
+      );
       const mode = (session as any).extractMode(makeUserMessage());
       expect(mode.permissionMode).toBe('accept-edits');
       expect(mode.model).toBe('haiku');
@@ -238,9 +252,13 @@ describe('ClaudeNativeSession', () => {
       // Our mock hashObject returns JSON, so we can verify the shape
       const parsed = JSON.parse(hash);
       expect(Object.keys(parsed)).toEqual([
-        'permissionMode', 'model', 'fallbackModel',
-        'customSystemPrompt', 'appendSystemPrompt',
-        'allowedTools', 'disallowedTools',
+        'permissionMode',
+        'model',
+        'fallbackModel',
+        'customSystemPrompt',
+        'appendSystemPrompt',
+        'allowedTools',
+        'disallowedTools',
       ]);
     });
   });
@@ -291,7 +309,9 @@ describe('CodexSession', () => {
 
   it('extracts permissionMode and model from meta', () => {
     const session = new CodexSession(makeOpts());
-    const mode = (session as any).extractMode(makeUserMessage({ permissionMode: 'accept-edits', model: 'o3' }));
+    const mode = (session as any).extractMode(
+      makeUserMessage({ permissionMode: 'accept-edits', model: 'o3' })
+    );
     expect(mode.permissionMode).toBe('accept-edits');
     expect(mode.model).toBe('o3');
   });
@@ -316,7 +336,9 @@ describe('GeminiSession', () => {
   describe('defaultMode()', () => {
     it('uses opts.permissionMode with fallback to read-only', () => {
       expect(new GeminiSession(makeOpts()).defaultMode().permissionMode).toBe('read-only');
-      expect(new GeminiSession(makeOpts({ permissionMode: 'accept-edits' })).defaultMode().permissionMode).toBe('accept-edits');
+      expect(
+        new GeminiSession(makeOpts({ permissionMode: 'accept-edits' })).defaultMode().permissionMode
+      ).toBe('accept-edits');
     });
 
     it('includes model from opts', () => {
@@ -328,13 +350,17 @@ describe('GeminiSession', () => {
   describe('extractMode()', () => {
     it('extracts permissionMode and model from meta', () => {
       const session = new GeminiSession(makeOpts());
-      const mode = (session as any).extractMode(makeUserMessage({ permissionMode: 'yolo', model: 'gemini-pro' }));
+      const mode = (session as any).extractMode(
+        makeUserMessage({ permissionMode: 'yolo', model: 'gemini-pro' })
+      );
       expect(mode.permissionMode).toBe('yolo');
       expect(mode.model).toBe('gemini-pro');
     });
 
     it('falls back to opts when meta is missing', () => {
-      const session = new GeminiSession(makeOpts({ permissionMode: 'accept-edits', model: 'gemini-flash' }));
+      const session = new GeminiSession(
+        makeOpts({ permissionMode: 'accept-edits', model: 'gemini-flash' })
+      );
       const mode = (session as any).extractMode(makeUserMessage());
       expect(mode.permissionMode).toBe('accept-edits');
       expect(mode.model).toBe('gemini-flash');
@@ -371,7 +397,9 @@ describe('OpenCodeSession', () => {
   describe('defaultMode()', () => {
     it('uses opts.permissionMode with fallback to read-only', () => {
       expect(new OpenCodeSession(makeOpts()).defaultMode().permissionMode).toBe('read-only');
-      expect(new OpenCodeSession(makeOpts({ permissionMode: 'yolo' })).defaultMode().permissionMode).toBe('yolo');
+      expect(
+        new OpenCodeSession(makeOpts({ permissionMode: 'yolo' })).defaultMode().permissionMode
+      ).toBe('yolo');
     });
 
     it('does not include model field', () => {
@@ -385,7 +413,9 @@ describe('OpenCodeSession', () => {
   describe('extractMode()', () => {
     it('extracts only permissionMode from meta', () => {
       const session = new OpenCodeSession(makeOpts());
-      const mode = (session as any).extractMode(makeUserMessage({ permissionMode: 'yolo', model: 'ignored' }));
+      const mode = (session as any).extractMode(
+        makeUserMessage({ permissionMode: 'yolo', model: 'ignored' })
+      );
       expect(mode.permissionMode).toBe('yolo');
       expect('model' in mode).toBe(false);
     });

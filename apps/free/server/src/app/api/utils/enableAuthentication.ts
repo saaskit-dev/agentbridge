@@ -7,18 +7,19 @@ export function enableAuthentication(app: Fastify) {
   app.decorate('authenticate', async function (request: any, reply: any) {
     try {
       const authHeader = request.headers.authorization;
-      log.debug(`Auth check - path: ${request.url}, has header: ${!!authHeader}`
-      );
+      log.debug(`Auth check - path: ${request.url}, has header: ${!!authHeader}`);
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        log.debug(`Auth failed - missing or invalid header`
-        );
+        log.debug(`Auth failed - missing or invalid header`);
         return reply.code(401).send({ error: 'Missing authorization header' });
       }
 
       const token = authHeader.substring(7);
       const verified = await auth.verifyToken(token);
       if (!verified) {
-        log.warn('HTTP auth failed — invalid token', { path: request.url, tokenSuffix: token.slice(-12) });
+        log.warn('HTTP auth failed — invalid token', {
+          path: request.url,
+          tokenSuffix: token.slice(-12),
+        });
         return reply.code(401).send({ error: 'Invalid token' });
       }
 

@@ -17,7 +17,9 @@ export function truncateForLog(
   }
 
   if (Array.isArray(obj)) {
-    const truncated = obj.map(item => truncateForLog(item, maxStringLength, maxArrayLength)).slice(0, maxArrayLength);
+    const truncated = obj
+      .map(item => truncateForLog(item, maxStringLength, maxArrayLength))
+      .slice(0, maxArrayLength);
     if (obj.length > maxArrayLength) {
       truncated.push(`... [${obj.length - maxArrayLength} more items]`);
     }

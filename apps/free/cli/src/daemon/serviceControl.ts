@@ -31,7 +31,9 @@ export async function startDaemonService(): Promise<{ success: boolean; message:
 
     if (isLinux()) {
       logger.debug('[SERVICE] Starting daemon via systemctl...');
-      execSync(`systemctl --user start ${configuration.daemonSystemdServiceName}`, { stdio: 'pipe' });
+      execSync(`systemctl --user start ${configuration.daemonSystemdServiceName}`, {
+        stdio: 'pipe',
+      });
       return { success: true, message: 'Daemon started via systemd' };
     }
 
@@ -56,7 +58,9 @@ export async function stopDaemonService(): Promise<{ success: boolean; message: 
 
     if (isLinux()) {
       logger.debug('[SERVICE] Stopping daemon via systemctl...');
-      execSync(`systemctl --user stop ${configuration.daemonSystemdServiceName}`, { stdio: 'pipe' });
+      execSync(`systemctl --user stop ${configuration.daemonSystemdServiceName}`, {
+        stdio: 'pipe',
+      });
       return { success: true, message: 'Daemon stopped via systemd' };
     }
 

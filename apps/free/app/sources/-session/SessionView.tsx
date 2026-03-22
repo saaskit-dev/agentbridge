@@ -206,7 +206,6 @@ export const SessionView = React.memo((props: { id: string }) => {
   );
 });
 
-
 function SessionViewLoaded({ sessionId, session }: { sessionId: string; session: Session }) {
   const { theme } = useUnistyles();
   const router = useRouter();
@@ -293,11 +292,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
 
     // When confirmedModelId exists but doesn't match desired, the user explicitly
     // changed model and backend hasn't confirmed yet.
-    if (
-      desiredModelSelection &&
-      confirmedModelId &&
-      desiredModelSelection !== confirmedModelId
-    ) {
+    if (desiredModelSelection && confirmedModelId && desiredModelSelection !== confirmedModelId) {
       return `Switching to ${getModelLabel(desiredModelSelection)}...`;
     }
 
@@ -353,9 +348,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       storage.getState().updateSessionModelMode(sessionId, fallbackModelId);
     }
     sync.applySettings({ lastUsedModelMode: fallbackModelId });
-    setFooterNotice(
-      `Model list changed. Switched to the default model '${fallbackModelId}'.`
-    );
+    setFooterNotice(`Model list changed. Switched to the default model '${fallbackModelId}'.`);
   }, [desiredModelSelection, modelConfigOption, session.capabilities, sessionId]);
 
   // Track whether the initial requested mode has been confirmed by the backend.
@@ -461,7 +454,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
         setPendingCapabilityChange({ kind: 'model', target: mode });
         if (modelConfigOption) {
           await sessionSetConfig(sessionId, modelConfigOption.id, mode);
-          storage.getState().updateSessionDesiredConfigOption(sessionId, modelConfigOption.id, mode);
+          storage
+            .getState()
+            .updateSessionDesiredConfigOption(sessionId, modelConfigOption.id, mode);
         } else {
           await sessionSetModel(sessionId, mode);
           storage.getState().updateSessionModelMode(sessionId, mode);
@@ -577,9 +572,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   }, [sessionId]);
 
   const content = (
-      <>
-      {messages.length > 0 && <ChatList session={session} footerNotice={footerNotice} />}
-    </>
+    <>{messages.length > 0 && <ChatList session={session} footerNotice={footerNotice} />}</>
   );
   const placeholder =
     messages.length === 0 ? (
@@ -594,108 +587,115 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
 
   const input = (
     <>
-    {sendError && (
-      <View style={[sendErrorStyles.container, { backgroundColor: theme.dark ? 'rgba(220,38,38,0.15)' : '#FEF2F2' }]}>
-        <Text style={[sendErrorStyles.text, { color: theme.dark ? '#FCA5A5' : '#991B1B' }]}>
-          {t('session.sendFailed')}
-        </Text>
-        <Pressable onPress={() => sync.retrySend(sessionId)} hitSlop={8}>
-          <Ionicons name="refresh" size={16} color={theme.dark ? '#FCA5A5' : '#991B1B'} />
-        </Pressable>
-        <Pressable onPress={() => sync.discardPendingMessages(sessionId)} hitSlop={8}>
-          <Ionicons name="close" size={16} color={theme.dark ? '#FCA5A5' : '#991B1B'} />
-        </Pressable>
-      </View>
-    )}
-    <AgentInput
-      placeholder={t('session.inputPlaceholder')}
-      value={message}
-      onChangeText={setMessage}
-      sessionId={sessionId}
-      permissionMode={permissionMode}
-      onPermissionModeChange={updatePermissionMode}
-      modelMode={(confirmedModelId ?? undefined) as any}
-      onModelModeChange={updateModelMode as any}
-      capabilities={displayCapabilities}
-      actualModelLabel={actualModelLabel}
-      actualModeLabel={actualModeLabel}
-      pendingCapabilityLabel={pendingCapabilityLabel}
-      onAgentModeChange={updateAgentMode}
-      onConfigOptionChange={updateConfigOption}
-      isSettingsBusy={isSettingsBusy}
-      onRunCommand={commandId => {
-        setIsSettingsBusy(true);
-        void sessionRunCommand(sessionId, commandId)
-          .catch(error => {
-            logger.error('Failed to run command', toError(error), { sessionId, commandId });
-            Modal.alert(t('common.error'), 'Failed to run command');
-          })
-          .finally(() => {
-            setIsSettingsBusy(false);
-          });
-      }}
-      metadata={session.metadata}
-      connectionStatus={{
-        text: sessionStatus.statusText,
-        color: sessionStatus.statusColor,
-        dotColor: sessionStatus.statusDotColor,
-        isPulsing: sessionStatus.isPulsing,
-      }}
-      onSend={() => {
-        if (message.trim()) {
-          const trimmedMessage = message.trim();
-          setMessage('');
-          clearDraft();
-          const command = resolveCommandInput(sessionId, trimmedMessage);
-          if (command?.commandId && trimmedMessage === `/${command.command}`) {
-            setFooterNotice(null);
-            setIsSettingsBusy(true);
-            void sessionRunCommand(sessionId, command.commandId)
-              .catch(error => {
-                logger.error('Failed to run slash command', toError(error), {
-                  sessionId,
-                  commandId: command.commandId,
+      {sendError && (
+        <View
+          style={[
+            sendErrorStyles.container,
+            { backgroundColor: theme.dark ? 'rgba(220,38,38,0.15)' : '#FEF2F2' },
+          ]}
+        >
+          <Text style={[sendErrorStyles.text, { color: theme.dark ? '#FCA5A5' : '#991B1B' }]}>
+            {t('session.sendFailed')}
+          </Text>
+          <Pressable onPress={() => sync.retrySend(sessionId)} hitSlop={8}>
+            <Ionicons name="refresh" size={16} color={theme.dark ? '#FCA5A5' : '#991B1B'} />
+          </Pressable>
+          <Pressable onPress={() => sync.discardPendingMessages(sessionId)} hitSlop={8}>
+            <Ionicons name="close" size={16} color={theme.dark ? '#FCA5A5' : '#991B1B'} />
+          </Pressable>
+        </View>
+      )}
+      <AgentInput
+        placeholder={t('session.inputPlaceholder')}
+        value={message}
+        onChangeText={setMessage}
+        sessionId={sessionId}
+        permissionMode={permissionMode}
+        onPermissionModeChange={updatePermissionMode}
+        modelMode={(confirmedModelId ?? undefined) as any}
+        onModelModeChange={updateModelMode as any}
+        capabilities={displayCapabilities}
+        actualModelLabel={actualModelLabel}
+        actualModeLabel={actualModeLabel}
+        pendingCapabilityLabel={pendingCapabilityLabel}
+        onAgentModeChange={updateAgentMode}
+        onConfigOptionChange={updateConfigOption}
+        isSettingsBusy={isSettingsBusy}
+        onRunCommand={commandId => {
+          setIsSettingsBusy(true);
+          void sessionRunCommand(sessionId, commandId)
+            .catch(error => {
+              logger.error('Failed to run command', toError(error), { sessionId, commandId });
+              Modal.alert(t('common.error'), 'Failed to run command');
+            })
+            .finally(() => {
+              setIsSettingsBusy(false);
+            });
+        }}
+        metadata={session.metadata}
+        connectionStatus={{
+          text: sessionStatus.statusText,
+          color: sessionStatus.statusColor,
+          dotColor: sessionStatus.statusDotColor,
+          isPulsing: sessionStatus.isPulsing,
+        }}
+        onSend={() => {
+          if (message.trim()) {
+            const trimmedMessage = message.trim();
+            setMessage('');
+            clearDraft();
+            const command = resolveCommandInput(sessionId, trimmedMessage);
+            if (command?.commandId && trimmedMessage === `/${command.command}`) {
+              setFooterNotice(null);
+              setIsSettingsBusy(true);
+              void sessionRunCommand(sessionId, command.commandId)
+                .catch(error => {
+                  logger.error('Failed to run slash command', toError(error), {
+                    sessionId,
+                    commandId: command.commandId,
+                  });
+                  Modal.alert(t('common.error'), 'Failed to run command');
+                })
+                .finally(() => {
+                  setIsSettingsBusy(false);
                 });
-                Modal.alert(t('common.error'), 'Failed to run command');
-              })
-              .finally(() => {
-                setIsSettingsBusy(false);
-              });
-            return;
-          }
-          setFooterNotice(null);
-          sync.sendMessage(sessionId, trimmedMessage);
-        }
-      }}
-      onMicPress={micButtonState.onMicPress}
-      isMicActive={micButtonState.isMicActive}
-      onAbort={() => sessionAbort(sessionId)}
-      showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-      onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
-      // Autocomplete configuration
-      autocompletePrefixes={['@', '/']}
-      autocompleteSuggestions={query => getSuggestions(sessionId, query)}
-      usageData={
-        sessionUsage
-          ? {
-              inputTokens: sessionUsage.inputTokens,
-              outputTokens: sessionUsage.outputTokens,
-              cacheCreation: sessionUsage.cacheCreation,
-              cacheRead: sessionUsage.cacheRead,
-              contextSize: sessionUsage.contextSize,
+              return;
             }
-          : session.latestUsage
+            setFooterNotice(null);
+            sync.sendMessage(sessionId, trimmedMessage);
+          }
+        }}
+        onMicPress={micButtonState.onMicPress}
+        isMicActive={micButtonState.isMicActive}
+        onAbort={() => sessionAbort(sessionId)}
+        showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+        onFileViewerPress={
+          experiments ? () => router.push(`/session/${sessionId}/files`) : undefined
+        }
+        // Autocomplete configuration
+        autocompletePrefixes={['@', '/']}
+        autocompleteSuggestions={query => getSuggestions(sessionId, query)}
+        usageData={
+          sessionUsage
             ? {
-                inputTokens: session.latestUsage.inputTokens,
-                outputTokens: session.latestUsage.outputTokens,
-                cacheCreation: session.latestUsage.cacheCreation,
-                cacheRead: session.latestUsage.cacheRead,
-                contextSize: session.latestUsage.contextSize,
+                inputTokens: sessionUsage.inputTokens,
+                outputTokens: sessionUsage.outputTokens,
+                cacheCreation: sessionUsage.cacheCreation,
+                cacheRead: sessionUsage.cacheRead,
+                contextSize: sessionUsage.contextSize,
               }
-            : undefined
-      }
-      alwaysShowContextSize={alwaysShowContextSize}
-    />
+            : session.latestUsage
+              ? {
+                  inputTokens: session.latestUsage.inputTokens,
+                  outputTokens: session.latestUsage.outputTokens,
+                  cacheCreation: session.latestUsage.cacheCreation,
+                  cacheRead: session.latestUsage.cacheRead,
+                  contextSize: session.latestUsage.contextSize,
+                }
+              : undefined
+        }
+        alwaysShowContextSize={alwaysShowContextSize}
+      />
     </>
   );
 

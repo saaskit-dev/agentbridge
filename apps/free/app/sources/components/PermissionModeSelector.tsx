@@ -7,9 +7,7 @@ import type { PermissionMode } from '@/sync/sessionCapabilities';
 
 export type { PermissionMode } from '@/sync/sessionCapabilities';
 
-export type ModelMode =
-  | string
-  | null;
+export type ModelMode = string | null;
 
 interface PermissionModeSelectorProps {
   mode: PermissionMode;

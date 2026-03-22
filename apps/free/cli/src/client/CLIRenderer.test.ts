@@ -36,7 +36,9 @@ function stderrText(): string {
   return stderrChunks.join('');
 }
 
-function makeMsg(partial: Partial<NormalizedMessage> & Pick<NormalizedMessage, 'role' | 'content'>): NormalizedMessage {
+function makeMsg(
+  partial: Partial<NormalizedMessage> & Pick<NormalizedMessage, 'role' | 'content'>
+): NormalizedMessage {
   return {
     id: 'test-id',
     createdAt: Date.now(),
@@ -58,27 +60,33 @@ describe('CLIRenderer', () => {
   describe('render() — agent messages', () => {
     it('renders text content', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({
-        role: 'agent',
-        content: [{ type: 'text', text: 'agent response', uuid: 'u1', parentUUID: null }],
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'agent',
+          content: [{ type: 'text', text: 'agent response', uuid: 'u1', parentUUID: null }],
+        })
+      );
       expect(stdoutText()).toContain('agent response');
     });
 
     it('renders tool-call with name and input', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({
-        role: 'agent',
-        content: [{
-          type: 'tool-call',
-          id: 'tc-1',
-          name: 'read_file',
-          input: { path: '/tmp/foo' },
-          description: null,
-          uuid: 'u1',
-          parentUUID: null,
-        }],
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'agent',
+          content: [
+            {
+              type: 'tool-call',
+              id: 'tc-1',
+              name: 'read_file',
+              input: { path: '/tmp/foo' },
+              description: null,
+              uuid: 'u1',
+              parentUUID: null,
+            },
+          ],
+        })
+      );
       const out = stdoutText();
       expect(out).toContain('read_file');
       expect(out).toContain('/tmp/foo');
@@ -86,69 +94,89 @@ describe('CLIRenderer', () => {
 
     it('renders tool-result error to stderr', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({
-        role: 'agent',
-        content: [{
-          type: 'tool-result',
-          tool_use_id: 'tc-1',
-          content: 'file not found',
-          is_error: true,
-          uuid: 'u1',
-          parentUUID: null,
-        }],
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'agent',
+          content: [
+            {
+              type: 'tool-result',
+              tool_use_id: 'tc-1',
+              content: 'file not found',
+              is_error: true,
+              uuid: 'u1',
+              parentUUID: null,
+            },
+          ],
+        })
+      );
       expect(stderrText()).toContain('file not found');
     });
 
     it('renders tool-result success as dimmed preview', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({
-        role: 'agent',
-        content: [{
-          type: 'tool-result',
-          tool_use_id: 'tc-1',
-          content: 'success output text',
-          is_error: false,
-          uuid: 'u1',
-          parentUUID: null,
-        }],
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'agent',
+          content: [
+            {
+              type: 'tool-result',
+              tool_use_id: 'tc-1',
+              content: 'success output text',
+              is_error: false,
+              uuid: 'u1',
+              parentUUID: null,
+            },
+          ],
+        })
+      );
       expect(stdoutText()).toContain('success output text');
     });
 
     it('hides thinking blocks by default', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({
-        role: 'agent',
-        content: [{ type: 'thinking', thinking: 'secret reasoning', uuid: 'u1', parentUUID: null }],
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'agent',
+          content: [
+            { type: 'thinking', thinking: 'secret reasoning', uuid: 'u1', parentUUID: null },
+          ],
+        })
+      );
       expect(stdoutText()).not.toContain('secret reasoning');
     });
 
     it('shows thinking blocks when showThinking=true', () => {
       const renderer = new CLIRenderer({ showThinking: true });
-      renderer.render(makeMsg({
-        role: 'agent',
-        content: [{ type: 'thinking', thinking: 'visible reasoning', uuid: 'u1', parentUUID: null }],
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'agent',
+          content: [
+            { type: 'thinking', thinking: 'visible reasoning', uuid: 'u1', parentUUID: null },
+          ],
+        })
+      );
       expect(stdoutText()).toContain('visible reasoning');
     });
 
     it('renders summary blocks', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({
-        role: 'agent',
-        content: [{ type: 'summary', summary: 'session summary text' }],
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'agent',
+          content: [{ type: 'summary', summary: 'session summary text' }],
+        })
+      );
       expect(stdoutText()).toContain('session summary text');
     });
 
     it('renders sidechain blocks', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({
-        role: 'agent',
-        content: [{ type: 'sidechain', uuid: 'sc-1', prompt: 'sub-agent prompt text' }],
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'agent',
+          content: [{ type: 'sidechain', uuid: 'sc-1', prompt: 'sub-agent prompt text' }],
+        })
+      );
       expect(stdoutText()).toContain('sub-agent prompt text');
     });
   });
@@ -168,13 +196,17 @@ describe('CLIRenderer', () => {
 
     it('renders limit-reached to stderr', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({ role: 'event', content: { type: 'limit-reached', endsAt: Date.now() + 60000 } }));
+      renderer.render(
+        makeMsg({ role: 'event', content: { type: 'limit-reached', endsAt: Date.now() + 60000 } })
+      );
       expect(stderrText()).toContain('rate limited');
     });
 
     it('renders message event', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({ role: 'event', content: { type: 'message', message: 'session ended' } }));
+      renderer.render(
+        makeMsg({ role: 'event', content: { type: 'message', message: 'session ended' } })
+      );
       expect(stdoutText()).toContain('session ended');
     });
 
@@ -192,19 +224,23 @@ describe('CLIRenderer', () => {
 
     it('hides token_count by default', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({
-        role: 'event',
-        content: { type: 'token_count', usage: { input_tokens: 100, output_tokens: 50 } },
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'event',
+          content: { type: 'token_count', usage: { input_tokens: 100, output_tokens: 50 } },
+        })
+      );
       expect(stdoutText()).not.toContain('100');
     });
 
     it('shows token_count when showTokenCount=true', () => {
       const renderer = new CLIRenderer({ showTokenCount: true });
-      renderer.render(makeMsg({
-        role: 'event',
-        content: { type: 'token_count', usage: { input_tokens: 100, output_tokens: 50 } },
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'event',
+          content: { type: 'token_count', usage: { input_tokens: 100, output_tokens: 50 } },
+        })
+      );
       const out = stdoutText();
       expect(out).toContain('100');
       expect(out).toContain('50');
@@ -212,10 +248,12 @@ describe('CLIRenderer', () => {
 
     it('renders error event to stderr', () => {
       const renderer = new CLIRenderer();
-      renderer.render(makeMsg({
-        role: 'event',
-        content: { type: 'error', message: 'something broke', retryable: false },
-      }));
+      renderer.render(
+        makeMsg({
+          role: 'event',
+          content: { type: 'error', message: 'something broke', retryable: false },
+        })
+      );
       expect(stderrText()).toContain('something broke');
     });
   });
@@ -225,7 +263,10 @@ describe('CLIRenderer', () => {
       const renderer = new CLIRenderer();
       const msgs: NormalizedMessage[] = [
         makeMsg({ role: 'user', content: { type: 'text', text: 'msg1' } }),
-        makeMsg({ role: 'agent', content: [{ type: 'text', text: 'msg2', uuid: 'u1', parentUUID: null }] }),
+        makeMsg({
+          role: 'agent',
+          content: [{ type: 'text', text: 'msg2', uuid: 'u1', parentUUID: null }],
+        }),
       ];
       renderer.onHistory(msgs);
       const out = stdoutText();

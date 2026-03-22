@@ -61,7 +61,10 @@ import { safeStringify } from '@saaskit-dev/agentbridge';
 import { configuration, stripVariantArgs } from '@/configuration';
 import { extractNoSandboxFlag } from './utils/sandboxFlags';
 import { runWithDaemonIPC } from '@/client/CLIClient';
-import { resolveInitialClaudePermissionMode, applySandboxPermissionPolicy } from '@/claude/utils/permissionMode';
+import {
+  resolveInitialClaudePermissionMode,
+  applySandboxPermissionPolicy,
+} from '@/claude/utils/permissionMode';
 import type { PermissionMode } from '@/api/types';
 
 interface StartOptions {
@@ -79,7 +82,9 @@ interface StartOptions {
 
 const logger = new Logger('index');
 // Flush telemetry before exit (beforeExit fires for async, exit is sync-only)
-process.on('beforeExit', () => { shutdownTelemetry().catch(() => {}); });
+process.on('beforeExit', () => {
+  shutdownTelemetry().catch(() => {});
+});
 
 /**
  * Ensure the daemon is running and matches our CLI version.
@@ -159,7 +164,6 @@ async function ensureDaemonRunning(): Promise<void> {
 
   logger.warn('daemon did not become ready within timeout, proceeding anyway');
 }
-
 
 (async () => {
   const args = stripVariantArgs(process.argv.slice(2));
@@ -600,20 +604,14 @@ async function ensureDaemonRunning(): Promise<void> {
       try {
         await install();
       } catch (error) {
-        console.error(
-          chalk.red('Error:'),
-          safeStringify(error)
-        );
+        console.error(chalk.red('Error:'), safeStringify(error));
         process.exit(1);
       }
     } else if (daemonSubcommand === 'uninstall') {
       try {
         await uninstall();
       } catch (error) {
-        console.error(
-          chalk.red('Error:'),
-          safeStringify(error)
-        );
+        console.error(chalk.red('Error:'), safeStringify(error));
         process.exit(1);
       }
     } else {
@@ -663,7 +661,9 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('free doctor cl
         const match = since.match(/^(\d+)([smhd])$/);
         if (match) {
           const [, n, unit] = match;
-          const ms = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[unit as 's'|'m'|'h'|'d']!;
+          const ms = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[
+            unit as 's' | 'm' | 'h' | 'd'
+          ]!;
           sinceIso = new Date(Date.now() - Number(n) * ms).toISOString();
         }
       }
@@ -740,7 +740,9 @@ ${chalk.bold('Log directory:')} ${configuration.logsDir}
       const match = since.match(/^(\d+)([smhd])$/);
       if (match) {
         const [, n, unit] = match;
-        const ms = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[unit as 's'|'m'|'h'|'d']!;
+        const ms = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[
+          unit as 's' | 'm' | 'h' | 'd'
+        ]!;
         sinceIso = new Date(Date.now() - Number(n) * ms).toISOString();
       }
     }
@@ -764,10 +766,13 @@ ${chalk.bold('Log directory:')} ${configuration.logsDir}
             if (traceId && entry.traceId !== traceId) continue;
             if (sessionId && entry.sessionId !== sessionId) continue;
             if (level && entry.level !== level) continue;
-            if (sinceIso && typeof entry.timestamp === 'string' && entry.timestamp < sinceIso) continue;
+            if (sinceIso && typeof entry.timestamp === 'string' && entry.timestamp < sinceIso)
+              continue;
             console.log(line);
             count++;
-          } catch { /* skip malformed lines */ }
+          } catch {
+            /* skip malformed lines */
+          }
         }
       }
       if (count === 0) console.log(chalk.gray('No matching log entries found.'));
@@ -918,7 +923,9 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       // Run claude --help and display its output
       // claudeCliPath is a .cjs script, so we must run it via node
       try {
-        const claudeHelp = execFileSync(process.execPath, [claudeCliPath, '--help'], { encoding: 'utf8' });
+        const claudeHelp = execFileSync(process.execPath, [claudeCliPath, '--help'], {
+          encoding: 'utf8',
+        });
         console.log(claudeHelp);
       } catch (e) {
         console.log(chalk.yellow('Could not retrieve claude help. Make sure claude is installed.'));

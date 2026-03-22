@@ -17,9 +17,7 @@ describe('mapAcpSessionCapabilities', () => {
         currentModelId: 'gemini-2.5-pro',
       },
       modes: {
-        availableModes: [
-          { id: 'code', name: 'Code', description: 'Default coding mode' },
-        ],
+        availableModes: [{ id: 'code', name: 'Code', description: 'Default coding mode' }],
         currentModeId: 'code',
       },
       configOptions: [

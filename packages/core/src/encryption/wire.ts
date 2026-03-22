@@ -29,7 +29,7 @@ import { encodeBase64, decodeBase64 } from '../utils/encoding';
 export async function wireEncode(
   data: unknown,
   encryptor: Encryptor,
-  isDev: boolean,
+  isDev: boolean
 ): Promise<string> {
   if (isDev) {
     return JSON.stringify(data);
@@ -42,10 +42,7 @@ export async function wireEncode(
  * Decode a single wire string.
  * Auto-detects plaintext regardless of local isDev.
  */
-export async function wireDecode(
-  wireStr: string,
-  decryptor: Decryptor,
-): Promise<unknown | null> {
+export async function wireDecode(wireStr: string, decryptor: Decryptor): Promise<unknown | null> {
   // Plaintext detection — safe because ciphertext base64 never starts with '{'
   if (wireStr.length > 0 && wireStr[0] === '{') {
     try {
@@ -67,7 +64,7 @@ export async function wireDecode(
 export async function wireEncodeBatch(
   data: unknown[],
   encryptor: Encryptor,
-  isDev: boolean,
+  isDev: boolean
 ): Promise<string[]> {
   if (isDev) {
     return data.map(d => JSON.stringify(d));
@@ -83,7 +80,7 @@ export async function wireEncodeBatch(
  */
 export async function wireDecodeBatch(
   wireStrs: string[],
-  decryptor: Decryptor,
+  decryptor: Decryptor
 ): Promise<(unknown | null)[]> {
   const results: (unknown | null)[] = new Array(wireStrs.length);
   const toDecrypt: { index: number; bytes: Uint8Array }[] = [];
@@ -94,7 +91,9 @@ export async function wireDecodeBatch(
       try {
         results[i] = JSON.parse(s);
         continue;
-      } catch { /* fall through */ }
+      } catch {
+        /* fall through */
+      }
     }
     toDecrypt.push({ index: i, bytes: decodeBase64(s) });
   }
@@ -131,7 +130,7 @@ export function tryParsePlaintext(data: Uint8Array): unknown | undefined {
  */
 export async function wireDecodeBytes(
   data: Uint8Array,
-  decryptor: Decryptor,
+  decryptor: Decryptor
 ): Promise<unknown | null> {
   const plain = tryParsePlaintext(data);
   if (plain !== undefined) return plain;
@@ -144,7 +143,7 @@ export async function wireDecodeBytes(
  */
 export async function wireDecodeBatchBytes(
   data: Uint8Array[],
-  decryptor: Decryptor,
+  decryptor: Decryptor
 ): Promise<(unknown | null)[]> {
   const results: (unknown | null)[] = new Array(data.length);
   const toDecrypt: { index: number; bytes: Uint8Array }[] = [];
@@ -154,7 +153,9 @@ export async function wireDecodeBatchBytes(
       try {
         results[i] = JSON.parse(new TextDecoder().decode(data[i]));
         continue;
-      } catch { /* fall through */ }
+      } catch {
+        /* fall through */
+      }
     }
     toDecrypt.push({ index: i, bytes: data[i] });
   }

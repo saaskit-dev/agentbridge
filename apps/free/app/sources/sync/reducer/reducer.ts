@@ -856,7 +856,11 @@ export function reducer(
           if (message.tool.state !== 'running') {
             // Allow late result updates: session tool-call-end sets state=completed with null result,
             // then the raw output tool_result arrives with actual data — accept it.
-            if (message.tool.state === 'completed' && message.tool.result == null && c.content != null) {
+            if (
+              message.tool.state === 'completed' &&
+              message.tool.result == null &&
+              c.content != null
+            ) {
               message.tool.result = c.content;
               changed.add(messageId!);
             }
@@ -1243,9 +1247,7 @@ function convertReducerMessageToMessage(
       ...(reducerMsg.realID ? { sourceId: reducerMsg.realID } : {}),
       createdAt: reducerMsg.createdAt,
       kind: 'agent-text',
-      text: reducerMsg.isThinking
-        ? `*Thinking...*\n\n*${reducerMsg.text}*`
-        : reducerMsg.text,
+      text: reducerMsg.isThinking ? `*Thinking...*\n\n*${reducerMsg.text}*` : reducerMsg.text,
       ...(reducerMsg.isThinking && { isThinking: true }),
       meta: reducerMsg.meta,
       ...(reducerMsg.traceId && { traceId: reducerMsg.traceId }),

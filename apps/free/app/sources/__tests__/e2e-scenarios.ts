@@ -91,7 +91,9 @@ function discoverModules(): { opsId: number; storageId: number; syncId: number }
   const r = (window as any).__r;
   if (!r) return null;
 
-  let opsId = -1, storageId = -1, syncId = -1;
+  let opsId = -1,
+    storageId = -1,
+    syncId = -1;
 
   for (let i = 0; i < 3000; i++) {
     try {
@@ -138,7 +140,9 @@ function getSession(ctx: TestContext, sessionId: string): any {
 
 function hasAgentReply(ctx: TestContext, sessionId: string): boolean {
   const msgs = getSessionMessages(ctx, sessionId);
-  return msgs.some((m: any) => m.type === 'agent_text' || m.type === 'text' || m.role === 'assistant');
+  return msgs.some(
+    (m: any) => m.type === 'agent_text' || m.type === 'text' || m.role === 'assistant'
+  );
 }
 
 function hasPendingPermission(ctx: TestContext, sessionId: string): boolean {
@@ -201,7 +205,10 @@ async function test_createSessions(ctx: TestContext) {
   }
 
   const allOk = results.every(r => r.status === 'ok');
-  if (!allOk) throw new Error(`Some agents failed: ${JSON.stringify(results.filter(r => r.status !== 'ok'))}`);
+  if (!allOk)
+    throw new Error(
+      `Some agents failed: ${JSON.stringify(results.filter(r => r.status !== 'ok'))}`
+    );
   return results;
 }
 
@@ -226,7 +233,11 @@ async function test_sendMessageAndWaitReply(ctx: TestContext) {
   if (!gotReply) throw new Error('No agent reply within 30s');
 
   const messages = getSessionMessages(ctx, sid);
-  return { sessionId: sid, messageCount: messages.length, lastMessage: messages[messages.length - 1] };
+  return {
+    sessionId: sid,
+    messageCount: messages.length,
+    lastMessage: messages[messages.length - 1],
+  };
 }
 
 // --- 1.3 中断任务 (abort) ---
@@ -307,7 +318,11 @@ async function test_permissionApprove(ctx: TestContext) {
   const gotPermission = await waitForCondition(() => hasPendingPermission(ctx, sid), 30000);
   if (!gotPermission) {
     // 可能 agent 在 yolo 模式直接执行了，或者还没产生权限请求
-    return { sessionId: sid, status: 'no_permission_requested', note: 'agent may have auto-approved' };
+    return {
+      sessionId: sid,
+      status: 'no_permission_requested',
+      note: 'agent may have auto-approved',
+    };
   }
 
   const permId = getFirstPendingPermissionId(ctx, sid);
@@ -447,7 +462,12 @@ async function test_ripgrep(ctx: TestContext) {
   const sid = result.sessionId;
   ctx.createdSessionIds.push(sid);
 
-  const rgResult = await ctx.ops.sessionRipgrep(sid, ['machineSpawnNewSession', '--type', 'ts', '-l']);
+  const rgResult = await ctx.ops.sessionRipgrep(sid, [
+    'machineSpawnNewSession',
+    '--type',
+    'ts',
+    '-l',
+  ]);
   return {
     sessionId: sid,
     result: rgResult,
@@ -506,7 +526,15 @@ async function test_createArtifact(ctx: TestContext) {
 // Batch Runner
 // ============================================================================
 
-type ScenarioFilter = 'all' | 'lifecycle' | 'permission' | 'config' | 'file' | 'bash' | 'settings' | 'quick';
+type ScenarioFilter =
+  | 'all'
+  | 'lifecycle'
+  | 'permission'
+  | 'config'
+  | 'file'
+  | 'bash'
+  | 'settings'
+  | 'quick';
 
 async function runAllScenarios(filter: ScenarioFilter = 'all'): Promise<TestResult[]> {
   const modules = discoverModules();
@@ -531,43 +559,45 @@ async function runAllScenarios(filter: ScenarioFilter = 'all'): Promise<TestResu
     createdSessionIds: [],
   };
 
-  const scenarios: Array<{ name: string; fn: (ctx: TestContext) => Promise<any>; group: string }> = [
-    // Lifecycle
-    { name: '1.1 创建 session（所有 agent 类型）', fn: test_createSessions, group: 'lifecycle' },
-    { name: '1.2 发送消息并等待回复', fn: test_sendMessageAndWaitReply, group: 'lifecycle' },
-    { name: '1.3 中断任务 (abort)', fn: test_abortSession, group: 'lifecycle' },
-    { name: '1.4 终止 session (kill)', fn: test_killSession, group: 'lifecycle' },
-    { name: '1.5 删除 session', fn: test_deleteSession, group: 'lifecycle' },
+  const scenarios: Array<{ name: string; fn: (ctx: TestContext) => Promise<any>; group: string }> =
+    [
+      // Lifecycle
+      { name: '1.1 创建 session（所有 agent 类型）', fn: test_createSessions, group: 'lifecycle' },
+      { name: '1.2 发送消息并等待回复', fn: test_sendMessageAndWaitReply, group: 'lifecycle' },
+      { name: '1.3 中断任务 (abort)', fn: test_abortSession, group: 'lifecycle' },
+      { name: '1.4 终止 session (kill)', fn: test_killSession, group: 'lifecycle' },
+      { name: '1.5 删除 session', fn: test_deleteSession, group: 'lifecycle' },
 
-    // Permission
-    { name: '2.1 权限请求 → 批准', fn: test_permissionApprove, group: 'permission' },
-    { name: '2.3 权限请求 → 拒绝', fn: test_permissionDeny, group: 'permission' },
-    { name: '2.5 权限模式 yolo', fn: test_permissionYolo, group: 'permission' },
+      // Permission
+      { name: '2.1 权限请求 → 批准', fn: test_permissionApprove, group: 'permission' },
+      { name: '2.3 权限请求 → 拒绝', fn: test_permissionDeny, group: 'permission' },
+      { name: '2.5 权限模式 yolo', fn: test_permissionYolo, group: 'permission' },
 
-    // Config
-    { name: '3.1 切换模型', fn: test_switchModel, group: 'config' },
+      // Config
+      { name: '3.1 切换模型', fn: test_switchModel, group: 'config' },
 
-    // File ops
-    { name: '4.1 读取文件', fn: test_readFile, group: 'file' },
-    { name: '4.3 列出目录', fn: test_listDirectory, group: 'file' },
-    { name: '4.5 代码搜索 (ripgrep)', fn: test_ripgrep, group: 'file' },
+      // File ops
+      { name: '4.1 读取文件', fn: test_readFile, group: 'file' },
+      { name: '4.3 列出目录', fn: test_listDirectory, group: 'file' },
+      { name: '4.5 代码搜索 (ripgrep)', fn: test_ripgrep, group: 'file' },
 
-    // Bash
-    { name: '5.1 执行 Bash', fn: test_bash, group: 'bash' },
+      // Bash
+      { name: '5.1 执行 Bash', fn: test_bash, group: 'bash' },
 
-    // Settings
-    { name: '7.1 修改设置', fn: test_changeSettings, group: 'settings' },
+      // Settings
+      { name: '7.1 修改设置', fn: test_changeSettings, group: 'settings' },
 
-    // Artifacts
-    { name: '8.1 创建工件', fn: test_createArtifact, group: 'settings' },
-  ];
+      // Artifacts
+      { name: '8.1 创建工件', fn: test_createArtifact, group: 'settings' },
+    ];
 
   // Filter
-  const filtered = filter === 'all'
-    ? scenarios
-    : filter === 'quick'
-      ? scenarios.filter(s => ['config', 'file', 'bash', 'settings'].includes(s.group))
-      : scenarios.filter(s => s.group === filter);
+  const filtered =
+    filter === 'all'
+      ? scenarios
+      : filter === 'quick'
+        ? scenarios.filter(s => ['config', 'file', 'bash', 'settings'].includes(s.group))
+        : scenarios.filter(s => s.group === filter);
 
   const results: TestResult[] = [];
 

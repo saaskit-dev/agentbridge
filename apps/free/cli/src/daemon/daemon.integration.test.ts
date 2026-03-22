@@ -30,7 +30,10 @@ import {
 import { readDaemonState, clearDaemonState } from '@/persistence';
 import { getLatestDaemonLog } from '@/utils/daemonLogs';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
-import { ensureLocalServerAndCredentials, stopSpawnedProcess } from '@/test-helpers/integrationEnvironment';
+import {
+  ensureLocalServerAndCredentials,
+  stopSpawnedProcess,
+} from '@/test-helpers/integrationEnvironment';
 import type { ChildProcess } from 'child_process';
 
 // Utility to wait for condition
@@ -137,11 +140,7 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
     ).toBe(true);
 
     // Wait for all sessions to actually finish shutting down (stop is fire-and-forget)
-    await waitFor(
-      async () => (await listDaemonSessions()).length === 0,
-      10_000,
-      200
-    );
+    await waitFor(async () => (await listDaemonSessions()).length === 0, 10_000, 200);
   });
 
   it('should handle daemon stop request gracefully', async () => {
@@ -202,9 +201,7 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
 
     // List should show all sessions
     const sessions = await listDaemonSessions();
-    const daemonSessions = sessions.filter(
-      (s: any) => spawnedSessionIds.includes(s.sessionId)
-    );
+    const daemonSessions = sessions.filter((s: any) => spawnedSessionIds.includes(s.sessionId));
     expect(daemonSessions.length).toBeGreaterThanOrEqual(3);
 
     // Stop all spawned sessions
@@ -294,54 +291,52 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
    * 7. New daemon starts, reads daemon.state.json, sees old version != its compiled version
    * 8. New daemon calls stopDaemon() to kill old daemon, then takes over
    */
-  it(
-    'should detect daemon version/build mismatch after rebuild',
-    { timeout: 60_000 },
-    async () => {
-      const originalVersion = JSON.parse(
-        readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')
-      ).version;
+  it('should detect daemon version/build mismatch after rebuild', { timeout: 60_000 }, async () => {
+    const originalVersion = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')
+    ).version;
 
-      try {
-        // Get initial daemon state
-        const initialState = await readDaemonState();
-        expect(initialState).toBeDefined();
-        expect(initialState!.startedWithCliVersion).toBe(originalVersion);
-        const initialPid = initialState!.pid;
+    try {
+      // Get initial daemon state
+      const initialState = await readDaemonState();
+      expect(initialState).toBeDefined();
+      expect(initialState!.startedWithCliVersion).toBe(originalVersion);
+      const initialPid = initialState!.pid;
 
-        // Tamper with the build hash on disk to simulate a rebuild.
-        // This is instant (no pnpm build needed) and avoids the daemon heartbeat
-        // detecting a package.json version change and auto-restarting during the test.
-        const hashPath = path.join(process.cwd(), 'dist', '.hash');
-        const originalHash = readFileSync(hashPath, 'utf-8');
-        writeFileSync(hashPath, 'fake-hash-for-mismatch-test');
+      // Tamper with the build hash on disk to simulate a rebuild.
+      // This is instant (no pnpm build needed) and avoids the daemon heartbeat
+      // detecting a package.json version change and auto-restarting during the test.
+      const hashPath = path.join(process.cwd(), 'dist', '.hash');
+      const originalHash = readFileSync(hashPath, 'utf-8');
+      writeFileSync(hashPath, 'fake-hash-for-mismatch-test');
 
-        console.log(`[TEST] Current daemon running with version ${originalVersion}, PID: ${initialPid}`);
-        console.log(`[TEST] Tampered dist/.hash to simulate rebuild`);
+      console.log(
+        `[TEST] Current daemon running with version ${originalVersion}, PID: ${initialPid}`
+      );
+      console.log(`[TEST] Tampered dist/.hash to simulate rebuild`);
 
-        // Client-side detection: build hash on disk differs from daemon state → mismatch
-        expect(await isDaemonRunningCurrentlyInstalledFreeVersion()).toBe(false);
+      // Client-side detection: build hash on disk differs from daemon state → mismatch
+      expect(await isDaemonRunningCurrentlyInstalledFreeVersion()).toBe(false);
 
-        // Daemon should still be the SAME process (package.json untouched, heartbeat won't trigger)
-        const finalState = await readDaemonState();
-        expect(finalState).toBeDefined();
-        expect(finalState!.startedWithCliVersion).toBe(originalVersion);
-        expect(finalState!.pid).toBe(initialPid);
-        console.log('[TEST] Daemon version/build mismatch detected successfully');
+      // Daemon should still be the SAME process (package.json untouched, heartbeat won't trigger)
+      const finalState = await readDaemonState();
+      expect(finalState).toBeDefined();
+      expect(finalState!.startedWithCliVersion).toBe(originalVersion);
+      expect(finalState!.pid).toBe(initialPid);
+      console.log('[TEST] Daemon version/build mismatch detected successfully');
 
-        // Restore original hash
-        writeFileSync(hashPath, originalHash);
-        console.log(`[TEST] Restored dist/.hash`);
-      } finally {
-        // Safety restore in case the test threw before the inline restore
-        const hashPath = path.join(process.cwd(), 'dist', '.hash');
-        const currentHash = readFileSync(hashPath, 'utf-8');
-        if (currentHash === 'fake-hash-for-mismatch-test') {
-          execSync('node scripts/generate-build-hash.cjs', { stdio: 'ignore' });
-        }
+      // Restore original hash
+      writeFileSync(hashPath, originalHash);
+      console.log(`[TEST] Restored dist/.hash`);
+    } finally {
+      // Safety restore in case the test threw before the inline restore
+      const hashPath = path.join(process.cwd(), 'dist', '.hash');
+      const currentHash = readFileSync(hashPath, 'utf-8');
+      if (currentHash === 'fake-hash-for-mismatch-test') {
+        execSync('node scripts/generate-build-hash.cjs', { stdio: 'ignore' });
       }
     }
-  );
+  });
 
   // TODO: Add a test to see if a corrupted file will work
 
@@ -368,7 +363,11 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
 
     // Verify daemon is dead
     let isDead = false;
-    try { process.kill(daemonPid, 0); } catch { isDead = true; }
+    try {
+      process.kill(daemonPid, 0);
+    } catch {
+      isDead = true;
+    }
     expect(isDead).toBe(true);
 
     // 3. Verify persisted session file exists
@@ -463,47 +462,48 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
     await stopDaemonSession(sessionId);
   });
 
-  it('should clean up invalid persisted sessions that fail recovery', { timeout: 30_000 }, async () => {
-    // 1. Manually write a persisted session with invalid data (bad sessionId)
-    const daemonSessionsDir = join(configuration.freeHomeDir, 'daemon-sessions');
-    if (!existsSync(daemonSessionsDir)) {
-      const { mkdirSync } = require('fs');
-      mkdirSync(daemonSessionsDir, { recursive: true });
+  it(
+    'should clean up invalid persisted sessions that fail recovery',
+    { timeout: 30_000 },
+    async () => {
+      // 1. Manually write a persisted session with invalid data (bad sessionId)
+      const daemonSessionsDir = join(configuration.freeHomeDir, 'daemon-sessions');
+      if (!existsSync(daemonSessionsDir)) {
+        const { mkdirSync } = require('fs');
+        mkdirSync(daemonSessionsDir, { recursive: true });
+      }
+
+      const badData = {
+        sessionId: 'bad-session-test',
+        agentType: 'nonexistent-agent-type', // unregistered agent → AgentSessionFactory.create throws
+        cwd: '/tmp',
+        startedBy: 'cli',
+        createdAt: Date.now(),
+        daemonInstanceId: 'dead-daemon-instance', // different from current daemon
+      };
+      writeFileSync(join(daemonSessionsDir, 'bad-session-test.json'), JSON.stringify(badData));
+
+      // 2. Stop and restart daemon
+      await stopDaemonHttp();
+      await waitFor(async () => !existsSync(configuration.daemonStateFile), 3000);
+
+      void spawnFreeCLI(['daemon', 'start-sync'], { stdio: 'ignore' });
+      await waitFor(
+        async () => {
+          const state = await readDaemonState();
+          return state !== null;
+        },
+        10_000,
+        250
+      );
+      const newState = await readDaemonState();
+      daemonPid = newState!.pid;
+
+      // 3. Recovery attempt should fail (invalid data) and file should be cleaned up
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const remainingFiles = readdirSync(daemonSessionsDir).filter(f => f.includes('bad-session'));
+      expect(remainingFiles).toHaveLength(0);
     }
-
-    const badData = {
-      sessionId: 'bad-session-test',
-      agentType: 'nonexistent-agent-type', // unregistered agent → AgentSessionFactory.create throws
-      cwd: '/tmp',
-      startedBy: 'cli',
-      createdAt: Date.now(),
-      daemonInstanceId: 'dead-daemon-instance', // different from current daemon
-    };
-    writeFileSync(
-      join(daemonSessionsDir, 'bad-session-test.json'),
-      JSON.stringify(badData)
-    );
-
-    // 2. Stop and restart daemon
-    await stopDaemonHttp();
-    await waitFor(async () => !existsSync(configuration.daemonStateFile), 3000);
-
-    void spawnFreeCLI(['daemon', 'start-sync'], { stdio: 'ignore' });
-    await waitFor(
-      async () => {
-        const state = await readDaemonState();
-        return state !== null;
-      },
-      10_000,
-      250
-    );
-    const newState = await readDaemonState();
-    daemonPid = newState!.pid;
-
-    // 3. Recovery attempt should fail (invalid data) and file should be cleaned up
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    const remainingFiles = readdirSync(daemonSessionsDir).filter(f => f.includes('bad-session'));
-    expect(remainingFiles).toHaveLength(0);
-  });
+  );
 });

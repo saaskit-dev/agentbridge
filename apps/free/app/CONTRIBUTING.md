@@ -4,8 +4,8 @@
 
 两个变体，各自独立 bundle ID，可同时安装在同一设备：
 
-| Variant         | Bundle ID               | App Name   | 用途                          |
-| --------------- | ----------------------- | ---------- | ----------------------------- |
+| Variant         | Bundle ID                  | App Name   | 用途                          |
+| --------------- | -------------------------- | ---------- | ----------------------------- |
 | **Development** | `app.saaskit.freecode.dev` | Free (dev) | 本地开发，连局域网 dev server |
 | **Production**  | `app.saaskit.freecode`     | Free       | App Store / TestFlight        |
 

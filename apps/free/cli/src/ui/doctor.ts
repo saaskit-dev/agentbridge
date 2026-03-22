@@ -163,7 +163,9 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
         console.log(`  HTTP Port: ${daemonCheck.httpPort}`);
       }
     } else if (daemonCheck.status === 'stale') {
-      console.log(chalk.yellow(`⚠️  Daemon state exists but process ${daemonCheck.pid} not running (stale)`));
+      console.log(
+        chalk.yellow(`⚠️  Daemon state exists but process ${daemonCheck.pid} not running (stale)`)
+      );
     } else {
       console.log(chalk.red('❌ Daemon is not running'));
     }
@@ -229,7 +231,10 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
           // Inject --variant into display for processes that don't have it (e.g. user-launched)
           let displayCmd = command;
           if (!command.includes('--variant ') && command.includes('dist/cli.mjs')) {
-            displayCmd = command.replace('dist/cli.mjs', `dist/cli.mjs --variant ${configuration.variant}`);
+            displayCmd = command.replace(
+              'dist/cli.mjs',
+              `dist/cli.mjs --variant ${configuration.variant}`
+            );
           }
           console.log(`  ${color(`PID ${pid}`)}: ${chalk.gray(displayCmd)}`);
         });

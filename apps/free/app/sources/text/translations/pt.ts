@@ -240,6 +240,12 @@ export const pt: TranslationStructure = {
     sessionNotFound: 'Sessão não encontrada',
     voiceSessionFailed: 'Falha ao iniciar sessão de voz',
     voiceServiceUnavailable: 'Serviço de voz temporariamente indisponível',
+    voiceNotConfigured: 'Voice feature is not configured. Please contact support.',
+    voiceNotInitialized:
+      'Voice service failed to initialize. Please restart the app and try again.',
+    voiceMicPermissionWeb:
+      'Microphone access is required for voice. Please allow microphone permission in your browser settings.',
+    voiceTokenRejected: 'Voice service is not available on this server.',
     oauthInitializationFailed: 'Falha ao inicializar o fluxo OAuth',
     tokenStorageFailed: 'Falha ao armazenar tokens de autenticação',
     oauthStateMismatch: 'Falha na validação de segurança. Por favor, tente novamente',
@@ -306,14 +312,16 @@ export const pt: TranslationStructure = {
       success: 'Worktree criado com sucesso',
     },
     inputPlaceholder: 'No que você gostaria de trabalhar?',
-    capabilityDiscoveryNotice: 'Envie sua primeira mensagem para carregar modos, modelos e comandos.',
+    capabilityDiscoveryNotice:
+      'Envie sua primeira mensagem para carregar modos, modelos e comandos.',
   },
 
   agentPicker: {
     headerTitle: 'Selecionar agente',
     heroEyebrow: 'Seletor de implementação',
     heroTitle: 'Escolha o runtime com o qual deseja começar.',
-    heroDescription: 'Cada opção abaixo é descoberta a partir das implementações registradas na máquina selecionada. As entradas clássicas e ACP são mantidas separadas propositalmente.',
+    heroDescription:
+      'Cada opção abaixo é descoberta a partir das implementações registradas na máquina selecionada. As entradas clássicas e ACP são mantidas separadas propositalmente.',
     experimentalSection: 'Experimental',
     experimentalCaption: 'Agentes opcionais por trás da configuração de experimentos.',
     noAgentsTitle: 'Nenhum agente disponível',
@@ -432,7 +440,8 @@ export const pt: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Versão ${currentVersion} instalada. Atualize para ${requiredVersion} ou posterior`,
-    updateCliInstructions: 'Por favor execute curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    updateCliInstructions:
+      'Por favor execute curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Excluir sessão',
     deleteSessionSubtitle: 'Remover permanentemente esta sessão',
     deleteSessionConfirm: 'Excluir sessão permanentemente?',
@@ -821,8 +830,8 @@ export const pt: TranslationStructure = {
     unknownEvent: 'Evento desconhecido',
     usageLimitUntil: ({ time }: { time: string }) => `Limite de uso atingido até ${time}`,
     unknownTime: 'horário desconhecido',
-    permissionRequest: ({ toolName }: { toolName: string }) => "Permission request for " + toolName,
-    permissionMode: ({ mode }: { mode: string }) => "Permission mode: " + mode,
+    permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
+    permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
   },
 
   codex: {
@@ -978,14 +987,17 @@ export const pt: TranslationStructure = {
     copyToClipboard: 'Copiar para a área de transferência',
     copySubtitle: 'Copiar dados de log como texto JSONL',
     whatIsIncluded: 'O que está incluído',
-    whatIsIncludedSubtitle: 'Logs de diagnóstico do app — sem conteúdo de mensagens nem dados pessoais',
-    privacyNote: 'Os logs são anonimizados e limpos antes de exportar. O conteúdo das mensagens e os dados sensíveis nunca são incluídos.',
+    whatIsIncludedSubtitle:
+      'Logs de diagnóstico do app — sem conteúdo de mensagens nem dados pessoais',
+    privacyNote:
+      'Os logs são anonimizados e limpos antes de exportar. O conteúdo das mensagens e os dados sensíveis nunca são incluídos.',
     noLogs: 'Sem logs',
     noLogsMessage: 'Não há entradas de log para exportar no intervalo de tempo selecionado.',
     exported: 'Exportado',
     exportFailed: 'Falha ao exportar',
     copied: 'Copiado',
-    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'entrada copiada' : 'entradas copiadas'} para a área de transferência`,
+    copiedToClipboard: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'entrada copiada' : 'entradas copiadas'} para a área de transferência`,
   },
 } as const;
 

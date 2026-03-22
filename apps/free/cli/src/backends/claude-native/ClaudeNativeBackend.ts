@@ -41,7 +41,11 @@ import { PermissionHandler } from '@/claude/utils/permissionHandler';
 import type { AgentBackend, AgentStartOpts, BackendExitInfo } from '@/daemon/sessions/AgentBackend';
 import type { NormalizedMessage } from '@/daemon/sessions/types';
 import { createNormalizedEvent } from '@/daemon/sessions/types';
-import { mapSDKMessageToNormalized, createSDKMapperState, flushSDKOpenToolCalls } from './mapSDKMessageToNormalized';
+import {
+  mapSDKMessageToNormalized,
+  createSDKMapperState,
+  flushSDKOpenToolCalls,
+} from './mapSDKMessageToNormalized';
 import type { SDKMapperState } from './mapSDKMessageToNormalized';
 import type { PermissionMode } from '@/api/types';
 
@@ -55,10 +59,13 @@ const logger = new Logger('backends/claude-native/ClaudeNativeBackend');
  */
 function mapPermissionMode(mode: PermissionMode): string {
   switch (mode) {
-    case 'accept-edits': return 'acceptEdits';
-    case 'yolo': return 'bypassPermissions';
+    case 'accept-edits':
+      return 'acceptEdits';
+    case 'yolo':
+      return 'bypassPermissions';
     case 'read-only':
-    default: return 'default';
+    default:
+      return 'default';
   }
 }
 
@@ -72,7 +79,10 @@ export class ClaudeNativeBackend implements AgentBackend {
   private startOpts!: AgentStartOpts;
   private sdkMapperState: SDKMapperState = createSDKMapperState();
   private ptyProcess: pty.IPty | null = null;
-  private ptyExitPromise: Promise<{ exitCode: number | undefined; signal: number | undefined }> | null = null;
+  private ptyExitPromise: Promise<{
+    exitCode: number | undefined;
+    signal: number | undefined;
+  }> | null = null;
   private permissionHandler: PermissionHandler | null = null;
   private localSpawnedAt = 0;
   private firstPtyDataLogged = false;
@@ -93,9 +103,8 @@ export class ClaudeNativeBackend implements AgentBackend {
   // ---------------------------------------------------------------------------
 
   private startRemoteMode(opts: AgentStartOpts): void {
-    this.innerQueue = new MessageQueue2<EnhancedMode>(
-      (mode: EnhancedMode) =>
-        hashObject({ permissionMode: mode.permissionMode, model: mode.model ?? '' })
+    this.innerQueue = new MessageQueue2<EnhancedMode>((mode: EnhancedMode) =>
+      hashObject({ permissionMode: mode.permissionMode, model: mode.model ?? '' })
     );
 
     const hookSettingsPath = opts.env.FREE_HOOK_SETTINGS_PATH ?? '';
@@ -104,11 +113,18 @@ export class ClaudeNativeBackend implements AgentBackend {
       : {};
 
     const innerQueue = this.innerQueue;
-
     const permissionHandler = new PermissionHandler(opts.session, {
       onPlanApproved: (message, mode) => innerQueue.unshift(message, mode),
     });
     this.permissionHandler = permissionHandler;
+
+    // Clear any stale pending requests from server state (recovery scenario)
+    // This ensures the new permissionHandler's empty pendingRequests Map
+    // is consistent with the server's agentState.requests
+    opts.session.updateAgentState(currentState => ({
+      ...currentState,
+      requests: {}, // Clear pending, preserve completedRequests
+    }));
 
     // Run claudeRemote fire-and-forget — it drives the session loop
     claudeRemote({
@@ -122,9 +138,7 @@ export class ClaudeNativeBackend implements AgentBackend {
       signal: this.abortController.signal,
       canCallTool: permissionHandler.handleToolCall.bind(permissionHandler),
       nextMessage: async () => {
-        const item = await innerQueue.waitForMessagesAndGetAsString(
-          this.abortController.signal
-        );
+        const item = await innerQueue.waitForMessagesAndGetAsString(this.abortController.signal);
         if (!item) return null;
         return { message: item.message, mode: item.mode };
       },
@@ -133,9 +147,13 @@ export class ClaudeNativeBackend implements AgentBackend {
       },
       isAborted: (toolCallId: string) => permissionHandler.isAborted(toolCallId),
       onSessionFound: (sessionId: string) => {
-        logger.debug('[ClaudeNativeBackend] Claude session found', { sessionId, cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
+        logger.debug('[ClaudeNativeBackend] Claude session found', {
+          sessionId,
+          cwd: opts.cwd,
+          traceId: getProcessTraceContext()?.traceId,
+        });
       },
-      onMessage: (msg) => {
+      onMessage: msg => {
         if (process.env.APP_ENV === 'development') {
           logger.debug('[ClaudeNativeBackend] raw SDK message', { raw: msg });
         }
@@ -149,36 +167,50 @@ export class ClaudeNativeBackend implements AgentBackend {
       onCompletionEvent: (message: string) => {
         logger.debug('[ClaudeNativeBackend] Completion event', { message });
       },
-    }).then(() => {
-      logger.info('[ClaudeNativeBackend] claudeRemote completed normally', { cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
-      this.exitInfo = { reason: 'claudeRemote completed normally' };
-    }).catch((err) => {
-      if (this.abortController.signal.aborted) {
-        logger.debug('[ClaudeNativeBackend] claudeRemote aborted', { cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
-        this.exitInfo = { reason: 'aborted' };
-      } else {
-        const error = toError(err);
-        logger.error('[ClaudeNativeBackend] claudeRemote error', error, { cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
-        this.exitInfo = { reason: `claudeRemote error: ${safeStringify(err)}`, error };
-        // Push a user-visible error event instead of setError() — setError
-        // causes the consumer's for-await to throw, which is not user-friendly.
-        this.output.push(createNormalizedEvent({
-          type: 'error',
-          message: `Agent session failed: ${safeStringify(err)}`,
-          retryable: false,
-        }));
-      }
-    }).finally(() => {
-      // Flush any tool calls that were in-flight when the session ended or was aborted.
-      // If the session ended normally, the result message already flushed them (no-op here).
-      // If aborted, no result message arrives, so this closes any stuck tool calls.
-      for (const n of flushSDKOpenToolCalls(this.sdkMapperState)) {
-        this.output.push(n);
-      }
-      if (!this.output.done) {
-        this.output.end();
-      }
-    });
+    })
+      .then(() => {
+        logger.info('[ClaudeNativeBackend] claudeRemote completed normally', {
+          cwd: opts.cwd,
+          traceId: getProcessTraceContext()?.traceId,
+        });
+        this.exitInfo = { reason: 'claudeRemote completed normally' };
+      })
+      .catch(err => {
+        if (this.abortController.signal.aborted) {
+          logger.debug('[ClaudeNativeBackend] claudeRemote aborted', {
+            cwd: opts.cwd,
+            traceId: getProcessTraceContext()?.traceId,
+          });
+          this.exitInfo = { reason: 'aborted' };
+        } else {
+          const error = toError(err);
+          logger.error('[ClaudeNativeBackend] claudeRemote error', error, {
+            cwd: opts.cwd,
+            traceId: getProcessTraceContext()?.traceId,
+          });
+          this.exitInfo = { reason: `claudeRemote error: ${safeStringify(err)}`, error };
+          // Push a user-visible error event instead of setError() — setError
+          // causes the consumer's for-await to throw, which is not user-friendly.
+          this.output.push(
+            createNormalizedEvent({
+              type: 'error',
+              message: `Agent session failed: ${safeStringify(err)}`,
+              retryable: false,
+            })
+          );
+        }
+      })
+      .finally(() => {
+        // Flush any tool calls that were in-flight when the session ended or was aborted.
+        // If the session ended normally, the result message already flushed them (no-op here).
+        // If aborted, no result message arrives, so this closes any stuck tool calls.
+        for (const n of flushSDKOpenToolCalls(this.sdkMapperState)) {
+          this.output.push(n);
+        }
+        if (!this.output.done) {
+          this.output.end();
+        }
+      });
 
     logger.debug('[ClaudeNativeBackend] remote mode started', {
       cwd: opts.cwd,
@@ -221,7 +253,12 @@ export class ClaudeNativeBackend implements AgentBackend {
     const claudePermMode = mapPermissionMode(opts.permissionMode ?? 'read-only');
     claudeArgs.push('--permission-mode', claudePermMode);
 
-    logger.debug('[ClaudeNativeBackend] spawning local PTY process', { claudeCliPath, claudeArgs, cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
+    logger.debug('[ClaudeNativeBackend] spawning local PTY process', {
+      claudeCliPath,
+      claudeArgs,
+      cwd: opts.cwd,
+      traceId: getProcessTraceContext()?.traceId,
+    });
 
     // Use a real PTY so Claude Code's interactive UI works (it requires isTTY).
     // Initial size defaults to 80x24; CLIClient sends a pty_resize immediately after attach.
@@ -237,7 +274,11 @@ export class ClaudeNativeBackend implements AgentBackend {
     this.ptyProcess = ptyProc;
     this.localSpawnedAt = Date.now();
     this.firstPtyDataLogged = false;
-    logger.debug('[ClaudeNativeBackend] PTY process spawned', { pid: ptyProc.pid, cwd: opts.cwd, traceId: getProcessTraceContext()?.traceId });
+    logger.debug('[ClaudeNativeBackend] PTY process spawned', {
+      pid: ptyProc.pid,
+      cwd: opts.cwd,
+      traceId: getProcessTraceContext()?.traceId,
+    });
 
     // Forward PTY output to CLI clients as base64-encoded pty_data IPC messages
     let ptyChunkCount = 0;
@@ -255,17 +296,29 @@ export class ClaudeNativeBackend implements AgentBackend {
         });
       }
       if (ptyChunkCount <= 5 || ptyChunkCount % 50 === 0) {
-        logger.debug('[ClaudeNativeBackend] pty_data forwarded', { pid: ptyProc.pid, bytes: data.length, chunk: ptyChunkCount });
+        logger.debug('[ClaudeNativeBackend] pty_data forwarded', {
+          pid: ptyProc.pid,
+          bytes: data.length,
+          chunk: ptyChunkCount,
+        });
       }
-      broadcast(sessionId, { type: 'pty_data', sessionId, data: Buffer.from(data).toString('base64') });
+      broadcast(sessionId, {
+        type: 'pty_data',
+        sessionId,
+        data: Buffer.from(data).toString('base64'),
+      });
     });
 
     // Propagate abort signal to child
-    this.abortController.signal.addEventListener('abort', () => {
-      ptyProc.kill();
-    }, { once: true });
+    this.abortController.signal.addEventListener(
+      'abort',
+      () => {
+        ptyProc.kill();
+      },
+      { once: true }
+    );
 
-    this.ptyExitPromise = new Promise((resolve) => {
+    this.ptyExitPromise = new Promise(resolve => {
       ptyProc.onExit(({ exitCode, signal }) => {
         const signalName = signal != null ? signalToName(signal) : undefined;
         const uptime = Date.now() - this.localSpawnedAt;
@@ -274,9 +327,10 @@ export class ClaudeNativeBackend implements AgentBackend {
         this.exitInfo = {
           exitCode: exitCode ?? undefined,
           signal: signalName,
-          reason: exitCode === 0
-            ? 'exited normally'
-            : `PTY exited (code ${exitCode ?? 'null'}${signalName ? `, ${signalName}` : ''})`,
+          reason:
+            exitCode === 0
+              ? 'exited normally'
+              : `PTY exited (code ${exitCode ?? 'null'}${signalName ? `, ${signalName}` : ''})`,
         };
 
         logger.info('[ClaudeNativeBackend] local PTY exited', {
@@ -294,11 +348,13 @@ export class ClaudeNativeBackend implements AgentBackend {
           // If the agent crashed (non-zero exit), push an error event so the
           // user sees a clear message instead of a silent "session ended".
           if (exitCode !== 0 && exitCode !== null) {
-            this.output.push(createNormalizedEvent({
-              type: 'error',
-              message: `Agent process exited unexpectedly (code ${exitCode}${signalName ? `, ${signalName}` : ''})`,
-              retryable: false,
-            }));
+            this.output.push(
+              createNormalizedEvent({
+                type: 'error',
+                message: `Agent process exited unexpectedly (code ${exitCode}${signalName ? `, ${signalName}` : ''})`,
+                retryable: false,
+              })
+            );
           }
 
           this.output.push(createNormalizedEvent({ type: 'status', state: 'idle' }));
@@ -308,7 +364,11 @@ export class ClaudeNativeBackend implements AgentBackend {
       });
     });
 
-    logger.debug('[ClaudeNativeBackend] local mode started', { cwd: opts.cwd, resumeSessionId: opts.resumeSessionId, traceId: getProcessTraceContext()?.traceId });
+    logger.debug('[ClaudeNativeBackend] local mode started', {
+      cwd: opts.cwd,
+      resumeSessionId: opts.resumeSessionId,
+      traceId: getProcessTraceContext()?.traceId,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -325,12 +385,20 @@ export class ClaudeNativeBackend implements AgentBackend {
       // Claude Code's Ink TUI in raw mode only recognizes \r as the submit key.
       // Trim leading/trailing whitespace: web app may include trailing \n from Enter keypress.
       const trimmed = text.trim();
-      logger.debug('[ClaudeNativeBackend] sendMessage (local PTY)', { cwd: this.startOpts.cwd, traceId: getProcessTraceContext()?.traceId, preview: trimmed.slice(0, 100) });
+      logger.debug('[ClaudeNativeBackend] sendMessage (local PTY)', {
+        cwd: this.startOpts.cwd,
+        traceId: getProcessTraceContext()?.traceId,
+        preview: trimmed.slice(0, 100),
+      });
       this.ptyProcess.write(trimmed + '\r');
       return;
     }
     // Remote (SDK) mode
-    logger.debug('[ClaudeNativeBackend] sendMessage (remote SDK)', { cwd: this.startOpts.cwd, traceId: getProcessTraceContext()?.traceId, preview: text.slice(0, 100) });
+    logger.debug('[ClaudeNativeBackend] sendMessage (remote SDK)', {
+      cwd: this.startOpts.cwd,
+      traceId: getProcessTraceContext()?.traceId,
+      preview: text.slice(0, 100),
+    });
     const mode: EnhancedMode = {
       permissionMode: permissionMode ?? this.startOpts.permissionMode ?? 'read-only',
       model: this.startOpts.model,
@@ -366,35 +434,58 @@ export class ClaudeNativeBackend implements AgentBackend {
   }
 
   async setModel(modelId: string): Promise<void> {
-    logger.warn('[ClaudeNativeBackend] setModel called but runtime model switching is not supported in PTY/SDK mode', { modelId });
+    logger.warn(
+      '[ClaudeNativeBackend] setModel called but runtime model switching is not supported in PTY/SDK mode',
+      { modelId }
+    );
   }
 
   async setMode(modeId: string): Promise<void> {
-    logger.warn('[ClaudeNativeBackend] setMode called but runtime mode switching is not supported in PTY/SDK mode', { modeId });
+    logger.warn(
+      '[ClaudeNativeBackend] setMode called but runtime mode switching is not supported in PTY/SDK mode',
+      { modeId }
+    );
   }
 
   async setConfig(optionId: string, value: string): Promise<void> {
-    logger.warn('[ClaudeNativeBackend] setConfig called but runtime config switching is not supported in PTY/SDK mode', { optionId, value });
+    logger.warn(
+      '[ClaudeNativeBackend] setConfig called but runtime config switching is not supported in PTY/SDK mode',
+      { optionId, value }
+    );
   }
 
   async abort(): Promise<void> {
-    logger.debug('[ClaudeNativeBackend] abort — closing inner queue and aborting controller', { cwd: this.startOpts?.cwd, traceId: getProcessTraceContext()?.traceId });
+    logger.debug('[ClaudeNativeBackend] abort — closing inner queue and aborting controller', {
+      cwd: this.startOpts?.cwd,
+      traceId: getProcessTraceContext()?.traceId,
+    });
     this.innerQueue?.close();
     this.abortController.abort();
     if (this.ptyProcess) {
-      try { this.ptyProcess.kill('SIGTERM'); } catch { /* ignore */ }
+      try {
+        this.ptyProcess.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
     }
   }
 
   async stop(): Promise<void> {
-    logger.debug('[ClaudeNativeBackend] stop', { cwd: this.startOpts?.cwd, traceId: getProcessTraceContext()?.traceId });
+    logger.debug('[ClaudeNativeBackend] stop', {
+      cwd: this.startOpts?.cwd,
+      traceId: getProcessTraceContext()?.traceId,
+    });
     this.innerQueue?.close();
     this.abortController.abort();
 
     if (this.ptyProcess && this.ptyExitPromise) {
       // Send SIGTERM and wait up to 5s for the process to exit gracefully
-      try { this.ptyProcess.kill('SIGTERM'); } catch { /* ignore */ }
-      const timeout = new Promise<null>((r) => setTimeout(() => r(null), 5000));
+      try {
+        this.ptyProcess.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
+      const timeout = new Promise<null>(r => setTimeout(() => r(null), 5000));
       const result = await Promise.race([this.ptyExitPromise, timeout]);
 
       if (!result && this.ptyProcess) {
@@ -402,12 +493,20 @@ export class ClaudeNativeBackend implements AgentBackend {
         logger.warn('[ClaudeNativeBackend] PTY did not exit after SIGTERM, sending SIGKILL', {
           cwd: this.startOpts?.cwd,
         });
-        try { this.ptyProcess.kill('SIGKILL'); } catch { /* ignore */ }
-        await Promise.race([this.ptyExitPromise, new Promise((r) => setTimeout(r, 2000))]);
+        try {
+          this.ptyProcess.kill('SIGKILL');
+        } catch {
+          /* ignore */
+        }
+        await Promise.race([this.ptyExitPromise, new Promise(r => setTimeout(r, 2000))]);
       }
       // onExit handler will call output.end() — no need to duplicate here
     } else if (this.ptyProcess) {
-      try { this.ptyProcess.kill('SIGTERM'); } catch { /* ignore */ }
+      try {
+        this.ptyProcess.kill('SIGTERM');
+      } catch {
+        /* ignore */
+      }
     }
 
     if (!this.output.done) {

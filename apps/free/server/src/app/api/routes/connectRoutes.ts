@@ -34,8 +34,7 @@ export function connectRoutes(app: Fastify) {
       (req as any).rawBody = bodyStr;
       done(null, json);
     } catch (err: any) {
-      log.error(`JSON parse error on ${req.method} ${req.url}: ${err.message}, body: "${body}"`
-      );
+      log.error(`JSON parse error on ${req.method} ${req.url}: ${err.message}, body: "${body}"`);
       err.statusCode = 400;
       done(err, undefined);
     }
@@ -207,8 +206,7 @@ export function connectRoutes(app: Fastify) {
       const rawBody = (request as any).rawBody;
 
       if (!rawBody) {
-        log.error('Raw body not available for webhook signature verification'
-        );
+        log.error('Raw body not available for webhook signature verification');
         return reply.code(500).send({ error: 'Server configuration error' });
       }
 

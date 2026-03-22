@@ -52,14 +52,7 @@ function getCodexAcpCommandArgs(): string[] {
     return ['-y', mainPackage, 'codex-acp'];
   }
 
-  return [
-    '-y',
-    '-p',
-    mainPackage,
-    '-p',
-    `${platformPackage}@${CODEX_ACP_VERSION}`,
-    'codex-acp',
-  ];
+  return ['-y', '-p', mainPackage, '-p', `${platformPackage}@${CODEX_ACP_VERSION}`, 'codex-acp'];
 }
 
 // ============================================================================

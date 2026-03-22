@@ -23,8 +23,6 @@ export function parseToken(token: string) {
     if (err.message.includes('Invalid token')) {
       throw err; // Re-throw our validation errors
     }
-    throw new Error(
-      `Invalid token: failed to decode payload - ${safeStringify(error)}`
-    );
+    throw new Error(`Invalid token: failed to decode payload - ${safeStringify(error)}`);
   }
 }

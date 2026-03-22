@@ -16,11 +16,7 @@ export {
 } from './gemini';
 
 // Cursor factory
-export {
-  createCursorBackend,
-  registerCursorAgent,
-  type CursorBackendOptions,
-} from './cursor';
+export { createCursorBackend, registerCursorAgent, type CursorBackendOptions } from './cursor';
 
 // Future factories:
 // export { createCodexBackend, registerCodexAgent, type CodexBackendOptions } from './codex';

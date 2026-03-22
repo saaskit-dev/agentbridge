@@ -16,10 +16,11 @@ describe('buildAgentAuthEnv', () => {
     expect(buildAgentAuthEnv('codex', 'mobile-token')).toEqual({
       HOME: `${configuration.agentHomesDir}/codex`,
       USERPROFILE: `${configuration.agentHomesDir}/codex`,
-      CODEX_HOME: `${process.env.CODEX_HOME || process.env.FREE_TEST_ORIGINAL_HOME || process.env.HOME}/.codex`.replace(
-        '/.codex/.codex',
-        '/.codex'
-      ),
+      CODEX_HOME:
+        `${process.env.CODEX_HOME || process.env.FREE_TEST_ORIGINAL_HOME || process.env.HOME}/.codex`.replace(
+          '/.codex/.codex',
+          '/.codex'
+        ),
     });
     // codex-acp was merged into codex, so only codex is tested above
   });

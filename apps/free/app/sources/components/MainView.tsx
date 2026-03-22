@@ -281,10 +281,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         </View>
         {renderTabContent()}
       </View>
-      <TabBar
-        activeTab={activeTab}
-        onTabPress={handleTabPress}
-      />
+      <TabBar activeTab={activeTab} onTabPress={handleTabPress} />
     </>
   );
 });

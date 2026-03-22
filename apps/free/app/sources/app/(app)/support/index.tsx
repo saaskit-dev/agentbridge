@@ -58,7 +58,11 @@ export default function SupportScreen() {
       const result = await sync.purchaseProduct(selectedTier.id);
       if (result.success) {
         Modal.alert('感谢支持', `您已成为「${selectedTier.name}」，感谢您的支持！`);
-      } else if (result.error && !result.error.includes('cancelled') && !result.error.includes('取消')) {
+      } else if (
+        result.error &&
+        !result.error.includes('cancelled') &&
+        !result.error.includes('取消')
+      ) {
         Modal.alert('购买失败', result.error);
       }
     } catch (error: any) {
@@ -75,10 +79,25 @@ export default function SupportScreen() {
         <Stack.Screen options={{ title: '赞赏', headerShown: true }} />
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 }}>
           <Ionicons name="checkmark-circle" size={64} color="#34C759" />
-          <Text style={{ fontSize: 22, fontWeight: '700', color: theme.colors.text, marginTop: 20, marginBottom: 8 }}>
+          <Text
+            style={{
+              fontSize: 22,
+              fontWeight: '700',
+              color: theme.colors.text,
+              marginTop: 20,
+              marginBottom: 8,
+            }}
+          >
             感谢您的支持
           </Text>
-          <Text style={{ fontSize: 15, color: theme.colors.textSecondary, textAlign: 'center', lineHeight: 22 }}>
+          <Text
+            style={{
+              fontSize: 15,
+              color: theme.colors.textSecondary,
+              textAlign: 'center',
+              lineHeight: 22,
+            }}
+          >
             您是尊贵的共建者，正是因为有您的支持，我们才能持续创新。
           </Text>
         </View>
@@ -93,7 +112,9 @@ export default function SupportScreen() {
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 48 }}>
         <View style={{ marginBottom: 24 }}>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: theme.colors.text, marginBottom: 6 }}>
+          <Text
+            style={{ fontSize: 22, fontWeight: '700', color: theme.colors.text, marginBottom: 6 }}
+          >
             支持开发
           </Text>
           <Text style={{ fontSize: 14, color: theme.colors.textSecondary, lineHeight: 20 }}>
@@ -117,20 +138,35 @@ export default function SupportScreen() {
                 }}
               >
                 {tier.recommended && (
-                  <View style={{
-                    alignSelf: 'flex-start',
-                    backgroundColor: accent,
-                    borderRadius: 4,
-                    paddingHorizontal: 8,
-                    paddingVertical: 2,
-                    marginBottom: 10,
-                  }}>
+                  <View
+                    style={{
+                      alignSelf: 'flex-start',
+                      backgroundColor: accent,
+                      borderRadius: 4,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      marginBottom: 10,
+                    }}
+                  >
                     <Text style={{ fontSize: 11, fontWeight: '600', color: '#fff' }}>推荐</Text>
                   </View>
                 )}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                  }}
+                >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: theme.colors.text, marginBottom: 3 }}>
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: '600',
+                        color: theme.colors.text,
+                        marginBottom: 3,
+                      }}
+                    >
                       {tier.name}
                     </Text>
                     <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>
@@ -141,13 +177,19 @@ export default function SupportScreen() {
                     <Text style={{ fontSize: 22, fontWeight: '700', color: theme.colors.text }}>
                       {tier.price}
                     </Text>
-                    <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>{tier.period}</Text>
+                    <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>
+                      {tier.period}
+                    </Text>
                   </View>
                 </View>
                 <View style={{ marginTop: 12, gap: 5 }}>
                   {tier.features.map((f, i) => (
                     <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons name="checkmark" size={13} color={isSelected ? accent : theme.colors.textSecondary} />
+                      <Ionicons
+                        name="checkmark"
+                        size={13}
+                        color={isSelected ? accent : theme.colors.textSecondary}
+                      />
                       <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>{f}</Text>
                     </View>
                   ))}
@@ -170,24 +212,50 @@ export default function SupportScreen() {
           })}
         >
           <Text style={{ fontSize: 16, fontWeight: '600', color: btnText }}>
-            {isPurchasing ? '处理中...' : `加入 ${selectedTier.name} · ${selectedTier.price}${selectedTier.period}`}
+            {isPurchasing
+              ? '处理中...'
+              : `加入 ${selectedTier.name} · ${selectedTier.price}${selectedTier.period}`}
           </Text>
         </Pressable>
 
-        <Text style={{ fontSize: 12, color: theme.colors.textSecondary, textAlign: 'center', marginTop: 10 }}>
+        <Text
+          style={{
+            fontSize: 12,
+            color: theme.colors.textSecondary,
+            textAlign: 'center',
+            marginTop: 10,
+          }}
+        >
           可随时取消 · 安全支付
         </Text>
 
         {__DEV__ && (
-          <View style={{ marginTop: 32, padding: 14, backgroundColor: theme.colors.surface, borderRadius: 10 }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: theme.colors.textSecondary, marginBottom: 8 }}>
+          <View
+            style={{
+              marginTop: 32,
+              padding: 14,
+              backgroundColor: theme.colors.surface,
+              borderRadius: 10,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '600',
+                color: theme.colors.textSecondary,
+                marginBottom: 8,
+              }}
+            >
               开发诊断
             </Text>
             <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 2 }}>
               平台: {Platform.OS}
             </Text>
             <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 2 }}>
-              Stripe Key: {config.revenueCatStripeKey ? `✅ ${config.revenueCatStripeKey.slice(0, 12)}...` : '❌ 未设置'}
+              Stripe Key:{' '}
+              {config.revenueCatStripeKey
+                ? `✅ ${config.revenueCatStripeKey.slice(0, 12)}...`
+                : '❌ 未设置'}
             </Text>
             <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 8 }}>
               RevenueCat: {sync.revenueCatInitialized ? '✅ 已初始化' : '❌ 未初始化'}
@@ -196,14 +264,25 @@ export default function SupportScreen() {
               onPress={async () => {
                 try {
                   await sync.purchasesSync.invalidateAndAwait();
-                  Modal.alert('诊断', sync.revenueCatInitialized ? '✅ 初始化成功' : '❌ 初始化失败，请查看控制台');
+                  Modal.alert(
+                    '诊断',
+                    sync.revenueCatInitialized ? '✅ 初始化成功' : '❌ 初始化失败，请查看控制台'
+                  );
                 } catch (e: any) {
                   Modal.alert('诊断错误', e?.message || safeStringify(e));
                 }
               }}
-              style={{ paddingVertical: 6, paddingHorizontal: 12, backgroundColor: btnBg, borderRadius: 6, alignSelf: 'flex-start' }}
+              style={{
+                paddingVertical: 6,
+                paddingHorizontal: 12,
+                backgroundColor: btnBg,
+                borderRadius: 6,
+                alignSelf: 'flex-start',
+              }}
             >
-              <Text style={{ fontSize: 11, color: btnText, fontWeight: '600' }}>手动触发初始化</Text>
+              <Text style={{ fontSize: 11, color: btnText, fontWeight: '600' }}>
+                手动触发初始化
+              </Text>
             </Pressable>
           </View>
         )}

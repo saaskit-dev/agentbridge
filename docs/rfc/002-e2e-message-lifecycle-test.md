@@ -41,13 +41,13 @@ apps/free/cli/         ← CLI + Daemon 是同一套代码，同一个 binary
 
 ### 2.2 测试中的角色分工
 
-| 角色 | 谁来承担 |
-|---|---|
-| **App 侧**（HTTP 调用 + user-scoped socket） | 测试进程 |
-| **Server**（路由、DB、广播） | 真实 Server（localhost:3005） |
-| **Daemon 进程**（session-scoped socket + 运行 Claude） | 真实 Daemon（`free daemon start` 已在运行） |
-| **CLI 内部组件**（loop / claudeRemote / streamingHandler） | Daemon 进程内自动执行，测试不介入 |
-| **Claude API** | 真实 Claude（需要 API Key） |
+| 角色                                                       | 谁来承担                                    |
+| ---------------------------------------------------------- | ------------------------------------------- |
+| **App 侧**（HTTP 调用 + user-scoped socket）               | 测试进程                                    |
+| **Server**（路由、DB、广播）                               | 真实 Server（localhost:3005）               |
+| **Daemon 进程**（session-scoped socket + 运行 Claude）     | 真实 Daemon（`free daemon start` 已在运行） |
+| **CLI 内部组件**（loop / claudeRemote / streamingHandler） | Daemon 进程内自动执行，测试不介入           |
+| **Claude API**                                             | 真实 Claude（需要 API Key）                 |
 
 **测试只扮演 App 侧。Daemon 和 Claude 全部真实运行。**
 
@@ -234,8 +234,8 @@ expect(deleteResBody.success).toBe(true);
 ```typescript
 // Step 4 → CLI 收到（通过 listDaemonSessions 侧面验证消息被处理）
 // Step 7: App 收到 agent 回复
-const agentUpdates = collectedUpdates.filter(u =>
-  u.body?.t === 'new-message' && u.body?.sid === sessionId
+const agentUpdates = collectedUpdates.filter(
+  u => u.body?.t === 'new-message' && u.body?.sid === sessionId
 );
 expect(agentUpdates.length).toBeGreaterThanOrEqual(1);
 
@@ -291,23 +291,22 @@ apps/free/cli/src/api/messageLifecycle.integration.test.ts
 
 ### 依赖的 utilities
 
-| 依赖 | 来源 |
-|---|---|
-| `readCredentials()` | `@/persistence` |
-| `configuration` | `@/configuration` |
+| 依赖                                         | 来源                     |
+| -------------------------------------------- | ------------------------ |
+| `readCredentials()`                          | `@/persistence`          |
+| `configuration`                              | `@/configuration`        |
 | `checkIfDaemonRunningAndCleanupStaleState()` | `@/daemon/controlClient` |
-| `spawnDaemonSession()` | `@/daemon/controlClient` |
-| `stopDaemonSession()` | `@/daemon/controlClient` |
-| `listDaemonSessions()` | `@/daemon/controlClient` |
-| `ApiClient` | `@/api/api` |
-| `decrypt / decodeBase64` | `@/api/encryption` |
-| `io` (socket.io-client) | `socket.io-client` |
+| `spawnDaemonSession()`                       | `@/daemon/controlClient` |
+| `stopDaemonSession()`                        | `@/daemon/controlClient` |
+| `listDaemonSessions()`                       | `@/daemon/controlClient` |
+| `ApiClient`                                  | `@/api/api`              |
+| `decrypt / decodeBase64`                     | `@/api/encryption`       |
+| `io` (socket.io-client)                      | `socket.io-client`       |
 
 ### 测试结构
 
 ```typescript
 describe.skipIf(!ready)('Message Lifecycle E2E', { timeout: 120_000 }, () => {
-
   let sessionId: string;
   let encKey: Uint8Array;
   let encVariant: 'legacy' | 'dataKey';
@@ -329,7 +328,7 @@ describe.skipIf(!ready)('Message Lifecycle E2E', { timeout: 120_000 }, () => {
     appSocket?.disconnect();
     await fetch(`${serverUrl}/v1/sessions/${sessionId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
     });
   });
 
@@ -360,20 +359,17 @@ function waitForEvent<T>(
   predicate: (e: T) => boolean,
   timeoutMs = 90_000,
   description = ''
-): Promise<T>
+): Promise<T>;
 
 // 等待 activity.active=false（本轮 Claude 回复完整结束）
 function waitForTurnComplete(
   ephemerals: any[],
   sessionId: string,
   timeoutMs = 90_000
-): Promise<void>
+): Promise<void>;
 
 // 轮询 listDaemonSessions 直到 sessionId 出现
-async function waitForDaemonSession(
-  sessionId: string,
-  timeoutMs = 15_000
-): Promise<void>
+async function waitForDaemonSession(sessionId: string, timeoutMs = 15_000): Promise<void>;
 ```
 
 ---
@@ -398,13 +394,13 @@ grep "$TRACE_ID" ~/.free-dev/logs/*.jsonl | wc -l  # 应该 > 5（跨 server/cli
 
 ## 8. 与现有测试的区别
 
-| 测试 | 范围 | Mock | Claude |
-|---|---|---|---|
-| `apiSession.test.ts` | ApiSessionClient 单元 | socket + axios 全 mock | ❌ |
-| `v3SessionRoutes.test.ts` | Server HTTP 路由单元 | DB + eventRouter mock | ❌ |
-| `v3SessionRoutes.integration.test.ts` | Server HTTP → Socket 集成 | DB 真实，无 Daemon | ❌ |
-| `daemon.integration.test.ts` | Daemon 启停管理 | 无 mock | ❌ |
-| **`messageLifecycle.integration.test.ts`** | **全链路 E2E** | **无 mock，全真实** | **✅ 真实 Claude** |
+| 测试                                       | 范围                      | Mock                   | Claude             |
+| ------------------------------------------ | ------------------------- | ---------------------- | ------------------ |
+| `apiSession.test.ts`                       | ApiSessionClient 单元     | socket + axios 全 mock | ❌                 |
+| `v3SessionRoutes.test.ts`                  | Server HTTP 路由单元      | DB + eventRouter mock  | ❌                 |
+| `v3SessionRoutes.integration.test.ts`      | Server HTTP → Socket 集成 | DB 真实，无 Daemon     | ❌                 |
+| `daemon.integration.test.ts`               | Daemon 启停管理           | 无 mock                | ❌                 |
+| **`messageLifecycle.integration.test.ts`** | **全链路 E2E**            | **无 mock，全真实**    | **✅ 真实 Claude** |
 
 ---
 
@@ -412,13 +408,13 @@ grep "$TRACE_ID" ~/.free-dev/logs/*.jsonl | wc -l  # 应该 > 5（跨 server/cli
 
 ### 实现文件
 
-| 文件 | 用途 |
-|------|------|
-| `apps/free/cli/src/api/messageLifecycle.integration.test.ts` | 主测试文件（338 行） |
-| `apps/free/cli/src/test-helpers/FakeAppClient.ts` | 模拟 App 端协议行为（245 行） |
-| `apps/free/cli/src/test-helpers/FakeCliSessionClient.ts` | 模拟 CLI 端 session 行为（87 行） |
-| `apps/free/cli/src/test-helpers/integrationEnvironment.ts` | 测试环境初始化（180 行） |
-| `apps/free/cli/src/test-helpers/daemonTestHarness.ts` | Daemon 测试工具（110 行） |
+| 文件                                                         | 用途                              |
+| ------------------------------------------------------------ | --------------------------------- |
+| `apps/free/cli/src/api/messageLifecycle.integration.test.ts` | 主测试文件（338 行）              |
+| `apps/free/cli/src/test-helpers/FakeAppClient.ts`            | 模拟 App 端协议行为（245 行）     |
+| `apps/free/cli/src/test-helpers/FakeCliSessionClient.ts`     | 模拟 CLI 端 session 行为（87 行） |
+| `apps/free/cli/src/test-helpers/integrationEnvironment.ts`   | 测试环境初始化（180 行）          |
+| `apps/free/cli/src/test-helpers/daemonTestHarness.ts`        | Daemon 测试工具（110 行）         |
 
 ### 已实现的测试用例
 

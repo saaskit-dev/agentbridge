@@ -15,15 +15,15 @@ pnpm add @saaskit-dev/agentbridge
 
 ## Entry Points
 
-| Import Path | Description | Environment |
-|---|---|---|
-| `@saaskit-dev/agentbridge` | Full SDK — all types, interfaces, implementations, encryption, utils | Node.js (CLI / Server) |
-| `@saaskit-dev/agentbridge/common` | Platform-agnostic subset — no `node:*` imports | React Native / Browser |
-| `@saaskit-dev/agentbridge/types` | Pure type definitions only | Any |
-| `@saaskit-dev/agentbridge/interfaces` | Interface contracts + factory registries | Any |
-| `@saaskit-dev/agentbridge/encryption` | Encryption primitives (tweetnacl-based) | Any |
-| `@saaskit-dev/agentbridge/telemetry` | Logging, tracing, sinks (platform-agnostic) | Any |
-| `@saaskit-dev/agentbridge/telemetry/node` | Node.js-specific telemetry (FileSink, log cleanup) | Node.js |
+| Import Path                               | Description                                                          | Environment            |
+| ----------------------------------------- | -------------------------------------------------------------------- | ---------------------- |
+| `@saaskit-dev/agentbridge`                | Full SDK — all types, interfaces, implementations, encryption, utils | Node.js (CLI / Server) |
+| `@saaskit-dev/agentbridge/common`         | Platform-agnostic subset — no `node:*` imports                       | React Native / Browser |
+| `@saaskit-dev/agentbridge/types`          | Pure type definitions only                                           | Any                    |
+| `@saaskit-dev/agentbridge/interfaces`     | Interface contracts + factory registries                             | Any                    |
+| `@saaskit-dev/agentbridge/encryption`     | Encryption primitives (tweetnacl-based)                              | Any                    |
+| `@saaskit-dev/agentbridge/telemetry`      | Logging, tracing, sinks (platform-agnostic)                          | Any                    |
+| `@saaskit-dev/agentbridge/telemetry/node` | Node.js-specific telemetry (FileSink, log cleanup)                   | Node.js                |
 
 > **React Native / Browser apps** should import from `/common` instead of the root entry point to avoid pulling in Node.js-specific code.
 
@@ -177,18 +177,18 @@ logger.error('failed', new Error('details'));
 
 ## Utils
 
-| Utility | Description |
-|---|---|
-| `encodeBase64` / `decodeBase64` / `encodeHex` / `decodeHex` | Binary encoding |
-| `hmacSha512` / `deriveKey` / `deriveSecretKeyTreeRoot` | Key derivation (Node.js) |
-| `AsyncLock` | Async mutex |
-| `ModeAwareMessageQueue` / `AsyncIterableQueue` / `PushableAsyncIterable` | Async message passing |
-| `atomicFileWrite` / `atomicWriteJson` | Safe file writes (Node.js) |
-| `deterministicStringify` / `hashObject` / `deepEqual` | JSON utilities (Node.js) |
-| `safeStringify` / `toError` | Safe serialization |
-| `expandEnvVars` | Environment variable expansion |
-| `startCaffeinate` / `stopCaffeinate` | Prevent macOS sleep (Node.js) |
-| Tmux utilities | Session/pane management (Node.js) |
+| Utility                                                                  | Description                       |
+| ------------------------------------------------------------------------ | --------------------------------- |
+| `encodeBase64` / `decodeBase64` / `encodeHex` / `decodeHex`              | Binary encoding                   |
+| `hmacSha512` / `deriveKey` / `deriveSecretKeyTreeRoot`                   | Key derivation (Node.js)          |
+| `AsyncLock`                                                              | Async mutex                       |
+| `ModeAwareMessageQueue` / `AsyncIterableQueue` / `PushableAsyncIterable` | Async message passing             |
+| `atomicFileWrite` / `atomicWriteJson`                                    | Safe file writes (Node.js)        |
+| `deterministicStringify` / `hashObject` / `deepEqual`                    | JSON utilities (Node.js)          |
+| `safeStringify` / `toError`                                              | Safe serialization                |
+| `expandEnvVars`                                                          | Environment variable expansion    |
+| `startCaffeinate` / `stopCaffeinate`                                     | Prevent macOS sleep (Node.js)     |
+| Tmux utilities                                                           | Session/pane management (Node.js) |
 
 ## Factory Pattern
 

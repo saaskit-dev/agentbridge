@@ -99,8 +99,19 @@ class Configuration {
     const variantSuffix = this.variant === 'development' ? '-dev' : '';
     this.daemonServiceLabel = `app.saaskit.free.daemon${variantSuffix}`;
     this.daemonSystemdServiceName = `free-daemon${variantSuffix}`;
-    this.daemonPlistFile = join(homedir(), 'Library', 'LaunchAgents', `${this.daemonServiceLabel}.plist`);
-    this.daemonSystemdFile = join(homedir(), '.config', 'systemd', 'user', `${this.daemonSystemdServiceName}.service`);
+    this.daemonPlistFile = join(
+      homedir(),
+      'Library',
+      'LaunchAgents',
+      `${this.daemonServiceLabel}.plist`
+    );
+    this.daemonSystemdFile = join(
+      homedir(),
+      '.config',
+      'systemd',
+      'user',
+      `${this.daemonSystemdServiceName}.service`
+    );
 
     // Validate variant configuration
     if (this.variant === 'development' && !this.freeHomeDir.includes('dev')) {
@@ -111,7 +122,11 @@ class Configuration {
 
     // Visual indicator on CLI startup (only if not daemon process to avoid log clutter)
     // Also skip if --variant is missing — the bootstrap re-exec in index.ts will re-run us with it
-    if (!this.isDaemonProcess && this.variant === 'development' && process.argv.includes('--variant')) {
+    if (
+      !this.isDaemonProcess &&
+      this.variant === 'development' &&
+      process.argv.includes('--variant')
+    ) {
       console.log('\x1b[33m🔧 DEV MODE\x1b[0m - Data: ' + this.freeHomeDir);
     }
 

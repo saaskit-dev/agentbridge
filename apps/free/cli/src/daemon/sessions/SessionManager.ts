@@ -27,13 +27,15 @@ export class SessionManager {
    *   its IPC history ring buffer. Injected to avoid circular dependency.
    *   Pass `(id) => daemonIPCServer.evictHistory(id)` from daemon/run.ts.
    */
-  constructor(
-    private readonly onEvictHistory: (sessionId: string) => void = () => {}
-  ) {}
+  constructor(private readonly onEvictHistory: (sessionId: string) => void = () => {}) {}
 
   register(sessionId: string, session: AnySession): void {
     this.sessions.set(sessionId, session);
-    logger.info('[SessionManager] session registered', { sessionId, agentType: session.agentType, total: this.sessions.size });
+    logger.info('[SessionManager] session registered', {
+      sessionId,
+      agentType: session.agentType,
+      total: this.sessions.size,
+    });
   }
 
   /** Remove from registry and release IPC history buffer. */
@@ -41,7 +43,11 @@ export class SessionManager {
     const agentType = this.sessions.get(sessionId)?.agentType;
     this.sessions.delete(sessionId);
     this.onEvictHistory(sessionId);
-    logger.info('[SessionManager] session unregistered', { sessionId, agentType, total: this.sessions.size });
+    logger.info('[SessionManager] session unregistered', {
+      sessionId,
+      agentType,
+      total: this.sessions.size,
+    });
   }
 
   get(sessionId: string): AnySession | undefined {
@@ -67,14 +73,20 @@ export class SessionManager {
   /** Called by daemon when SIGTERM is received. All sessions finish current turn. */
   handleSigterm(): void {
     const sessionIds = [...this.sessions.keys()];
-    logger.info('[SessionManager] broadcasting SIGTERM to all sessions', { count: sessionIds.length, sessionIds });
+    logger.info('[SessionManager] broadcasting SIGTERM to all sessions', {
+      count: sessionIds.length,
+      sessionIds,
+    });
     for (const session of this.sessions.values()) session.handleSigterm();
   }
 
   /** Called by daemon when SIGINT is received. All sessions exit immediately. */
   handleSigint(): void {
     const sessionIds = [...this.sessions.keys()];
-    logger.info('[SessionManager] broadcasting SIGINT to all sessions', { count: sessionIds.length, sessionIds });
+    logger.info('[SessionManager] broadcasting SIGINT to all sessions', {
+      count: sessionIds.length,
+      sessionIds,
+    });
     for (const session of this.sessions.values()) session.handleSigint();
   }
 }

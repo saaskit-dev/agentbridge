@@ -6,8 +6,8 @@ const { withXcodeProject } = require('@expo/config-plugins');
  *
  * Team ID 通过 APPLE_TEAM_ID 环境变量注入，fallback 到 hardcode 默认值。
  */
-const withDevelopmentTeam = (config) => {
-  return withXcodeProject(config, (config) => {
+const withDevelopmentTeam = config => {
+  return withXcodeProject(config, config => {
     const teamId = process.env.APPLE_TEAM_ID || 'SD58V5WA54';
     const project = config.modResults;
     const buildConfigSection = project.pbxXCBuildConfigurationSection();

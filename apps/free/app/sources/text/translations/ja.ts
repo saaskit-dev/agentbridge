@@ -240,6 +240,12 @@ export const ja: TranslationStructure = {
     sessionNotFound: 'セッションが見つかりません',
     voiceSessionFailed: '音声セッションの開始に失敗しました',
     voiceServiceUnavailable: '音声サービスは一時的に利用できません',
+    voiceNotConfigured: 'Voice feature is not configured. Please contact support.',
+    voiceNotInitialized:
+      'Voice service failed to initialize. Please restart the app and try again.',
+    voiceMicPermissionWeb:
+      'Microphone access is required for voice. Please allow microphone permission in your browser settings.',
+    voiceTokenRejected: 'Voice service is not available on this server.',
     oauthInitializationFailed: 'OAuth フローの初期化に失敗しました',
     tokenStorageFailed: '認証トークンの保存に失敗しました',
     oauthStateMismatch: 'セキュリティ検証に失敗しました。再試行してください',
@@ -304,14 +310,16 @@ export const ja: TranslationStructure = {
       success: 'ワークツリーが正常に作成されました',
     },
     inputPlaceholder: '何に取り組みますか？',
-    capabilityDiscoveryNotice: '最初のメッセージを送信して、モード、モデル、コマンドを読み込みます。',
+    capabilityDiscoveryNotice:
+      '最初のメッセージを送信して、モード、モデル、コマンドを読み込みます。',
   },
 
   agentPicker: {
     headerTitle: 'エージェントを選択',
     heroEyebrow: '実装セレクター',
     heroTitle: '開始するランタイムを選択してください。',
-    heroDescription: '以下の各オプションは、選択したマシンに登録されている実装から検出されます。クラシックとACPのエントリは意図的に分離されています。',
+    heroDescription:
+      '以下の各オプションは、選択したマシンに登録されている実装から検出されます。クラシックとACPのエントリは意図的に分離されています。',
     experimentalSection: '実験的',
     experimentalCaption: '実験設定の背後にあるオプションのエージェント。',
     noAgentsTitle: '利用可能なエージェントがありません',
@@ -431,7 +439,8 @@ export const ja: TranslationStructure = {
       requiredVersion: string;
     }) =>
       `バージョン ${currentVersion} がインストールされています。${requiredVersion} 以降に更新してください`,
-    updateCliInstructions: 'curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash を実行してください',
+    updateCliInstructions:
+      'curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash を実行してください',
     deleteSession: 'セッションを削除',
     deleteSessionSubtitle: 'このセッションを完全に削除',
     deleteSessionConfirm: 'セッションを完全に削除しますか？',
@@ -813,8 +822,8 @@ export const ja: TranslationStructure = {
     unknownEvent: '不明なイベント',
     usageLimitUntil: ({ time }: { time: string }) => `${time}まで使用制限中`,
     unknownTime: '不明な時間',
-    permissionRequest: ({ toolName }: { toolName: string }) => "Permission request for " + toolName,
-    permissionMode: ({ mode }: { mode: string }) => "Permission mode: " + mode,
+    permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
+    permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
   },
 
   codex: {
@@ -971,12 +980,14 @@ export const ja: TranslationStructure = {
     copySubtitle: 'ログデータをJSONLテキストとしてコピー',
     whatIsIncluded: '含まれる内容',
     whatIsIncludedSubtitle: 'アプリ診断ログ — メッセージ内容も個人情報も含まれません',
-    privacyNote: 'ログはエクスポート前に匿名化・サニタイズされます。メッセージ内容と機密データは含まれません。',
+    privacyNote:
+      'ログはエクスポート前に匿名化・サニタイズされます。メッセージ内容と機密データは含まれません。',
     noLogs: 'ログなし',
     noLogsMessage: '選択した時間範囲にエクスポートするログエントリがありません。',
     exported: 'エクスポート完了',
     exportFailed: 'エクスポート失敗',
     copied: 'コピー済み',
-    copiedToClipboard: ({ count }: { count: number }) => `${count}件のエントリをクリップボードにコピーしました`,
+    copiedToClipboard: ({ count }: { count: number }) =>
+      `${count}件のエントリをクリップボードにコピーしました`,
   },
 } as const;

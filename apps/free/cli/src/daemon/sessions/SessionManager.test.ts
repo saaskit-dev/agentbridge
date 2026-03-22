@@ -9,7 +9,16 @@ function makeMockSession(overrides: Partial<AnySession> = {}): AnySession {
   return {
     agentType: 'claude',
     sessionId: 'sess-1',
-    toSummary: vi.fn().mockReturnValue({ sessionId: 'sess-1', agentType: 'claude', cwd: '/tmp', state: 'idle', startedAt: '2026-01-01', startedBy: 'cli' }),
+    toSummary: vi
+      .fn()
+      .mockReturnValue({
+        sessionId: 'sess-1',
+        agentType: 'claude',
+        cwd: '/tmp',
+        state: 'idle',
+        startedAt: '2026-01-01',
+        startedBy: 'cli',
+      }),
     sendInput: vi.fn(),
     abort: vi.fn().mockResolvedValue(undefined),
     shutdown: vi.fn().mockResolvedValue(undefined),

@@ -46,9 +46,7 @@ export class PushNotificationClient {
       return response.data.tokens;
     } catch (error) {
       logger.debug('[PUSH] [ERROR] Failed to fetch push tokens:', error);
-      throw new Error(
-        `Failed to fetch push tokens: ${safeStringify(error)}`
-      );
+      throw new Error(`Failed to fetch push tokens: ${safeStringify(error)}`);
     }
   }
 

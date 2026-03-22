@@ -34,7 +34,10 @@ export function startTimeout() {
         if (updated.length === 0) {
           continue;
         }
-        logger.debug('session marked offline', { sessionId: session.id, accountId: session.accountId });
+        logger.debug('session marked offline', {
+          sessionId: session.id,
+          accountId: session.accountId,
+        });
         eventRouter.emitEphemeral({
           userId: session.accountId,
           payload: buildSessionActivityEphemeral(
@@ -67,7 +70,10 @@ export function startTimeout() {
         if (updated.length === 0) {
           continue;
         }
-        logger.debug('machine marked inactive', { machineId: machine.id, accountId: machine.accountId });
+        logger.debug('machine marked inactive', {
+          machineId: machine.id,
+          accountId: machine.accountId,
+        });
         eventRouter.emitEphemeral({
           userId: machine.accountId,
           payload: buildMachineActivityEphemeral(

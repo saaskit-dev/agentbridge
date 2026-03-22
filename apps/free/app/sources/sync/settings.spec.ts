@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { settingsParse, applySettings, settingsDefaults, SUPPORTED_SCHEMA_VERSION } from './settings';
+import {
+  settingsParse,
+  applySettings,
+  settingsDefaults,
+  SUPPORTED_SCHEMA_VERSION,
+} from './settings';
 
 describe('settingsParse', () => {
   it('returns defaults for null input', () => {

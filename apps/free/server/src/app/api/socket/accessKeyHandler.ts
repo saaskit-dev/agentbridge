@@ -72,8 +72,7 @@ export function accessKeyHandler(userId: string, socket: Socket) {
           }
         }
 
-        log.info(`Access key retrieved for session ${sessionId}, machine ${machineId}`
-        );
+        log.info(`Access key retrieved for session ${sessionId}, machine ${machineId}`);
       } catch (error) {
         log.error(`Error in access-key-get: ${error}`);
         if (callback) {

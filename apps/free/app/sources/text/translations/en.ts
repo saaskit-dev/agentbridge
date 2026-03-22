@@ -252,6 +252,12 @@ export const en: TranslationStructure = {
     sessionNotFound: 'Session not found',
     voiceSessionFailed: 'Failed to start voice session',
     voiceServiceUnavailable: 'Voice service is temporarily unavailable',
+    voiceNotConfigured: 'Voice feature is not configured. Please contact support.',
+    voiceNotInitialized:
+      'Voice service failed to initialize. Please restart the app and try again.',
+    voiceMicPermissionWeb:
+      'Microphone access is required for voice. Please allow microphone permission in your browser settings.',
+    voiceTokenRejected: 'Voice service is not available on this server.',
     oauthInitializationFailed: 'Failed to initialize OAuth flow',
     tokenStorageFailed: 'Failed to store authentication tokens',
     oauthStateMismatch: 'Security validation failed. Please try again',
@@ -324,7 +330,8 @@ export const en: TranslationStructure = {
     headerTitle: 'Select Agent',
     heroEyebrow: 'Implementation Picker',
     heroTitle: 'Choose the runtime you want to start with.',
-    heroDescription: 'Each option below is discovered from the registered implementations on the selected machine. Classic and ACP entries stay separate on purpose.',
+    heroDescription:
+      'Each option below is discovered from the registered implementations on the selected machine. Classic and ACP entries stay separate on purpose.',
     experimentalSection: 'Experimental',
     experimentalCaption: 'Optional agents behind the experiments setting.',
     noAgentsTitle: 'No agents available',
@@ -443,7 +450,8 @@ export const en: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
-    updateCliInstructions: 'Please run curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    updateCliInstructions:
+      'Please run curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Delete Session',
     deleteSessionSubtitle: 'Permanently remove this session',
     deleteSessionConfirm: 'Delete Session Permanently?',
@@ -826,8 +834,8 @@ export const en: TranslationStructure = {
     unknownEvent: 'Unknown event',
     usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
     unknownTime: 'unknown time',
-    permissionRequest: ({ toolName }: { toolName: string }) => "Permission request for " + toolName,
-    permissionMode: ({ mode }: { mode: string }) => "Permission mode: " + mode,
+    permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
+    permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
   },
 
   codex: {
@@ -984,13 +992,15 @@ export const en: TranslationStructure = {
     copySubtitle: 'Copy raw log data as JSONL text',
     whatIsIncluded: 'What is included',
     whatIsIncludedSubtitle: 'App diagnostic logs — no message content, no personal data',
-    privacyNote: 'Logs are anonymized and sanitized before export. Message content and sensitive data are never included.',
+    privacyNote:
+      'Logs are anonymized and sanitized before export. Message content and sensitive data are never included.',
     noLogs: 'No Logs',
     noLogsMessage: 'There are no log entries to export for the selected time range.',
     exported: 'Exported',
     exportFailed: 'Export Failed',
     copied: 'Copied',
-    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'entry' : 'entries'} copied to clipboard`,
+    copiedToClipboard: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'entry' : 'entries'} copied to clipboard`,
   },
 } as const;
 

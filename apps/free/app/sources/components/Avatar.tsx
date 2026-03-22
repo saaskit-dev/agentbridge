@@ -5,7 +5,12 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { AvatarBrutalist } from './AvatarBrutalist';
 import { AvatarGradient } from './AvatarGradient';
 import { AvatarSkia } from './AvatarSkia';
-import { normalizeAgentFlavor } from '@/sync/agentFlavor';
+import { normalizeAgentFlavor, type DisplayAgentFlavor } from '@/sync/agentFlavor';
+import {
+  getAgentFlavorBadgeContainerSize,
+  getAgentFlavorBadgeIconSize,
+  getAgentFlavorIconSource,
+} from '@/sync/agentIcons';
 import { useSetting } from '@/sync/storage';
 
 interface AvatarProps {
@@ -18,13 +23,6 @@ interface AvatarProps {
   imageUrl?: string | null;
   thumbhash?: string | null;
 }
-
-const flavorIcons = {
-  claude: require('@/assets/images/icon-claude.png'),
-  codex: require('@/assets/images/icon-gpt.png'),
-  gemini: require('@/assets/images/icon-gemini.png'),
-  opencode: require('@/assets/images/icon-opencode.png'),
-};
 
 const styles = StyleSheet.create(theme => ({
   container: {
@@ -69,15 +67,9 @@ export const Avatar = React.memo((props: AvatarProps) => {
     // Add flavor icon overlay if enabled
     if (showFlavorIcons && flavor) {
       const effectiveFlavor = normalizeAgentFlavor(flavor);
-      const flavorIcon =
-        flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
-      const circleSize = Math.round(size * 0.35);
-      const iconSize =
-        effectiveFlavor === 'codex'
-          ? Math.round(size * 0.25)
-          : effectiveFlavor === 'claude'
-            ? Math.round(size * 0.28)
-            : Math.round(size * 0.35); // gemini, opencode
+      const flavorIcon = getAgentFlavorIconSource(flavor);
+      const circleSize = getAgentFlavorBadgeContainerSize(size);
+      const iconSize = getAgentFlavorBadgeIconSize(size, effectiveFlavor as DisplayAgentFlavor);
 
       return (
         <View style={[styles.container, { width: size, height: size }]}>
@@ -120,16 +112,9 @@ export const Avatar = React.memo((props: AvatarProps) => {
 
   // Determine flavor icon for generated avatars
   const effectiveFlavor = normalizeAgentFlavor(flavor);
-  const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
-  // Make icons smaller while keeping same circle size
-  // Claude slightly bigger than codex
-  const circleSize = Math.round(size * 0.35);
-  const iconSize =
-    effectiveFlavor === 'codex'
-      ? Math.round(size * 0.25)
-      : effectiveFlavor === 'claude'
-        ? Math.round(size * 0.28)
-        : Math.round(size * 0.35); // gemini, opencode
+  const flavorIcon = getAgentFlavorIconSource(flavor);
+  const circleSize = getAgentFlavorBadgeContainerSize(size);
+  const iconSize = getAgentFlavorBadgeIconSize(size, effectiveFlavor as DisplayAgentFlavor);
 
   // Only wrap in container if showing flavor icons
   if (showFlavorIcons) {

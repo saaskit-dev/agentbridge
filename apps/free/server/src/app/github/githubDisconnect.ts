@@ -32,8 +32,7 @@ export async function githubDisconnect(ctx: Context): Promise<void> {
   }
 
   const githubUserId = user.githubUserId;
-  log.info(`Disconnecting GitHub account ${githubUserId} from user ${userId}`
-  );
+  log.info(`Disconnecting GitHub account ${githubUserId} from user ${userId}`);
 
   // Step 2: Transaction for atomic database operations
   await db.$transaction(async tx => {
@@ -70,6 +69,5 @@ export async function githubDisconnect(ctx: Context): Promise<void> {
     recipientFilter: { type: 'user-scoped-only' },
   });
 
-  log.info(`GitHub account ${githubUserId} disconnected successfully from user ${userId}`
-  );
+  log.info(`GitHub account ${githubUserId} disconnected successfully from user ${userId}`);
 }

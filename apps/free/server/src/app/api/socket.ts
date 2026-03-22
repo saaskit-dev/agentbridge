@@ -36,21 +36,17 @@ const inFlightDisconnects = new Set<Promise<void>>();
 export async function startSocket(app: Fastify) {
   const io = new Server(app.server, {
     cors: {
-      origin: process.env.APP_ENV === 'development'
-        ? true
-        : [
-            'https://free.saaskit.app',
-            'https://free-server.saaskit.app',
-            'https://app.happy.engineering',
-          ],
+      origin:
+        process.env.APP_ENV === 'development'
+          ? true
+          : [
+              'https://free.saaskit.app',
+              'https://free-server.saaskit.app',
+              'https://app.happy.engineering',
+            ],
       methods: ['GET', 'POST', 'OPTIONS'],
       credentials: true,
-      allowedHeaders: [
-        'Content-Type',
-        'Authorization',
-        'X-Trace-Id',
-        'X-Socket-Id',
-      ],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Trace-Id', 'X-Socket-Id'],
     },
     transports: ['websocket', 'polling'],
     pingTimeout: 45000,
@@ -72,18 +68,15 @@ export async function startSocket(app: Fastify) {
       io.adapter(createAdapter(pool));
       log.info('PostgreSQL adapter enabled for multi-instance support');
     } catch (error) {
-      log.error(`Failed to initialize PostgreSQL adapter: ${error}`
-      );
+      log.error(`Failed to initialize PostgreSQL adapter: ${error}`);
     }
   } else {
-    log.info('Running in single-instance mode (PGlite or no external PostgreSQL)'
-    );
+    log.info('Running in single-instance mode (PGlite or no external PostgreSQL)');
   }
 
   const rpcListeners = new Map<string, Map<string, Socket>>();
   io.on('connection', async socket => {
-    log.debug(`New connection attempt from socket: ${socket.id}`
-    );
+    log.debug(`New connection attempt from socket: ${socket.id}`);
     const token = socket.handshake.auth.token as string;
     const clientType = socket.handshake.auth.clientType as
       | 'session-scoped'
@@ -130,7 +123,8 @@ export async function startSocket(app: Fastify) {
     }
 
     const userId = verified.userId;
-    log.info(`Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`
+    log.info(
+      `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`
     );
 
     // Store connection based on type
@@ -183,7 +177,10 @@ export async function startSocket(app: Fastify) {
 
       const work = (async () => {
         const t0 = Date.now();
-        log.debug('[disconnect] db-write start', { userId, connectionType: connection.connectionType });
+        log.debug('[disconnect] db-write start', {
+          userId,
+          connectionType: connection.connectionType,
+        });
 
         // Broadcast daemon offline status and update database
         if (connection.connectionType === 'machine-scoped') {
@@ -197,16 +194,15 @@ export async function startSocket(app: Fastify) {
               },
               data: { active: false, lastActiveAt: new Date(now) },
             });
-            log.debug('[disconnect] machine marked inactive', { userId, machineId: connection.machineId });
+            log.debug('[disconnect] machine marked inactive', {
+              userId,
+              machineId: connection.machineId,
+            });
           } catch (error) {
             log.error(`[disconnect] error updating machine active status: ${error}`);
           }
           // Broadcast ephemeral event
-          const machineActivity = buildMachineActivityEphemeral(
-            connection.machineId,
-            false,
-            now
-          );
+          const machineActivity = buildMachineActivityEphemeral(connection.machineId, false, now);
           eventRouter.emitEphemeral({
             userId,
             payload: machineActivity,
@@ -226,7 +222,10 @@ export async function startSocket(app: Fastify) {
               },
               data: { status: 'offline', lastActiveAt: new Date(now) },
             });
-            log.debug('[disconnect] session marked offline', { userId, sessionId: connection.sessionId });
+            log.debug('[disconnect] session marked offline', {
+              userId,
+              sessionId: connection.sessionId,
+            });
           } catch (error) {
             log.error(`[disconnect] error updating session active status: ${error}`);
           }
@@ -244,7 +243,11 @@ export async function startSocket(app: Fastify) {
           });
         }
 
-        log.debug('[disconnect] db-write done', { userId, connectionType: connection.connectionType, ms: Date.now() - t0 });
+        log.debug('[disconnect] db-write done', {
+          userId,
+          connectionType: connection.connectionType,
+          ms: Date.now() - t0,
+        });
       })();
 
       inFlightDisconnects.add(work);
@@ -258,7 +261,8 @@ export async function startSocket(app: Fastify) {
     // For session-scoped connections, also inject the connection-level sessionId so that
     // events without a _trace (e.g. heartbeats) still get sessionId in their log entries,
     // making all server-side logs searchable by sessionId in New Relic (same field as daemon).
-    const connectionSessionId = connection.connectionType === 'session-scoped' ? connection.sessionId : undefined;
+    const connectionSessionId =
+      connection.connectionType === 'session-scoped' ? connection.sessionId : undefined;
     socket.use(([_event, data], next) => {
       const wire = data && typeof data === 'object' ? (data as any)._trace : undefined;
       if (wire && typeof wire.tid === 'string') {
@@ -300,11 +304,15 @@ export async function startSocket(app: Fastify) {
     log.info(`User connected: ${userId}`);
   });
 
-  onShutdown('socket.io', async () => {
-    log.info('[shutdown] socket.io close: start');
-    await io.close();
-    log.info('[shutdown] socket.io close: done');
-  }, SHUTDOWN_PHASE.NETWORK);
+  onShutdown(
+    'socket.io',
+    async () => {
+      log.info('[shutdown] socket.io close: start');
+      await io.close();
+      log.info('[shutdown] socket.io close: done');
+    },
+    SHUTDOWN_PHASE.NETWORK
+  );
 
   // Wait for all in-flight disconnect DB writes before DB closes (Phase 2).
   onShutdown('socket.io-disconnect-drain', async () => {
@@ -342,7 +350,12 @@ async function replayMissedMessages(userId: string, socket: Socket, connection: 
   // machine-scoped connections don't receive session messages — no replay needed
 }
 
-async function replayForSession(userId: string, socket: Socket, sessionId: string, lastSeq: number) {
+async function replayForSession(
+  userId: string,
+  socket: Socket,
+  sessionId: string,
+  lastSeq: number
+) {
   // Verify session ownership
   const session = await db.session.findFirst({
     where: { id: sessionId, accountId: userId },
@@ -374,5 +387,11 @@ async function replayForSession(userId: string, socket: Socket, sessionId: strin
     })),
     hasMore,
   });
-  log.info('[replay] sent missed messages', { userId, sessionId, lastSeq, count: page.length, hasMore });
+  log.info('[replay] sent missed messages', {
+    userId,
+    sessionId,
+    lastSeq,
+    count: page.length,
+    hasMore,
+  });
 }

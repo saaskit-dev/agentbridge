@@ -5,11 +5,11 @@ const { withEntitlementsPlist } = require('@expo/config-plugins');
  * - development: aps-environment = development
  * - production: aps-environment = production
  */
-const withPushNotificationEntitlements = (config) => {
+const withPushNotificationEntitlements = config => {
   const variant = process.env.APP_ENV || 'development';
   const apsEnvironment = variant === 'development' ? 'development' : 'production';
 
-  config = withEntitlementsPlist(config, (config) => {
+  config = withEntitlementsPlist(config, config => {
     config.modResults['aps-environment'] = apsEnvironment;
     return config;
   });

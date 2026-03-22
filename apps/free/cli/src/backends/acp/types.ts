@@ -1,7 +1,4 @@
-import type {
-  NewSessionResponse,
-  SessionUpdate,
-} from '@agentclientprotocol/sdk';
+import type { NewSessionResponse, SessionUpdate } from '@agentclientprotocol/sdk';
 import type { AgentBackend as IAgentBackend } from '@/agent';
 
 export interface CapabilityAwareAcpBackend extends IAgentBackend {
@@ -20,6 +17,11 @@ export interface CapabilityAwareAcpBackend extends IAgentBackend {
   loadSession?(
     sessionId: string,
     cwd: string,
-    mcpServers?: Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }>
+    mcpServers?: Array<{
+      name: string;
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }>
   ): Promise<{ sessionId: string }>;
 }

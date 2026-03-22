@@ -22,11 +22,11 @@ App -> Server -> CLI -> Agent -> CLI -> Server -> App
 
 When something goes wrong (a message never arrives, a permission request hangs, a session fails to create), there is **no way to trace what happened**. The three existing log systems are completely isolated:
 
-| Layer | File | Format | Storage | Correlation |
-|-------|------|--------|---------|-------------|
-| App (React Native) | `app/sources/log.ts` | Plain text, memory only | 5k entries in-memory ring buffer | None |
-| Server (Fastify) | `server/src/utils/log.ts` | Pino JSON | `~/.free/logs/server-*.log` | None |
-| CLI / Daemon | `cli/src/ui/logger.ts` | Plain text | `~/.free/logs/cli-*.log` | None |
+| Layer              | File                      | Format                  | Storage                          | Correlation |
+| ------------------ | ------------------------- | ----------------------- | -------------------------------- | ----------- |
+| App (React Native) | `app/sources/log.ts`      | Plain text, memory only | 5k entries in-memory ring buffer | None        |
+| Server (Fastify)   | `server/src/utils/log.ts` | Pino JSON               | `~/.free/logs/server-*.log`      | None        |
+| CLI / Daemon       | `cli/src/ui/logger.ts`    | Plain text              | `~/.free/logs/cli-*.log`         | None        |
 
 There is no trace ID, no span concept, no structured correlation between logs across layers. Each system has its own API, its own format, and its own storage strategy. A fourth system (`remoteLogger.ts`) exists as a development-only hack gated behind `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING`.
 
@@ -83,6 +83,7 @@ Logger --> LogCollector --> Sanitizer --> LogSink[]
 ```
 
 The telemetry module has **zero dependencies** on any app-specific code. It depends only on:
+
 - Node.js `fs` (for FileSink, conditionally imported)
 - `crypto.randomUUID` or equivalent (for ID generation)
 
@@ -96,15 +97,16 @@ All sinks are injected at initialization time by each app layer. The core logger
 
 ```typescript
 interface TraceContext {
-  readonly traceId: string        // nanoid(21) -- lifecycle of one user operation
-  readonly spanId: string         // nanoid(12) -- current processing step
-  readonly parentSpanId?: string  // parent step (for nesting)
-  readonly sessionId?: string     // session this operation belongs to
-  readonly machineId?: string     // machine running this operation
+  readonly traceId: string; // nanoid(21) -- lifecycle of one user operation
+  readonly spanId: string; // nanoid(12) -- current processing step
+  readonly parentSpanId?: string; // parent step (for nesting)
+  readonly sessionId?: string; // session this operation belongs to
+  readonly machineId?: string; // machine running this operation
 }
 ```
 
 **Rules:**
+
 - `traceId` is created once at the origin of a user action (App sends a message, CLI starts a session, etc.)
 - `traceId` is **inherited** at every subsequent layer -- it never changes within one operation
 - `spanId` is created fresh at each layer boundary -- it represents "this layer's processing of the operation"
@@ -115,31 +117,32 @@ interface TraceContext {
 ```typescript
 interface LogEntry {
   // --- Timestamps ---
-  timestamp: string              // ISO 8601 with milliseconds (e.g. "2026-03-06T14:23:01.456Z")
+  timestamp: string; // ISO 8601 with milliseconds (e.g. "2026-03-06T14:23:01.456Z")
 
   // --- Classification ---
-  level: 'debug' | 'info' | 'warn' | 'error'
-  layer: 'app' | 'server' | 'cli' | 'daemon' | 'agent'
-  component: string              // module name (e.g. 'socket', 'sync', 'claude-loop', 'rpc')
+  level: 'debug' | 'info' | 'warn' | 'error';
+  layer: 'app' | 'server' | 'cli' | 'daemon' | 'agent';
+  component: string; // module name (e.g. 'socket', 'sync', 'claude-loop', 'rpc')
 
   // --- Trace dimensions (all optional, present when available) ---
-  traceId?: string
-  spanId?: string
-  parentSpanId?: string
-  sessionId?: string
-  machineId?: string
+  traceId?: string;
+  spanId?: string;
+  parentSpanId?: string;
+  sessionId?: string;
+  machineId?: string;
 
   // --- Content ---
-  message: string                // human-readable log message
-  data?: Record<string, unknown> // structured key-value pairs
-  error?: {                      // error details (only for level: 'error')
-    message: string
-    stack?: string
-    code?: string
-  }
+  message: string; // human-readable log message
+  data?: Record<string, unknown>; // structured key-value pairs
+  error?: {
+    // error details (only for level: 'error')
+    message: string;
+    stack?: string;
+    code?: string;
+  };
 
   // --- Performance ---
-  durationMs?: number            // span duration (set automatically by Span.end())
+  durationMs?: number; // span duration (set automatically by Span.end())
 }
 ```
 
@@ -156,16 +159,16 @@ interface LogEntry {
 ### 3.3 Layer Enum
 
 ```typescript
-type Layer = 'app' | 'server' | 'cli' | 'daemon' | 'agent'
+type Layer = 'app' | 'server' | 'cli' | 'daemon' | 'agent';
 ```
 
-| Layer | Process | Description |
-|-------|---------|-------------|
-| `app` | React Native app | Mobile/web UI |
-| `server` | Fastify server | API + WebSocket gateway |
-| `cli` | free-cli process | Session host, Claude wrapper |
-| `daemon` | Daemon process | Background session manager |
-| `agent` | Claude/Gemini/Codex | AI agent subprocess |
+| Layer    | Process             | Description                  |
+| -------- | ------------------- | ---------------------------- |
+| `app`    | React Native app    | Mobile/web UI                |
+| `server` | Fastify server      | API + WebSocket gateway      |
+| `cli`    | free-cli process    | Session host, Claude wrapper |
+| `daemon` | Daemon process      | Background session manager   |
+| `agent`  | Claude/Gemini/Codex | AI agent subprocess          |
 
 ---
 
@@ -181,17 +184,17 @@ class Logger {
    *
    * @param component - Module/feature name (e.g. 'socket', 'sync', 'rpc')
    */
-  constructor(component: string)
+  constructor(component: string);
 
   /**
    * Log at the specified level.
    * These methods work without a TraceContext -- suitable for
    * startup logs, shutdown logs, and infrastructure messages.
    */
-  debug(message: string, data?: Record<string, unknown>): void
-  info(message: string, data?: Record<string, unknown>): void
-  warn(message: string, data?: Record<string, unknown>): void
-  error(message: string, err?: Error, data?: Record<string, unknown>): void
+  debug(message: string, data?: Record<string, unknown>): void;
+  info(message: string, data?: Record<string, unknown>): void;
+  warn(message: string, data?: Record<string, unknown>): void;
+  error(message: string, err?: Error, data?: Record<string, unknown>): void;
 
   /**
    * Create a scoped logger that automatically attaches TraceContext
@@ -200,7 +203,7 @@ class Logger {
    * @param ctx - TraceContext from the incoming request/message
    * @returns ScopedLogger with identical debug/info/warn/error methods
    */
-  withContext(ctx: TraceContext): ScopedLogger
+  withContext(ctx: TraceContext): ScopedLogger;
 
   /**
    * Start a timed span. The span logs its start and, on end(), its duration.
@@ -210,7 +213,7 @@ class Logger {
    * @param ctx - Optional TraceContext (creates a child span)
    * @returns Span object -- call span.end() when done
    */
-  span(name: string, ctx?: TraceContext): Span
+  span(name: string, ctx?: TraceContext): Span;
 }
 ```
 
@@ -218,13 +221,13 @@ class Logger {
 
 ```typescript
 interface ScopedLogger {
-  debug(message: string, data?: Record<string, unknown>): void
-  info(message: string, data?: Record<string, unknown>): void
-  warn(message: string, data?: Record<string, unknown>): void
-  error(message: string, err?: Error, data?: Record<string, unknown>): void
+  debug(message: string, data?: Record<string, unknown>): void;
+  info(message: string, data?: Record<string, unknown>): void;
+  warn(message: string, data?: Record<string, unknown>): void;
+  error(message: string, err?: Error, data?: Record<string, unknown>): void;
 
   /** Access the underlying TraceContext */
-  readonly context: TraceContext
+  readonly context: TraceContext;
 }
 ```
 
@@ -232,34 +235,34 @@ interface ScopedLogger {
 
 ```typescript
 class Span {
-  readonly traceId: string
-  readonly spanId: string
-  readonly parentSpanId?: string
-  readonly name: string
+  readonly traceId: string;
+  readonly spanId: string;
+  readonly parentSpanId?: string;
+  readonly name: string;
 
   /**
    * Log within this span's context.
    */
-  debug(message: string, data?: Record<string, unknown>): void
-  info(message: string, data?: Record<string, unknown>): void
-  warn(message: string, data?: Record<string, unknown>): void
-  error(message: string, err?: Error, data?: Record<string, unknown>): void
+  debug(message: string, data?: Record<string, unknown>): void;
+  info(message: string, data?: Record<string, unknown>): void;
+  warn(message: string, data?: Record<string, unknown>): void;
+  error(message: string, err?: Error, data?: Record<string, unknown>): void;
 
   /**
    * Create a child span (for nested operations).
    */
-  child(name: string): Span
+  child(name: string): Span;
 
   /**
    * End the span. Logs completion with durationMs.
    * After end() is called, further logging on this span is a no-op.
    */
-  end(data?: Record<string, unknown>): void
+  end(data?: Record<string, unknown>): void;
 
   /**
    * Get the TraceContext for this span (for passing to downstream layers).
    */
-  toContext(): TraceContext
+  toContext(): TraceContext;
 }
 ```
 
@@ -270,45 +273,43 @@ class Span {
  * Create a new trace. Use at the origin of a user action.
  * Generates fresh traceId and spanId.
  */
-function createTrace(opts: {
-  sessionId?: string
-  machineId?: string
-}): TraceContext
+function createTrace(opts: { sessionId?: string; machineId?: string }): TraceContext;
 
 /**
  * Continue a trace from an upstream layer.
  * Inherits traceId, creates a new spanId, sets parentSpanId.
  */
 function continueTrace(upstream: {
-  traceId: string
-  spanId: string
-  sessionId?: string
-  machineId?: string
-}): TraceContext
+  traceId: string;
+  spanId: string;
+  sessionId?: string;
+  machineId?: string;
+}): TraceContext;
 
 /**
  * Inject trace context into a carrier object (for wire transmission).
  * Adds _trace field to the carrier.
  */
-function injectTrace(ctx: TraceContext, carrier: Record<string, unknown>): void
+function injectTrace(ctx: TraceContext, carrier: Record<string, unknown>): void;
 
 /**
  * Extract trace context from a carrier object (received from wire).
  * Returns undefined if no trace context is present.
  */
-function extractTrace(carrier: Record<string, unknown>): TraceContext | undefined
+function extractTrace(carrier: Record<string, unknown>): TraceContext | undefined;
 ```
 
 **Wire format:**
+
 ```typescript
 // injectTrace adds:
 carrier._trace = {
   tid: ctx.traceId,
   sid: ctx.spanId,
-  pid: ctx.parentSpanId,    // omitted if undefined
-  ses: ctx.sessionId,       // omitted if undefined
-  mid: ctx.machineId,       // omitted if undefined
-}
+  pid: ctx.parentSpanId, // omitted if undefined
+  ses: ctx.sessionId, // omitted if undefined
+  mid: ctx.machineId, // omitted if undefined
+};
 
 // extractTrace reads from carrier._trace
 ```
@@ -325,41 +326,41 @@ The LogCollector is the central pipeline. All Logger instances emit entries to a
 
 ```typescript
 class LogCollector {
-  private sinks: LogSink[] = []
-  private sanitizer: Sanitizer
-  private layer: Layer
-  private minLevel: Level
+  private sinks: LogSink[] = [];
+  private sanitizer: Sanitizer;
+  private layer: Layer;
+  private minLevel: Level;
 
   constructor(opts: {
-    layer: Layer
-    minLevel?: Level           // default: 'debug'
-    sanitizer?: Sanitizer      // default: built-in sanitizer
-  })
+    layer: Layer;
+    minLevel?: Level; // default: 'debug'
+    sanitizer?: Sanitizer; // default: built-in sanitizer
+  });
 
   /**
    * Register a sink. Entries will be written to all registered sinks.
    */
-  addSink(sink: LogSink): void
+  addSink(sink: LogSink): void;
 
   /**
    * Remove a sink (e.g. when disabling telemetry).
    */
-  removeSink(sink: LogSink): void
+  removeSink(sink: LogSink): void;
 
   /**
    * Called internally by Logger. Sanitizes and dispatches to all sinks.
    */
-  emit(entry: LogEntry): void
+  emit(entry: LogEntry): void;
 
   /**
    * Flush all sinks (call before process exit).
    */
-  flush(): Promise<void>
+  flush(): Promise<void>;
 
   /**
    * Close all sinks and prevent further writes.
    */
-  close(): Promise<void>
+  close(): Promise<void>;
 }
 ```
 
@@ -369,14 +370,14 @@ class LogCollector {
 // Must be called before any Logger is used.
 // Each app layer calls this once at startup.
 function initTelemetry(opts: {
-  layer: Layer
-  minLevel?: Level
-  sinks: LogSink[]
-  sanitizer?: Sanitizer
-}): void
+  layer: Layer;
+  minLevel?: Level;
+  sinks: LogSink[];
+  sanitizer?: Sanitizer;
+}): void;
 
 // Returns the global collector (for adding/removing sinks later).
-function getCollector(): LogCollector
+function getCollector(): LogCollector;
 ```
 
 ### 5.2 LogSink Interface
@@ -384,23 +385,23 @@ function getCollector(): LogCollector
 ```typescript
 interface LogSink {
   /** Unique name for this sink (for debugging) */
-  readonly name: string
+  readonly name: string;
 
   /**
    * Write a single log entry. Must not throw.
    * Implementations should be non-blocking where possible.
    */
-  write(entry: LogEntry): void
+  write(entry: LogEntry): void;
 
   /**
    * Flush buffered entries to storage. Called before process exit.
    */
-  flush(): Promise<void>
+  flush(): Promise<void>;
 
   /**
    * Release resources. Called on shutdown.
    */
-  close(): Promise<void>
+  close(): Promise<void>;
 }
 ```
 
@@ -411,11 +412,11 @@ For CLI, Daemon, and Server. Appends JSONL to a file on disk.
 ```typescript
 class FileSink implements LogSink {
   constructor(opts: {
-    dir: string               // e.g. '~/.free/logs'
-    prefix: string            // e.g. 'cli', 'server', 'daemon'
-    maxFileSize?: number      // rotate at this size (default: 50MB)
-    maxFiles?: number         // keep N rotated files (default: 10)
-  })
+    dir: string; // e.g. '~/.free/logs'
+    prefix: string; // e.g. 'cli', 'server', 'daemon'
+    maxFileSize?: number; // rotate at this size (default: 50MB)
+    maxFiles?: number; // keep N rotated files (default: 10)
+  });
 }
 ```
 
@@ -432,43 +433,43 @@ For the App (React Native). Stores entries in a ring buffer.
 ```typescript
 class MemorySink implements LogSink {
   constructor(opts: {
-    maxEntries?: number       // default: 10_000
-  })
+    maxEntries?: number; // default: 10_000
+  });
 
   /**
    * Get all entries (for UI display).
    */
-  getEntries(): LogEntry[]
+  getEntries(): LogEntry[];
 
   /**
    * Get entries matching a filter (for search).
    */
-  query(filter: LogFilter): LogEntry[]
+  query(filter: LogFilter): LogEntry[];
 
   /**
    * Subscribe to new entries (for real-time UI updates).
    */
-  onChange(listener: (entry: LogEntry) => void): () => void
+  onChange(listener: (entry: LogEntry) => void): () => void;
 
   /**
    * Export all entries as JSONL string (for diagnostic bundle).
    */
-  exportJsonl(): string
+  exportJsonl(): string;
 
   /**
    * Clear all entries.
    */
-  clear(): void
+  clear(): void;
 }
 
 interface LogFilter {
-  level?: Level | Level[]
-  traceId?: string
-  sessionId?: string
-  component?: string
-  since?: string              // ISO 8601 timestamp
-  until?: string              // ISO 8601 timestamp
-  search?: string             // full-text search in message
+  level?: Level | Level[];
+  traceId?: string;
+  sessionId?: string;
+  component?: string;
+  since?: string; // ISO 8601 timestamp
+  until?: string; // ISO 8601 timestamp
+  search?: string; // full-text search in message
 }
 ```
 
@@ -479,18 +480,19 @@ Opt-in telemetry upload. Batches entries and sends via HTTP POST.
 ```typescript
 class RemoteSink implements LogSink {
   constructor(opts: {
-    endpoint: string          // e.g. 'https://api.example.com/v1/telemetry/logs'
-    authToken?: string        // bearer token for authentication
-    batchSize?: number        // send when N entries buffered (default: 50)
-    flushIntervalMs?: number  // send at least every N ms (default: 30_000)
-    maxBufferSize?: number    // drop oldest if buffer exceeds (default: 500)
-    minLevel?: Level          // only upload entries >= this level (default: 'warn')
-    extraSanitizer?: Sanitizer // additional redaction before upload
-  })
+    endpoint: string; // e.g. 'https://api.example.com/v1/telemetry/logs'
+    authToken?: string; // bearer token for authentication
+    batchSize?: number; // send when N entries buffered (default: 50)
+    flushIntervalMs?: number; // send at least every N ms (default: 30_000)
+    maxBufferSize?: number; // drop oldest if buffer exceeds (default: 500)
+    minLevel?: Level; // only upload entries >= this level (default: 'warn')
+    extraSanitizer?: Sanitizer; // additional redaction before upload
+  });
 }
 ```
 
 **Upload payload:**
+
 ```typescript
 POST /v1/telemetry/logs
 Content-Type: application/json
@@ -515,13 +517,14 @@ For development only. Outputs structured logs to stdout/stderr with color.
 ```typescript
 class ConsoleSink implements LogSink {
   constructor(opts?: {
-    color?: boolean           // default: true
-    compact?: boolean         // single-line format (default: true)
-  })
+    color?: boolean; // default: true
+    compact?: boolean; // single-line format (default: true)
+  });
 }
 ```
 
 Output format (compact):
+
 ```
 14:23:01.456 [INFO] socket | Message received | trace=V1StGXR8 session=550e8400 seq=42
 14:23:01.587 [WARN] rpc   | Handler timeout   | trace=V1StGXR8 session=550e8400 durationMs=5000
@@ -542,20 +545,33 @@ class Sanitizer {
    * Default sensitive key patterns (case-insensitive partial match).
    */
   private static readonly SENSITIVE_KEYS = [
-    'token', 'key', 'secret', 'password', 'credential', 'authorization',
-    'cookie', 'encryptionkey', 'privatekey', 'accesskey',
+    'token',
+    'key',
+    'secret',
+    'password',
+    'credential',
+    'authorization',
+    'cookie',
+    'encryptionkey',
+    'privatekey',
+    'accesskey',
     // User content (end-to-end encrypted, must never appear in logs)
-    'content', 'text', 'message', 'body', 'draft', 'prompt',
+    'content',
+    'text',
+    'message',
+    'body',
+    'draft',
+    'prompt',
     // Encryption artifacts
-    'c',           // SessionMessageContent.c (encrypted payload)
+    'c', // SessionMessageContent.c (encrypted payload)
     'nonce',
     'ciphertext',
-  ]
+  ];
 
   /**
    * Process a log entry. Returns a new entry with sensitive data redacted.
    */
-  process(entry: LogEntry): LogEntry
+  process(entry: LogEntry): LogEntry;
 
   /**
    * Redact values in a data object recursively.
@@ -567,7 +583,7 @@ class Sanitizer {
    * 4. Nested objects -> recurse (max depth 5, then '[DEEP_OBJECT]')
    * 5. Arrays -> process each element (max 20 elements, then '[...N more]')
    */
-  private redactObject(obj: Record<string, unknown>, depth?: number): Record<string, unknown>
+  private redactObject(obj: Record<string, unknown>, depth?: number): Record<string, unknown>;
 }
 ```
 
@@ -582,13 +598,13 @@ The RemoteSink can apply an additional sanitizer layer for extra-aggressive reda
 ```typescript
 const remoteSanitizer = new Sanitizer({
   extraSensitiveKeys: ['sessionId', 'machineId'], // redact IDs for remote upload
-  maxStringLength: 200,                             // more aggressive truncation
-})
+  maxStringLength: 200, // more aggressive truncation
+});
 
 new RemoteSink({
   endpoint: '...',
   extraSanitizer: remoteSanitizer,
-})
+});
 ```
 
 ---
@@ -604,97 +620,113 @@ All client-to-server and server-to-client events gain an optional `_trace` field
 ```typescript
 // Wire trace format (compact for bandwidth)
 interface WireTrace {
-  tid: string        // traceId
-  sid: string        // spanId
-  pid?: string       // parentSpanId
-  ses?: string       // sessionId
-  mid?: string       // machineId
+  tid: string; // traceId
+  sid: string; // spanId
+  pid?: string; // parentSpanId
+  ses?: string; // sessionId
+  mid?: string; // machineId
 }
 
 // ClientToServerEvents -- add _trace to all events
 interface ClientToServerEvents {
   message: (data: {
-    sid: string
-    message: unknown
-    localId?: string
-    _trace?: WireTrace           // <-- NEW
-  }) => void
+    sid: string;
+    message: unknown;
+    localId?: string;
+    _trace?: WireTrace; // <-- NEW
+  }) => void;
 
   'session-alive': (data: {
-    sid: string
-    time: number
-    thinking?: boolean
-    mode?: string
-    _trace?: WireTrace           // <-- NEW
-  }) => void
+    sid: string;
+    time: number;
+    thinking?: boolean;
+    mode?: string;
+    _trace?: WireTrace; // <-- NEW
+  }) => void;
 
   'session-end': (data: {
-    sid: string
-    time: number
-    _trace?: WireTrace           // <-- NEW
-  }) => void
+    sid: string;
+    time: number;
+    _trace?: WireTrace; // <-- NEW
+  }) => void;
 
-  'update-metadata': (data: {
-    sid: string
-    metadata: string
-    expectedVersion: number
-    _trace?: WireTrace           // <-- NEW
-  }, callback: OptimisticCallback) => void
+  'update-metadata': (
+    data: {
+      sid: string;
+      metadata: string;
+      expectedVersion: number;
+      _trace?: WireTrace; // <-- NEW
+    },
+    callback: OptimisticCallback
+  ) => void;
 
-  'update-state': (data: {
-    sid: string
-    agentState: string
-    expectedVersion: number
-    _trace?: WireTrace           // <-- NEW
-  }, callback: OptimisticCallback) => void
+  'update-state': (
+    data: {
+      sid: string;
+      agentState: string;
+      expectedVersion: number;
+      _trace?: WireTrace; // <-- NEW
+    },
+    callback: OptimisticCallback
+  ) => void;
 
-  'rpc-call': (data: {
-    method: string
-    params: unknown
-    _trace?: WireTrace           // <-- NEW
-  }, callback: (response: RpcResponse) => void) => void
+  'rpc-call': (
+    data: {
+      method: string;
+      params: unknown;
+      _trace?: WireTrace; // <-- NEW
+    },
+    callback: (response: RpcResponse) => void
+  ) => void;
 
   'usage-report': (data: {
-    key: string
-    sessionId: string
-    tokens: Record<string, number>
-    cost: Record<string, number>
-    _trace?: WireTrace           // <-- NEW
-  }) => void
+    key: string;
+    sessionId: string;
+    tokens: Record<string, number>;
+    cost: Record<string, number>;
+    _trace?: WireTrace; // <-- NEW
+  }) => void;
 
   // Streaming events
   'streaming:text-delta': (data: {
-    sessionId: string
-    messageId: string
-    delta: string
-    timestamp: number
-    _trace?: WireTrace           // <-- NEW
-  }) => void
+    sessionId: string;
+    messageId: string;
+    delta: string;
+    timestamp: number;
+    _trace?: WireTrace; // <-- NEW
+  }) => void;
 
   'streaming:thinking-delta': (data: {
-    sessionId: string
-    messageId: string
-    delta: string
-    timestamp: number
-    _trace?: WireTrace           // <-- NEW
-  }) => void
+    sessionId: string;
+    messageId: string;
+    delta: string;
+    timestamp: number;
+    _trace?: WireTrace; // <-- NEW
+  }) => void;
 }
 
 // ServerToClientEvents -- add _trace to update and ephemeral
 interface ServerToClientEvents {
-  update: (data: Update & {
-    _trace?: WireTrace           // <-- NEW
-  }) => void
+  update: (
+    data: Update & {
+      _trace?: WireTrace; // <-- NEW
+    }
+  ) => void;
 
-  ephemeral: (data: EphemeralPayload & {
-    _trace?: WireTrace           // <-- NEW
-  }) => void
+  ephemeral: (
+    data: EphemeralPayload & {
+      _trace?: WireTrace; // <-- NEW
+    }
+  ) => void;
 
-  'rpc-request': (data: {
-    method: string
-    params: unknown
-    _trace?: WireTrace           // <-- NEW
-  }, callback: (response: unknown) => void) => void
+  'rpc-request': (
+    data: {
+      method: string;
+      params: unknown;
+      _trace?: WireTrace; // <-- NEW
+    },
+    callback: (response: unknown) => void
+  ) => void;
 }
 ```
 
@@ -713,6 +745,7 @@ The server's HTTP middleware extracts these headers and constructs a `TraceConte
 ### 7.3 Backward Compatibility
 
 `_trace` is optional on all events. When absent:
+
 - The **receiving layer** generates a new `traceId` locally (degraded mode -- trace starts at this layer instead of the origin)
 - Existing clients that don't send `_trace` continue to work
 - This allows incremental rollout: update one layer at a time
@@ -725,9 +758,9 @@ The server's HTTP middleware extracts these headers and constructs a `TraceConte
 
 ```typescript
 // app/_layout.tsx (or equivalent entry point)
-import { initTelemetry, MemorySink, RemoteSink } from '@agentbridge/core/telemetry'
+import { initTelemetry, MemorySink, RemoteSink } from '@agentbridge/core/telemetry';
 
-const memorySink = new MemorySink({ maxEntries: 10_000 })
+const memorySink = new MemorySink({ maxEntries: 10_000 });
 
 initTelemetry({
   layer: 'app',
@@ -737,16 +770,16 @@ initTelemetry({
     // ConsoleSink only in dev
     ...(__DEV__ ? [new ConsoleSink()] : []),
   ],
-})
+});
 
 // Expose memorySink for the log viewer UI and diagnostic export
-export { memorySink }
+export { memorySink };
 
 // Opt-in telemetry (toggled from settings)
 function enableTelemetry(token: string, endpoint: string) {
-  const remoteSink = new RemoteSink({ endpoint, authToken: token, minLevel: 'warn' })
-  getCollector().addSink(remoteSink)
-  return () => getCollector().removeSink(remoteSink)
+  const remoteSink = new RemoteSink({ endpoint, authToken: token, minLevel: 'warn' });
+  getCollector().addSink(remoteSink);
+  return () => getCollector().removeSink(remoteSink);
 }
 ```
 
@@ -754,27 +787,27 @@ function enableTelemetry(token: string, endpoint: string) {
 
 ```typescript
 // server/src/main.ts
-import { initTelemetry, FileSink, ConsoleSink } from '@agentbridge/core/telemetry'
+import { initTelemetry, FileSink, ConsoleSink } from '@agentbridge/core/telemetry';
 
 initTelemetry({
   layer: 'server',
-  minLevel: process.env.LOG_LEVEL as Level || 'debug',
+  minLevel: (process.env.LOG_LEVEL as Level) || 'debug',
   sinks: [
     new FileSink({
       dir: logsDir,
       prefix: 'server',
-      maxFileSize: 50 * 1024 * 1024,  // 50MB
+      maxFileSize: 50 * 1024 * 1024, // 50MB
       maxFiles: 10,
     }),
   ],
-})
+});
 ```
 
 ### 8.3 CLI
 
 ```typescript
 // cli/src/index.ts
-import { initTelemetry, FileSink } from '@agentbridge/core/telemetry'
+import { initTelemetry, FileSink } from '@agentbridge/core/telemetry';
 
 initTelemetry({
   layer: 'cli',
@@ -785,14 +818,14 @@ initTelemetry({
       prefix: 'cli',
     }),
   ],
-})
+});
 ```
 
 ### 8.4 Daemon
 
 ```typescript
 // cli/src/daemon/run.ts
-import { initTelemetry, FileSink } from '@agentbridge/core/telemetry'
+import { initTelemetry, FileSink } from '@agentbridge/core/telemetry';
 
 initTelemetry({
   layer: 'daemon',
@@ -803,7 +836,7 @@ initTelemetry({
       prefix: 'daemon',
     }),
   ],
-})
+});
 ```
 
 ---
@@ -858,6 +891,7 @@ Step 8: App -- Receives response
 ```
 
 **Querying:**
+
 ```bash
 grep '"traceId":"aaa"' ~/.free/logs/*.jsonl
 # Shows 10+ entries across server, cli, daemon logs with the full story
@@ -976,31 +1010,32 @@ free diagnostic export --trace V1StGXR8_Z5jdHi6B-myT
 
 ### 11.1 Files to Delete
 
-| File | Replacement |
-|------|-------------|
-| `apps/free/cli/src/ui/logger.ts` | `@agentbridge/core/telemetry` Logger + FileSink |
-| `apps/free/server/src/utils/log.ts` | `@agentbridge/core/telemetry` Logger + FileSink |
-| `apps/free/app/sources/log.ts` | `@agentbridge/core/telemetry` Logger + MemorySink |
-| `apps/free/app/sources/utils/remoteLogger.ts` | `@agentbridge/core/telemetry` RemoteSink |
+| File                                          | Replacement                                       |
+| --------------------------------------------- | ------------------------------------------------- |
+| `apps/free/cli/src/ui/logger.ts`              | `@agentbridge/core/telemetry` Logger + FileSink   |
+| `apps/free/server/src/utils/log.ts`           | `@agentbridge/core/telemetry` Logger + FileSink   |
+| `apps/free/app/sources/log.ts`                | `@agentbridge/core/telemetry` Logger + MemorySink |
+| `apps/free/app/sources/utils/remoteLogger.ts` | `@agentbridge/core/telemetry` RemoteSink          |
 
 ### 11.2 Environment Variables to Delete
 
-| Variable | Replacement |
-|----------|-------------|
+| Variable                                          | Replacement                                   |
+| ------------------------------------------------- | --------------------------------------------- |
 | `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` | RemoteSink (opt-in via settings, not env var) |
 
 ### 11.3 Server Endpoints to Delete
 
-| Endpoint | Replacement |
-|----------|-------------|
+| Endpoint                                                          | Replacement               |
+| ----------------------------------------------------------------- | ------------------------- |
 | `POST /logs-combined-from-cli-and-mobile-for-simple-ai-debugging` | `POST /v1/telemetry/logs` |
 
 ### 11.4 Files to Modify (102 files total)
 
 **CLI (69 files):** Replace `import { logger } from '@/ui/logger'` with:
+
 ```typescript
-import { Logger } from '@agentbridge/core/telemetry'
-const log = new Logger('component-name')
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('component-name');
 ```
 
 Existing call patterns and their replacements:
@@ -1017,9 +1052,10 @@ logger.getLogPath()                          // Remove: no longer needed per-fil
 ```
 
 **Server (30 files):** Replace `import { log, warn, error, debug } from '@/utils/log'` with:
+
 ```typescript
-import { Logger } from '@agentbridge/core/telemetry'
-const log = new Logger('component-name')
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('component-name');
 ```
 
 Existing call patterns:
@@ -1035,9 +1071,10 @@ debug('msg')                                     log.debug('msg')
 ```
 
 **App (3 files + 1 remoteLogger):** Replace `import { log } from '@/log'` with:
+
 ```typescript
-import { Logger } from '@agentbridge/core/telemetry'
-const log = new Logger('component-name')
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('component-name');
 ```
 
 ```typescript
@@ -1049,21 +1086,21 @@ log.log('msg')         log.info('msg')
 
 These files require trace context propagation, not just logger replacement:
 
-| File | What to add |
-|------|-------------|
-| `app/sources/sync/sync.ts` | `createTrace()` when sending messages; `extractTrace()` when receiving updates |
-| `app/sources/sync/apiSocket.ts` | Pass `_trace` in all Socket.IO emits |
-| `server/src/app/api/socket/sessionUpdateHandler.ts` | `extractTrace()` from incoming events; pass to `eventRouter` |
-| `server/src/app/events/eventRouter.ts` | Include `_trace` in `emitUpdate()` and `emitEphemeral()` payloads |
-| `server/src/app/api/routes/v3SessionRoutes.ts` | Extract trace from HTTP headers; include in response |
-| `cli/src/api/apiSession.ts` | `extractTrace()` from received updates; `injectTrace()` when sending |
-| `cli/src/claude/loop.ts` | Pass `TraceContext` between local/remote launchers |
-| `cli/src/claude/claudeRemoteLauncher.ts` | Forward `TraceContext` to agent |
-| `cli/src/claude/claudeLocalLauncher.ts` | Forward `TraceContext` to agent |
-| `cli/src/daemon/run.ts` | `TraceContext` in session spawn and webhook handling |
-| `cli/src/daemon/streamingMessageHandler.ts` | Forward `_trace` in streaming deltas |
-| `packages/core/src/interfaces/websocket.ts` | Add `_trace?: WireTrace` to all event types |
-| `packages/core/src/interfaces/events.ts` | Add `_trace?: WireTrace` to `UpdatePayload` and `EphemeralPayload` |
+| File                                                | What to add                                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `app/sources/sync/sync.ts`                          | `createTrace()` when sending messages; `extractTrace()` when receiving updates |
+| `app/sources/sync/apiSocket.ts`                     | Pass `_trace` in all Socket.IO emits                                           |
+| `server/src/app/api/socket/sessionUpdateHandler.ts` | `extractTrace()` from incoming events; pass to `eventRouter`                   |
+| `server/src/app/events/eventRouter.ts`              | Include `_trace` in `emitUpdate()` and `emitEphemeral()` payloads              |
+| `server/src/app/api/routes/v3SessionRoutes.ts`      | Extract trace from HTTP headers; include in response                           |
+| `cli/src/api/apiSession.ts`                         | `extractTrace()` from received updates; `injectTrace()` when sending           |
+| `cli/src/claude/loop.ts`                            | Pass `TraceContext` between local/remote launchers                             |
+| `cli/src/claude/claudeRemoteLauncher.ts`            | Forward `TraceContext` to agent                                                |
+| `cli/src/claude/claudeLocalLauncher.ts`             | Forward `TraceContext` to agent                                                |
+| `cli/src/daemon/run.ts`                             | `TraceContext` in session spawn and webhook handling                           |
+| `cli/src/daemon/streamingMessageHandler.ts`         | Forward `_trace` in streaming deltas                                           |
+| `packages/core/src/interfaces/websocket.ts`         | Add `_trace?: WireTrace` to all event types                                    |
+| `packages/core/src/interfaces/events.ts`            | Add `_trace?: WireTrace` to `UpdatePayload` and `EphemeralPayload`             |
 
 ---
 
@@ -1074,6 +1111,7 @@ These files require trace context propagation, not just logger replacement:
 **Scope:** `packages/core/src/telemetry/`
 
 **Deliverables:**
+
 1. `types.ts` -- All type definitions
 2. `context.ts` -- `createTrace`, `continueTrace`, `injectTrace`, `extractTrace`
 3. `logger.ts` -- `Logger`, `ScopedLogger`
@@ -1090,6 +1128,7 @@ These files require trace context propagation, not just logger replacement:
 14. Unit tests for all of the above
 
 **Acceptance criteria:**
+
 - All types compile
 - Logger writes to FileSink and produces valid JSONL
 - MemorySink supports query and onChange
@@ -1098,6 +1137,7 @@ These files require trace context propagation, not just logger replacement:
 - Exporter produces a valid zip with logs.jsonl, timeline.json, environment.json
 
 **Also update:**
+
 - `packages/core/src/index.ts` -- Export telemetry module
 
 ### Phase 2: Wire Protocol
@@ -1105,10 +1145,12 @@ These files require trace context propagation, not just logger replacement:
 **Scope:** `packages/core/src/interfaces/`
 
 **Deliverables:**
+
 1. `websocket.ts` -- Add `_trace?: WireTrace` to all `ClientToServerEvents` and `ServerToClientEvents`
 2. `events.ts` -- Add `_trace?: WireTrace` to `UpdatePayload` and `EphemeralPayload`
 
 **Acceptance criteria:**
+
 - Types compile with no breaking changes (all additions are optional)
 - Existing tests pass without modification
 
@@ -1117,6 +1159,7 @@ These files require trace context propagation, not just logger replacement:
 **Scope:** `apps/free/server/src/`
 
 **Deliverables:**
+
 1. Delete `utils/log.ts`
 2. Add `initTelemetry()` call in `main.ts`
 3. Replace logger imports in all 30 files
@@ -1126,6 +1169,7 @@ These files require trace context propagation, not just logger replacement:
 7. Delete `devRoutes.ts` log endpoint (or replace with `/v1/telemetry/logs`)
 
 **Acceptance criteria:**
+
 - Server starts and produces JSONL logs in `~/.free/logs/server-*.jsonl`
 - All existing functionality works (sessions, messages, RPC, streaming)
 - Incoming `_trace` is extracted and appears in server logs
@@ -1136,6 +1180,7 @@ These files require trace context propagation, not just logger replacement:
 **Scope:** `apps/free/cli/src/`
 
 **Deliverables:**
+
 1. Delete `ui/logger.ts`
 2. Add `initTelemetry()` in `index.ts` (CLI) and `daemon/run.ts` (Daemon)
 3. Replace logger imports in all 69 files
@@ -1147,6 +1192,7 @@ These files require trace context propagation, not just logger replacement:
 9. Add `free logs` command (tail, search)
 
 **Acceptance criteria:**
+
 - CLI starts and produces JSONL logs in `~/.free/logs/cli-*.jsonl`
 - Daemon produces JSONL logs in `~/.free/logs/daemon-*.jsonl`
 - Messages flowing through CLI have traceId in logs
@@ -1158,6 +1204,7 @@ These files require trace context propagation, not just logger replacement:
 **Scope:** `apps/free/app/sources/`
 
 **Deliverables:**
+
 1. Delete `log.ts`
 2. Delete `utils/remoteLogger.ts`
 3. Add `initTelemetry()` in app entry point (`_layout.tsx`)
@@ -1173,6 +1220,7 @@ These files require trace context propagation, not just logger replacement:
 10. Opt-in telemetry toggle in Settings -> Privacy
 
 **Acceptance criteria:**
+
 - App logs to MemorySink
 - Log viewer shows structured entries with filters
 - Messages sent from App include `_trace` in Socket.IO events
@@ -1184,6 +1232,7 @@ These files require trace context propagation, not just logger replacement:
 **Scope:** All packages
 
 **Deliverables:**
+
 1. Delete `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` from all `.env` files
 2. Delete server endpoint `/logs-combined-from-cli-and-mobile-for-simple-ai-debugging`
 3. Remove `fileConsolidatedLogger` from server
@@ -1192,6 +1241,7 @@ These files require trace context propagation, not just logger replacement:
 6. Verify no remaining imports of old logger modules
 
 **Acceptance criteria:**
+
 - `grep -r "DANGEROUSLY_LOG" . --include="*.ts"` returns zero results (excluding node_modules)
 - `grep -r "ui/logger" . --include="*.ts"` returns zero results
 - `grep -r "utils/log" apps/free/server/src --include="*.ts"` returns zero results
@@ -1221,7 +1271,7 @@ OpenTelemetry is designed for microservice backends. Its SDK is heavy (~2MB), ha
 
 Wrappers create maintenance burden, dual code paths, and confusion about which to use. A clean break is simpler and ensures consistent behavior everywhere.
 
-### 13.5 Why optional _trace on the wire?
+### 13.5 Why optional \_trace on the wire?
 
 Allows incremental rollout. Old clients can talk to new servers and vice versa. The system degrades gracefully: without `_trace`, logs still work -- they just lack cross-layer correlation.
 
@@ -1240,6 +1290,7 @@ Call-site sanitization is error-prone -- developers will forget. Pipeline saniti
 ### 13.9 Console output for CLI
 
 The CLI's existing logger has a critical constraint: console output interferes with Claude's PTY session. The new system preserves this by default:
+
 - `FileSink` writes to file only (no console)
 - `ConsoleSink` is only added explicitly (e.g., for `free logs tail` command or development)
 - `Logger.info()` does **not** write to console by default -- this is a deliberate change from the old `logger.info()` behavior
@@ -1475,8 +1526,15 @@ tests/
 ### 16.4 Wire Overhead
 
 `_trace` adds ~120 bytes per Socket.IO event:
+
 ```json
-{"_trace":{"tid":"V1StGXR8_Z5jdHi6B-myT","sid":"a3f8Bc2dE1g4","ses":"550e8400-e29b-41d4-a716-446655440000"}}
+{
+  "_trace": {
+    "tid": "V1StGXR8_Z5jdHi6B-myT",
+    "sid": "a3f8Bc2dE1g4",
+    "ses": "550e8400-e29b-41d4-a716-446655440000"
+  }
+}
 ```
 
 This is negligible compared to encrypted message payloads (typically 1-50KB).
@@ -1490,6 +1548,7 @@ This section documents issues found during self-review of the original RFC. All 
 ### 17.1 [CORRECTION] Message Chain -- Daemon is NOT in the Path
 
 **Original claim (Section 1.1):**
+
 > UI -> App -> Server -> Daemon -> CLI -> Agent
 
 **Corrected architecture:**
@@ -1506,6 +1565,7 @@ App (user sends message)
 ```
 
 The Daemon is a **session lifecycle manager**. It:
+
 - Spawns CLI processes (`spawnFreeCLI`)
 - Monitors process health (heartbeat, PID tracking)
 - Handles version updates (restart on new CLI version)
@@ -1514,6 +1574,7 @@ The Daemon is a **session lifecycle manager**. It:
 **Messages never flow through the Daemon.** The CLI connects directly to the Server via Socket.IO. The Daemon layer produces infrastructure logs (session spawn, health checks) but is not part of the message trace chain.
 
 **Impact on trace propagation:**
+
 - Trace context only needs to flow: App -> Server -> CLI -> Agent (4 hops, not 6)
 - Daemon logs should carry `sessionId` where applicable (e.g., when spawning a session) but do not participate in message-level `traceId` chains
 - Section 9.1 trace flow example should be updated to remove Daemon hops
@@ -1521,6 +1582,7 @@ The Daemon is a **session lifecycle manager**. It:
 ### 17.2 [CORRECTION] Server Logs Are Not Locally Accessible in Production
 
 **Original claim (Section 9.1):**
+
 > `grep "traceId" ~/.free/logs/*.log` shows the complete lifecycle across all layers.
 
 **Reality:** In production, the Server runs on `api.free-servers.com` (or equivalent hosted infrastructure). Users have no access to server logs. Only CLI/Daemon/App logs exist on the user's device.
@@ -1535,6 +1597,7 @@ User's device has:         Developer has access to:
 ```
 
 **What this means:**
+
 1. The user's diagnostic export will contain App + CLI + Daemon logs (3 layers out of 4)
 2. The developer must correlate user exports with server-side logs using the shared `traceId`
 3. The Server needs a **log query capability**: given a `traceId`, return all server-side log entries. This can be a simple CLI tool for developers:
@@ -1545,6 +1608,7 @@ User's device has:         Developer has access to:
 4. For local development (server running locally), `grep` across `~/.free/logs/` still works
 
 **Addition to Phase 3 (Server Migration):**
+
 - Add a developer-only admin endpoint or CLI command to query server logs by traceId
 - Not user-facing; only for internal debugging
 
@@ -1559,18 +1623,19 @@ User's device has:         Developer has access to:
 ```typescript
 class MemorySink implements LogSink {
   constructor(opts: {
-    maxEntries?: number          // in-memory ring buffer (default: 10_000)
+    maxEntries?: number; // in-memory ring buffer (default: 10_000)
     persistence?: {
-      storage: AsyncStorageLike  // AsyncStorage, MMKV, or equivalent
-      key: string                // storage key (default: '@telemetry/logs')
-      maxPersistedEntries: number // how many to persist (default: 2_000)
-      flushIntervalMs: number    // persist every N ms (default: 5_000)
-    }
-  })
+      storage: AsyncStorageLike; // AsyncStorage, MMKV, or equivalent
+      key: string; // storage key (default: '@telemetry/logs')
+      maxPersistedEntries: number; // how many to persist (default: 2_000)
+      flushIntervalMs: number; // persist every N ms (default: 5_000)
+    };
+  });
 }
 ```
 
 **Behavior:**
+
 - In-memory ring buffer for fast UI access (unchanged)
 - Background flush: every 5 seconds, persist the latest 2k entries to AsyncStorage
 - On app launch: load persisted entries into the ring buffer before any new logs arrive
@@ -1585,26 +1650,27 @@ class MemorySink implements LogSink {
 
 ```typescript
 // DIAGNOSTIC LOG (goes to sinks, never to console)
-import { Logger } from '@agentbridge/core/telemetry'
-const log = new Logger('daemon')
-log.info('Session spawned successfully', { pid: 1234 })
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('daemon');
+log.info('Session spawned successfully', { pid: 1234 });
 
 // USER-FACING OUTPUT (goes to console, not to sinks)
-console.log('Daemon installed and started successfully!')
-console.log('  Auto-start on login')
+console.log('Daemon installed and started successfully!');
+console.log('  Auto-start on login');
 ```
 
 **Migration rule for the 69 CLI files:**
 
-| Current code | What it does | Migration |
-|---|---|---|
-| `logger.debug('...')` | File only | `log.debug('...')` |
-| `logger.info('...')` used as **user output** | Console + file | `console.log('...')` (keep as-is or make explicit) |
-| `logger.info('...')` used as **diagnostic info** | Console + file | `log.info('...')` |
-| `logger.warn('...')` | Console + file | Evaluate: user warning or diagnostic? Split accordingly |
-| `logger.infoDeveloper('...')` | File always, console only in DEBUG | `log.debug('...')` |
+| Current code                                     | What it does                       | Migration                                               |
+| ------------------------------------------------ | ---------------------------------- | ------------------------------------------------------- |
+| `logger.debug('...')`                            | File only                          | `log.debug('...')`                                      |
+| `logger.info('...')` used as **user output**     | Console + file                     | `console.log('...')` (keep as-is or make explicit)      |
+| `logger.info('...')` used as **diagnostic info** | Console + file                     | `log.info('...')`                                       |
+| `logger.warn('...')`                             | Console + file                     | Evaluate: user warning or diagnostic? Split accordingly |
+| `logger.infoDeveloper('...')`                    | File always, console only in DEBUG | `log.debug('...')`                                      |
 
 **Files that use `logger.info()` for user output (must keep console.log):**
+
 - `daemon/linux/installUser.ts` (~15 calls -- install status messages)
 - `daemon/mac/installUser.ts` (~10 calls -- install status messages)
 - `daemon/mac/uninstall.ts` (~5 calls)
@@ -1616,6 +1682,7 @@ console.log('  Auto-start on login')
 ### 17.5 [CORRECTION] Must Expose Log File Path
 
 **Problem:** Multiple files use `logger.logFilePath` or `logger.getLogPath()` to pass the path to other modules:
+
 - `loop.ts:50` -- passes to Session constructor
 - `runClaude.ts:248` -- displays to developer
 - `daemon/run.ts:770` -- persists to daemon state
@@ -1626,7 +1693,7 @@ console.log('  Auto-start on login')
 ```typescript
 class FileSink implements LogSink {
   /** Returns the path of the current log file. */
-  getFilePath(): string
+  getFilePath(): string;
 }
 ```
 
@@ -1635,7 +1702,7 @@ class FileSink implements LogSink {
 ```typescript
 class LogCollector {
   /** Returns the file path of the first FileSink, or undefined. */
-  getLogFilePath(): string | undefined
+  getLogFilePath(): string | undefined;
 }
 ```
 
@@ -1644,9 +1711,10 @@ class LogCollector {
 **Original design:** Span supports `child()` for nested operations, forming a tree.
 
 **Reality check:** Looking at all 102 files, not a single place has nested operation tracking. The code is:
+
 ```typescript
-logger.debug('[loop] Iteration with mode: local')
-logger.debug('[START] Hook server started on port 3001')
+logger.debug('[loop] Iteration with mode: local');
+logger.debug('[START] Hook server started on port 3001');
 ```
 
 Nobody is going to call `span.child('substep')`.
@@ -1655,22 +1723,22 @@ Nobody is going to call `span.child('substep')`.
 
 ```typescript
 class Span {
-  readonly traceId: string
-  readonly spanId: string
-  readonly parentSpanId?: string
-  readonly name: string
+  readonly traceId: string;
+  readonly spanId: string;
+  readonly parentSpanId?: string;
+  readonly name: string;
 
   // Log within this span's context
-  debug(message: string, data?: Record<string, unknown>): void
-  info(message: string, data?: Record<string, unknown>): void
-  warn(message: string, data?: Record<string, unknown>): void
-  error(message: string, err?: Error, data?: Record<string, unknown>): void
+  debug(message: string, data?: Record<string, unknown>): void;
+  info(message: string, data?: Record<string, unknown>): void;
+  warn(message: string, data?: Record<string, unknown>): void;
+  error(message: string, err?: Error, data?: Record<string, unknown>): void;
 
   // End the span (logs completion with durationMs)
-  end(data?: Record<string, unknown>): void
+  end(data?: Record<string, unknown>): void;
 
   // Get context for passing to downstream layers
-  toContext(): TraceContext
+  toContext(): TraceContext;
 
   // REMOVED: child() method
   // REMOVED: nested span support
@@ -1690,13 +1758,13 @@ Only change the import and method names. No TraceContext, no `withContext()`.
 
 ```typescript
 // Before
-import { logger } from '@/ui/logger'
-logger.debug('[CAFFEINATE] Started')
+import { logger } from '@/ui/logger';
+logger.debug('[CAFFEINATE] Started');
 
 // After
-import { Logger } from '@agentbridge/core/telemetry'
-const log = new Logger('caffeinate')
-log.debug('Started')
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('caffeinate');
+log.debug('Started');
 ```
 
 **Tier 2: Trace-aware files (13 files)**
@@ -1721,16 +1789,18 @@ packages/core/src/interfaces/events.ts     -- type definitions
 ### 17.8 [CORRECTION] Layer Should Be string, Not Union Type
 
 **Original:**
+
 ```typescript
-type Layer = 'app' | 'server' | 'cli' | 'daemon' | 'agent'
+type Layer = 'app' | 'server' | 'cli' | 'daemon' | 'agent';
 ```
 
 **Problem:** Adding a new component (MCP server, web dashboard, new agent type) requires changing the core type definition.
 
 **Corrected:**
+
 ```typescript
 // Layer is a free-form string. Convention documented, not enforced by type system.
-type Layer = string
+type Layer = string;
 
 // Conventional values (documented, not exhaustive):
 // 'app'     -- React Native mobile/web app
@@ -1749,18 +1819,20 @@ type Layer = string
 ```typescript
 // Added to FileSink or as a standalone utility
 function cleanupOldLogs(opts: {
-  dir: string
-  maxAgeDays?: number      // delete files older than N days (default: 7)
-  maxTotalSizeMB?: number  // delete oldest files if total exceeds (default: 500)
-}): void
+  dir: string;
+  maxAgeDays?: number; // delete files older than N days (default: 7)
+  maxTotalSizeMB?: number; // delete oldest files if total exceeds (default: 500)
+}): void;
 ```
 
 **When to run:**
+
 - On every `initTelemetry()` call (once per process start)
 - Non-blocking: runs in background after initialization
 - Targets all `.jsonl` and `.log` files in the logs directory
 
 **Defaults:**
+
 - Keep logs for 7 days
 - Cap total directory size at 500MB
 - Delete oldest files first when over cap
@@ -1785,6 +1857,7 @@ initTelemetry({
 ```
 
 **For streaming specifically:**
+
 - `text_delta` and `thinking_delta` should be logged at `debug` level
 - Summary log at `info` level when streaming completes: `"Streaming completed, 142 deltas, 3847 chars, 2.3s"`
 - This means in production (minLevel: 'info'), individual deltas are not logged, only the summary
@@ -1825,6 +1898,7 @@ Both options should be implemented. Option A is low-cost and immediately useful.
 The phase structure remains the same, but with these adjustments:
 
 ### Phase 1 Adjustments
+
 - Remove `Span.child()` method (Section 17.6)
 - `Layer` type becomes `string` (Section 17.8)
 - MemorySink gains optional persistence config (Section 17.3)
@@ -1833,22 +1907,26 @@ The phase structure remains the same, but with these adjustments:
 - Add `cleanupOldLogs` utility (Section 17.9)
 
 ### Phase 3 Adjustments (Server)
+
 - Add traceId to error responses (Section 17.11 Option A)
 - Add developer trace query tool (Section 17.11 Option B)
 - Configure `componentLevels` to throttle streaming logs (Section 17.10)
 
 ### Phase 4 Adjustments (CLI)
+
 - Carefully audit all `logger.info()` calls: user output vs diagnostic (Section 17.4)
 - `doctor.ts` is excluded from migration (Section 17.4)
 - Expose log file path through `getCollector().getLogFilePath()` (Section 17.5)
 - Add log retention cleanup on daemon start (Section 17.9)
 
 ### Phase 5 Adjustments (App)
+
 - MemorySink configured with AsyncStorage persistence (Section 17.3)
 - Persist logs on `AppState` background event
 - Load persisted logs on app launch
 
 ### Migration File Count (Corrected)
+
 - **Tier 1 (simple swap):** 89 files -- change import + method names only
 - **Tier 2 (trace-aware):** 13 files -- add TraceContext creation/propagation
 - **Excluded:** `doctor.ts` (remains console.log)
@@ -1865,6 +1943,7 @@ This round focuses on issues that will **prevent the system from working** if no
 **Finding:** `grep -r "@agentbridge/core" apps/free/app/` returns **zero results**. The App has its own encryption (`@/sync/encryption/`), its own types (`@/sync/apiTypes.ts`), and its own WebSocket client (`@/sync/apiSocket.ts`). It does not import anything from `@agentbridge/core`.
 
 **Impact:** The entire premise of "one import from `@agentbridge/core/telemetry`" requires the App to add `@agentbridge/core` as a dependency. This is a non-trivial change:
+
 - `@agentbridge/core` may have Node.js-only dependencies (`fs`, `crypto`, `child_process`) that don't work in React Native
 - The core package is 55MB -- adding it to the App bundle may not be acceptable
 - The App's build system (Expo/Metro) may need configuration changes
@@ -1872,6 +1951,7 @@ This round focuses on issues that will **prevent the system from working** if no
 **Solutions (pick one):**
 
 **Option A: Publish telemetry as a separate lightweight package**
+
 ```
 @agentbridge/telemetry (new, ~10KB, zero Node.js dependencies)
   - types.ts, context.ts, logger.ts, span.ts, collector.ts, sanitizer.ts
@@ -1887,6 +1967,7 @@ CLI and Server additionally import from @agentbridge/telemetry-node
 ```
 
 **Option B: Add telemetry to core but make it tree-shakeable**
+
 ```
 @agentbridge/core/telemetry  -- platform-agnostic code only
 @agentbridge/core/telemetry/node -- Node.js-specific sinks
@@ -1904,6 +1985,7 @@ This defeats the "single source of truth" goal and is not recommended.
 ### 19.2 [BLOCKER] TraceId Round-Trip Through the Agent is Not Specified
 
 **The gap:** When a user message arrives at the CLI, it flows through:
+
 ```
 apiSession.ts (receives update) -> routeIncomingMessage() -> pendingMessageCallback
   -> claudeRemote.ts (opts.nextMessage() returns the message)
@@ -1920,6 +2002,7 @@ apiSession.ts (receives update) -> routeIncomingMessage() -> pendingMessageCallb
 **The problem:** At step 1, the incoming message has a `_trace` attached to the Socket.IO `update` event. But by the time we reach the last step (sending the agent response back), the `_trace` is gone. There is no variable, no parameter, no field that carries it through the agent processing pipeline.
 
 **Specifically:**
+
 - `routeIncomingMessage()` only extracts the message body, not the `_trace`
 - `pendingMessageCallback` receives a `UserMessage`, which has no trace field
 - `claudeRemote.opts.nextMessage()` returns `{ message: string, mode: EnhancedMode }` -- no trace
@@ -1964,12 +2047,13 @@ This is simple and correct because the agent processes turns sequentially. No co
 
 **Two paths for messages:**
 
-| Path | Mechanism | Trace context |
-|------|-----------|---------------|
-| Real-time | Socket.IO `update` event | `_trace` field on event payload -- works |
-| Batch sync | HTTP `GET /v3/sessions/:id/messages` | No trace context -- **broken** |
+| Path       | Mechanism                            | Trace context                            |
+| ---------- | ------------------------------------ | ---------------------------------------- |
+| Real-time  | Socket.IO `update` event             | `_trace` field on event payload -- works |
+| Batch sync | HTTP `GET /v3/sessions/:id/messages` | No trace context -- **broken**           |
 
 **When batch sync happens:**
+
 - CLI reconnects after disconnect → calls `fetchMessages()` → receives messages via HTTP without any trace
 - App opens and initial-syncs all messages → HTTP GET → no trace
 
@@ -1980,6 +2064,7 @@ This is simple and correct because the agent processes turns sequentially. No co
 The `sessionMessage` table currently stores: `id, sessionId, seq, content (encrypted), localId, createdAt, updatedAt`
 
 Add a `traceId` column (nullable, unencrypted):
+
 ```sql
 ALTER TABLE session_message ADD COLUMN trace_id TEXT;
 ```
@@ -1990,32 +2075,35 @@ ALTER TABLE session_message ADD COLUMN trace_id TEXT;
 - `traceId` is just an opaque string -- it reveals nothing about message content, so storing it unencrypted is safe
 
 **API change:**
+
 ```typescript
 // GET /v3/sessions/:id/messages response
 {
   messages: [
     {
-      id: "...",
+      id: '...',
       seq: 42,
-      content: { c: "...", t: "encrypted" },
-      localId: "...",
-      traceId: "V1StGXR8_Z5jdHi6B-myT",  // <-- NEW
+      content: { c: '...', t: 'encrypted' },
+      localId: '...',
+      traceId: 'V1StGXR8_Z5jdHi6B-myT', // <-- NEW
       createdAt: 1709740981456,
-      updatedAt: 1709740981456
-    }
-  ]
+      updatedAt: 1709740981456,
+    },
+  ];
 }
 ```
 
 ### 19.4 [BLOCKER] Logger Initialization Ordering
 
 **The pattern in every file:**
+
 ```typescript
-import { Logger } from '@agentbridge/core/telemetry'
-const log = new Logger('socket')  // <-- runs at module import time
+import { Logger } from '@agentbridge/core/telemetry';
+const log = new Logger('socket'); // <-- runs at module import time
 ```
 
 **But `initTelemetry()` is called in `main.ts`:**
+
 ```typescript
 // main.ts
 import './api/socket'  // <-- Logger('socket') runs HERE, before initTelemetry
@@ -2031,8 +2119,8 @@ initTelemetry({ layer: 'server', sinks: [...] })  // <-- runs AFTER all imports
 ```typescript
 // Inside Logger:
 class Logger {
-  private static startupBuffer: LogEntry[] = []
-  private static collectorReady = false
+  private static startupBuffer: LogEntry[] = [];
+  private static collectorReady = false;
 
   constructor(private component: string) {
     // Constructor does nothing except store component name.
@@ -2040,27 +2128,28 @@ class Logger {
   }
 
   info(message: string, data?: Record<string, unknown>): void {
-    const entry = this.buildEntry('info', message, data)
+    const entry = this.buildEntry('info', message, data);
     if (Logger.collectorReady) {
-      getCollector().emit(entry)
+      getCollector().emit(entry);
     } else {
-      Logger.startupBuffer.push(entry)
+      Logger.startupBuffer.push(entry);
     }
   }
 
   // Called by initTelemetry():
   static _onCollectorReady(): void {
-    Logger.collectorReady = true
-    const collector = getCollector()
+    Logger.collectorReady = true;
+    const collector = getCollector();
     for (const entry of Logger.startupBuffer) {
-      collector.emit(entry)
+      collector.emit(entry);
     }
-    Logger.startupBuffer = []
+    Logger.startupBuffer = [];
   }
 }
 ```
 
 This guarantees:
+
 - Logger can be instantiated at module load time (before initTelemetry)
 - Early logs are buffered, not lost
 - Once initTelemetry runs, buffer flushes and subsequent logs go directly to collector
@@ -2086,6 +2175,7 @@ initTelemetry({
 ```
 
 **Behavior:**
+
 - `sanitize: true` (default, production): All entries are sanitized before reaching any sink. Safe.
 - `sanitize: false` (development): Raw entries go to all sinks. Full detail for debugging.
 - RemoteSink and diagnostic export **always** sanitize regardless of this flag (outbound data is always redacted)
@@ -2120,12 +2210,14 @@ function exportDiagnostic(...): Promise<Uint8Array> {
 **Original design:** Diagnostic zip contains `logs.jsonl` and a derived `timeline.json`.
 
 **Reality:** `logs.jsonl` already contains timestamps and is ordered chronologically. A developer can:
+
 ```bash
 # This IS the timeline:
 cat logs.jsonl | jq '{time: .timestamp, layer: .layer, msg: .message, trace: .traceId}'
 ```
 
 Generating a separate `timeline.json` requires:
+
 - Defining "events" vs "logs" (arbitrary distinction)
 - Extra code to derive timeline from log entries
 - Maintenance when new event types are added
@@ -2138,7 +2230,7 @@ diagnostic-2026-03-06T14-23-01.zip
 |-- environment.json    Device/version info (anonymized)
 ```
 
-### 19.7 [REVERTED] _trace on ALL Socket.IO Events -- Keep Original Design
+### 19.7 [REVERTED] \_trace on ALL Socket.IO Events -- Keep Original Design
 
 **Round 2 over-correction:** "Only add `_trace` to message, rpc-call, rpc-request, update."
 
@@ -2146,16 +2238,16 @@ diagnostic-2026-03-06T14-23-01.zip
 
 Rationale: The bandwidth overhead is negligible (~120 bytes per event). But the debugging value is real for every event type:
 
-| Event | Why trace matters |
-|-------|-------------------|
-| `session-alive` | "Why did the server think the session was dead?" -- heartbeat gaps become visible |
-| `session-end` | "Who ended the session and why?" |
-| `update-metadata` | "Why did metadata change?" -- correlate with the agent action that triggered it |
-| `update-state` | "Why did agent state flip?" -- correlate with the permission request |
-| `usage-report` | "Why is this session's cost wrong?" -- trace back to the specific turn |
-| `streaming:text-delta` | "Why did streaming stop mid-response?" -- find the exact delta where it broke |
-| `streaming:thinking-delta` | Same as text-delta |
-| `ephemeral` | "Why did the UI show thinking but nothing happened?" -- correlate with server-side state |
+| Event                      | Why trace matters                                                                        |
+| -------------------------- | ---------------------------------------------------------------------------------------- |
+| `session-alive`            | "Why did the server think the session was dead?" -- heartbeat gaps become visible        |
+| `session-end`              | "Who ended the session and why?"                                                         |
+| `update-metadata`          | "Why did metadata change?" -- correlate with the agent action that triggered it          |
+| `update-state`             | "Why did agent state flip?" -- correlate with the permission request                     |
+| `usage-report`             | "Why is this session's cost wrong?" -- trace back to the specific turn                   |
+| `streaming:text-delta`     | "Why did streaming stop mid-response?" -- find the exact delta where it broke            |
+| `streaming:thinking-delta` | Same as text-delta                                                                       |
+| `ephemeral`                | "Why did the UI show thinking but nothing happened?" -- correlate with server-side state |
 
 The worst case (streaming at 50 deltas/sec) adds 6KB/s. Messages are already 1-50KB each. This is noise-level overhead. Cutting trace from any event means cutting your ability to debug that event. Not worth the savings.
 
@@ -2164,6 +2256,7 @@ The worst case (streaming at 50 deltas/sec) adds 6KB/s. Messages are already 1-5
 Messages between App and CLI travel through two independent paths. The trace design must handle both:
 
 **Path 1: Real-time (Socket.IO)**
+
 ```
 App emits('message', { sid, message, _trace })
   -> Server on('message') -> persists -> broadcasts update with _trace
@@ -2171,6 +2264,7 @@ App emits('message', { sid, message, _trace })
 ```
 
 **Path 2: Batch sync (HTTP)**
+
 ```
 App POST /v3/sessions/:id/messages { messages: [...] }
   -> Server persists (with traceId if in X-Trace-Id header)
@@ -2183,6 +2277,7 @@ CLI GET /v3/sessions/:id/messages?after_seq=N
 **Both paths must carry trace context.** The DB storage of traceId (Section 19.3) enables this.
 
 For outgoing messages from CLI (agent responses), the same dual-path applies:
+
 - Real-time: CLI emits Socket.IO `message` event with `_trace` (Section 19.2 turn-level binding)
 - Batch: CLI POST to `/v3/sessions/:id/messages` with `X-Trace-Id` header
 
@@ -2205,23 +2300,27 @@ Consumers:
 ```
 
 ### Database change:
+
 ```
 session_message table: ADD traceId TEXT (nullable, unencrypted)
 ```
 
 ### Wire protocol:
+
 ```
 _trace added to: ALL Socket.IO events (both ClientToServer and ServerToClient)
 Overhead is ~120 bytes/event, negligible vs message payloads
 ```
 
 ### Logger initialization:
+
 ```
 Logger instances: created at module load time (safe, no collector needed)
 initTelemetry(): called once in main/entry, flushes startup buffer
 ```
 
 ### Sanitization:
+
 ```
 Default ON (production): all sinks receive sanitized entries
 Dev mode (DEBUG=1): local sinks receive raw entries for full detail
@@ -2229,6 +2328,7 @@ RemoteSink + diagnostic export: ALWAYS sanitize, regardless of flag
 ```
 
 ### Diagnostic export:
+
 ```
 diagnostic-<timestamp>.zip
   logs.jsonl        (sanitized)
@@ -2258,26 +2358,27 @@ Angles: implementer ("can I build this?"), user ("can I debug with this?"), ops 
     // ... existing exports ...
     "./telemetry": {
       "import": "./dist/telemetry/index.mjs",
-      "require": "./dist/telemetry/index.cjs"
+      "require": "./dist/telemetry/index.cjs",
     },
     "./telemetry/node": {
       "import": "./dist/telemetry/node.mjs",
-      "require": "./dist/telemetry/node.cjs"
-    }
-  }
+      "require": "./dist/telemetry/node.cjs",
+    },
+  },
 }
 ```
 
 ```typescript
 // App imports (platform-agnostic, no fs/node dependencies):
-import { Logger, initTelemetry, MemorySink } from '@agentbridge/core/telemetry'
+import { Logger, initTelemetry, MemorySink } from '@agentbridge/core/telemetry';
 
 // CLI/Server imports (adds Node.js sinks):
-import { Logger, initTelemetry } from '@agentbridge/core/telemetry'
-import { FileSink, exportDiagnostic } from '@agentbridge/core/telemetry/node'
+import { Logger, initTelemetry } from '@agentbridge/core/telemetry';
+import { FileSink, exportDiagnostic } from '@agentbridge/core/telemetry/node';
 ```
 
 **Concrete changes:**
+
 - App's `package.json` adds `"@agentbridge/core": "workspace:*"` as dependency
 - `packages/core/src/telemetry/index.ts` exports platform-agnostic code only (Logger, Span, MemorySink, RemoteSink, ConsoleSink, Sanitizer, context functions)
 - `packages/core/src/telemetry/node.ts` exports Node.js-specific code (FileSink, exporter, cleanup)
@@ -2323,6 +2424,7 @@ CLI/Daemon logs   -> Default: RemoteSink uploads to cloud. We have these.
 **No new server endpoints needed.** No trace query API. No cross-device fetching. Just RemoteSink doing its job.
 
 **Key implication for RemoteSink design:**
+
 - Default: ON (not opt-in, but opt-OUT)
 - Only sends warn/error level + trace metadata (no message content)
 - User can disable in Settings -> Privacy
@@ -2333,6 +2435,7 @@ CLI/Daemon logs   -> Default: RemoteSink uploads to cloud. We have these.
 **RFC specifies:** `nanoid(21)` for traceId, `nanoid(12)` for spanId.
 
 **Problem:** The project doesn't use nanoid anywhere. Adding a new dependency for ID generation is unnecessary. The codebase already uses:
+
 - `crypto.randomUUID()` in Node.js (CLI, Server)
 - `expo-crypto.randomUUID()` in React Native (App)
 - `randomKeyNaked(12)` for short IDs (Server)
@@ -2342,11 +2445,11 @@ CLI/Daemon logs   -> Default: RemoteSink uploads to cloud. We have these.
 ```typescript
 // context.ts
 function generateTraceId(): string {
-  return crypto.randomUUID()  // "550e8400-e29b-41d4-a716-446655440000" (36 chars)
+  return crypto.randomUUID(); // "550e8400-e29b-41d4-a716-446655440000" (36 chars)
 }
 
 function generateSpanId(): string {
-  return crypto.randomUUID().replace(/-/g, '').slice(0, 12)  // "550e8400e29b" (12 chars)
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 12); // "550e8400e29b" (12 chars)
 }
 ```
 
@@ -2366,6 +2469,7 @@ initTelemetry({
 ### 21.4 [GAP] FileSink Error Handling (Disk Full)
 
 The current `logger.ts` silently catches `appendFileSync` errors:
+
 ```typescript
 try {
   appendFileSync(this.logFilePath, logLine);
@@ -2381,11 +2485,11 @@ try {
 class FileSink implements LogSink {
   write(entry: LogEntry): void {
     try {
-      appendFileSync(this.filePath, JSON.stringify(entry) + '\n')
+      appendFileSync(this.filePath, JSON.stringify(entry) + '\n');
     } catch {
       // Silently drop. Logging must never crash the application.
       // Optionally increment a dropped-count for diagnostics.
-      this.droppedCount++
+      this.droppedCount++;
     }
   }
 }
@@ -2407,6 +2511,7 @@ class FileSink implements LogSink {
 ```
 
 Approach:
+
 - Use `jscodeshift` or simple `sed` + manual review
 - Run per-layer (CLI, then Server, then App)
 - Component name derived from file path: `cli/src/claude/loop.ts` -> `Logger('claude-loop')`
@@ -2420,14 +2525,14 @@ No longer needed. Section 21.2 was simplified: RemoteSink uploads App/CLI logs t
 
 ### 21.7 Summary: What's Changed After Round 3
 
-| # | Change | Type |
-|---|--------|------|
+| #    | Change                                                               | Type           |
+| ---- | -------------------------------------------------------------------- | -------------- |
 | 21.1 | One package in core with sub-path exports, not two separate packages | Simplification |
-| 21.2 | RemoteSink default ON, no cross-device fetch API needed | Simplification |
-| 21.3 | Use crypto.randomUUID(), not nanoid | Simplification |
-| 21.4 | All sinks must never throw | Spec gap |
-| 21.5 | Codemod script for 89-file mechanical migration | Tooling |
-| 21.6 | Server trace query endpoint removed (not needed) | Removed |
+| 21.2 | RemoteSink default ON, no cross-device fetch API needed              | Simplification |
+| 21.3 | Use crypto.randomUUID(), not nanoid                                  | Simplification |
+| 21.4 | All sinks must never throw                                           | Spec gap       |
+| 21.5 | Codemod script for 89-file mechanical migration                      | Tooling        |
+| 21.6 | Server trace query endpoint removed (not needed)                     | Removed        |
 
 **Nothing is over-engineered this round.** The remaining design is lean. The Span class, sanitizer, componentLevels, and wire format are all justified and minimal.
 
@@ -2453,8 +2558,9 @@ No more architecture issues. These are practical details that would block implem
 Without the breadcrumbs, the error is an orphan -- we see it failed but not what led to it.
 
 **Volume estimate at debug level:**
-- ~50 debug entries/min/session * 200 bytes = ~10KB/min
-- 5 sessions * 8 hours = ~24MB/day per user
+
+- ~50 debug entries/min/session \* 200 bytes = ~10KB/min
+- 5 sessions \* 8 hours = ~24MB/day per user
 - Acceptable given NR compression and retention policies
 
 **Corrected default:** `minLevel: 'debug'`. All levels uploaded to enable full remote debugging. Use `componentLevels` to throttle noisy components (e.g. streaming handlers).
@@ -2474,10 +2580,10 @@ const credentials = await authenticate()                          // 2. token ob
 ```typescript
 class RemoteSink implements LogSink {
   constructor(opts: {
-    endpoint: string
-    authToken: string | (() => string | undefined)  // string OR lazy getter
+    endpoint: string;
+    authToken: string | (() => string | undefined); // string OR lazy getter
     // ...
-  })
+  });
 }
 ```
 
@@ -2485,14 +2591,14 @@ When `authToken` is a function, RemoteSink calls it at upload time. If it return
 
 ```typescript
 // Usage:
-let currentToken: string | undefined
+let currentToken: string | undefined;
 const remoteSink = new RemoteSink({
   endpoint: config.serverUrl + '/v1/telemetry/logs',
   authToken: () => currentToken,
-})
+});
 
 // Later, after auth:
-currentToken = credentials.token
+currentToken = credentials.token;
 ```
 
 ### 22.3 Phase 3 Must Explicitly Build the Telemetry Ingest Endpoint
@@ -2515,6 +2621,7 @@ This is too vague. The ingest endpoint is what makes RemoteSink work. It needs c
 ```
 
 Developer querying:
+
 ```bash
 # On the server, find all telemetry for a trace:
 grep "traceId.*abc" ~/.free/logs/telemetry/*.jsonl
@@ -2526,6 +2633,7 @@ grep "userId.*xxx" ~/.free/logs/telemetry/2026-03-06.jsonl | grep '"level":"erro
 ### 22.4 Phase 1 Acceptance Criteria References Deleted timeline.json
 
 **Section 12, Phase 1:**
+
 > Exporter produces a valid zip with logs.jsonl, timeline.json, environment.json
 
 **Section 19.6 removed timeline.json.**
@@ -2536,32 +2644,32 @@ grep "userId.*xxx" ~/.free/logs/telemetry/2026-03-06.jsonl | grep '"level":"erro
 
 This RFC now has Sections 1-16 (original design) + Sections 17-22 (four rounds of corrections). For actual implementation, a developer should read the full document and treat later sections as overriding earlier sections where they conflict. Key override map:
 
-| Topic | Original section | Overridden by |
-|-------|-----------------|---------------|
-| Message chain (Daemon not in path) | 1.1 | 17.1 |
-| Server logs accessibility | 9.1 | 17.2, 21.2 |
-| MemorySink persistence | 5.4 | 17.3 |
-| Logger vs console.log for user output | 4.1 | 17.4 |
-| Log file path exposure | 4.1 | 17.5 |
-| Span nesting removed | 4.3 | 17.6 |
-| withContext scope (Tier 1 vs Tier 2) | 11.4 | 17.7 |
-| Layer type (string not union) | 3.3 | 17.8 |
-| Log retention/cleanup | (missing) | 17.9 |
-| Component-level throttling | (missing) | 17.10 |
-| Error response includes traceId | (missing) | 17.11 |
-| Sanitizer default behavior | 6.1 | 19.5 |
-| _trace on all events | 7.1 | 19.7 (reverted to original) |
-| TraceId round-trip through agent | (missing) | 19.2 |
-| HTTP sync path trace | (missing) | 19.3 |
-| Logger startup buffer | (missing) | 19.4 |
-| Package structure | 2.0 | 21.1 |
-| Cross-device diagnostic model | (missing) | 21.2 |
-| ID generation | 3.1 | 21.3 |
-| Sink error handling | (missing) | 21.4 |
-| Migration codemod | (missing) | 21.5 |
-| RemoteSink minLevel | 5.5 | 22.1 |
-| RemoteSink lazy auth | 5.5 | 22.2 |
-| Telemetry ingest endpoint | 12 Phase 3 | 22.3 |
+| Topic                                 | Original section | Overridden by               |
+| ------------------------------------- | ---------------- | --------------------------- |
+| Message chain (Daemon not in path)    | 1.1              | 17.1                        |
+| Server logs accessibility             | 9.1              | 17.2, 21.2                  |
+| MemorySink persistence                | 5.4              | 17.3                        |
+| Logger vs console.log for user output | 4.1              | 17.4                        |
+| Log file path exposure                | 4.1              | 17.5                        |
+| Span nesting removed                  | 4.3              | 17.6                        |
+| withContext scope (Tier 1 vs Tier 2)  | 11.4             | 17.7                        |
+| Layer type (string not union)         | 3.3              | 17.8                        |
+| Log retention/cleanup                 | (missing)        | 17.9                        |
+| Component-level throttling            | (missing)        | 17.10                       |
+| Error response includes traceId       | (missing)        | 17.11                       |
+| Sanitizer default behavior            | 6.1              | 19.5                        |
+| \_trace on all events                 | 7.1              | 19.7 (reverted to original) |
+| TraceId round-trip through agent      | (missing)        | 19.2                        |
+| HTTP sync path trace                  | (missing)        | 19.3                        |
+| Logger startup buffer                 | (missing)        | 19.4                        |
+| Package structure                     | 2.0              | 21.1                        |
+| Cross-device diagnostic model         | (missing)        | 21.2                        |
+| ID generation                         | 3.1              | 21.3                        |
+| Sink error handling                   | (missing)        | 21.4                        |
+| Migration codemod                     | (missing)        | 21.5                        |
+| RemoteSink minLevel                   | 5.5              | 22.1                        |
+| RemoteSink lazy auth                  | 5.5              | 22.2                        |
+| Telemetry ingest endpoint             | 12 Phase 3       | 22.3                        |
 
 Before starting implementation, it is recommended to produce a consolidated spec by folding all corrections into the main sections. This is a formatting task, not a design task.
 
@@ -2586,27 +2694,27 @@ This **replaces** Section 22.3's self-built `POST /v1/telemetry/logs` endpoint e
  * authentication and payload formatting.
  */
 interface RemoteBackend {
-  readonly name: string
+  readonly name: string;
 
   /**
    * Transform LogEntry[] into the provider-specific HTTP request.
    * Returns null if the backend is not ready (e.g. missing auth token).
    */
-  buildRequest(entries: LogEntry[], metadata: DeviceMetadata): RemoteRequest | null
+  buildRequest(entries: LogEntry[], metadata: DeviceMetadata): RemoteRequest | null;
 }
 
 interface RemoteRequest {
-  url: string
-  method: 'POST'
-  headers: Record<string, string>
-  body: string  // JSON-serialized payload
+  url: string;
+  method: 'POST';
+  headers: Record<string, string>;
+  body: string; // JSON-serialized payload
 }
 
 interface DeviceMetadata {
-  deviceId: string       // anonymous device hash
-  appVersion: string
-  layer: Layer
-  machineId?: string
+  deviceId: string; // anonymous device hash
+  appVersion: string;
+  layer: Layer;
+  machineId?: string;
 }
 ```
 
@@ -2614,19 +2722,20 @@ interface DeviceMetadata {
 
 ```typescript
 class AxiomBackend implements RemoteBackend {
-  readonly name = 'axiom'
+  readonly name = 'axiom';
 
-  constructor(private opts: {
-    dataset: string                        // e.g. 'agentbridge-logs'
-    apiToken: string | (() => string | undefined)
-    baseUrl?: string                       // default: 'https://api.axiom.co'
-  }) {}
+  constructor(
+    private opts: {
+      dataset: string; // e.g. 'agentbridge-logs'
+      apiToken: string | (() => string | undefined);
+      baseUrl?: string; // default: 'https://api.axiom.co'
+    }
+  ) {}
 
   buildRequest(entries: LogEntry[], meta: DeviceMetadata): RemoteRequest | null {
-    const token = typeof this.opts.apiToken === 'function'
-      ? this.opts.apiToken()
-      : this.opts.apiToken
-    if (!token) return null
+    const token =
+      typeof this.opts.apiToken === 'function' ? this.opts.apiToken() : this.opts.apiToken;
+    if (!token) return null;
 
     // Axiom ingest: array of JSON objects, each is one event
     // Axiom auto-detects _time field for timestamp
@@ -2637,22 +2746,23 @@ class AxiomBackend implements RemoteBackend {
       _appVersion: meta.appVersion,
       _layer: meta.layer,
       _machineId: meta.machineId,
-    }))
+    }));
 
     return {
       url: `${this.opts.baseUrl ?? 'https://api.axiom.co'}/v1/datasets/${this.opts.dataset}/ingest`,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(events),
-    }
+    };
   }
 }
 ```
 
 **Axiom specifics:**
+
 - Ingest endpoint: `POST /v1/datasets/{dataset}/ingest`
 - Payload: JSON array of events (no wrapper object)
 - `_time` field is auto-recognized as timestamp
@@ -2664,56 +2774,62 @@ class AxiomBackend implements RemoteBackend {
 
 ```typescript
 class NewRelicBackend implements RemoteBackend {
-  readonly name = 'newrelic'
+  readonly name = 'newrelic';
 
-  constructor(private opts: {
-    licenseKey: string | (() => string | undefined)
-    region?: 'us' | 'eu'                  // default: 'us'
-  }) {}
+  constructor(
+    private opts: {
+      licenseKey: string | (() => string | undefined);
+      region?: 'us' | 'eu'; // default: 'us'
+    }
+  ) {}
 
   buildRequest(entries: LogEntry[], meta: DeviceMetadata): RemoteRequest | null {
-    const key = typeof this.opts.licenseKey === 'function'
-      ? this.opts.licenseKey()
-      : this.opts.licenseKey
-    if (!key) return null
+    const key =
+      typeof this.opts.licenseKey === 'function' ? this.opts.licenseKey() : this.opts.licenseKey;
+    if (!key) return null;
 
-    const baseUrl = this.opts.region === 'eu'
-      ? 'https://log-api.eu.newrelic.com'
-      : 'https://log-api.newrelic.com'
+    const baseUrl =
+      this.opts.region === 'eu'
+        ? 'https://log-api.eu.newrelic.com'
+        : 'https://log-api.newrelic.com';
 
     // New Relic Log API: array of log entries with common block
-    const payload = [{
-      common: {
-        attributes: {
-          'service.name': 'agentbridge',
-          'device.id': meta.deviceId,
-          'app.version': meta.appVersion,
-          'telemetry.layer': meta.layer,
-          'machine.id': meta.machineId,
+    const payload = [
+      {
+        common: {
+          attributes: {
+            'service.name': 'agentbridge',
+            'device.id': meta.deviceId,
+            'app.version': meta.appVersion,
+            'telemetry.layer': meta.layer,
+            'machine.id': meta.machineId,
+          },
         },
+        logs: entries.map(entry => ({
+          timestamp: new Date(entry.timestamp).getTime(), // Unix epoch ms
+          message: entry.message,
+          level: entry.level,
+          attributes: {
+            component: entry.component,
+            layer: entry.layer,
+            traceId: entry.traceId,
+            spanId: entry.spanId,
+            parentSpanId: entry.parentSpanId,
+            sessionId: entry.sessionId,
+            machineId: entry.machineId,
+            durationMs: entry.durationMs,
+            ...entry.data,
+            ...(entry.error
+              ? {
+                  'error.message': entry.error.message,
+                  'error.stack': entry.error.stack,
+                  'error.code': entry.error.code,
+                }
+              : {}),
+          },
+        })),
       },
-      logs: entries.map(entry => ({
-        timestamp: new Date(entry.timestamp).getTime(),  // Unix epoch ms
-        message: entry.message,
-        level: entry.level,
-        attributes: {
-          component: entry.component,
-          layer: entry.layer,
-          traceId: entry.traceId,
-          spanId: entry.spanId,
-          parentSpanId: entry.parentSpanId,
-          sessionId: entry.sessionId,
-          machineId: entry.machineId,
-          durationMs: entry.durationMs,
-          ...entry.data,
-          ...(entry.error ? {
-            'error.message': entry.error.message,
-            'error.stack': entry.error.stack,
-            'error.code': entry.error.code,
-          } : {}),
-        },
-      })),
-    }]
+    ];
 
     return {
       url: `${baseUrl}/log/v1`,
@@ -2723,12 +2839,13 @@ class NewRelicBackend implements RemoteBackend {
         'Api-Key': key,
       },
       body: JSON.stringify(payload),
-    }
+    };
   }
 }
 ```
 
 **New Relic specifics:**
+
 - Ingest endpoint: `POST /log/v1`
 - Payload: Array of `{ common, logs }` blocks (NR Log API format)
 - `timestamp` must be Unix epoch milliseconds
@@ -2743,35 +2860,35 @@ RemoteSink no longer knows about HTTP endpoints or auth tokens directly. It dele
 ```typescript
 class RemoteSink implements LogSink {
   constructor(opts: {
-    backend: RemoteBackend
-    batchSize?: number          // default: 50
-    flushIntervalMs?: number    // default: 30_000
-    maxBufferSize?: number      // default: 500
-    minLevel?: Level            // default: 'debug' (see Section 22.1)
-    metadata: DeviceMetadata
-  })
+    backend: RemoteBackend;
+    batchSize?: number; // default: 50
+    flushIntervalMs?: number; // default: 30_000
+    maxBufferSize?: number; // default: 500
+    minLevel?: Level; // default: 'debug' (see Section 22.1)
+    metadata: DeviceMetadata;
+  });
 
   write(entry: LogEntry): void {
     // ALWAYS sanitize before upload
-    const sanitized = this.sanitizer.process(entry)
-    if (levelValue(sanitized.level) < levelValue(this.minLevel)) return
-    this.buffer.push(sanitized)
-    if (this.buffer.length >= this.batchSize) this.flush()
+    const sanitized = this.sanitizer.process(entry);
+    if (levelValue(sanitized.level) < levelValue(this.minLevel)) return;
+    this.buffer.push(sanitized);
+    if (this.buffer.length >= this.batchSize) this.flush();
   }
 
   private async flush(): Promise<void> {
-    const batch = this.buffer.splice(0, this.batchSize)
-    if (batch.length === 0) return
+    const batch = this.buffer.splice(0, this.batchSize);
+    if (batch.length === 0) return;
 
-    const request = this.opts.backend.buildRequest(batch, this.opts.metadata)
-    if (!request) return  // backend not ready (no auth token yet)
+    const request = this.opts.backend.buildRequest(batch, this.opts.metadata);
+    if (!request) return; // backend not ready (no auth token yet)
 
     try {
       await fetch(request.url, {
         method: request.method,
         headers: request.headers,
         body: request.body,
-      })
+      });
     } catch {
       // Silent drop. Telemetry must never block the user.
     }
@@ -2786,35 +2903,37 @@ Backend is **hardcoded** in a single config file. Default is New Relic. To switc
 ```typescript
 // packages/core/src/telemetry/sinks/backends/config.ts
 
-import { AxiomBackend } from './axiom'
-import { NewRelicBackend } from './newrelic'
-import type { RemoteBackend } from './types'
+import { AxiomBackend } from './axiom';
+import { NewRelicBackend } from './newrelic';
+import type { RemoteBackend } from './types';
 
 // ========================================
 // Change this line to switch backend:
-const ACTIVE_BACKEND: 'axiom' | 'newrelic' = 'newrelic'
+const ACTIVE_BACKEND: 'axiom' | 'newrelic' = 'newrelic';
 // ========================================
 
 const BACKENDS = {
-  axiom: () => new AxiomBackend({
-    dataset: 'agentbridge-prod',
-    apiToken: () => currentTelemetryToken,
-  }),
-  newrelic: () => new NewRelicBackend({
-    licenseKey: () => currentTelemetryToken,
-    region: 'us',
-  }),
-} as const
+  axiom: () =>
+    new AxiomBackend({
+      dataset: 'agentbridge-prod',
+      apiToken: () => currentTelemetryToken,
+    }),
+  newrelic: () =>
+    new NewRelicBackend({
+      licenseKey: () => currentTelemetryToken,
+      region: 'us',
+    }),
+} as const;
 
-let currentTelemetryToken: string | undefined
+let currentTelemetryToken: string | undefined;
 
 /** Called once after auth to provide the ingest token */
 export function setTelemetryToken(token: string): void {
-  currentTelemetryToken = token
+  currentTelemetryToken = token;
 }
 
 export function createRemoteBackend(): RemoteBackend {
-  return BACKENDS[ACTIVE_BACKEND]()
+  return BACKENDS[ACTIVE_BACKEND]();
 }
 ```
 
@@ -2831,6 +2950,7 @@ App/CLI auth → server returns { sessionToken, telemetryToken }
 Client 收到后调 `setTelemetryToken(telemetryToken)` 即可。RemoteBackend 通过 lazy function 读取。
 
 **Security:** Token 是 write-only、scoped 的：
+
 - Axiom: API token 只有 `ingest` 权限，只能写一个 dataset
 - New Relic: Ingest License Key，只能写不能查
 - 泄露了也只能往 dataset 写垃圾数据
@@ -2839,11 +2959,11 @@ Client 收到后调 `setTelemetryToken(telemetryToken)` 即可。RemoteBackend �
 
 Separate datasets per environment to avoid polluting production data:
 
-| Environment | Axiom Dataset | New Relic Account |
-|-------------|---------------|-------------------|
-| development | `agentbridge-dev` | Dev sub-account |
-| preview | `agentbridge-preview` | Preview sub-account |
-| production | `agentbridge-prod` | Production sub-account |
+| Environment | Axiom Dataset         | New Relic Account      |
+| ----------- | --------------------- | ---------------------- |
+| development | `agentbridge-dev`     | Dev sub-account        |
+| preview     | `agentbridge-preview` | Preview sub-account    |
+| production  | `agentbridge-prod`    | Production sub-account |
 
 Within each dataset, filter by `_layer` (or `telemetry.layer`) to isolate App / Server / CLI logs.
 
@@ -2864,16 +2984,19 @@ packages/core/src/telemetry/
 ### 23.10 Phase Adjustments
 
 **Phase 1 changes:**
+
 - Add `sinks/backends/types.ts`, `sinks/backends/axiom.ts`, `sinks/backends/newrelic.ts`
 - Update `sinks/remote.ts` to use `RemoteBackend` interface
 - Unit tests: mock `fetch`, verify each backend produces correct request format
 
 **Phase 3 changes (Server Migration):**
+
 - ~~Build `POST /v1/telemetry/logs` endpoint~~ → **Removed**. No self-hosted ingest.
 - Instead: Auth 响应里新增 `telemetryToken` 字段，client 拿到后调 `setTelemetryToken()`
 - Server 自己也用 RemoteSink + 同一个 backend（server-side token 直接写配置里）
 
 **New Phase (after Phase 5):**
+
 - Phase 6: Dashboard & Alerting
   - Set up Axiom/New Relic dashboards for key metrics
   - Alert on error rate spikes, trace gaps, session failures
@@ -2881,6 +3004,7 @@ packages/core/src/telemetry/
 ### 23.11 Querying Logs
 
 **Axiom (APL - Axiom Processing Language):**
+
 ```apl
 // All logs for a trace
 ['agentbridge-prod']
@@ -2899,6 +3023,7 @@ packages/core/src/telemetry/
 ```
 
 **New Relic (NRQL):**
+
 ```sql
 -- All logs for a trace
 SELECT * FROM Log
@@ -2917,13 +3042,13 @@ FROM Log WHERE durationMs > 5000 SINCE 1 day ago
 
 ### 23.12 Override Map Update
 
-| Topic | Original section | Overridden by |
-|-------|-----------------|---------------|
-| RemoteSink constructor (endpoint/authToken) | 5.5 | 23.5 |
-| Self-built telemetry ingest endpoint | 22.3 | 23.10 (removed) |
-| Upload payload format | 5.5 | 23.3, 23.4 (per-backend) |
-| Per-layer init (RemoteSink creation) | 8.1-8.4 | 23.6 |
-| Phase 3 deliverable #7/#8 | 12 Phase 3 | 23.10 |
+| Topic                                       | Original section | Overridden by            |
+| ------------------------------------------- | ---------------- | ------------------------ |
+| RemoteSink constructor (endpoint/authToken) | 5.5              | 23.5                     |
+| Self-built telemetry ingest endpoint        | 22.3             | 23.10 (removed)          |
+| Upload payload format                       | 5.5              | 23.3, 23.4 (per-backend) |
+| Per-layer init (RemoteSink creation)        | 8.1-8.4          | 23.6                     |
+| Phase 3 deliverable #7/#8                   | 12 Phase 3       | 23.10                    |
 
 ---
 
@@ -2937,19 +3062,19 @@ Section 23.5 的 `write()` 调用了 `this.sanitizer.process(entry)`，但新的
 
 ```typescript
 class RemoteSink implements LogSink {
-  private readonly sanitizer = new Sanitizer()  // 内部创建，不可绕过
+  private readonly sanitizer = new Sanitizer(); // 内部创建，不可绕过
 
   constructor(opts: {
-    backend: RemoteBackend
-    batchSize?: number
-    flushIntervalMs?: number
-    maxBufferSize?: number
-    minLevel?: Level
-    metadata: DeviceMetadata
-  })
+    backend: RemoteBackend;
+    batchSize?: number;
+    flushIntervalMs?: number;
+    maxBufferSize?: number;
+    minLevel?: Level;
+    metadata: DeviceMetadata;
+  });
 
   write(entry: LogEntry): void {
-    const sanitized = this.sanitizer.process(entry)  // now this.sanitizer exists
+    const sanitized = this.sanitizer.process(entry); // now this.sanitizer exists
     // ...
   }
 }
@@ -2964,40 +3089,42 @@ Section 23.6 的 `config.ts` 写死 `dataset: 'agentbridge-prod'`，但 Section 
 ```typescript
 // packages/core/src/telemetry/sinks/backends/config.ts
 
-import { AxiomBackend } from './axiom'
-import { NewRelicBackend } from './newrelic'
-import type { RemoteBackend } from './types'
+import { AxiomBackend } from './axiom';
+import { NewRelicBackend } from './newrelic';
+import type { RemoteBackend } from './types';
 
 // ========================================
 // Change this line to switch backend:
-const ACTIVE_BACKEND: 'axiom' | 'newrelic' = 'newrelic'
+const ACTIVE_BACKEND: 'axiom' | 'newrelic' = 'newrelic';
 // ========================================
 
 // Environment-aware dataset/account
 // APP_ENV is set at build time: 'development' | 'preview' | 'production'
-const ENV = process.env.APP_ENV ?? 'development'
-const DATASET_SUFFIX = ENV === 'production' ? 'prod' : ENV === 'preview' ? 'preview' : 'dev'
-const DATASET = `agentbridge-${DATASET_SUFFIX}`
+const ENV = process.env.APP_ENV ?? 'development';
+const DATASET_SUFFIX = ENV === 'production' ? 'prod' : ENV === 'preview' ? 'preview' : 'dev';
+const DATASET = `agentbridge-${DATASET_SUFFIX}`;
 
-let currentTelemetryToken: string | undefined
+let currentTelemetryToken: string | undefined;
 
 export function setTelemetryToken(token: string): void {
-  currentTelemetryToken = token
+  currentTelemetryToken = token;
 }
 
 const BACKENDS = {
-  axiom: () => new AxiomBackend({
-    dataset: DATASET,
-    apiToken: () => currentTelemetryToken,
-  }),
-  newrelic: () => new NewRelicBackend({
-    licenseKey: () => currentTelemetryToken,
-    region: 'us',
-  }),
-} as const
+  axiom: () =>
+    new AxiomBackend({
+      dataset: DATASET,
+      apiToken: () => currentTelemetryToken,
+    }),
+  newrelic: () =>
+    new NewRelicBackend({
+      licenseKey: () => currentTelemetryToken,
+      region: 'us',
+    }),
+} as const;
 
 export function createRemoteBackend(): RemoteBackend {
-  return BACKENDS[ACTIVE_BACKEND]()
+  return BACKENDS[ACTIVE_BACKEND]();
 }
 ```
 
@@ -3013,47 +3140,53 @@ export function createRemoteBackend(): RemoteBackend {
 
 ```typescript
 class FileSink implements LogSink {
-  private writeBuffer: string[] = []
-  private flushTimer: ReturnType<typeof setInterval> | null = null
+  private writeBuffer: string[] = [];
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(opts: {
-    dir: string
-    prefix: string
-    maxFileSize?: number
-    maxFiles?: number
-    bufferFlushMs?: number  // default: 100ms. Set 0 for sync mode.
-  })
+    dir: string;
+    prefix: string;
+    maxFileSize?: number;
+    maxFiles?: number;
+    bufferFlushMs?: number; // default: 100ms. Set 0 for sync mode.
+  });
 
   write(entry: LogEntry): void {
-    const line = JSON.stringify(entry) + '\n'
+    const line = JSON.stringify(entry) + '\n';
     if (this.bufferFlushMs === 0) {
       // Sync mode (CLI/Daemon): write immediately
-      try { appendFileSync(this.filePath, line) } catch { this.droppedCount++ }
+      try {
+        appendFileSync(this.filePath, line);
+      } catch {
+        this.droppedCount++;
+      }
     } else {
       // Async mode (Server): buffer and flush periodically
-      this.writeBuffer.push(line)
-      this.scheduleFlush()
+      this.writeBuffer.push(line);
+      this.scheduleFlush();
     }
   }
 
   async flush(): Promise<void> {
-    if (this.writeBuffer.length === 0) return
-    const batch = this.writeBuffer.join('')
-    this.writeBuffer = []
+    if (this.writeBuffer.length === 0) return;
+    const batch = this.writeBuffer.join('');
+    this.writeBuffer = [];
     try {
-      await fs.promises.appendFile(this.filePath, batch)
+      await fs.promises.appendFile(this.filePath, batch);
     } catch {
-      this.droppedCount += batch.split('\n').length - 1
+      this.droppedCount += batch.split('\n').length - 1;
     }
   }
 
   // Process exit handler: sync drain
   close(): Promise<void> {
-    if (this.flushTimer) clearInterval(this.flushTimer)
+    if (this.flushTimer) clearInterval(this.flushTimer);
     if (this.writeBuffer.length > 0) {
-      try { appendFileSync(this.filePath, this.writeBuffer.join('')) } catch {}
+      try {
+        appendFileSync(this.filePath, this.writeBuffer.join(''));
+      } catch {}
     }
-    return Promise.resolve()
+    return Promise.resolve();
   }
 }
 ```
@@ -3062,10 +3195,10 @@ class FileSink implements LogSink {
 
 ```typescript
 // Server: async (default)
-new FileSink({ dir: logsDir, prefix: 'server' })
+new FileSink({ dir: logsDir, prefix: 'server' });
 
 // CLI/Daemon: sync for simplicity
-new FileSink({ dir: logsDir, prefix: 'cli', bufferFlushMs: 0 })
+new FileSink({ dir: logsDir, prefix: 'cli', bufferFlushMs: 0 });
 ```
 
 ### 24.4 [GAP] DB migration 不在任何 Phase deliverables 里
@@ -3089,20 +3222,20 @@ Section 19.3 设计了 `session_message` 表加 `trace_id TEXT` 列，Section 19
 
 ```typescript
 class RemoteSink implements LogSink {
-  private flushing = false
+  private flushing = false;
 
   private async flush(): Promise<void> {
-    if (this.flushing) return  // skip if previous flush still in-flight
-    this.flushing = true
+    if (this.flushing) return; // skip if previous flush still in-flight
+    this.flushing = true;
     try {
-      const batch = this.buffer.splice(0, this.batchSize)
-      if (batch.length === 0) return
+      const batch = this.buffer.splice(0, this.batchSize);
+      if (batch.length === 0) return;
 
-      const request = this.opts.backend.buildRequest(batch, this.opts.metadata)
+      const request = this.opts.backend.buildRequest(batch, this.opts.metadata);
       if (!request) {
         // Backend not ready, put entries back
-        this.buffer.unshift(...batch)
-        return
+        this.buffer.unshift(...batch);
+        return;
       }
 
       try {
@@ -3110,12 +3243,12 @@ class RemoteSink implements LogSink {
           method: request.method,
           headers: request.headers,
           body: request.body,
-        })
+        });
       } catch {
         // Silent drop
       }
     } finally {
-      this.flushing = false
+      this.flushing = false;
     }
   }
 }
@@ -3124,6 +3257,7 @@ class RemoteSink implements LogSink {
 ### 24.6 [合规] Default-ON 遥测需要用户同意机制
 
 Section 21.2 说 RemoteSink 默认开启，向 New Relic/Axiom 发送数据。但：
+
 - **Apple App Store** 要求在 App Privacy 中声明数据收集类型
 - **GDPR** 对向第三方传输诊断数据需要用户同意
 - **Google Play** Data Safety 声明同理
@@ -3147,12 +3281,13 @@ Section 21.2 只写了 "Clear disclosure in onboarding / privacy policy" 一句�
 export function createRemoteBackend(): RemoteBackend | null {
   // 对 Server/CLI/Daemon: 我们自己的基础设施，不需要用户同意
   // 对 App: 检查用户同意状态
-  if (isApp && !hasUserConsent()) return null
-  return BACKENDS[ACTIVE_BACKEND]()
+  if (isApp && !hasUserConsent()) return null;
+  return BACKENDS[ACTIVE_BACKEND]();
 }
 ```
 
 **App Store/Play Store 需要声明的数据类型：**
+
 - Diagnostics (crash logs, performance data)
 - NOT linked to user identity (anonymized deviceId)
 - 用于 App Functionality 和 Analytics
@@ -3160,12 +3295,15 @@ export function createRemoteBackend(): RemoteBackend | null {
 ### 24.7 [文档矛盾] Phase 4 deliverable #7 与 Section 17.4 冲突
 
 Phase 4 (Section 12) deliverable #7：
+
 > Update `doctor.ts` to use new Logger (convert console.log calls)
 
 Section 17.4：
+
 > `doctor.ts` should NOT be migrated at all. Its 92 `console.log` calls are intentional user-facing diagnostic output.
 
 **修复：** Phase 4 deliverable #7 改为：
+
 ```
 7. doctor.ts: 不迁移。保持 console.log（用户交互 UI，非诊断日志）
 ```
@@ -3173,6 +3311,7 @@ Section 17.4：
 ### 24.8 [文档矛盾] Section 11.3 替换端点已过时
 
 当前写法：
+
 ```
 POST /logs-combined-from-cli-and-mobile-for-simple-ai-debugging → POST /v1/telemetry/logs
 ```
@@ -3180,22 +3319,23 @@ POST /logs-combined-from-cli-and-mobile-for-simple-ai-debugging → POST /v1/tel
 Section 23.10 已删除自建 `/v1/telemetry/logs`。
 
 **修复：** 改为：
+
 ```
 POST /logs-combined-from-cli-and-mobile-for-simple-ai-debugging → 删除，无替代（RemoteSink 直接上报到 New Relic/Axiom）
 ```
 
 ### 24.9 Override Map Update
 
-| Topic | Original section | Overridden by |
-|-------|-----------------|---------------|
-| RemoteSink missing sanitizer | 23.5 | 24.1 |
-| config.ts hardcoded dataset | 23.6 | 24.2 |
-| FileSink sync I/O | 5.3, 16.2 | 24.3 |
-| DB migration missing from Phase 3 | 12 Phase 3 | 24.4 |
-| RemoteSink concurrent flush | 23.5 | 24.5 |
-| Telemetry consent mechanism | 21.2 | 24.6 |
-| doctor.ts migration conflict | 12 Phase 4 | 24.7 |
-| Old endpoint replacement | 11.3 | 24.8 |
+| Topic                             | Original section | Overridden by |
+| --------------------------------- | ---------------- | ------------- |
+| RemoteSink missing sanitizer      | 23.5             | 24.1          |
+| config.ts hardcoded dataset       | 23.6             | 24.2          |
+| FileSink sync I/O                 | 5.3, 16.2        | 24.3          |
+| DB migration missing from Phase 3 | 12 Phase 3       | 24.4          |
+| RemoteSink concurrent flush       | 23.5             | 24.5          |
+| Telemetry consent mechanism       | 21.2             | 24.6          |
+| doctor.ts migration conflict      | 12 Phase 4       | 24.7          |
+| Old endpoint replacement          | 11.3             | 24.8          |
 
 ---
 
@@ -3238,18 +3378,18 @@ packages/core/src/telemetry/
 
 ### 核心 API 与 RFC 一致性
 
-| API | RFC 设计 | 实现 | 一致性 |
-|-----|---------|------|--------|
-| Logger constructor / debug / info / warn / error | §4.1 | ✅ 完全匹配 | ✅ |
-| Logger.withContext() → ScopedLogger | §4.2 | ✅ 完全匹配 | ✅ |
-| Span（无 child()，§17.6 简化） | §4.3 | ✅ 完全匹配 | ✅ |
-| createTrace / continueTrace / resumeTrace | §4.4, §19.3 | ✅ 完全匹配 | ✅ |
-| injectTrace / extractTrace（WireTrace 短字段名） | §4.4 | ✅ 完全匹配 | ✅ |
-| LogEntry 数据模型 | §3.2 | ✅ 完全匹配（额外有 userId） | ✅ |
-| LogCollector + initTelemetry | §5.1 | ✅ 核心匹配 | ✅ |
-| Sanitizer 敏感关键字列表 | §6.1 | ✅ 完全匹配 | ✅ |
-| MemorySink（ring buffer + query + onChange） | §5.4 | ✅ 完全匹配 + AsyncStorage 持久化 | ✅ |
-| ConsoleSink | §5.6 | ✅ 完全匹配 | ✅ |
+| API                                              | RFC 设计    | 实现                              | 一致性 |
+| ------------------------------------------------ | ----------- | --------------------------------- | ------ |
+| Logger constructor / debug / info / warn / error | §4.1        | ✅ 完全匹配                       | ✅     |
+| Logger.withContext() → ScopedLogger              | §4.2        | ✅ 完全匹配                       | ✅     |
+| Span（无 child()，§17.6 简化）                   | §4.3        | ✅ 完全匹配                       | ✅     |
+| createTrace / continueTrace / resumeTrace        | §4.4, §19.3 | ✅ 完全匹配                       | ✅     |
+| injectTrace / extractTrace（WireTrace 短字段名） | §4.4        | ✅ 完全匹配                       | ✅     |
+| LogEntry 数据模型                                | §3.2        | ✅ 完全匹配（额外有 userId）      | ✅     |
+| LogCollector + initTelemetry                     | §5.1        | ✅ 核心匹配                       | ✅     |
+| Sanitizer 敏感关键字列表                         | §6.1        | ✅ 完全匹配                       | ✅     |
+| MemorySink（ring buffer + query + onChange）     | §5.4        | ✅ 完全匹配 + AsyncStorage 持久化 | ✅     |
+| ConsoleSink                                      | §5.6        | ✅ 完全匹配                       | ✅     |
 
 ### 与原始设计的偏差
 

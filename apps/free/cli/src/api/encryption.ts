@@ -228,22 +228,26 @@ export function decrypt(
 export function createCipher(key: Uint8Array, variant: 'legacy' | 'dataKey'): Cipher {
   return {
     encrypt(data: unknown[]): Promise<Uint8Array[]> {
-      return Promise.resolve(data.map(item => {
-        if (variant === 'legacy') {
-          return encryptLegacy(item, key);
-        } else {
-          return encryptWithDataKey(item, key);
-        }
-      }));
+      return Promise.resolve(
+        data.map(item => {
+          if (variant === 'legacy') {
+            return encryptLegacy(item, key);
+          } else {
+            return encryptWithDataKey(item, key);
+          }
+        })
+      );
     },
     decrypt(data: Uint8Array[]): Promise<(unknown | null)[]> {
-      return Promise.resolve(data.map(item => {
-        if (variant === 'legacy') {
-          return decryptLegacy(item, key);
-        } else {
-          return decryptWithDataKey(item, key);
-        }
-      }));
+      return Promise.resolve(
+        data.map(item => {
+          if (variant === 'legacy') {
+            return decryptLegacy(item, key);
+          } else {
+            return decryptWithDataKey(item, key);
+          }
+        })
+      );
     },
   };
 }
@@ -252,7 +256,11 @@ export function createCipher(key: Uint8Array, variant: 'legacy' | 'dataKey'): Ci
  * Encrypt data and encode to a wire string for server transmission.
  * In dev mode, skips both encryption and base64 — returns plain JSON.
  */
-export async function encryptToWireString(key: Uint8Array, variant: 'legacy' | 'dataKey', data: any): Promise<string> {
+export async function encryptToWireString(
+  key: Uint8Array,
+  variant: 'legacy' | 'dataKey',
+  data: any
+): Promise<string> {
   const format = configuration.isDev ? 'plaintext-json' : `base64-${variant}`;
   logger.debug('[encryption] encryptToWireString', { variant, format });
   return wireEncode(data, createCipher(key, variant), configuration.isDev);
@@ -262,14 +270,25 @@ export async function encryptToWireString(key: Uint8Array, variant: 'legacy' | '
  * Decode and decrypt a wire string received from the server.
  * Auto-detects plaintext JSON regardless of local isDev.
  */
-export async function decryptFromWireString(key: Uint8Array, variant: 'legacy' | 'dataKey', wireStr: string): Promise<any | null> {
+export async function decryptFromWireString(
+  key: Uint8Array,
+  variant: 'legacy' | 'dataKey',
+  wireStr: string
+): Promise<any | null> {
   const isPlaintext = wireStr.length > 0 && wireStr[0] === '{';
   const format = isPlaintext ? 'plaintext-json' : `base64-${variant}`;
-  logger.debug('[encryption] decryptFromWireString', { variant, format, wireStrLength: wireStr.length });
+  logger.debug('[encryption] decryptFromWireString', {
+    variant,
+    format,
+    wireStrLength: wireStr.length,
+  });
   try {
     return await wireDecode(wireStr, createCipher(key, variant));
   } catch (e) {
-    logger.error('[encryption] decryptFromWireString: decryption failed', toError(e), { variant, format });
+    logger.error('[encryption] decryptFromWireString: decryption failed', toError(e), {
+      variant,
+      format,
+    });
     return null;
   }
 }

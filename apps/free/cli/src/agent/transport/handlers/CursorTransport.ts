@@ -51,7 +51,8 @@ export class CursorTransport extends DefaultTransport {
         message: {
           type: 'status',
           status: 'error',
-          detail: 'Cursor Agent 未登录。请先运行 `cursor-agent login` 或设置 CURSOR_API_KEY 环境变量。',
+          detail:
+            'Cursor Agent 未登录。请先运行 `cursor-agent login` 或设置 CURSOR_API_KEY 环境变量。',
         },
       };
     }

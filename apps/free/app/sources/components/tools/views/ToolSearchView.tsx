@@ -72,11 +72,7 @@ export const ToolSearchView = React.memo<ToolViewProps>(({ tool }) => {
           const display = formatToolName(name);
           return (
             <View key={name + index} style={styles.item}>
-              <Ionicons
-                name="extension-puzzle-outline"
-                size={14}
-                style={styles.itemIcon}
-              />
+              <Ionicons name="extension-puzzle-outline" size={14} style={styles.itemIcon} />
               <Text style={styles.itemText} numberOfLines={1}>
                 {display}
               </Text>

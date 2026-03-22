@@ -24,7 +24,13 @@ import { safeStringify, toError } from '@saaskit-dev/agentbridge';
 import { getCurrentTrace } from './utils/requestTrace';
 import { FileSink, cleanupOldLogs } from '@saaskit-dev/agentbridge/telemetry/node';
 import { shutdownRelay } from '@/utils/telemetryRelay';
-import { awaitShutdown, onShutdown, SHUTDOWN_PHASE, triggerShutdown, isShuttingDown } from '@/utils/shutdown';
+import {
+  awaitShutdown,
+  onShutdown,
+  SHUTDOWN_PHASE,
+  triggerShutdown,
+  isShuttingDown,
+} from '@/utils/shutdown';
 
 // ─── Telemetry initialization ────────────────────────────────────────────────
 
@@ -110,9 +116,13 @@ const log = new Logger('main');
 async function main() {
   // Storage
   await db.$connect();
-  onShutdown('db', async () => {
-    await closePGlite(); // Properly close PGLite to prevent corruption
-  }, SHUTDOWN_PHASE.STORAGE);
+  onShutdown(
+    'db',
+    async () => {
+      await closePGlite(); // Properly close PGLite to prevent corruption
+    },
+    SHUTDOWN_PHASE.STORAGE
+  );
   onShutdown('activity-cache', async () => {
     activityCache.shutdown();
   });

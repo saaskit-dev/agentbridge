@@ -35,10 +35,7 @@ function buildCodexEnv(): Record<string, string> {
   };
 }
 
-export function buildAgentAuthEnv(
-  agentType: AgentType,
-  token?: string
-): Record<string, string> {
+export function buildAgentAuthEnv(agentType: AgentType, token?: string): Record<string, string> {
   if (agentType === 'codex') {
     return buildCodexEnv();
   }

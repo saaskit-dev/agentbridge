@@ -4,6 +4,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useCallback } from 'react';
 import { View, Text, Animated } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { AgentFlavorIcon } from '@/components/AgentFlavorIcon';
 import { Avatar } from '@/components/Avatar';
 import { getAgentDisplayName, normalizeAgentFlavor } from '@/sync/agentFlavor';
 import { CodeView } from '@/components/CodeView';
@@ -213,7 +214,8 @@ function SessionInfoContent({ session }: { session: Session }) {
   }, []);
 
   const handleCopyUpdateCommand = useCallback(async () => {
-    const updateCommand = 'curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash';
+    const updateCommand =
+      'curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash';
     try {
       await Clipboard.setStringAsync(updateCommand);
       Modal.alert(t('common.success'), updateCommand);
@@ -293,18 +295,26 @@ function SessionInfoContent({ session }: { session: Session }) {
         <ItemGroup>
           <Item
             title={t('sessionInfo.freeSessionId')}
-            subtitle={(() => { const compact = session.id.replace(/-/g, ''); return `${compact.substring(0, 8)}...${compact.substring(compact.length - 8)}`; })()}
+            subtitle={(() => {
+              const compact = session.id.replace(/-/g, '');
+              return `${compact.substring(0, 8)}...${compact.substring(compact.length - 8)}`;
+            })()}
             icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
             onPress={handleCopySessionId}
           />
           {(session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId) && (
             <Item
               title={t('sessionInfo.agentSessionId')}
-              subtitle={(() => { const sid = (session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId)!.replace(/-/g, ''); return `${sid.substring(0, 8)}...${sid.substring(sid.length - 8)}`; })()}
+              subtitle={(() => {
+                const sid = (session.metadata?.agentSessionId ??
+                  session.metadata?.claudeSessionId)!.replace(/-/g, '');
+                return `${sid.substring(0, 8)}...${sid.substring(sid.length - 8)}`;
+              })()}
               icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
               onPress={async () => {
                 try {
-                  const sid = (session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId)!;
+                  const sid = (session.metadata?.agentSessionId ??
+                    session.metadata?.claudeSessionId)!;
                   await Clipboard.setStringAsync(sid.replace(/-/g, ''));
                   Modal.alert(t('common.success'), t('sessionInfo.agentSessionIdCopied'));
                 } catch (error) {
@@ -414,7 +424,7 @@ function SessionInfoContent({ session }: { session: Session }) {
             <Item
               title={t('sessionInfo.aiProvider')}
               subtitle={getAgentDisplayName(session.metadata.flavor ?? 'claude')}
-              icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
+              icon={<AgentFlavorIcon flavor={session.metadata?.flavor} size={29} />}
               showChevron={false}
             />
             <Item

@@ -252,6 +252,12 @@ export type FreeEphemeralEvent =
       messageId: string;
       delta: string;
       timestamp: number;
+    }
+  | {
+      type: 'session-stall';
+      sessionId: string;
+      thinking: boolean;
+      stalledSince: number;
     };
 
 // === EVENT PAYLOAD TYPES ===

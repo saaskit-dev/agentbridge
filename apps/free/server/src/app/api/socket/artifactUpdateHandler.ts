@@ -67,7 +67,11 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
           },
         });
       } catch (error) {
-        log.error('Error in artifact-read', undefined, { userId, artifactId: data?.artifactId, error: safeStringify(error) });
+        log.error('Error in artifact-read', undefined, {
+          userId,
+          artifactId: data?.artifactId,
+          error: safeStringify(error),
+        });
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }
@@ -273,7 +277,11 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
 
         callback(response);
       } catch (error) {
-        log.error('Error in artifact-update', undefined, { userId, artifactId: data?.artifactId, error: safeStringify(error) });
+        log.error('Error in artifact-update', undefined, {
+          userId,
+          artifactId: data?.artifactId,
+          error: safeStringify(error),
+        });
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }
@@ -434,7 +442,11 @@ export function artifactUpdateHandler(userId: string, socket: Socket) {
         // Send success response
         callback({ result: 'success' });
       } catch (error) {
-        log.error('Error in artifact-delete', undefined, { userId, artifactId: data?.artifactId, error: safeStringify(error) });
+        log.error('Error in artifact-delete', undefined, {
+          userId,
+          artifactId: data?.artifactId,
+          error: safeStringify(error),
+        });
         if (callback) {
           callback({ result: 'error', message: 'Internal error' });
         }

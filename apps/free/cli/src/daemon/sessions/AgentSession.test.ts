@@ -28,7 +28,9 @@ class TestAgentSession extends AgentSession<string> {
   createBackend(): AgentBackend {
     this.mockBackend = {
       agentType: 'claude',
-      output: { [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }) } as never,
+      output: {
+        [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }),
+      } as never,
       start: vi.fn().mockResolvedValue(undefined),
       sendMessage: vi.fn().mockResolvedValue(undefined),
       abort: vi.fn().mockResolvedValue(undefined),
@@ -144,7 +146,7 @@ describe('AgentSession.shutdown()', () => {
 
     await session.shutdown('no_session');
 
-    const sessionStateMsgs = broadcasts.filter((m) => m.type === 'session_state');
+    const sessionStateMsgs = broadcasts.filter(m => m.type === 'session_state');
     expect(sessionStateMsgs).toHaveLength(0);
   });
 
@@ -157,7 +159,7 @@ describe('AgentSession.shutdown()', () => {
     await session.shutdown('second');
 
     const archived = broadcasts.filter(
-      (m) => m.type === 'session_state' && (m as { state?: string }).state === 'archived'
+      m => m.type === 'session_state' && (m as { state?: string }).state === 'archived'
     );
     expect(archived).toHaveLength(1);
   });
@@ -383,7 +385,9 @@ describe('AgentSession visible backend failures', () => {
       agentType: 'claude' as const,
       output,
       start: vi.fn().mockResolvedValue(undefined),
-      sendMessage: vi.fn().mockRejectedValue(new Error('Initialize timeout after 30000ms - codex did not respond')),
+      sendMessage: vi
+        .fn()
+        .mockRejectedValue(new Error('Initialize timeout after 30000ms - codex did not respond')),
       abort: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn().mockImplementation(async () => {
         output.end();
@@ -413,97 +417,112 @@ describe('AgentSession visible backend failures', () => {
     await runPromise;
   });
 
-  it('auto-restarts backend after unexpected crash and enters dormant mode', { timeout: 10_000 }, async () => {
-    // Use short cooldown for test speed
-    const origCooldown = TestAgentSession.RESTART_COOLDOWN_MS;
-    TestAgentSession.RESTART_COOLDOWN_MS = 100;
+  it(
+    'auto-restarts backend after unexpected crash and enters dormant mode',
+    { timeout: 10_000 },
+    async () => {
+      // Use short cooldown for test speed
+      const origCooldown = TestAgentSession.RESTART_COOLDOWN_MS;
+      TestAgentSession.RESTART_COOLDOWN_MS = 100;
 
-    try {
+      try {
+        const session = new TestAgentSession(makeOpts());
+        const apiSession = makeMockSession('sess-dead-backend');
+        session.injectSession(apiSession);
+        session.injectMessageQueue();
+
+        let startCount = 0;
+        vi.spyOn(session, 'createBackend').mockImplementation(() => {
+          startCount++;
+          const output = new PushableAsyncIterable<NormalizedMessage>();
+          return {
+            agentType: 'claude' as const,
+            output,
+            start: vi.fn().mockImplementation(async () => {
+              // Simulate backend dying shortly after start
+              setTimeout(() => output.end(), 50);
+            }),
+            sendMessage: vi.fn().mockResolvedValue(undefined),
+            abort: vi.fn().mockResolvedValue(undefined),
+            stop: vi.fn().mockImplementation(async () => {
+              output.end();
+            }),
+          } satisfies AgentBackend;
+        });
+
+        const runPromise = session.run();
+
+        // Wait for restart cycles to exhaust and enter dormant mode
+        await new Promise(r => setTimeout(r, 2000));
+
+        // 1 initial + 3 restarts = 4 total backend creations
+        expect(startCount).toBeGreaterThanOrEqual(2); // At least one restart
+
+        // Should have published crash error events + dormant mode notification
+        const errorCalls = (
+          apiSession.sendNormalizedMessage as ReturnType<typeof vi.fn>
+        ).mock.calls.filter((c: any) => c[0]?.role === 'event' && c[0]?.content?.type === 'error');
+        expect(errorCalls.length).toBeGreaterThanOrEqual(1);
+
+        // The dormant mode message should tell user to send a message or archive
+        const dormantMsg = errorCalls.find((c: any) =>
+          c[0]?.content?.message?.includes('Send a message to restart')
+        );
+        expect(dormantMsg).toBeDefined();
+
+        // Session should still be alive (dormant, waiting for user action) — kill it
+        session.handleSigint();
+        await runPromise;
+      } finally {
+        TestAgentSession.RESTART_COOLDOWN_MS = origCooldown;
+      }
+    }
+  );
+
+  it(
+    'enters dormant mode when backend.start throws and recovers on user message',
+    { timeout: 10_000 },
+    async () => {
       const session = new TestAgentSession(makeOpts());
-      const apiSession = makeMockSession('sess-dead-backend');
+      const apiSession = makeMockSession('sess-start-error');
       session.injectSession(apiSession);
       session.injectMessageQueue();
 
-      let startCount = 0;
+      let startCallCount = 0;
       vi.spyOn(session, 'createBackend').mockImplementation(() => {
-        startCount++;
+        startCallCount++;
         const output = new PushableAsyncIterable<NormalizedMessage>();
         return {
           agentType: 'claude' as const,
           output,
-          start: vi.fn().mockImplementation(async () => {
-            // Simulate backend dying shortly after start
-            setTimeout(() => output.end(), 50);
-          }),
+          start: vi.fn().mockRejectedValue(new Error('agent boot failed')),
           sendMessage: vi.fn().mockResolvedValue(undefined),
           abort: vi.fn().mockResolvedValue(undefined),
-          stop: vi.fn().mockImplementation(async () => { output.end(); }),
+          stop: vi.fn().mockImplementation(async () => {
+            output.end();
+          }),
         } satisfies AgentBackend;
       });
 
       const runPromise = session.run();
 
-      // Wait for restart cycles to exhaust and enter dormant mode
-      await new Promise(r => setTimeout(r, 2000));
+      // Wait for dormant mode to be entered
+      await new Promise(r => setTimeout(r, 500));
 
-      // 1 initial + 3 restarts = 4 total backend creations
-      expect(startCount).toBeGreaterThanOrEqual(2); // At least one restart
+      // Should have published an error event with retry instructions
+      expect(apiSession.sendNormalizedMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'event',
+          content: expect.objectContaining({
+            type: 'error',
+            retryable: true,
+          }),
+        })
+      );
 
-      // Should have published crash error events + dormant mode notification
-      const errorCalls = (apiSession.sendNormalizedMessage as ReturnType<typeof vi.fn>).mock.calls
-        .filter((c: any) => c[0]?.role === 'event' && c[0]?.content?.type === 'error');
-      expect(errorCalls.length).toBeGreaterThanOrEqual(1);
-
-      // The dormant mode message should tell user to send a message or archive
-      const dormantMsg = errorCalls.find((c: any) => c[0]?.content?.message?.includes('Send a message to restart'));
-      expect(dormantMsg).toBeDefined();
-
-      // Session should still be alive (dormant, waiting for user action) — kill it
+      // Session is still alive — signal exit
       session.handleSigint();
       await runPromise;
-    } finally {
-      TestAgentSession.RESTART_COOLDOWN_MS = origCooldown;
     }
-  });
-
-  it('enters dormant mode when backend.start throws and recovers on user message', { timeout: 10_000 }, async () => {
-    const session = new TestAgentSession(makeOpts());
-    const apiSession = makeMockSession('sess-start-error');
-    session.injectSession(apiSession);
-    session.injectMessageQueue();
-
-    let startCallCount = 0;
-    vi.spyOn(session, 'createBackend').mockImplementation(() => {
-      startCallCount++;
-      const output = new PushableAsyncIterable<NormalizedMessage>();
-      return {
-        agentType: 'claude' as const,
-        output,
-        start: vi.fn().mockRejectedValue(new Error('agent boot failed')),
-        sendMessage: vi.fn().mockResolvedValue(undefined),
-        abort: vi.fn().mockResolvedValue(undefined),
-        stop: vi.fn().mockImplementation(async () => { output.end(); }),
-      } satisfies AgentBackend;
-    });
-
-    const runPromise = session.run();
-
-    // Wait for dormant mode to be entered
-    await new Promise(r => setTimeout(r, 500));
-
-    // Should have published an error event with retry instructions
-    expect(apiSession.sendNormalizedMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        role: 'event',
-        content: expect.objectContaining({
-          type: 'error',
-          retryable: true,
-        }),
-      })
-    );
-
-    // Session is still alive — signal exit
-    session.handleSigint();
-    await runPromise;
-  });
+  );
 });

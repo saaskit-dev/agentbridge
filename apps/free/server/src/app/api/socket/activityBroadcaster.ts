@@ -15,12 +15,19 @@ export interface ActivityBroadcasterDeps {
 }
 
 const FLUSH_INTERVAL_MS = 3000;
+const STALL_THRESHOLD_MS = 5 * 60 * 1000;
 
 export class ActivityBroadcaster {
   /** userId → sessionId → latest activity */
   private pending = new Map<string, Map<string, ActivityEntry>>();
   /** sessionId → last emitted thinking state (for change detection) */
   private lastThinkingState = new Map<string, boolean>();
+  /** sessionId → userId */
+  private sessionOwner = new Map<string, string>();
+  /** sessionId → timestamp of last meaningful content (send-messages) */
+  private lastContentAt = new Map<string, number>();
+  /** sessionId → whether stall has already been emitted (avoid repeated alerts) */
+  private stallEmitted = new Set<string>();
   private intervalId: ReturnType<typeof setInterval>;
   private deps: ActivityBroadcasterDeps;
 
@@ -33,6 +40,7 @@ export class ActivityBroadcaster {
   }
 
   queue(userId: string, sid: string, active: boolean, activeAt: number, thinking: boolean): void {
+    this.sessionOwner.set(sid, userId);
     const prevThinking = this.lastThinkingState.get(sid);
     const thinkingChanged = prevThinking !== undefined && prevThinking !== thinking;
 
@@ -48,7 +56,11 @@ export class ActivityBroadcaster {
       });
       // Remove from pending to avoid duplicate emission in next batch flush
       this.pending.get(userId)?.delete(sid);
-      log.debug('[activityBroadcaster] immediate flush (thinking changed)', { userId, sessionId: sid, thinking });
+      log.debug('[activityBroadcaster] immediate flush (thinking changed)', {
+        userId,
+        sessionId: sid,
+        thinking,
+      });
       return;
     }
 
@@ -69,10 +81,23 @@ export class ActivityBroadcaster {
       }
     }
     this.lastThinkingState.delete(sid);
+    this.lastContentAt.delete(sid);
+    this.stallEmitted.delete(sid);
+    this.sessionOwner.delete(sid);
   }
 
-  /** Flush all pending activity into batch-activity ephemerals */
+  /** Record that meaningful content was produced for a session (called from send-messages handler) */
+  recordContent(sid: string): void {
+    this.lastContentAt.set(sid, Date.now());
+    this.stallEmitted.delete(sid);
+  }
+
+  /** Flush all pending activity into batch-activity ephemerals + check for stalled sessions */
   flush(): void {
+    const now = Date.now();
+
+    this.checkStalledSessions(now);
+
     for (const [userId, sessions] of this.pending) {
       if (sessions.size === 0) continue;
 
@@ -94,6 +119,35 @@ export class ActivityBroadcaster {
       log.debug('[activityBroadcaster] batch flush', { userId, count: activities.length });
     }
     this.pending.clear();
+  }
+
+  private checkStalledSessions(now: number): void {
+    for (const [sid, thinking] of this.lastThinkingState) {
+      if (!thinking) continue;
+      if (this.stallEmitted.has(sid)) continue;
+
+      const contentAt = this.lastContentAt.get(sid);
+      if (contentAt && now - contentAt < STALL_THRESHOLD_MS) continue;
+
+      const entry = this.lastThinkingState.get(sid);
+      if (!entry) continue;
+
+      this.stallEmitted.add(sid);
+      log.warn('[activityBroadcaster] session stall detected', { sessionId: sid });
+
+      const owner = this.sessionOwner.get(sid);
+      if (owner) {
+        this.deps.emitEphemeral({
+          userId: owner,
+          payload: {
+            type: 'session-stall',
+            sessionId: sid,
+            thinking: true,
+            stalledSince: contentAt ?? 0,
+          },
+        });
+      }
+    }
   }
 
   shutdown(): void {

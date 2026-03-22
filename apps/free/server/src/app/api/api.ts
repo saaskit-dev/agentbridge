@@ -43,19 +43,15 @@ export async function startApi() {
     bodyLimit: 1024 * 1024 * 100, // 100MB
   });
   app.register(import('@fastify/cors'), {
-    origin: process.env.APP_ENV === 'development'
-      ? true
-      : [
-          'https://free.saaskit.app',
-          'https://free-server.saaskit.app',
-          'https://app.happy.engineering',
-        ],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Trace-Id',
-      'X-Socket-Id',
-    ],
+    origin:
+      process.env.APP_ENV === 'development'
+        ? true
+        : [
+            'https://free.saaskit.app',
+            'https://free-server.saaskit.app',
+            'https://app.happy.engineering',
+          ],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Trace-Id', 'X-Socket-Id'],
     methods: ['GET', 'POST', 'DELETE'],
   });
   app.get('/', function (request, reply) {
@@ -146,7 +142,7 @@ export async function startApi() {
     try {
       let prismaMetrics = '';
       try {
-        prismaMetrics = await (db as any).$metrics?.prometheus?.() ?? '';
+        prismaMetrics = (await (db as any).$metrics?.prometheus?.()) ?? '';
       } catch {
         // Prisma metrics require the "metrics" preview feature — skip silently if unavailable
       }
@@ -163,11 +159,15 @@ export async function startApi() {
   // Start HTTP
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
   await app.listen({ port, host: '0.0.0.0' });
-  onShutdown('http', async () => {
-    log.info('[shutdown] http close: start');
-    await app.close();
-    log.info('[shutdown] http close: done');
-  }, SHUTDOWN_PHASE.NETWORK);
+  onShutdown(
+    'http',
+    async () => {
+      log.info('[shutdown] http close: start');
+      await app.close();
+      log.info('[shutdown] http close: done');
+    },
+    SHUTDOWN_PHASE.NETWORK
+  );
 
   // Start Socket
   await startSocket(typed);

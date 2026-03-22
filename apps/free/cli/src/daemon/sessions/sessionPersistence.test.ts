@@ -122,4 +122,3 @@ describe('sessionPersistence', () => {
     expect(all).toHaveLength(1);
   });
 });
-

@@ -18,6 +18,8 @@ let currentSessionId: string | null = null;
 export async function startRealtimeSession(sessionId: string, initialContext?: string) {
   if (!voiceSession) {
     logger.warn('No voice session registered');
+    const { Modal } = require('@/modal');
+    Modal.alert(t('common.error'), t('errors.voiceNotInitialized'));
     return;
   }
 
@@ -35,6 +37,8 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
 
   if (!agentId) {
     logger.error('Agent ID not configured');
+    const { Modal } = require('@/modal');
+    Modal.alert(t('common.error'), t('errors.voiceNotConfigured'));
     return;
   }
 
@@ -64,6 +68,12 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     logger.debug('[Voice] fetchVoiceToken response', { sessionId, allowed: response.allowed });
 
     if (!response.allowed) {
+      if (!response.token) {
+        logger.debug('[Voice] Token not available, server may not support voice', { sessionId });
+        const { Modal } = require('@/modal');
+        Modal.alert(t('common.error'), t('errors.voiceTokenRejected'));
+        return;
+      }
       logger.debug('[Voice] Not allowed, presenting paywall', { sessionId });
       const { sync } = require('@/sync/sync');
       const result = await sync.presentPaywall();
@@ -115,7 +125,9 @@ export async function stopRealtimeSession() {
     currentSessionId = null;
     voiceSessionStarted = false;
   } catch (error) {
-    logger.error('Failed to stop realtime session', toError(error), { sessionId: currentSessionId });
+    logger.error('Failed to stop realtime session', toError(error), {
+      sessionId: currentSessionId,
+    });
   }
 }
 

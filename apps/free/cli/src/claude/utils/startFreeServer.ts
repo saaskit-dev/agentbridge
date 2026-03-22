@@ -18,7 +18,7 @@ export async function startFreeServer(client: ApiSessionClient) {
   const handler = async (title: string) => {
     logger.debug('[freeMCP] Changing title to:', title);
     try {
-      client.updateMetadata((m) => ({ ...m, summary: { text: title, updatedAt: Date.now() } }));
+      client.updateMetadata(m => ({ ...m, summary: { text: title, updatedAt: Date.now() } }));
       return { success: true };
     } catch (error) {
       return { success: false, error: safeStringify(error) };
@@ -39,11 +39,13 @@ export async function startFreeServer(client: ApiSessionClient) {
         mimeType: 'application/json',
       },
       async () => ({
-        contents: [{
-          uri: 'free://tools',
-          text: JSON.stringify({ tools: ['change_title'] }),
-          mimeType: 'application/json',
-        }],
+        contents: [
+          {
+            uri: 'free://tools',
+            text: JSON.stringify({ tools: ['change_title'] }),
+            mimeType: 'application/json',
+          },
+        ],
       })
     );
 
@@ -62,12 +64,19 @@ export async function startFreeServer(client: ApiSessionClient) {
 
         if (response.success) {
           return {
-            content: [{ type: 'text', text: `Successfully changed chat title to: "${args.title}"` }],
+            content: [
+              { type: 'text', text: `Successfully changed chat title to: "${args.title}"` },
+            ],
             isError: false,
           };
         } else {
           return {
-            content: [{ type: 'text', text: `Failed to change chat title: ${response.error || 'Unknown error'}` }],
+            content: [
+              {
+                type: 'text',
+                text: `Failed to change chat title: ${response.error || 'Unknown error'}`,
+              },
+            ],
             isError: true,
           };
         }

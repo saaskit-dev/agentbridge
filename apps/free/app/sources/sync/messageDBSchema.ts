@@ -20,10 +20,13 @@ export interface MessageDB {
   init(): Promise<void>;
 
   /** Read cached messages for a session, ordered by seq ASC. */
-  getMessages(sessionId: string, opts: {
-    limit: number;
-    beforeSeq?: number;
-  }): Promise<CachedMessage[]>;
+  getMessages(
+    sessionId: string,
+    opts: {
+      limit: number;
+      beforeSeq?: number;
+    }
+  ): Promise<CachedMessage[]>;
 
   /** Read the last-known seq watermark for a session. */
   getLastSeq(sessionId: string): Promise<number>;

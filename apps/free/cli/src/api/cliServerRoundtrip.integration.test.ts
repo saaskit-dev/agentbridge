@@ -68,7 +68,7 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
     expect(ack.ok).toBe(true);
 
     const message = await cliClient.waitForUserMessage(
-      (candidate) => candidate.content.text === text,
+      candidate => candidate.content.text === text,
       10_000,
       'app message delivered to cli'
     );
@@ -100,7 +100,7 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
     await cliClient.flush();
 
     const update = await appClient.waitForUpdate(
-      (event) =>
+      event =>
         event.body?.t === 'new-message' &&
         event.body.sid === sessionId &&
         !!event.body.message?.content?.c,
@@ -112,7 +112,10 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
       throw new Error(`Expected new-message update, got ${update.body.t}`);
     }
 
-    const decrypted = await appClient.decryptSessionMessage(session, update.body.message as any) as any;
+    const decrypted = (await appClient.decryptSessionMessage(
+      session,
+      update.body.message as any
+    )) as any;
     expect(decrypted?.content?.[0]?.text).toBe(replyText);
   });
 
@@ -134,14 +137,14 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
       },
     };
 
-    cliClient.updateMetadata((metadata) => ({
+    cliClient.updateMetadata(metadata => ({
       ...metadata,
       summary: {
         text: 'CLI metadata update from integration test',
         updatedAt: Date.now(),
       },
     }));
-    cliClient.updateAgentState((state) => ({
+    cliClient.updateAgentState(state => ({
       ...state,
       status: 'working',
       source: 'integration-test',
@@ -149,7 +152,7 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
     cliClient.updateCapabilities(capabilities);
 
     const metadataUpdate = await appClient.waitForUpdate(
-      (event) =>
+      event =>
         event.body?.t === 'update-session' &&
         event.body.id === sessionId &&
         event.body.metadata?.version === nextMetadataVersion,
@@ -157,7 +160,7 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
       'metadata update broadcast'
     );
     const agentStateUpdate = await appClient.waitForUpdate(
-      (event) =>
+      event =>
         event.body?.t === 'update-session' &&
         event.body.id === sessionId &&
         event.body.agentState?.version === nextStateVersion,
@@ -165,7 +168,7 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
       'agent state update broadcast'
     );
     const capabilitiesUpdate = await appClient.waitForUpdate(
-      (event) =>
+      event =>
         event.body?.t === 'update-session' &&
         event.body.id === sessionId &&
         event.body.capabilities?.version === nextCapabilitiesVersion,
@@ -177,10 +180,10 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
       session,
       metadataUpdate.body as UpdateSessionBody
     );
-    const decryptedAgentState = await appClient.decryptAgentState(
+    const decryptedAgentState = (await appClient.decryptAgentState(
       session,
       agentStateUpdate.body as UpdateSessionBody
-    ) as Record<string, unknown> | null;
+    )) as Record<string, unknown> | null;
     const decryptedCapabilities = await appClient.decryptCapabilities(
       session,
       capabilitiesUpdate.body as UpdateSessionBody

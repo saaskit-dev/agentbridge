@@ -2,10 +2,7 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { io, type Socket } from 'socket.io-client';
 import { ApiClient } from '@/api/api';
-import {
-  decryptFromWireString,
-  encryptToWireString,
-} from '@/api/encryption';
+import { decryptFromWireString, encryptToWireString } from '@/api/encryption';
 import type {
   Metadata,
   Session,
@@ -97,12 +94,12 @@ export class FakeAppClient {
 
     await new Promise<void>((resolve, reject) => {
       socket.once('connect', () => resolve());
-      socket.once('connect_error', (error) =>
+      socket.once('connect_error', error =>
         reject(new Error(`FakeAppClient user socket connect failed: ${error.message}`))
       );
     });
 
-    socket.on('update', (data) => {
+    socket.on('update', data => {
       this.updates.push(data);
     });
 
@@ -133,7 +130,9 @@ export class FakeAppClient {
       ...(opts?.meta ? { meta: opts.meta } : {}),
     };
     const encryptedContent = await encryptToWireString(
-      session.encryptionKey, session.encryptionVariant, payload
+      session.encryptionKey,
+      session.encryptionVariant,
+      payload
     );
 
     const ack = await this.userSocket.timeout(30000).emitWithAck('send-messages', {
@@ -181,11 +180,11 @@ export class FakeAppClient {
       return null;
     }
 
-    return await decryptFromWireString(
+    return (await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
       body.capabilities.value
-    ) as SessionCapabilities | null;
+    )) as SessionCapabilities | null;
   }
 
   async decryptMetadata(session: Session, body: UpdateSessionBody): Promise<Metadata | null> {
@@ -193,11 +192,11 @@ export class FakeAppClient {
       return null;
     }
 
-    return await decryptFromWireString(
+    return (await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
       body.metadata.value
-    ) as Metadata | null;
+    )) as Metadata | null;
   }
 
   async decryptAgentState(session: Session, body: UpdateSessionBody): Promise<AgentState | null> {
@@ -205,11 +204,11 @@ export class FakeAppClient {
       return null;
     }
 
-    return await decryptFromWireString(
+    return (await decryptFromWireString(
       session.encryptionKey,
       session.encryptionVariant,
       body.agentState.value
-    ) as AgentState | null;
+    )) as AgentState | null;
   }
 
   /** Discard all accumulated updates so subsequent waitForUpdate calls only see fresh events. */

@@ -124,7 +124,15 @@ export async function stopDaemonHttp(): Promise<void> {
  * - not_running: no state file found
  */
 export type DaemonRunningState =
-  | { status: 'running'; pid: number; startTime: string; version: string; httpPort?: number; buildHash?: string; buildTime?: string }
+  | {
+      status: 'running';
+      pid: number;
+      startTime: string;
+      version: string;
+      httpPort?: number;
+      buildHash?: string;
+      buildTime?: string;
+    }
   | { status: 'stale'; pid: number }
   | { status: 'not_running' };
 

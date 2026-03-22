@@ -233,7 +233,6 @@ export const SettingsView = React.memo(function SettingsView() {
         </ItemGroup>
       )}
 
-
       {/* Social */}
       {/* <ItemGroup title={t('settings.social')}>
                 <Item

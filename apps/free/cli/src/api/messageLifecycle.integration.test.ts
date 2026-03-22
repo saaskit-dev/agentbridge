@@ -10,10 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { io, type Socket } from 'socket.io-client';
-import {
-  decryptFromWireString,
-  encryptToWireString,
-} from '@/api/encryption';
+import { decryptFromWireString, encryptToWireString } from '@/api/encryption';
 import { configuration } from '@/configuration';
 import { readCredentials } from '@/persistence';
 import type { Session, UpdateSessionBody } from '@/api/types';
@@ -107,22 +104,22 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
     await Promise.all([
       new Promise<void>((resolve, reject) => {
         userSocket.on('connect', resolve);
-        userSocket.on('connect_error', (error) =>
+        userSocket.on('connect_error', error =>
           reject(new Error(`user socket connect failed: ${error.message}`))
         );
       }),
       new Promise<void>((resolve, reject) => {
         sessionSocket.on('connect', resolve);
-        sessionSocket.on('connect_error', (error) =>
+        sessionSocket.on('connect_error', error =>
           reject(new Error(`session socket connect failed: ${error.message}`))
         );
       }),
     ]);
 
-    userSocket.on('update', (data) => {
+    userSocket.on('update', data => {
       userUpdates.push(data);
     });
-    sessionSocket.on('update', (data) => {
+    sessionSocket.on('update', data => {
       sessionUpdates.push(data);
     });
 
@@ -170,13 +167,13 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
 
     await waitForEvent(
       userUpdates,
-      (event) => event.body?.t === 'new-message' && event.body?.sid === sessionId,
+      event => event.body?.t === 'new-message' && event.body?.sid === sessionId,
       10_000,
       'user-scoped new-message'
     );
     await waitForEvent(
       sessionUpdates,
-      (event) => event.body?.t === 'new-message' && event.body?.sid === sessionId,
+      event => event.body?.t === 'new-message' && event.body?.sid === sessionId,
       10_000,
       'session-scoped new-message'
     );
@@ -197,7 +194,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
 
     const agentUpdate = await waitForEvent(
       userUpdates,
-      (event) =>
+      event =>
         event.body?.t === 'new-message' &&
         event.body?.sid === sessionId &&
         !!event.body?.message?.content?.c,
@@ -222,7 +219,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
     const fetched = await appClient.fetchMessages(session);
     let persisted: unknown = undefined;
     for (const message of fetched.messages) {
-      const decryptedMessage = await appClient.decryptSessionMessage(session, message) as any;
+      const decryptedMessage = (await appClient.decryptSessionMessage(session, message)) as any;
       if (decryptedMessage?.role === 'user' && decryptedMessage?.content?.text === text) {
         persisted = message;
         break;
@@ -246,7 +243,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
 
     await new Promise<void>((resolve, reject) => {
       cliSocket.once('connect', () => resolve());
-      cliSocket.once('connect_error', (error) =>
+      cliSocket.once('connect_error', error =>
         reject(new Error(`cli socket connect failed: ${error.message}`))
       );
     });
@@ -260,9 +257,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
         available: [{ id: 'default', name: 'Default' }],
         current: 'default',
       },
-      commands: [
-        { id: 'explain', name: '/explain', description: 'Explain current plan' },
-      ],
+      commands: [{ id: 'explain', name: '/explain', description: 'Explain current plan' }],
     };
 
     const encryptedCapabilities = await encryptToWireString(
@@ -284,7 +279,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
     });
 
     const update = await appClient.waitForUpdate(
-      (event) =>
+      event =>
         event.body?.t === 'update-session' &&
         (event.body as any)?.id === sessionId &&
         (event.body as any)?.capabilities?.version === (session.capabilitiesVersion ?? 0) + 1,
@@ -316,7 +311,7 @@ describe('Message Lifecycle Integration', { timeout: 45_000 }, () => {
 
     const deleteEvent = await waitForEvent(
       userUpdates,
-      (event) => event.body?.t === 'delete-session' && event.body?.sid === sessionId,
+      event => event.body?.t === 'delete-session' && event.body?.sid === sessionId,
       10_000,
       'delete-session update'
     );

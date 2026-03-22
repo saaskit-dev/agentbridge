@@ -51,13 +51,17 @@ export function CommandPaletteItem({
   return (
     <Pressable {...pressableProps}>
       <View style={styles.content}>
-        {command.icon && (
+        {(command.iconElement || command.icon) && (
           <View style={styles.iconContainer}>
-            <Ionicons
-              name={command.icon as any}
-              size={20}
-              color={isSelected ? '#007AFF' : '#666'}
-            />
+            {command.iconElement ? (
+              command.iconElement
+            ) : (
+              <Ionicons
+                name={command.icon as any}
+                size={20}
+                color={isSelected ? '#007AFF' : '#666'}
+              />
+            )}
           </View>
         )}
         <View style={styles.textContainer}>
