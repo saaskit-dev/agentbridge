@@ -54,7 +54,9 @@ export function registerAssumeUsersCallback(cb: (userIds: string[]) => Promise<v
   _assumeUsersCallback = cb;
 }
 
-export function registerRealtimeSessionInfo(cb: () => { sessionId: string | null; voiceSession: any }) {
+export function registerRealtimeSessionInfo(
+  cb: () => { sessionId: string | null; voiceSession: any }
+) {
   _getRealtimeSessionInfo = cb;
 }
 
@@ -140,7 +142,10 @@ interface StorageState {
   socketLastConnectedAt: number | null;
   socketLastDisconnectedAt: number | null;
   sessionSendErrors: Record<string, { message: string; timestamp: number }>;
-  setSessionSendError: (sessionId: string, error: { message: string; timestamp: number } | null) => void;
+  setSessionSendError: (
+    sessionId: string,
+    error: { message: string; timestamp: number } | null
+  ) => void;
   isDataReady: boolean;
   nativeUpdateStatus: { available: boolean; updateUrl?: string } | null;
   applySessions: (
@@ -154,7 +159,10 @@ interface StorageState {
     messages: NormalizedMessage[]
   ) => { changed: string[]; hasReadyEvent: boolean; latestStatus?: 'working' | 'idle' };
   applyMessagesLoaded: (sessionId: string) => void;
-  setSessionOlderMessagesState: (sessionId: string, state: { hasOlderMessages?: boolean; isLoadingOlder?: boolean }) => void;
+  setSessionOlderMessagesState: (
+    sessionId: string,
+    state: { hasOlderMessages?: boolean; isLoadingOlder?: boolean }
+  ) => void;
   applySettings: (settings: Settings, version: number) => void;
   applySettingsLocal: (settings: Partial<Settings>) => void;
   applyLocalSettings: (settings: Partial<LocalSettings>) => void;
@@ -171,15 +179,13 @@ interface StorageState {
   updateSessionDraft: (sessionId: string, draft: string | null) => void;
   updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) => void;
   updateSessionDesiredAgentMode: (sessionId: string, mode: string | null) => void;
-  updateSessionModelMode: (
+  updateSessionModelMode: (sessionId: string, mode: string | null) => void;
+  updateSessionDesiredConfigOption: (
     sessionId: string,
-    mode: string | null
+    optionId: string,
+    value: string | null
   ) => void;
-  updateSessionDesiredConfigOption: (sessionId: string, optionId: string, value: string | null) => void;
-  updateSessionCapabilities: (
-    sessionId: string,
-    capabilities: SessionCapabilities | null
-  ) => void;
+  updateSessionCapabilities: (sessionId: string, capabilities: SessionCapabilities | null) => void;
   // Artifact methods
   applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
   addArtifact: (artifact: DecryptedArtifact) => void;
@@ -405,7 +411,7 @@ export const storage = create<StorageState>()((set, get) => {
           const savedModelMode = savedModelModes[session.id];
           const defaultPermissionMode: PermissionMode = isSandboxEnabled(session.metadata)
             ? 'yolo'
-            : (state.settings.defaultPermissionMode as PermissionMode) ?? 'accept-edits';
+            : ((state.settings.defaultPermissionMode as PermissionMode) ?? 'accept-edits');
           const resolvedPermissionMode: PermissionMode =
             existingPermissionMode ||
             savedPermissionMode ||
@@ -481,7 +487,10 @@ export const storage = create<StorageState>()((set, get) => {
             (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))
           ) {
             // Check for NEW permission requests before processing
-            const realtimeInfo = _getRealtimeSessionInfo?.() ?? { sessionId: null, voiceSession: null };
+            const realtimeInfo = _getRealtimeSessionInfo?.() ?? {
+              sessionId: null,
+              voiceSession: null,
+            };
             const currentRealtimeSessionId = realtimeInfo.sessionId;
             const voiceSession = realtimeInfo.voiceSession;
 
@@ -748,7 +757,10 @@ export const storage = create<StorageState>()((set, get) => {
 
         return result;
       }),
-    setSessionOlderMessagesState: (sessionId: string, update: { hasOlderMessages?: boolean; isLoadingOlder?: boolean }) =>
+    setSessionOlderMessagesState: (
+      sessionId: string,
+      update: { hasOlderMessages?: boolean; isLoadingOlder?: boolean }
+    ) =>
       set(state => {
         const existing = state.sessionMessages[sessionId];
         if (!existing) return state;
@@ -758,8 +770,12 @@ export const storage = create<StorageState>()((set, get) => {
             ...state.sessionMessages,
             [sessionId]: {
               ...existing,
-              ...(update.hasOlderMessages !== undefined ? { hasOlderMessages: update.hasOlderMessages } : {}),
-              ...(update.isLoadingOlder !== undefined ? { isLoadingOlder: update.isLoadingOlder } : {}),
+              ...(update.hasOlderMessages !== undefined
+                ? { hasOlderMessages: update.hasOlderMessages }
+                : {}),
+              ...(update.isLoadingOlder !== undefined
+                ? { isLoadingOlder: update.isLoadingOlder }
+                : {}),
             },
           },
         };
@@ -882,7 +898,10 @@ export const storage = create<StorageState>()((set, get) => {
           ...updates,
         };
       }),
-    setSessionSendError: (sessionId: string, error: { message: string; timestamp: number } | null) =>
+    setSessionSendError: (
+      sessionId: string,
+      error: { message: string; timestamp: number } | null
+    ) =>
       set(state => {
         const next = { ...state.sessionSendErrors };
         if (error) {
@@ -989,10 +1008,7 @@ export const storage = create<StorageState>()((set, get) => {
           sessions: updatedSessions,
         };
       }),
-    updateSessionModelMode: (
-      sessionId: string,
-      mode: string | null
-    ) =>
+    updateSessionModelMode: (sessionId: string, mode: string | null) =>
       set(state => {
         const session = state.sessions[sessionId];
         if (!session) return state;

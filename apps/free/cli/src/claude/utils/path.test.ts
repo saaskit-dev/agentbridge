@@ -28,9 +28,7 @@ describe('getProjectPath', () => {
     process.env.CLAUDE_CONFIG_DIR = '/test/home/.claude';
     const workingDir = '/Users/user/projects/app.test.js';
     const result = getProjectPath(workingDir);
-    expect(result).toBe(
-      join('/test/home/.claude', 'projects', '-Users-user-projects-app-test-js')
-    );
+    expect(result).toBe(join('/test/home/.claude', 'projects', '-Users-user-projects-app-test-js'));
   });
 
   it('should handle paths with both slashes and dots', () => {
@@ -150,9 +148,7 @@ describe('getProjectPath', () => {
       process.env.CLAUDE_CONFIG_DIR = '/custom/claude/config';
       const workingDir = '/Users/user/projects/my-app';
       const result = getProjectPath(workingDir);
-      expect(result).toBe(
-        join('/custom/claude/config', 'projects', '-Users-user-projects-my-app')
-      );
+      expect(result).toBe(join('/custom/claude/config', 'projects', '-Users-user-projects-my-app'));
     });
 
     it('should handle relative CLAUDE_CONFIG_DIR path', () => {

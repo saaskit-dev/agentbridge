@@ -80,16 +80,18 @@ function feedMessageToBuffer(msg: NormalizedMessage, buffer: MessageBuffer): voi
         }
         case 'tool-result': {
           if (block.is_error) {
-            const errText = typeof block.content === 'string'
-              ? block.content.slice(0, 200)
-              : JSON.stringify(block.content)?.slice(0, 200) ?? '';
+            const errText =
+              typeof block.content === 'string'
+                ? block.content.slice(0, 200)
+                : (JSON.stringify(block.content)?.slice(0, 200) ?? '');
             buffer.addMessage(`❌ ${errText}`, 'result');
           } else {
             buffer.addMessage(`✅ Tool Result (ID: ${block.tool_use_id})`, 'result');
             if (block.content) {
-              const outputStr = typeof block.content === 'string'
-                ? block.content
-                : JSON.stringify(block.content, null, 2);
+              const outputStr =
+                typeof block.content === 'string'
+                  ? block.content
+                  : JSON.stringify(block.content, null, 2);
               const maxLen = 200;
               if (outputStr.length > maxLen) {
                 buffer.addMessage(outputStr.slice(0, maxLen) + '... (truncated)', 'result');
@@ -158,10 +160,17 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
   // In PTY mode, InputHandler sets stdin.setRawMode(true) and forwards raw bytes
   // as pty_data IPC messages so the daemon can pipe them to the agent's stdin.
   // When attaching to an orphan session (headless / no TTY), force remote mode.
-  const isPtyMode = !opts.attachSessionId && agentType === 'claude-native' && process.stdin.isTTY === true;
+  const isPtyMode =
+    !opts.attachSessionId && agentType === 'claude-native' && process.stdin.isTTY === true;
   // Tell the daemon which backend mode to use so ClaudeBackend can spawn correctly.
   const startingMode = isPtyMode ? 'local' : 'remote';
-  logger.debug('agent config', { agent: agentType, isPtyMode, startingMode, stdinIsTTY: process.stdin.isTTY, attachSessionId: opts.attachSessionId });
+  logger.debug('agent config', {
+    agent: agentType,
+    isPtyMode,
+    startingMode,
+    stdinIsTTY: process.stdin.isTTY,
+    attachSessionId: opts.attachSessionId,
+  });
 
   // 1. Spawn or attach to session
   const sessionId = await new Promise<string>((resolve, reject) => {
@@ -174,20 +183,34 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
       if (msg.type !== 'spawn_result') return;
       clearTimeout(timeout);
       ipc.off('spawn_result', handler);
-      logger.debug('step 2/5: spawn_result received', { success: msg.success, sessionId: msg.success ? msg.sessionId : undefined, error: !msg.success ? msg.error : undefined });
+      logger.debug('step 2/5: spawn_result received', {
+        success: msg.success,
+        sessionId: msg.success ? msg.sessionId : undefined,
+        error: !msg.success ? msg.error : undefined,
+      });
       if (msg.success) {
         resolve(msg.sessionId);
       } else {
-        reject(new Error(`Daemon failed to ${opts.attachSessionId ? 'attach to' : 'spawn'} session: ${msg.error ?? 'unknown error'}`));
+        reject(
+          new Error(
+            `Daemon failed to ${opts.attachSessionId ? 'attach to' : 'spawn'} session: ${msg.error ?? 'unknown error'}`
+          )
+        );
       }
     };
     ipc.on('spawn_result', handler);
 
     if (opts.attachSessionId) {
-      logger.debug('step 2/5: sending attach_session to daemon...', { attachSessionId: opts.attachSessionId });
+      logger.debug('step 2/5: sending attach_session to daemon...', {
+        attachSessionId: opts.attachSessionId,
+      });
       ipc.send({ type: 'attach_session', sessionId: opts.attachSessionId });
     } else {
-      logger.debug('step 2/5: sending spawn_session to daemon...', { agentType, startingMode, directory: opts.spawnOpts.directory });
+      logger.debug('step 2/5: sending spawn_session to daemon...', {
+        agentType,
+        startingMode,
+        directory: opts.spawnOpts.directory,
+      });
       ipc.send({ type: 'spawn_session', opts: { ...opts.spawnOpts, startingMode } });
     }
   });
@@ -237,7 +260,7 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
   let ptyDataCount = 0;
 
   // Promise that resolves when the session ends (archived)
-  const sessionEnded = new Promise<void>((resolve) => {
+  const sessionEnded = new Promise<void>(resolve => {
     ipc.on('history', (msg: IPCServerMessage) => {
       if (msg.type !== 'history' || msg.sessionId !== sessionId) return;
       log.debug('history received', { count: msg.msgs.length });
@@ -253,7 +276,9 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
       agentOutputCount++;
       if (remoteSwitchStartAt && !firstAgentOutputAfterRemoteSwitch) {
         firstAgentOutputAfterRemoteSwitch = true;
-        const ct = Array.isArray(msg.msg?.content) ? 'array' : (msg.msg?.content as any)?.type ?? 'unknown';
+        const ct = Array.isArray(msg.msg?.content)
+          ? 'array'
+          : ((msg.msg?.content as any)?.type ?? 'unknown');
         log.info('first agent_output after remote switch', {
           elapsed: Date.now() - remoteSwitchStartAt,
           role: msg.msg?.role,
@@ -261,8 +286,14 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
         });
       }
       if (agentOutputCount <= 5 || agentOutputCount % 20 === 0) {
-        const ct = Array.isArray(msg.msg?.content) ? 'array' : (msg.msg?.content as any)?.type ?? 'unknown';
-        log.debug('agent_output', { count: agentOutputCount, role: msg.msg?.role, contentType: ct });
+        const ct = Array.isArray(msg.msg?.content)
+          ? 'array'
+          : ((msg.msg?.content as any)?.type ?? 'unknown');
+        log.debug('agent_output', {
+          count: agentOutputCount,
+          role: msg.msg?.role,
+          contentType: ct,
+        });
       }
 
       // Route to Ink display when in remote mode, otherwise to CLIRenderer.
@@ -310,7 +341,10 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
           chunk: ptyChunksSinceSwitch,
           bytes: raw.length,
           hex: raw.toString('hex').slice(0, 200),
-          ascii: raw.toString('utf-8').replace(/[^\x20-\x7e]/g, '.').slice(0, 200),
+          ascii: raw
+            .toString('utf-8')
+            .replace(/[^\x20-\x7e]/g, '.')
+            .slice(0, 200),
         });
       }
       if (localSwitchStartAt && !firstPtyChunkAfterLocalSwitch) {
@@ -394,7 +428,11 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
         if (inkInstance) {
           log.debug('transition: unmounting Ink');
           if (process.stdin.isTTY) {
-            try { process.stdin.setRawMode(false); } catch { /* ignore */ }
+            try {
+              process.stdin.setRawMode(false);
+            } catch {
+              /* ignore */
+            }
           }
           inkInstance.unmount();
           inkInstance = null;
@@ -432,7 +470,8 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
               const wasPaused = process.stdin.isPaused();
               if (!wasRaw || wasPaused) {
                 log.info('stdin state drifted after Ink cleanup, re-asserting', {
-                  wasRaw, wasPaused,
+                  wasRaw,
+                  wasPaused,
                 });
                 try {
                   process.stdin.setRawMode(true);

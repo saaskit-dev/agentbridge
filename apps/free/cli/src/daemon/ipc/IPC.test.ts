@@ -52,7 +52,11 @@ function makeMockSessionManager(overrides: Partial<SessionManager> = {}): Sessio
 }
 
 /** Wait for a specific message type on the IPCClient */
-function waitForMessage(client: IPCClient, type: IPCServerMessage['type'], timeout = 3000): Promise<IPCServerMessage> {
+function waitForMessage(
+  client: IPCClient,
+  type: IPCServerMessage['type'],
+  timeout = 3000
+): Promise<IPCServerMessage> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`Timeout waiting for ${type}`)), timeout);
     const handler = (msg: IPCServerMessage) => {
@@ -69,18 +73,23 @@ const cleanups: Array<() => void> = [];
 
 afterEach(() => {
   for (const fn of cleanups.splice(0)) {
-    try { fn(); } catch { /* ignore */ }
+    try {
+      fn();
+    } catch {
+      /* ignore */
+    }
   }
 });
 
 async function setupPair(
   sessionManager?: SessionManager,
   onSpawnSession?: (opts: SpawnSessionOptions) => Promise<SpawnSessionResult>,
-  onSessionOrphaned?: (sessionId: string) => void,
+  onSessionOrphaned?: (sessionId: string) => void
 ): Promise<{ server: IPCServer; client: IPCClient; socketPath: string }> {
   const socketPath = tmpSocket();
   const mgr = sessionManager ?? makeMockSessionManager();
-  const spawn = onSpawnSession ?? (async () => ({ type: 'success' as const, sessionId: 'spawned-1' }));
+  const spawn =
+    onSpawnSession ?? (async () => ({ type: 'success' as const, sessionId: 'spawned-1' }));
 
   const server = new IPCServer(mgr, spawn, onSessionOrphaned);
   await server.start(socketPath);
@@ -116,10 +125,10 @@ describe('IPC Protocol', () => {
   });
 
   it('spawn_session returns error on failure', async () => {
-    const { client } = await setupPair(
-      undefined,
-      async () => ({ type: 'error', error: 'auth failed' }),
-    );
+    const { client } = await setupPair(undefined, async () => ({
+      type: 'error',
+      error: 'auth failed',
+    }));
 
     const resultPromise = waitForMessage(client, 'spawn_result');
     client.send({ type: 'spawn_session', opts: { directory: '/tmp' } });
@@ -190,14 +199,18 @@ describe('IPC Protocol', () => {
     client.send({ type: 'detach', sessionId: 'sess-1' });
 
     // Small delay to ensure detach is processed
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
 
     // Broadcast should not reach client
     const received: IPCServerMessage[] = [];
-    client.on('agent_output', (msg) => received.push(msg));
-    server.broadcast('sess-1', { type: 'agent_output', sessionId: 'sess-1', msg: makeMsg('should not arrive') });
+    client.on('agent_output', msg => received.push(msg));
+    server.broadcast('sess-1', {
+      type: 'agent_output',
+      sessionId: 'sess-1',
+      msg: makeMsg('should not arrive'),
+    });
 
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 100));
     expect(received).toHaveLength(0);
   });
 
@@ -205,8 +218,16 @@ describe('IPC Protocol', () => {
     const { server, client } = await setupPair();
 
     // Broadcast before anyone attaches (builds up history ring)
-    server.broadcast('sess-1', { type: 'agent_output', sessionId: 'sess-1', msg: makeMsg('msg-1') });
-    server.broadcast('sess-1', { type: 'agent_output', sessionId: 'sess-1', msg: makeMsg('msg-2') });
+    server.broadcast('sess-1', {
+      type: 'agent_output',
+      sessionId: 'sess-1',
+      msg: makeMsg('msg-1'),
+    });
+    server.broadcast('sess-1', {
+      type: 'agent_output',
+      sessionId: 'sess-1',
+      msg: makeMsg('msg-2'),
+    });
 
     // Now attach and check history
     const histPromise = waitForMessage(client, 'history');
@@ -222,7 +243,11 @@ describe('IPC Protocol', () => {
     const { server, client } = await setupPair();
 
     // Build up history
-    server.broadcast('sess-1', { type: 'agent_output', sessionId: 'sess-1', msg: makeMsg('msg-1') });
+    server.broadcast('sess-1', {
+      type: 'agent_output',
+      sessionId: 'sess-1',
+      msg: makeMsg('msg-1'),
+    });
 
     // Evict
     server.evictHistory('sess-1');
@@ -276,7 +301,7 @@ describe('IPC Protocol', () => {
     client.send({ type: 'send_input', sessionId: 'sess-1', text: 'user input' });
 
     // Wait for server to process
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
     expect(sendInput).toHaveBeenCalledWith('user input');
   });
 
@@ -289,7 +314,7 @@ describe('IPC Protocol', () => {
 
     client.send({ type: 'abort', sessionId: 'sess-1' });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
     expect(abort).toHaveBeenCalled();
   });
 
@@ -344,7 +369,7 @@ describe('IPC Protocol', () => {
     const data = Buffer.from('keypress').toString('base64');
     client.send({ type: 'pty_data', sessionId: 'sess-1', data });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
     expect(sendPtyInput).toHaveBeenCalledWith(data);
   });
 
@@ -357,7 +382,7 @@ describe('IPC Protocol', () => {
 
     client.send({ type: 'pty_resize', sessionId: 'sess-1', cols: 120, rows: 40 });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
     expect(resizePty).toHaveBeenCalledWith(120, 40);
   });
 
@@ -370,7 +395,7 @@ describe('IPC Protocol', () => {
 
     client.send({ type: 'set_model', sessionId: 'sess-1', modelId: 'gemini-2.5-pro' });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
     expect(setModel).toHaveBeenCalledWith('gemini-2.5-pro');
   });
 
@@ -383,7 +408,7 @@ describe('IPC Protocol', () => {
 
     client.send({ type: 'set_mode', sessionId: 'sess-1', modeId: 'code' });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
     expect(setMode).toHaveBeenCalledWith('code');
   });
 
@@ -401,7 +426,7 @@ describe('IPC Protocol', () => {
       value: 'gemini-2.5-pro',
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
     expect(setConfig).toHaveBeenCalledWith('model', 'gemini-2.5-pro');
   });
 });
@@ -420,14 +445,22 @@ describe('IPCClient', () => {
     client.send({ type: 'attach', sessionId: 'sess-1' });
     await histPromise;
 
-    server.broadcast('sess-1', { type: 'agent_output', sessionId: 'sess-1', msg: makeMsg('first') });
-    await new Promise((r) => setTimeout(r, 50));
+    server.broadcast('sess-1', {
+      type: 'agent_output',
+      sessionId: 'sess-1',
+      msg: makeMsg('first'),
+    });
+    await new Promise(r => setTimeout(r, 50));
     expect(received).toHaveLength(1);
 
     // Remove handler
     client.off('agent_output', handler);
-    server.broadcast('sess-1', { type: 'agent_output', sessionId: 'sess-1', msg: makeMsg('second') });
-    await new Promise((r) => setTimeout(r, 50));
+    server.broadcast('sess-1', {
+      type: 'agent_output',
+      sessionId: 'sess-1',
+      msg: makeMsg('second'),
+    });
+    await new Promise(r => setTimeout(r, 50));
     expect(received).toHaveLength(1); // still 1, handler removed
   });
 
@@ -443,7 +476,7 @@ describe('IPCClient', () => {
     client.on('agent_output', () => count.b++);
 
     server.broadcast('sess-1', { type: 'agent_output', sessionId: 'sess-1', msg: makeMsg('test') });
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
 
     expect(count.a).toBe(1);
     expect(count.b).toBe(1);
@@ -508,7 +541,7 @@ describe('getAttachmentCount', () => {
     expect(server.getAttachmentCount('sess-1')).toBe(1);
 
     client.send({ type: 'detach', sessionId: 'sess-1' });
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 50));
 
     expect(server.getAttachmentCount('sess-1')).toBe(0);
   });
@@ -517,10 +550,8 @@ describe('getAttachmentCount', () => {
 describe('orphan detection', () => {
   it('calls onSessionOrphaned when last client disconnects', async () => {
     const orphanedSessions: string[] = [];
-    const { server, client, socketPath } = await setupPair(
-      undefined,
-      undefined,
-      (sessionId) => orphanedSessions.push(sessionId),
+    const { server, client, socketPath } = await setupPair(undefined, undefined, sessionId =>
+      orphanedSessions.push(sessionId)
     );
 
     // Attach, then disconnect — should trigger orphan callback
@@ -529,17 +560,15 @@ describe('orphan detection', () => {
     await histPromise;
 
     client.disconnect();
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 100));
 
     expect(orphanedSessions).toEqual(['sess-1']);
   });
 
   it('does not call onSessionOrphaned when socket was not attached to that session', async () => {
     const orphanedSessions: string[] = [];
-    const { server, client } = await setupPair(
-      undefined,
-      undefined,
-      (sessionId) => orphanedSessions.push(sessionId),
+    const { server, client } = await setupPair(undefined, undefined, sessionId =>
+      orphanedSessions.push(sessionId)
     );
 
     // Attach to sess-1 and broadcast history for sess-2 (without attaching)
@@ -551,7 +580,7 @@ describe('orphan detection', () => {
     server.broadcast('sess-2', { type: 'agent_output', sessionId: 'sess-2', msg: makeMsg('bg') });
 
     client.disconnect();
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 100));
 
     // Only sess-1 should be orphaned, not sess-2
     expect(orphanedSessions).toEqual(['sess-1']);
@@ -562,7 +591,7 @@ describe('orphan detection', () => {
     const socketPath = tmpSocket();
     const mgr = makeMockSessionManager();
     const spawn = async () => ({ type: 'success' as const, sessionId: 'spawned-1' });
-    const server = new IPCServer(mgr, spawn, (id) => orphanedSessions.push(id));
+    const server = new IPCServer(mgr, spawn, id => orphanedSessions.push(id));
     await server.start(socketPath);
 
     const client1 = new IPCClient();
@@ -589,7 +618,7 @@ describe('orphan detection', () => {
 
     // Disconnect one — should NOT fire orphan callback
     client1.disconnect();
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 100));
 
     expect(orphanedSessions).toEqual([]);
     expect(server.getAttachmentCount('sess-1')).toBe(1);

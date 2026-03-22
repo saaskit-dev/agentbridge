@@ -108,7 +108,13 @@ export type AgentEvent =
   | { type: 'status'; state: 'working' | 'idle' }
   | { type: 'token_count'; usage: UsageData }
   | { type: 'error'; message: string; retryable: boolean }
-  | { type: 'permission_request'; requestId: string; toolName: string; toolInput: unknown; permissionMode: string };
+  | {
+      type: 'permission_request';
+      requestId: string;
+      toolName: string;
+      toolInput: unknown;
+      permissionMode: string;
+    };
 
 // ---------------------------------------------------------------------------
 // NormalizedMessage — the single unified format for daemon → IPC → DB → App
@@ -150,12 +156,7 @@ export type AgentType =
 // SessionLifecycleState
 // ---------------------------------------------------------------------------
 
-export type SessionLifecycleState =
-  | 'initializing'
-  | 'ready'
-  | 'working'
-  | 'idle'
-  | 'archived';
+export type SessionLifecycleState = 'initializing' | 'ready' | 'working' | 'idle' | 'archived';
 
 /**
  * Who initiated a session.

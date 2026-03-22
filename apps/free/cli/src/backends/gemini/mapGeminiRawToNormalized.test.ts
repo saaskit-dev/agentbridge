@@ -35,7 +35,9 @@ describe('mapGeminiRawToNormalized', () => {
     const result = mapGeminiRawToNormalized(msg);
     expect(result?.role).toBe('event');
     expect(result?.role === 'event' && result.content.type).toBe('error');
-    expect(result?.role === 'event' && (result.content as { message: string }).message).toBe('something failed');
+    expect(result?.role === 'event' && (result.content as { message: string }).message).toBe(
+      'something failed'
+    );
   });
 
   it('maps tool-call to agent tool-call content', () => {
@@ -84,7 +86,10 @@ describe('mapGeminiRawToNormalized', () => {
     const result = mapGeminiRawToNormalized(msg);
     expect(result?.role).toBe('event');
     expect(result?.role === 'event' && result.content.type).toBe('token_count');
-    const usage = result?.role === 'event' ? (result.content as { usage: { input_tokens: number } }).usage : null;
+    const usage =
+      result?.role === 'event'
+        ? (result.content as { usage: { input_tokens: number } }).usage
+        : null;
     expect(usage?.input_tokens).toBe(100);
   });
 

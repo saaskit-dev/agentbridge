@@ -10,7 +10,10 @@ import {
 } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { IPCServer } from './ipc/IPCServer';
-import type { SpawnSessionOptions as IPCSpawnSessionOptions, SpawnSessionResult as IPCSpawnSessionResult } from './ipc/protocol';
+import type {
+  SpawnSessionOptions as IPCSpawnSessionOptions,
+  SpawnSessionResult as IPCSpawnSessionResult,
+} from './ipc/protocol';
 import { SessionManager } from './sessions/SessionManager';
 import { AgentSessionFactory } from './sessions/AgentSessionFactory';
 import { ClaudeNativeSession } from './sessions/ClaudeNativeSession';
@@ -22,7 +25,10 @@ import { CursorSession } from './sessions/CursorSession';
 import { ApiClient } from '@/api/api';
 import { MachineMetadata, DaemonState } from '@/api/types';
 import { configuration } from '@/configuration';
-import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import type {
+  SpawnSessionOptions,
+  SpawnSessionResult,
+} from '@/modules/common/registerCommonHandlers';
 import {
   writeDaemonState,
   DaemonLocallyPersistedState,
@@ -44,7 +50,10 @@ import { buildAgentAuthEnv } from './buildAgentAuthEnv';
 import { shutdownTelemetry, getProcessTraceContext } from '@/telemetry';
 import { isAnalyticsEnabledSync } from '@/api/analyticsHeaderSync';
 import { getChildProcStats } from '@/utils/childProcessUtils';
-import { readAllPersistedSessions, eraseSession as erasePersistedSession } from './sessions/sessionPersistence';
+import {
+  readAllPersistedSessions,
+  eraseSession as erasePersistedSession,
+} from './sessions/sessionPersistence';
 
 // Register all agent session types at module load time
 AgentSessionFactory.register('claude-native', ClaudeNativeSession);
@@ -220,14 +229,19 @@ export async function startDaemon(): Promise<void> {
 
     // Ensure auth and machine registration BEFORE anything else
     const { credentials, machineId } = await authAndSetupMachineIfNeeded();
-    logger.info('[DAEMON] Auth completed', { machineId, traceId: getProcessTraceContext()?.traceId });
+    logger.info('[DAEMON] Auth completed', {
+      machineId,
+      traceId: getProcessTraceContext()?.traceId,
+    });
 
     // Session registry and IPC server (assigned after setup below)
     let sessionManager: SessionManager | undefined;
     let ipcServer: IPCServer | undefined;
 
     // Spawn a new session via IPC (CLI and direct internal calls).
-    const ipcSpawnSession = async (opts: IPCSpawnSessionOptions): Promise<IPCSpawnSessionResult> => {
+    const ipcSpawnSession = async (
+      opts: IPCSpawnSessionOptions
+    ): Promise<IPCSpawnSessionResult> => {
       const agentType = opts.agent ?? 'claude';
       if (!AgentSessionFactory.isRegistered(agentType)) {
         return { type: 'error', error: `Unsupported agent type: '${agentType}'` };
@@ -293,7 +307,13 @@ export async function startDaemon(): Promise<void> {
         // Fire and forget: run() manages the full session lifecycle
         session
           .run()
-          .catch(err => logger.error('[DAEMON RUN] Session run error', toError(err), { sessionId, agentType, machineId }))
+          .catch(err =>
+            logger.error('[DAEMON RUN] Session run error', toError(err), {
+              sessionId,
+              agentType,
+              machineId,
+            })
+          )
           .finally(() => sessionManager?.unregister(sessionId));
 
         logger.info('[DAEMON] Session spawned', {
@@ -320,7 +340,9 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Mobile RPC adapter: handles directory creation and env conversion, then delegates to ipcSpawnSession.
-    const mobileSpawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+    const mobileSpawnSession = async (
+      options: SpawnSessionOptions
+    ): Promise<SpawnSessionResult> => {
       logger.debug('[DAEMON RUN] Mobile session spawn', {
         directory: options.directory,
         agent: options.agent,
@@ -404,7 +426,9 @@ export async function startDaemon(): Promise<void> {
     const onSessionOrphaned = (sessionId: string) => {
       setTimeout(() => {
         if (restartInitiated) {
-          logger.debug('[DAEMON] orphan recheck: daemon restart in progress, skipping', { sessionId });
+          logger.debug('[DAEMON] orphan recheck: daemon restart in progress, skipping', {
+            sessionId,
+          });
           return;
         }
         const session = sessionManager?.get(sessionId);
@@ -422,7 +446,10 @@ export async function startDaemon(): Promise<void> {
           return;
         }
         orphanSpawnCounts.set(sessionId, spawnCount + 1);
-        logger.info('[DAEMON] orphan session detected, spawning headless CLI to re-attach', { sessionId, attempt: spawnCount + 1 });
+        logger.info('[DAEMON] orphan session detected, spawning headless CLI to re-attach', {
+          sessionId,
+          attempt: spawnCount + 1,
+        });
         try {
           const child = spawnFreeCLI(['--attach-session', sessionId], {
             detached: true,
@@ -431,7 +458,9 @@ export async function startDaemon(): Promise<void> {
           });
           child.unref();
         } catch (err) {
-          logger.error('[DAEMON] failed to spawn headless CLI for orphan session', toError(err), { sessionId });
+          logger.error('[DAEMON] failed to spawn headless CLI for orphan session', toError(err), {
+            sessionId,
+          });
         }
       }, 3_000);
     };
@@ -499,7 +528,11 @@ export async function startDaemon(): Promise<void> {
 
     // Connect to server
     apiMachine.connect();
-    logger.info('[DAEMON] Machine connecting to server', { machineId, serverUrl: configuration.serverUrl, traceId: getProcessTraceContext()?.traceId });
+    logger.info('[DAEMON] Machine connecting to server', {
+      machineId,
+      serverUrl: configuration.serverUrl,
+      traceId: getProcessTraceContext()?.traceId,
+    });
 
     // ---------------------------------------------------------------------------
     // Session recovery — restore sessions persisted by a previous daemon instance
@@ -554,24 +587,37 @@ export async function startDaemon(): Promise<void> {
           if (session.sessionId !== data.sessionId) {
             ipcServer!.addSessionIdMapping(data.sessionId, session.sessionId);
             await erasePersistedSession(data.sessionId);
-            logger.info('[DAEMON] Session ID changed after recovery', { oldId: data.sessionId, newId: session.sessionId });
+            logger.info('[DAEMON] Session ID changed after recovery', {
+              oldId: data.sessionId,
+              newId: session.sessionId,
+            });
           }
 
           sessionManager!.register(session.sessionId, session);
           session
             .run()
-            .catch(err => logger.error('[DAEMON] Recovered session run error', toError(err), { sessionId: session.sessionId }))
+            .catch(err =>
+              logger.error('[DAEMON] Recovered session run error', toError(err), {
+                sessionId: session.sessionId,
+              })
+            )
             .finally(() => sessionManager?.unregister(session.sessionId));
 
           recoveredCount++;
         } catch (err) {
-          logger.error('[DAEMON] Session recovery failed', toError(err), { sessionId: data.sessionId, agentType: data.agentType });
+          logger.error('[DAEMON] Session recovery failed', toError(err), {
+            sessionId: data.sessionId,
+            agentType: data.agentType,
+          });
           await erasePersistedSession(data.sessionId);
         }
       }
       if (hasRecoverable) ipcServer!.endRecovery();
       if (recoveredCount > 0) {
-        logger.info('[DAEMON] Session recovery complete', { recovered: recoveredCount, total: persisted.length });
+        logger.info('[DAEMON] Session recovery complete', {
+          recovered: recoveredCount,
+          total: persisted.length,
+        });
       }
     }
 
@@ -617,7 +663,10 @@ export async function startDaemon(): Promise<void> {
     await fallbackSyncAccountSettings();
 
     // Setup periodic fallback sync
-    const fallbackSyncInterval = setInterval(fallbackSyncAccountSettings, FALLBACK_SYNC_INTERVAL_MS);
+    const fallbackSyncInterval = setInterval(
+      fallbackSyncAccountSettings,
+      FALLBACK_SYNC_INTERVAL_MS
+    );
 
     // Every 60 seconds:
     // 1. Check if daemon needs update
@@ -667,10 +716,13 @@ export async function startDaemon(): Promise<void> {
           const activeSessions = sessionManager.list();
           const busySessions = activeSessions.filter(s => s.isWorking);
           if (busySessions.length > 0) {
-            logger.info('[DAEMON RUN] Waiting for busy sessions to finish current turn before restart', {
-              busyCount: busySessions.length,
-              busySessionIds: busySessions.map(s => s.sessionId),
-            });
+            logger.info(
+              '[DAEMON RUN] Waiting for busy sessions to finish current turn before restart',
+              {
+                busyCount: busySessions.length,
+                busySessionIds: busySessions.map(s => s.sessionId),
+              }
+            );
             const WAIT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max wait
             const POLL_INTERVAL_MS = 1000;
             const deadline = Date.now() + WAIT_TIMEOUT_MS;
@@ -681,12 +733,17 @@ export async function startDaemon(): Promise<void> {
             }
             const timedOut = activeSessions.filter(s => s.isWorking);
             if (timedOut.length > 0) {
-              logger.warn('[DAEMON RUN] Timed out waiting for sessions to finish, proceeding with restart', {
-                timedOutCount: timedOut.length,
-                timedOutSessionIds: timedOut.map(s => s.sessionId),
-              });
+              logger.warn(
+                '[DAEMON RUN] Timed out waiting for sessions to finish, proceeding with restart',
+                {
+                  timedOutCount: timedOut.length,
+                  timedOutSessionIds: timedOut.map(s => s.sessionId),
+                }
+              );
             } else {
-              logger.info('[DAEMON RUN] All sessions finished current turn, proceeding with restart');
+              logger.info(
+                '[DAEMON RUN] All sessions finished current turn, proceeding with restart'
+              );
             }
           }
 
@@ -704,9 +761,7 @@ export async function startDaemon(): Promise<void> {
               count: activeSessions.length,
               sessionIds,
             });
-            const results = await Promise.allSettled(
-              activeSessions.map(s => s.stopBackend())
-            );
+            const results = await Promise.allSettled(activeSessions.map(s => s.stopBackend()));
             const failed = results.filter(r => r.status === 'rejected').length;
             logger.info('[DAEMON RUN] Backend suspend complete', {
               total: activeSessions.length,
@@ -768,11 +823,15 @@ export async function startDaemon(): Promise<void> {
         for (const s of sessions) {
           if (s.childPid) pidToSessionId.set(s.childPid, s.sessionId);
         }
-        getChildProcStats(process.pid, pidToSessionId).then(children => {
-          if (children.length > 0) {
-            logger.debug('[DAEMON RUN] mem_metrics:children', { children });
-          }
-        }).catch(() => { /* non-critical, ignore */ });
+        getChildProcStats(process.pid, pidToSessionId)
+          .then(children => {
+            if (children.length > 0) {
+              logger.debug('[DAEMON RUN] mem_metrics:children', { children });
+            }
+          })
+          .catch(() => {
+            /* non-critical, ignore */
+          });
       }
 
       // Heartbeat
@@ -826,10 +885,13 @@ export async function startDaemon(): Promise<void> {
       // so the next daemon can recover them.
       if (sessionManager) {
         sessionManager.handleSigterm();
-        logger.info('[DAEMON RUN] Session manager sigterm sent, persisted files kept for recovery', {
-          count: sessionManager.list().length,
-          sessionIds: sessionManager.list().map(s => s.sessionId),
-        });
+        logger.info(
+          '[DAEMON RUN] Session manager sigterm sent, persisted files kept for recovery',
+          {
+            count: sessionManager.list().length,
+            sessionIds: sessionManager.list().map(s => s.sessionId),
+          }
+        );
       }
 
       // Update daemon state before shutting down

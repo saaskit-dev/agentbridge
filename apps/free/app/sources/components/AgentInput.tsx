@@ -17,6 +17,7 @@ import { AgentInputAutocomplete } from './AgentInputAutocomplete';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
 import { useActiveWord } from './autocomplete/useActiveWord';
+import { AgentFlavorIcon } from './AgentFlavorIcon';
 import { FloatingOverlay } from './FloatingOverlay';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { hapticsLight, hapticsError } from './haptics';
@@ -79,7 +80,7 @@ interface AgentInputProps {
     cliStatus?: {
       'claude-native': boolean | null;
       claude?: boolean | null;
-      'codex'?: boolean | null;
+      codex?: boolean | null;
       gemini?: boolean | null;
       opencode?: boolean | null;
       cursor?: boolean | null;
@@ -760,9 +761,7 @@ export const AgentInput = React.memo(
                               <Text
                                 style={{
                                   fontSize: 14,
-                                  color: isSelected
-                                    ? theme.colors.radio.active
-                                    : theme.colors.text,
+                                  color: isSelected ? theme.colors.radio.active : theme.colors.text,
                                   ...Typography.default(),
                                 }}
                               >
@@ -787,7 +786,9 @@ export const AgentInput = React.memo(
                   {/* Model Section */}
                   {modeCapabilities?.available?.length ? (
                     <View style={styles.overlaySection}>
-                      <Text style={styles.overlaySectionTitle}>{t('agentInput.agentModeTitle')}</Text>
+                      <Text style={styles.overlaySectionTitle}>
+                        {t('agentInput.agentModeTitle')}
+                      </Text>
                       {modeCapabilities.available.map(mode => {
                         const isSelected = modeCapabilities.current === mode.id;
                         return (
@@ -803,7 +804,9 @@ export const AgentInput = React.memo(
                               alignItems: 'center',
                               paddingHorizontal: 16,
                               paddingVertical: 8,
-                              backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
+                              backgroundColor: pressed
+                                ? theme.colors.surfacePressed
+                                : 'transparent',
                               opacity: props.isSettingsBusy ? 0.5 : 1,
                             })}
                           >
@@ -869,7 +872,9 @@ export const AgentInput = React.memo(
                               alignItems: 'center',
                               paddingHorizontal: 16,
                               paddingVertical: 8,
-                              backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
+                              backgroundColor: pressed
+                                ? theme.colors.surfacePressed
+                                : 'transparent',
                               opacity: props.isSettingsBusy ? 0.5 : 1,
                             })}
                           >
@@ -935,7 +940,9 @@ export const AgentInput = React.memo(
                               alignItems: 'center',
                               paddingHorizontal: 16,
                               paddingVertical: 8,
-                              backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
+                              backgroundColor: pressed
+                                ? theme.colors.surfacePressed
+                                : 'transparent',
                               opacity: props.isSettingsBusy ? 0.5 : 1,
                             })}
                           >
@@ -1049,8 +1056,12 @@ export const AgentInput = React.memo(
                   <View style={styles.overlaySection}>
                     <Text style={styles.overlaySectionTitle}>{t('agentInput.agentTitle')}</Text>
                     {(() => {
-                      const stableAgents = props.availableAgentTypes!.filter(a => !isExperimentalAgent(a));
-                      const experimentalAgents = props.availableAgentTypes!.filter(a => isExperimentalAgent(a));
+                      const stableAgents = props.availableAgentTypes!.filter(
+                        a => !isExperimentalAgent(a)
+                      );
+                      const experimentalAgents = props.availableAgentTypes!.filter(a =>
+                        isExperimentalAgent(a)
+                      );
 
                       const renderAgentRow = (agent: AppAgentFlavor) => {
                         const isSelected = agent === props.agentType;
@@ -1097,31 +1108,14 @@ export const AgentInput = React.memo(
                                 />
                               )}
                             </View>
-                            <Ionicons
-                              name={
-                                agent.startsWith('claude')
-                                  ? 'sparkles-outline'
-                                  : agent.startsWith('codex')
-                                    ? 'code-slash-outline'
-                                    : agent === 'gemini'
-                                      ? 'logo-google'
-                                      : 'terminal-outline'
-                              }
-                              size={14}
-                              color={
-                                isSelected
-                                  ? theme.colors.radio.active
-                                  : theme.colors.textSecondary
-                              }
-                              style={{ marginRight: 8 }}
-                            />
+                            <View style={{ marginRight: 8 }}>
+                              <AgentFlavorIcon flavor={agent} size={14} />
+                            </View>
                             <View style={{ flex: 1 }}>
                               <Text
                                 style={{
                                   fontSize: 14,
-                                  color: isSelected
-                                    ? theme.colors.radio.active
-                                    : theme.colors.text,
+                                  color: isSelected ? theme.colors.radio.active : theme.colors.text,
                                   ...Typography.default(),
                                 }}
                               >
@@ -1186,7 +1180,16 @@ export const AgentInput = React.memo(
                 minHeight: 20, // Fixed minimum height to prevent jumping
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, flexWrap: 'wrap', gap: 11, rowGap: 2 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  flex: 1,
+                  flexWrap: 'wrap',
+                  gap: 11,
+                  rowGap: 2,
+                }}
+              >
                 {props.connectionStatus && (
                   <>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -1456,7 +1459,7 @@ export const AgentInput = React.memo(
                           gap: 6,
                         })}
                       >
-                        <Octicons name="cpu" size={14} color={theme.colors.button.secondary.tint} />
+                        <AgentFlavorIcon flavor={props.agentType} size={14} />
                         <Text
                           style={{
                             fontSize: 13,

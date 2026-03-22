@@ -58,11 +58,18 @@ function parseEnvelope(raw: string | null | undefined): CachedCapabilitiesEnvelo
   }
 }
 
-function saveLocalEnvelope(machineId: string, agentType: AgentType, envelope: CachedCapabilitiesEnvelope) {
+function saveLocalEnvelope(
+  machineId: string,
+  agentType: AgentType,
+  envelope: CachedCapabilitiesEnvelope
+) {
   mmkv.set(getLocalCacheKey(machineId, agentType), JSON.stringify(envelope));
 }
 
-function loadLocalEnvelope(machineId: string, agentType: AgentType): CachedCapabilitiesEnvelope | null {
+function loadLocalEnvelope(
+  machineId: string,
+  agentType: AgentType
+): CachedCapabilitiesEnvelope | null {
   return parseEnvelope(mmkv.getString(getLocalCacheKey(machineId, agentType)));
 }
 
@@ -225,12 +232,7 @@ export async function persistCachedCapabilities(params: {
       }
 
       try {
-        const savedEnvelope = await saveRemoteEnvelope(
-          auth,
-          machineId,
-          agentType,
-          nextEnvelope
-        );
+        const savedEnvelope = await saveRemoteEnvelope(auth, machineId, agentType, nextEnvelope);
         saveLocalEnvelope(machineId, agentType, savedEnvelope);
       } catch (error) {
         logger.error('Failed to persist capabilities cache', toError(error), {

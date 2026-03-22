@@ -12,8 +12,7 @@ export function enableErrorHandlers(app: Fastify) {
     const ip = request.ip || 'unknown';
 
     // Log the error with comprehensive context
-    log.error(`Unhandled error: ${error.message}`
-    );
+    log.error(`Unhandled error: ${error.message}`);
 
     // Return appropriate error response
     const statusCode = error.statusCode || 500;
@@ -41,7 +40,8 @@ export function enableErrorHandlers(app: Fastify) {
 
   // Catch-all route for debugging 404s
   app.setNotFoundHandler((request, reply) => {
-    log.info(`404 - Method: ${request.method}, Path: ${request.url}, Headers: ${JSON.stringify(request.headers)}`
+    log.info(
+      `404 - Method: ${request.method}, Path: ${request.url}, Headers: ${JSON.stringify(request.headers)}`
     );
     reply.code(404).send({ error: 'Not found', path: request.url, method: request.method });
   });
@@ -52,8 +52,7 @@ export function enableErrorHandlers(app: Fastify) {
     const url = request.url;
     const duration = (Date.now() - (request.startTime || Date.now())) / 1000;
 
-    log.error(`Request error: ${error.message}`
-    );
+    log.error(`Request error: ${error.message}`);
   });
 
   // Handle uncaught exceptions in routes
@@ -64,8 +63,7 @@ export function enableErrorHandlers(app: Fastify) {
       try {
         return originalSend(payload);
       } catch (error: any) {
-        log.error(`Response serialization error: ${error.message}`
-        );
+        log.error(`Response serialization error: ${error.message}`);
         throw error;
       }
     };

@@ -130,7 +130,8 @@ class ApiSocket {
     };
 
     let lastError: Error | null = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const MAX_RETRIES = 5;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       const result = await this.socket!.emitWithAck('rpc-call', request);
 
       if (result.ok) {
@@ -155,13 +156,13 @@ class ApiSocket {
       lastError = new Error(errorMessage);
 
       // Freshly created sessions can briefly race session-scoped RPC registration.
-      if (errorMessage === 'RPC method not available' && attempt < 2) {
+      if (errorMessage === 'RPC method not available' && attempt < MAX_RETRIES - 1) {
         logger.warn('[apiSocket] sessionRPC target not ready, retrying', {
           sessionId,
           method,
           attempt: attempt + 1,
         });
-        await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
         continue;
       }
 
@@ -201,9 +202,7 @@ class ApiSocket {
       return decrypted as R;
     }
     throw new Error(
-      typeof result.error === 'string' && result.error.length > 0
-        ? result.error
-        : 'RPC call failed'
+      typeof result.error === 'string' && result.error.length > 0 ? result.error : 'RPC call failed'
     );
   }
 
@@ -280,7 +279,10 @@ class ApiSocket {
 
     // Connection events
     this.socket.on('connect', () => {
-      logger.info('[SyncSocket] Connected', { recovered: this.socket?.recovered, socketId: this.socket?.id });
+      logger.info('[SyncSocket] Connected', {
+        recovered: this.socket?.recovered,
+        socketId: this.socket?.id,
+      });
       this.updateStatus('connected');
       if (!this.socket?.recovered) {
         this.reconnectedListeners.forEach(listener => listener());

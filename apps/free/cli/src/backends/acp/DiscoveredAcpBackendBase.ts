@@ -18,10 +18,7 @@ import {
   mergeAcpSessionCapabilities,
 } from '@/backends/acp/mapAcpSessionCapabilities';
 import { createFreeMcpServerConfig } from '@/backends/acp/createFreeMcpServerConfig';
-import {
-  getDefaultDiscoveredModelId,
-  hasDiscoveredModel,
-} from '@/backends/acp/modelSelection';
+import { getDefaultDiscoveredModelId, hasDiscoveredModel } from '@/backends/acp/modelSelection';
 import { AcpPermissionHandler } from '@/backends/acp/AcpPermissionHandler';
 
 type ProtocolCurrentModeUpdate = {
@@ -80,10 +77,16 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   async start(opts: AgentStartOpts): Promise<void> {
     this.apiSessionId = opts.session.sessionId;
     this.currentPermissionMode = opts.permissionMode ?? 'accept-edits';
-    this.permissionHandler = new AcpPermissionHandler(
-      opts.session,
-      this.currentPermissionMode
-    );
+    this.permissionHandler = new AcpPermissionHandler(opts.session, this.currentPermissionMode);
+
+    // Clear any stale pending requests from server state (recovery scenario).
+    // This ensures the new permissionHandler's empty pendingRequests Map
+    // is consistent with the server's agentState.requests.
+    opts.session.updateAgentState(currentState => ({
+      ...currentState,
+      requests: {}, // Clear pending, preserve completedRequests
+    }));
+
     const backend = this.createAcpBackend(opts);
 
     this.acpBackend = backend;
@@ -115,7 +118,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       }
     });
 
-    this.capabilityBackend.onSessionStarted?.((response) => {
+    this.capabilityBackend.onSessionStarted?.(response => {
       this.logger.info(`[${this.agentType}] ACP session started`, {
         apiSessionId: this.apiSessionId,
         sessionId: response.sessionId,
@@ -130,7 +133,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       this.publishCapabilities(mapAcpSessionCapabilities(response));
     });
 
-    this.capabilityBackend.onSessionUpdate?.((update) => {
+    this.capabilityBackend.onSessionUpdate?.(update => {
       const protocolUpdate = update as typeof update & ProtocolCurrentModeUpdate;
       this.logger.info(`[${this.agentType}] ACP session update`, {
         apiSessionId: this.apiSessionId,
@@ -209,7 +212,10 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       await this.acpBackend.sendPrompt(this.acpSessionId, prompt);
       await this.acpBackend.waitForResponseComplete?.();
     } catch (err) {
-      this.exitInfo = { reason: `sendPrompt/waitForResponseComplete failed: ${safeStringify(err)}`, error: err instanceof Error ? err : undefined };
+      this.exitInfo = {
+        reason: `sendPrompt/waitForResponseComplete failed: ${safeStringify(err)}`,
+        error: err instanceof Error ? err : undefined,
+      };
       throw err;
     }
     this.logger.debug(`[${this.agentType}] response complete`, {
@@ -223,10 +229,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
    * otherwise start a new one. Calls onSessionIdResolved so AgentSession can persist the ID.
    */
   private async resolveAcpSession(): Promise<{ sessionId: string; resumed: boolean }> {
-    if (
-      this.resumeSessionId &&
-      this.capabilityBackend?.supportsLoadSession?.()
-    ) {
+    if (this.resumeSessionId && this.capabilityBackend?.supportsLoadSession?.()) {
       this.logger.info(`[${this.agentType}] attempting session resume via loadSession`, {
         apiSessionId: this.apiSessionId,
         resumeSessionId: this.resumeSessionId,
@@ -263,9 +266,11 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
 
   async abort(): Promise<void> {
     if (this.acpBackend && this.acpSessionId) {
-      await this.acpBackend.cancel(this.acpSessionId).catch((err: unknown) =>
-        this.logger.warn(`[${this.agentType}] cancel error`, { error: safeStringify(err) })
-      );
+      await this.acpBackend
+        .cancel(this.acpSessionId)
+        .catch((err: unknown) =>
+          this.logger.warn(`[${this.agentType}] cancel error`, { error: safeStringify(err) })
+        );
     }
   }
 
@@ -476,11 +481,14 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       await this.applyModeSelection(sessionId, requestedMode);
       this.appliedModeSelection = requestedMode;
     } catch (error) {
-      this.logger.warn(`[${this.agentType}] failed to apply initial mode, keeping discovered default`, {
-        requestedMode,
-        currentMode: this.capabilitiesSnapshot.modes?.current ?? null,
-        error: safeStringify(error),
-      });
+      this.logger.warn(
+        `[${this.agentType}] failed to apply initial mode, keeping discovered default`,
+        {
+          requestedMode,
+          currentMode: this.capabilitiesSnapshot.modes?.current ?? null,
+          error: safeStringify(error),
+        }
+      );
       this.initialMode = this.capabilitiesSnapshot.modes?.current ?? null;
       this.appliedModeSelection = this.initialMode;
     }
@@ -545,7 +553,11 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         optionId,
         value,
       });
-      const response = await this.capabilityBackend.setSessionConfigOption(sessionId, optionId, value);
+      const response = await this.capabilityBackend.setSessionConfigOption(
+        sessionId,
+        optionId,
+        value
+      );
       if (response?.configOptions) {
         this.publishCapabilities(
           mergeAcpSessionCapabilities(this.capabilitiesSnapshot, {
@@ -562,10 +574,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     }
   }
 
-  private async applyModeSelection(
-    sessionId: string,
-    modeId: string
-  ): Promise<void> {
+  private async applyModeSelection(sessionId: string, modeId: string): Promise<void> {
     const modeOptionId = getModeConfigOptionId(this.capabilitiesSnapshot);
 
     // Try set_mode first — the direct ACP API for switching mode.
@@ -583,10 +592,13 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         }
         return;
       } catch (err) {
-        this.logger.debug(`[${this.agentType}] setSessionMode failed, falling back to setSessionConfigOption`, {
-          modeId,
-          error: String(err),
-        });
+        this.logger.debug(
+          `[${this.agentType}] setSessionMode failed, falling back to setSessionConfigOption`,
+          {
+            modeId,
+            error: String(err),
+          }
+        );
       }
     }
 
@@ -603,10 +615,13 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       return;
     }
 
-    this.logger.warn(`[${this.agentType}] mode selection not applied: set_mode unavailable and no mode config option`, {
-      sessionId,
-      modeId,
-    });
+    this.logger.warn(
+      `[${this.agentType}] mode selection not applied: set_mode unavailable and no mode config option`,
+      {
+        sessionId,
+        modeId,
+      }
+    );
   }
 
   private async applyModelSelection(
@@ -630,10 +645,13 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         }
         return;
       } catch (err) {
-        this.logger.debug(`[${this.agentType}] setSessionModel failed, falling back to setSessionConfigOption`, {
-          modelId,
-          error: String(err),
-        });
+        this.logger.debug(
+          `[${this.agentType}] setSessionModel failed, falling back to setSessionConfigOption`,
+          {
+            modelId,
+            error: String(err),
+          }
+        );
       }
     }
 
@@ -665,9 +683,12 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       return;
     }
 
-    this.logger.warn(`[${this.agentType}] model selection not applied: set_model unavailable and no model config option`, {
-      sessionId,
-      modelId,
-    });
+    this.logger.warn(
+      `[${this.agentType}] model selection not applied: set_model unavailable and no model config option`,
+      {
+        sessionId,
+        modelId,
+      }
+    );
   }
 }

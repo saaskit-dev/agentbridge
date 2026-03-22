@@ -113,7 +113,11 @@ export function shouldLogUnhandledSessionUpdate(update: SessionUpdate): boolean 
     return false;
   }
 
-  if (HANDLED_SESSION_UPDATE_TYPES.includes(updateType as (typeof HANDLED_SESSION_UPDATE_TYPES)[number])) {
+  if (
+    HANDLED_SESSION_UPDATE_TYPES.includes(
+      updateType as (typeof HANDLED_SESSION_UPDATE_TYPES)[number]
+    )
+  ) {
     return false;
   }
 

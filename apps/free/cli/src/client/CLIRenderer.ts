@@ -15,7 +15,12 @@
 
 import chalk from 'chalk';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
-import type { NormalizedMessage, AgentEvent, AgentType, NormalizedAgentContent } from '@/daemon/sessions/types';
+import type {
+  NormalizedMessage,
+  AgentEvent,
+  AgentType,
+  NormalizedAgentContent,
+} from '@/daemon/sessions/types';
 
 const logger = new Logger('client/CLIRenderer');
 
@@ -97,18 +102,18 @@ export class CLIRenderer {
         if (block.is_error) {
           let errStr: string;
           try {
-            errStr = typeof block.content === 'string'
-              ? block.content
-              : JSON.stringify(block.content);
+            errStr =
+              typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
           } catch {
             errStr = String(block.content);
           }
           process.stderr.write(`${indent}${chalk.red('[tool-error]')} ${errStr}\n`);
         } else {
           // Successful tool results are often large; print a dimmed one-liner
-          const preview = typeof block.content === 'string'
-            ? block.content.slice(0, 200)
-            : JSON.stringify(block.content)?.slice(0, 200) ?? '';
+          const preview =
+            typeof block.content === 'string'
+              ? block.content.slice(0, 200)
+              : (JSON.stringify(block.content)?.slice(0, 200) ?? '');
           if (preview) {
             process.stdout.write(chalk.dim(`${indent}✓ ${preview}\n`));
           }
@@ -123,9 +128,7 @@ export class CLIRenderer {
 
       case 'sidechain': {
         // Subagent invocation marker: show prompt with special prefix
-        process.stdout.write(
-          chalk.dim(`\n${indent}[subagent] ${block.prompt.slice(0, 120)}\n`)
-        );
+        process.stdout.write(chalk.dim(`\n${indent}[subagent] ${block.prompt.slice(0, 120)}\n`));
         break;
       }
     }

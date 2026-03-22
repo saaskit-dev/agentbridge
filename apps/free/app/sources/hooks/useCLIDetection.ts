@@ -119,7 +119,10 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
           });
         } else {
           // Detection command failed - CONSERVATIVE fallback (don't assume availability)
-          logger.debug('[useCLIDetection] Detection failed (success=false or exitCode!=0):', result);
+          logger.debug(
+            '[useCLIDetection] Detection failed (success=false or exitCode!=0):',
+            result
+          );
           setAvailability({
             claudeNative: null,
             claude: null,

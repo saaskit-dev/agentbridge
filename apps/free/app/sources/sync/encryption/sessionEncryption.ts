@@ -12,10 +12,7 @@ import {
 import { RawRecord } from '../typesRaw';
 import { EncryptionCache } from './encryptionCache';
 import { Decryptor, Encryptor } from './encryptor';
-import {
-  SessionCapabilities,
-  SessionCapabilitiesSchema,
-} from '../sessionCapabilities';
+import { SessionCapabilities, SessionCapabilitiesSchema } from '../sessionCapabilities';
 
 const logger = new Logger('app/sync/encryption/session');
 
@@ -157,7 +154,10 @@ export class SessionEncryption {
     }
     const parsed = MetadataSchema.safeParse(decrypted);
     if (!parsed.success) {
-      logger.error('decryptMetadata parse failed', undefined, { sessionId: this.sessionId, version });
+      logger.error('decryptMetadata parse failed', undefined, {
+        sessionId: this.sessionId,
+        version,
+      });
       return null;
     }
 
@@ -196,7 +196,10 @@ export class SessionEncryption {
     }
     const parsed = AgentStateSchema.safeParse(decrypted);
     if (!parsed.success) {
-      logger.error('decryptAgentState parse failed', undefined, { sessionId: this.sessionId, version });
+      logger.error('decryptAgentState parse failed', undefined, {
+        sessionId: this.sessionId,
+        version,
+      });
       return {};
     }
 

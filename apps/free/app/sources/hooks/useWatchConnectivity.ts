@@ -64,7 +64,7 @@ export function useWatchConnectivity() {
     const payload = sessions
       .filter((s): s is Session => typeof s !== 'string' && s.status === 'active')
       .slice(0, 20) // Limit to 20 sessions for Watch
-      .map((s) => ({
+      .map(s => ({
         id: s.id,
         projectPath: s.metadata?.path ?? '',
         host: s.metadata?.host ?? '',

@@ -13,7 +13,10 @@
 // ============================================================================
 
 // Basic identifiers - import for local use then re-export
-import type { SessionId as SessionIdType, ToolCallId as ToolCallIdType } from '@saaskit-dev/agentbridge';
+import type {
+  SessionId as SessionIdType,
+  ToolCallId as ToolCallIdType,
+} from '@saaskit-dev/agentbridge';
 export type { SessionId, ToolCallId } from '@saaskit-dev/agentbridge';
 
 // Agent configuration types

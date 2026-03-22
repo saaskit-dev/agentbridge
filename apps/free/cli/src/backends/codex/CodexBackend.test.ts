@@ -45,7 +45,7 @@ describe('CodexBackend', () => {
 
     const iterator = backend.capabilities[Symbol.asyncIterator]();
     const nextCapability = iterator.next();
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       models: {
@@ -91,10 +91,7 @@ describe('CodexBackend', () => {
 
     expect(mockStartSession).toHaveBeenCalledWith();
     expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'gpt-5-codex-medium');
-    expect(mockSendPrompt).toHaveBeenCalledWith(
-      'acp-session-1',
-      expect.stringContaining('hello')
-    );
+    expect(mockSendPrompt).toHaveBeenCalledWith('acp-session-1', expect.stringContaining('hello'));
     expect(mockSetSessionModel.mock.invocationCallOrder[0]).toBeLessThan(
       mockSendPrompt.mock.invocationCallOrder[0]
     );
@@ -112,7 +109,7 @@ describe('CodexBackend', () => {
       session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() } } as never,
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       modes: {

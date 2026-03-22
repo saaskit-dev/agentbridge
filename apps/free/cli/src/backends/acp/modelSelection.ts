@@ -8,7 +8,10 @@ export function getDefaultDiscoveredModelId(
     return null;
   }
 
-  if (capabilities?.models?.current && models.some(model => model.id === capabilities.models?.current)) {
+  if (
+    capabilities?.models?.current &&
+    models.some(model => model.id === capabilities.models?.current)
+  ) {
     return capabilities.models.current;
   }
 

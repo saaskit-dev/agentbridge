@@ -179,13 +179,13 @@ The `@saaskit-dev/agentbridge` package provides platform-agnostic building block
 npm install @saaskit-dev/agentbridge
 ```
 
-| Import Path | Use Case |
-|---|---|
-| `@saaskit-dev/agentbridge` | Full SDK (Node.js) |
-| `@saaskit-dev/agentbridge/common` | React Native / Browser (no `node:*` imports) |
-| `@saaskit-dev/agentbridge/types` | Pure type definitions |
-| `@saaskit-dev/agentbridge/encryption` | Encryption primitives |
-| `@saaskit-dev/agentbridge/telemetry` | Structured logging |
+| Import Path                           | Use Case                                     |
+| ------------------------------------- | -------------------------------------------- |
+| `@saaskit-dev/agentbridge`            | Full SDK (Node.js)                           |
+| `@saaskit-dev/agentbridge/common`     | React Native / Browser (no `node:*` imports) |
+| `@saaskit-dev/agentbridge/types`      | Pure type definitions                        |
+| `@saaskit-dev/agentbridge/encryption` | Encryption primitives                        |
+| `@saaskit-dev/agentbridge/telemetry`  | Structured logging                           |
 
 Key interfaces:
 
@@ -207,13 +207,13 @@ See [`packages/core/README.md`](packages/core/README.md) for full API documentat
 
 ## Security
 
-| Layer | Mechanism |
-|-------|-----------|
-| **Key Exchange** | X25519 (Curve25519 Diffie-Hellman) |
-| **Symmetric Encryption** | AES-256-GCM |
-| **Authentication** | Ed25519 signatures + challenge-response |
-| **Transport** | TLS + E2E encryption (double encrypted) |
-| **Storage** | Private keys stored with `chmod 0600` |
+| Layer                    | Mechanism                               |
+| ------------------------ | --------------------------------------- |
+| **Key Exchange**         | X25519 (Curve25519 Diffie-Hellman)      |
+| **Symmetric Encryption** | AES-256-GCM                             |
+| **Authentication**       | Ed25519 signatures + challenge-response |
+| **Transport**            | TLS + E2E encryption (double encrypted) |
+| **Storage**              | Private keys stored with `chmod 0600`   |
 
 - All data is encrypted on-device before leaving your machine
 - The relay server never sees plaintext — it forwards encrypted blobs
@@ -273,20 +273,20 @@ pnpm install
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `FREE_SERVER_URL` | Backend server URL | `https://free-server.saaskit.app` |
-| `FREE_HOME_DIR` | Data directory | `~/.free` |
-| `FREE_DISABLE_CAFFEINATE` | Disable macOS sleep prevention | `false` |
+| Variable                  | Description                    | Default                           |
+| ------------------------- | ------------------------------ | --------------------------------- |
+| `FREE_SERVER_URL`         | Backend server URL             | `https://free-server.saaskit.app` |
+| `FREE_HOME_DIR`           | Data directory                 | `~/.free`                         |
+| `FREE_DISABLE_CAFFEINATE` | Disable macOS sleep prevention | `false`                           |
 
 ## System Requirements
 
-| Agent | Requirement |
-|-------|-------------|
-| Claude Code | `claude` CLI installed and authenticated |
-| Gemini | `gemini` CLI installed (`npm i -g @google/gemini-cli`) |
-| Codex | `codex` CLI installed |
-| OpenCode | `opencode` CLI installed |
+| Agent       | Requirement                                            |
+| ----------- | ------------------------------------------------------ |
+| Claude Code | `claude` CLI installed and authenticated               |
+| Gemini      | `gemini` CLI installed (`npm i -g @google/gemini-cli`) |
+| Codex       | `codex` CLI installed                                  |
+| OpenCode    | `opencode` CLI installed                               |
 
 ## Contributing
 

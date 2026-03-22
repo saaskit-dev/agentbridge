@@ -188,11 +188,17 @@ export class PermissionHandler {
       await delay(1000);
       toolCallId = this.resolveToolCallId(toolName, input);
       if (!toolCallId) {
-        logger.error('[permissionHandler] toolCallId resolution failed after retry', undefined, { toolName });
+        logger.error('[permissionHandler] toolCallId resolution failed after retry', undefined, {
+          toolName,
+        });
         throw new Error(`Could not resolve tool call ID for ${toolName}`);
       }
     }
-    logger.debug('[permissionHandler] starting permission request', { toolCallId, toolName, permissionMode: this.permissionMode });
+    logger.debug('[permissionHandler] starting permission request', {
+      toolCallId,
+      toolName,
+      permissionMode: this.permissionMode,
+    });
     return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
   };
 

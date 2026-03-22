@@ -34,7 +34,11 @@ export const AgentSessionFactory = {
   create(agentType: AgentType, opts: AgentSessionOpts): AgentSession<any> {
     const Cls = registry.get(agentType);
     if (!Cls) {
-      logger.error('[AgentSessionFactory] unknown agent type', new Error(`Unknown agentType: "${agentType}"`), { agentType });
+      logger.error(
+        '[AgentSessionFactory] unknown agent type',
+        new Error(`Unknown agentType: "${agentType}"`),
+        { agentType }
+      );
       throw new Error(`Unknown agentType: "${agentType}". Did you forget to register it?`);
     }
     logger.debug('[AgentSessionFactory] creating session', {

@@ -7,6 +7,7 @@ import { View, Text, Pressable, Platform } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
 import { formatSecretKeyForBackup } from '@/auth/secretKeyBackup';
+import { AgentFlavorIcon } from '@/components/AgentFlavorIcon';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
@@ -186,18 +187,15 @@ export default React.memo(() => {
             const knownServices = {
               anthropic: {
                 name: 'Claude Code',
-                icon: require('@/assets/images/icon-claude.png'),
-                tintColor: null,
+                flavor: 'claude' as const,
               },
               gemini: {
                 name: 'Google Gemini',
-                icon: require('@/assets/images/icon-gemini.png'),
-                tintColor: null,
+                flavor: 'gemini' as const,
               },
               openai: {
                 name: 'OpenAI Codex',
-                icon: require('@/assets/images/icon-gpt.png'),
-                tintColor: theme.colors.text,
+                flavor: 'codex' as const,
               },
             };
 
@@ -223,14 +221,7 @@ export default React.memo(() => {
                       loading={isDisconnecting}
                       disabled={isDisconnecting}
                       showChevron={false}
-                      icon={
-                        <Image
-                          source={serviceInfo.icon}
-                          style={{ width: 29, height: 29 }}
-                          tintColor={serviceInfo.tintColor}
-                          contentFit="contain"
-                        />
-                      }
+                      icon={<AgentFlavorIcon flavor={serviceInfo.flavor} size={29} />}
                     />
                   );
                 })}

@@ -33,14 +33,15 @@ Agent 消息 (Daemon → Server → App):
 
 ### 2.2 需要替换的 HTTP 端点（仅 2 个）
 
-| HTTP 路由 | 方向 | 用途 |
-|-----------|------|------|
+| HTTP 路由                        | 方向                | 用途                          |
+| -------------------------------- | ------------------- | ----------------------------- |
 | `POST /v3/sessions/:id/messages` | App/Daemon → Server | 发送消息（批量，最多 100 条） |
-| `GET /v3/sessions/:id/messages` | App/Daemon ← Server | 拉取历史/增量消息 |
+| `GET /v3/sessions/:id/messages`  | App/Daemon ← Server | 拉取历史/增量消息             |
 
 ### 2.3 Server 端已有的 WS 消息处理
 
 `sessionUpdateHandler.ts:377-447` 已有 `socket.on('message', ...)` 处理器：
+
 - 校验 userId + sessionId
 - 按 message.id 去重（DB 查询）
 - 分配 seq（`allocateSessionSeq`）
@@ -50,6 +51,7 @@ Agent 消息 (Daemon → Server → App):
 - **不足**：单条消息、无 ack 回调、无批量
 
 `v3SessionRoutes.ts:131-314` HTTP POST handler 有更完整的批量逻辑：
+
 - 事务内批量去重（`findMany + Set`）
 - `allocateSessionSeqBatch` 批量分配 seq
 - 返回所有消息的 seq 列表
@@ -66,18 +68,20 @@ Agent 消息 (Daemon → Server → App):
 复用 `v3SessionRoutes.ts` POST handler 的批量事务逻辑，搬进 WS 事件。
 
 **请求**（emitWithAck）：
+
 ```typescript
 {
   sessionId: string;
   messages: Array<{
-    id: string;           // client-generated，用于去重
-    content: string;      // 加密后的内容
-    _trace?: WireTrace;   // 可选，trace 传播
+    id: string; // client-generated，用于去重
+    content: string; // 加密后的内容
+    _trace?: WireTrace; // 可选，trace 传播
   }>;
 }
 ```
 
 **响应（ack callback）**：
+
 ```typescript
 // 成功
 { ok: true, messages: Array<{ id: string; seq: number; createdAt: number; updatedAt: number }> }
@@ -87,6 +91,7 @@ Agent 消息 (Daemon → Server → App):
 ```
 
 **Server 处理逻辑**：
+
 1. 校验 `sessionId` 归属当前连接的 `userId`
 2. 批内去重（同一 `id` 只保留第一条）
 3. 事务内：
@@ -98,6 +103,7 @@ Agent 消息 (Daemon → Server → App):
 5. ack 返回所有消息（已存在 + 新创建）的 `{ id, seq }`
 
 **与现有 HTTP POST handler 的差异**：
+
 - 不需要 `X-Socket-Id` header — WS 事件天然有 `connection` 对象，直接 `skipSenderConnection: connection`
 - 其余逻辑**完全相同**
 
@@ -106,22 +112,24 @@ Agent 消息 (Daemon → Server → App):
 复用 `v3SessionRoutes.ts` GET handler 的查询逻辑。
 
 **请求**（emitWithAck）：
+
 ```typescript
 {
   sessionId: string;
-  after_seq: number;    // 从哪条之后，0 = 从头
-  limit: number;        // 最多返回多少条，上限 500
+  after_seq: number; // 从哪条之后，0 = 从头
+  limit: number; // 最多返回多少条，上限 500
 }
 ```
 
 **响应（ack callback）**：
+
 ```typescript
 {
   ok: true;
   messages: Array<{
     id: string;
     seq: number;
-    content: unknown;    // 加密内容
+    content: unknown; // 加密内容
     traceId?: string;
     createdAt: number;
     updatedAt: number;
@@ -131,6 +139,7 @@ Agent 消息 (Daemon → Server → App):
 ```
 
 **Server 处理逻辑**：
+
 1. 校验 `sessionId` 归属 `userId`
 2. 查 DB: `WHERE sessionId = ? AND seq > after_seq ORDER BY seq ASC TAKE limit + 1`
 3. `hasMore = results.length > limit`
@@ -141,17 +150,20 @@ Agent 消息 (Daemon → Server → App):
 Socket 连接建立时，客户端通过握手参数传入已知的最新 seq：
 
 **session-scoped 连接**（Daemon）：
+
 ```typescript
-socket.handshake.auth.lastSeq = number   // 该 session 的最新 seq
+socket.handshake.auth.lastSeq = number; // 该 session 的最新 seq
 ```
 
 **user-scoped 连接**（App）：
+
 ```typescript
-socket.handshake.auth.lastSeqs = Record<string, number>   // { sessionId: lastSeq }
+socket.handshake.auth.lastSeqs = Record<string, number>; // { sessionId: lastSeq }
 // 只传当前正在查看的 session 的 lastSeq
 ```
 
 **Server 处理**（`socket.ts` connection handler）：
+
 - 连接建立后，查 DB `seq > lastSeq`，通过 `socket.emit('update', ...)` 主动推送遗漏消息
 - 加 `replay: true` 标记，App 端不触发重复通知
 - 上限 100 条；超过 100 条时 `hasMore: true`，App 端继续用 `fetch-messages` 分页拉取
@@ -161,12 +173,14 @@ socket.handshake.auth.lastSeqs = Record<string, number>   // { sessionId: lastSe
 ### 4.1 sessionUpdateHandler.ts
 
 **改造现有 `socket.on('message', ...)`** → `socket.on('send-messages', ..., callback)`：
+
 - 将 `v3SessionRoutes.ts` POST handler 的批量事务逻辑搬入
 - 加 ack callback 返回 `{ ok, messages }`
 - `skipSenderConnection: connection`（已有模式）
 - 保留 `receiveMessageLock`
 
 **新增 `socket.on('fetch-messages', ..., callback)`**：
+
 - 将 `v3SessionRoutes.ts` GET handler 的查询逻辑搬入
 - ack callback 返回 `{ ok, messages, hasMore }`
 
@@ -177,6 +191,7 @@ socket.handshake.auth.lastSeqs = Record<string, number>   // { sessionId: lastSe
 ### 4.3 v3SessionRoutes.ts
 
 删除：
+
 - `POST /v3/sessions/:sessionId/messages`（行 131-314）
 - `GET /v3/sessions/:sessionId/messages`（行 73-129）
 
@@ -187,6 +202,7 @@ socket.handshake.auth.lastSeqs = Record<string, number>   // { sessionId: lastSe
 ### 5.1 apiSession.ts — flushOutbox
 
 **改造前**（行 553-565）：
+
 ```typescript
 const res = await axios.post(
   `${configuration.serverUrl}/v3/sessions/${this.sessionId}/messages`,
@@ -196,6 +212,7 @@ const res = await axios.post(
 ```
 
 **改造后**：
+
 ```typescript
 const ack = await this.socket.timeout(30000).emitWithAck('send-messages', {
   sessionId: this.sessionId,
@@ -209,14 +226,15 @@ if (!ack.ok) throw new Error(ack.error);
 ### 5.2 apiSession.ts — fetchMessages
 
 **改造前**（行 454-464）：
+
 ```typescript
-const res = await axios.get(
-  `${configuration.serverUrl}/v3/sessions/${this.sessionId}/messages`,
-  { params: { after_seq, limit } }
-);
+const res = await axios.get(`${configuration.serverUrl}/v3/sessions/${this.sessionId}/messages`, {
+  params: { after_seq, limit },
+});
 ```
 
 **改造后**：
+
 ```typescript
 const ack = await this.socket.timeout(30000).emitWithAck('fetch-messages', {
   sessionId: this.sessionId,
@@ -235,13 +253,13 @@ this.socket = io(serverUrl, {
     token,
     clientType: 'session-scoped',
     sessionId: this.sessionId,
-    lastSeq: this.lastKnownSeq,    // 新增
+    lastSeq: this.lastKnownSeq, // 新增
   },
 });
 
 this.socket.on('connect', () => {
   this.socket.auth = { ...this.socket.auth, lastSeq: this.lastKnownSeq };
-  this.sendSync.invalidate();    // 重连后立即 flush outbox
+  this.sendSync.invalidate(); // 重连后立即 flush outbox
 });
 ```
 
@@ -254,13 +272,18 @@ this.socket.on('connect', () => {
 ### 6.1 sync.ts — flushOutbox
 
 **改造前**（行 1694）：
+
 ```typescript
-await this.apiSocket.request(`/v3/sessions/${sessionId}/messages`, { method: 'POST', body: { messages: batch } });
+await this.apiSocket.request(`/v3/sessions/${sessionId}/messages`, {
+  method: 'POST',
+  body: { messages: batch },
+});
 ```
 
 `apiSocket.request()` 是 HTTP fetch 封装（`apiSocket.ts:230-250`）。
 
 **改造后**：
+
 ```typescript
 const ack = await this.apiSocket.emitWithAck('send-messages', {
   sessionId,
@@ -272,11 +295,15 @@ if (!ack.ok) throw new Error(ack.error);
 ### 6.2 sync.ts — fetchMessages
 
 **改造前**（行 1769-1773）：
+
 ```typescript
-const data = await this.apiSocket.request(`/v3/sessions/${sessionId}/messages?after_seq=${seq}&limit=100`);
+const data = await this.apiSocket.request(
+  `/v3/sessions/${sessionId}/messages?after_seq=${seq}&limit=100`
+);
 ```
 
 **改造后**：
+
 ```typescript
 const ack = await this.apiSocket.emitWithAck('fetch-messages', {
   sessionId,
@@ -320,6 +347,7 @@ expo-sqlite                   @journeyapps/wa-sqlite v1.5.0
 ### 7.2 为什么不用 expo-sqlite 三端统一
 
 expo-sqlite Web 端基于 `@sqlite.org/sqlite-wasm` + OPFS：
+
 - 需要 COOP/COEP headers（`Cross-Origin-Embedder-Policy`、`Cross-Origin-Opener-Policy`），可能影响第三方资源
 - OPFS 单写者限制，多标签页第二个标签页无法写入
 - Web 支持仍为 alpha 状态（已知 bug：blob 数据损坏 #41127、文件创建失败 #39903）
@@ -351,9 +379,9 @@ export interface CachedMessage {
   id: string;
   sessionId: string;
   seq: number;
-  content: string;        // 解密后的 JSON string
+  content: string; // 解密后的 JSON string
   role: 'user' | 'agent';
-  createdAt: number;      // unix ms
+  createdAt: number; // unix ms
   updatedAt: number;
 }
 
@@ -361,10 +389,13 @@ export interface MessageDB {
   init(): Promise<void>;
 
   /** 读取 session 消息，按 seq 正序 */
-  getMessages(sessionId: string, opts: {
-    limit: number;
-    beforeSeq?: number;   // 向上翻页：seq < beforeSeq
-  }): Promise<CachedMessage[]>;
+  getMessages(
+    sessionId: string,
+    opts: {
+      limit: number;
+      beforeSeq?: number; // 向上翻页：seq < beforeSeq
+    }
+  ): Promise<CachedMessage[]>;
 
   /** 读取 session 最新 seq 水位线 */
   getLastSeq(sessionId: string): Promise<number>;
@@ -488,7 +519,9 @@ async function query<T>(sql: string): Promise<T[]> {
   const rows: T[] = [];
   await sqlite3.exec(db, sql, (row, columns) => {
     const obj = {} as any;
-    columns.forEach((col, i) => { obj[col] = row[i]; });
+    columns.forEach((col, i) => {
+      obj[col] = row[i];
+    });
     rows.push(obj);
   });
   return rows;
@@ -650,6 +683,7 @@ WS 重连 → 握手带 lastSeqs
 4. `SessionView.tsx` 先渲染本地缓存
 
 **验证**：
+
 - 进入 session → 立即显示缓存消息（无网络延迟）
 - 收到新消息 → SQLite 同步更新
 - 杀 App 后重新打开 session → 缓存仍在，增量同步
@@ -657,13 +691,13 @@ WS 重连 → 握手带 lastSeqs
 
 ## 12. 不需要改动的部分
 
-| 模块 | 原因 |
-|------|------|
-| `eventRouter.ts` | emitUpdate / emitEphemeral 逻辑不变 |
-| `streamingHandler.ts` | streaming:text-delta 路径不变 |
-| `AgentSession.ts` | forwardOutputMessage 逻辑不变 |
-| `rpcHandler.ts` | App→Daemon 远程调用框架，与消息传递无关 |
-| 所有管理 HTTP 路由 | account、kv、artifacts 等不在范围内 |
-| outbox MMKV 持久化 | 只换发送载体，持久化机制不动 |
-| 加解密逻辑 | 消息格式不变 |
-| Metro 配置 | wasm 支持已有，不需要 COOP/COEP |
+| 模块                  | 原因                                    |
+| --------------------- | --------------------------------------- |
+| `eventRouter.ts`      | emitUpdate / emitEphemeral 逻辑不变     |
+| `streamingHandler.ts` | streaming:text-delta 路径不变           |
+| `AgentSession.ts`     | forwardOutputMessage 逻辑不变           |
+| `rpcHandler.ts`       | App→Daemon 远程调用框架，与消息传递无关 |
+| 所有管理 HTTP 路由    | account、kv、artifacts 等不在范围内     |
+| outbox MMKV 持久化    | 只换发送载体，持久化机制不动            |
+| 加解密逻辑            | 消息格式不变                            |
+| Metro 配置            | wasm 支持已有，不需要 COOP/COEP         |

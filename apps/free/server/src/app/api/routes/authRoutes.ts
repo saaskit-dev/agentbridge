@@ -152,7 +152,8 @@ export function authRoutes(app: Fastify) {
       },
     },
     async (request, reply) => {
-      log.info(`Auth response endpoint hit - user: ${request.userId}, publicKey: ${request.body.publicKey.substring(0, 20)}...`
+      log.info(
+        `Auth response endpoint hit - user: ${request.userId}, publicKey: ${request.body.publicKey.substring(0, 20)}...`
       );
       const tweetnacl = (await import('tweetnacl')).default;
       const publicKey = privacyKit.decodeBase64(request.body.publicKey);
@@ -162,8 +163,7 @@ export function authRoutes(app: Fastify) {
         return reply.code(401).send({ error: 'Invalid public key' });
       }
       const publicKeyHex = privacyKit.encodeHex(publicKey);
-      log.info(`Looking for auth request with publicKey hex: ${publicKeyHex}`
-      );
+      log.info(`Looking for auth request with publicKey hex: ${publicKeyHex}`);
       const authRequest = await db.terminalAuthRequest.findUnique({
         where: { publicKey: publicKeyHex },
       });
@@ -174,7 +174,8 @@ export function authRoutes(app: Fastify) {
           take: 5,
           orderBy: { createdAt: 'desc' },
         });
-        log.info(`Recent auth requests in DB: ${JSON.stringify(allRequests.map(r => ({ id: r.id, publicKey: r.publicKey.substring(0, 20) + '...', hasResponse: !!r.response })))}`
+        log.info(
+          `Recent auth requests in DB: ${JSON.stringify(allRequests.map(r => ({ id: r.id, publicKey: r.publicKey.substring(0, 20) + '...', hasResponse: !!r.response })))}`
         );
         return reply.code(404).send({ error: 'Request not found' });
       }

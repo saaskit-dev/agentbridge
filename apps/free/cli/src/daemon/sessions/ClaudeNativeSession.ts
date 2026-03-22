@@ -19,7 +19,11 @@ import { hashObject } from '@/utils/deterministicJson';
 import type { EnhancedMode } from '@/claude/sessionTypes';
 import { claudeRemote } from '@/claude/claudeRemote';
 import { PermissionHandler } from '@/claude/utils/permissionHandler';
-import { mapSDKMessageToNormalized, createSDKMapperState, flushSDKOpenToolCalls } from '@/backends/claude-native/mapSDKMessageToNormalized';
+import {
+  mapSDKMessageToNormalized,
+  createSDKMapperState,
+  flushSDKOpenToolCalls,
+} from '@/backends/claude-native/mapSDKMessageToNormalized';
 import {
   mapClaudeLogMessageToNormalizedMessages,
   type ClaudeSessionProtocolState,
@@ -29,7 +33,10 @@ import type { AgentBackend } from './AgentBackend';
 import { AgentSession } from './AgentSession';
 import type { HookServer } from '@/claude/utils/startHookServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
-import { generateHookSettingsFile, updateHookSettingsFile } from '@/claude/utils/generateHookSettings';
+import {
+  generateHookSettingsFile,
+  updateHookSettingsFile,
+} from '@/claude/utils/generateHookSettings';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { ClaudeNativeBackend } from '@/backends/claude-native/ClaudeNativeBackend';
@@ -149,7 +156,7 @@ export class ClaudeNativeSession extends AgentSession<EnhancedMode> {
         logger.debug('[ClaudeNativeSession] Session hook received', { sessionId });
         this.setClaudeSessionId(sessionId);
         if (this.session) {
-          this.session.updateMetadata((m) => ({ ...m, agentSessionId: sessionId }));
+          this.session.updateMetadata(m => ({ ...m, agentSessionId: sessionId }));
         }
         if (this.sessionScanner) {
           this.sessionScanner.onNewSession(sessionId);
@@ -185,7 +192,7 @@ export class ClaudeNativeSession extends AgentSession<EnhancedMode> {
       this.sessionScanner = await createSessionScanner({
         sessionId: this.opts.resumeSessionId ?? null,
         workingDirectory: this.opts.cwd,
-        onMessage: (message) => {
+        onMessage: message => {
           // Always consume appSentTexts entries for user messages, even during
           // scanner pause. Otherwise stale entries survive the pause and
           // incorrectly dedup CLI-originated user messages after resuming.
@@ -217,7 +224,10 @@ export class ClaudeNativeSession extends AgentSession<EnhancedMode> {
           if (this.scannerPaused) return;
 
           if (message.type !== 'summary') {
-            const mapped = mapClaudeLogMessageToNormalizedMessages(message, this.claudeJsonlMapperState);
+            const mapped = mapClaudeLogMessageToNormalizedMessages(
+              message,
+              this.claudeJsonlMapperState
+            );
             for (const n of mapped.messages) {
               this.session.sendNormalizedMessage(n);
             }
@@ -297,7 +307,7 @@ export class ClaudeNativeSession extends AgentSession<EnhancedMode> {
           role: 'event',
           content: { type: 'switch', mode },
         });
-        this.session.updateAgentState((state) => ({
+        this.session.updateAgentState(state => ({
           ...state,
           controlledByUser: mode === 'local',
         }));
@@ -315,7 +325,8 @@ export class ClaudeNativeSession extends AgentSession<EnhancedMode> {
             logger.info('[ClaudeNativeSession] local→remote: local leg ended', {
               elapsed: this.switchTimestamp ? Date.now() - this.switchTimestamp : -1,
             });
-            mode = 'remote'; continue;
+            mode = 'remote';
+            continue;
           }
           break; // exit
         } else {
@@ -479,11 +490,11 @@ export class ClaudeNativeSession extends AgentSession<EnhancedMode> {
           logger.debug('[ClaudeNativeSession] remote SDK session found', { sessionId });
           this.setClaudeSessionId(sessionId);
           if (this.session) {
-            this.session.updateMetadata((m) => ({ ...m, agentSessionId: sessionId }));
+            this.session.updateMetadata(m => ({ ...m, agentSessionId: sessionId }));
           }
         },
 
-        onMessage: (msg) => {
+        onMessage: msg => {
           permissionHandler.onMessage(msg);
           const normalized = mapSDKMessageToNormalized(msg, sdkMapperState);
           for (const n of normalized) {
@@ -500,8 +511,7 @@ export class ClaudeNativeSession extends AgentSession<EnhancedMode> {
       });
     } catch (err) {
       if (!abortCtrl.signal.aborted) {
-        logger.error('[ClaudeNativeSession] remote leg error',
-          toError(err));
+        logger.error('[ClaudeNativeSession] remote leg error', toError(err));
       }
     } finally {
       // Flush any tool calls that were in-flight when the remote leg ended or was aborted.

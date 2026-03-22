@@ -9,9 +9,7 @@ export type KnownAgentType =
 export type AppAgentFlavor = KnownAgentType | string;
 export type SessionFlavor = AppAgentFlavor | 'gpt' | 'openai';
 
-export function normalizeAgentFlavor(
-  flavor: SessionFlavor | null | undefined
-): DisplayAgentFlavor {
+export function normalizeAgentFlavor(flavor: SessionFlavor | null | undefined): DisplayAgentFlavor {
   if (flavor === 'claude' || flavor === 'claude-native') return 'claude';
   if (flavor === 'codex' || flavor === 'gpt' || flavor === 'openai') {
     return 'codex';
@@ -32,9 +30,7 @@ export function getCapabilityPresetFlavor(
   return null;
 }
 
-export function usesAcpPermissionDecisions(
-  flavor: SessionFlavor | null | undefined
-): boolean {
+export function usesAcpPermissionDecisions(flavor: SessionFlavor | null | undefined): boolean {
   if (!flavor) {
     return false;
   }

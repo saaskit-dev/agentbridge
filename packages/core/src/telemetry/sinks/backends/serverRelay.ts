@@ -1,9 +1,9 @@
-import type { LogEntry } from '../../types.js'
-import type { RemoteBackend, RemoteRequest, DeviceMetadata } from './types.js'
+import type { LogEntry } from '../../types.js';
+import type { RemoteBackend, RemoteRequest, DeviceMetadata } from './types.js';
 
 export interface ServerRelayBackendOptions {
-  serverUrl: string
-  authToken: string | (() => string | undefined)
+  serverUrl: string;
+  authToken: string | (() => string | undefined);
 }
 
 /**
@@ -15,24 +15,23 @@ export interface ServerRelayBackendOptions {
  * the token becomes available (e.g. after user authentication).
  */
 export class ServerRelayBackend implements RemoteBackend {
-  readonly name = 'server-relay'
+  readonly name = 'server-relay';
 
   constructor(private readonly opts: ServerRelayBackendOptions) {}
 
   buildRequest(entries: LogEntry[], meta: DeviceMetadata): RemoteRequest | null {
-    const token = typeof this.opts.authToken === 'function'
-      ? this.opts.authToken()
-      : this.opts.authToken
-    if (!token) return null
+    const token =
+      typeof this.opts.authToken === 'function' ? this.opts.authToken() : this.opts.authToken;
+    if (!token) return null;
 
     return {
       url: `${this.opts.serverUrl}/v1/telemetry/ingest`,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ metadata: meta, entries }),
-    }
+    };
   }
 }

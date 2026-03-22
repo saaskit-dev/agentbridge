@@ -45,6 +45,7 @@ App <-> Server <-> Daemon <-> (Unix socket) <-> Bridge <-> (stdio pipe) <-> ACP 
 ```
 
 关键属性：
+
 - Bridge 进程 `detached: true`，独立进程组
 - Bridge 持有 ACP agent 的 stdio pipe
 - Daemon 通过 **Unix domain socket** 连接 Bridge（socket 路径固定，可跨进程复用）
@@ -74,6 +75,7 @@ AgentSession                         AgentSocketBridge
 **入口**：`free daemon bridge --session-id <id> --agent-type <type> --cwd <dir> ...`
 
 **职责**：
+
 - 创建对应的 ACP backend（调用 `createClaudeAcpBackend` 等工厂）
 - 监听 Unix socket（`~/.free/bridges/<sessionId>.sock`）
 - 桥接 daemon socket 消息 ↔ ACP agent stdio
@@ -98,6 +100,7 @@ AgentSession                         AgentSocketBridge
 ```
 
 Bridge 不主动退出。DETACHED 状态永久等待新 daemon 连接。清理只有两条路径：
+
 1. Daemon 发 `terminate`（用户 archive session）
 2. `doctor` 命令手动清理残留 bridge
 
@@ -117,25 +120,24 @@ type DaemonToBridgeMessage =
   | { type: 'set_config'; optionId: string; value: string }
   | { type: 'run_command'; commandId: string }
   | { type: 'permission_response'; requestId: string; allowed: boolean }
-  | { type: 'terminate' }
+  | { type: 'terminate' };
 
 // ─── Bridge → Daemon ───────────────────────────────────────
 
 type BridgeToDaemonMessage =
-  | { type: 'attached';
+  | {
+      type: 'attached';
       acpSessionId: string | null;
       supportsLoadSession: boolean;
-      seq: number;                   // 当前最大 seq
-      oldestAvailableSeq: number;    // ring buffer 中最早的 seq（防御性校验）
+      seq: number; // 当前最大 seq
+      oldestAvailableSeq: number; // ring buffer 中最早的 seq（防御性校验）
     }
-  | { type: 'replay';
-      messages: Array<{ seq: number; payload: NormalizedMessage }>;
-    }
+  | { type: 'replay'; messages: Array<{ seq: number; payload: NormalizedMessage }> }
   | { type: 'message'; seq: number; payload: NormalizedMessage }
   | { type: 'capabilities'; payload: SessionCapabilities }
   | { type: 'permission_request'; requestId: string; toolName: string; args: unknown }
   | { type: 'agent_exited'; exitInfo: BackendExitInfo }
-  | { type: 'terminated' }
+  | { type: 'terminated' };
 ```
 
 **权限转发说明**：
@@ -177,6 +179,7 @@ Bridge 进程的启动和发现：
 **Bridge 就绪信号**：bridge 进程先 listen socket，再写 PID 文件。daemon 等 PID 文件出现后再 connect，避免 connect 时 socket 尚未 listen。
 
 文件布局：
+
 ```
 ~/.free/bridges/
   ├── <sessionId>.sock       # Unix domain socket
@@ -208,6 +211,7 @@ User input (App)
 ### 5.2 `lastKnownSeq` 持久化策略
 
 daemon 收到 bridge 的消息时更新内存中的 `lastKnownSeq`，但不每条消息都写磁盘：
+
 - 内存中实时更新
 - 每 10 秒或每 50 条消息批量持久化一次
 - `stopBackend()` / daemon 优雅退出时强制写一次
@@ -222,7 +226,7 @@ interface PersistedSession {
   sessionTag: string;
   agentType: AgentType;
   cwd: string;
-  resumeSessionId?: string;         // ACP session ID for loadSession fallback
+  resumeSessionId?: string; // ACP session ID for loadSession fallback
   permissionMode?: PermissionMode;
   model?: string;
   mode?: string;
@@ -233,11 +237,11 @@ interface PersistedSession {
   daemonInstanceId: string;
 
   // ─── Bridge 新增字段 ───
-  bridgeSocketPath?: string;         // Unix socket 路径
-  bridgePid?: number;                // Bridge 进程 PID
-  bridgeStartedAt?: number;          // Bridge 启动时间（防 PID 复用）
-  supportsLoadSession?: boolean;     // Agent 是否支持 loadSession
-  lastKnownSeq?: number;            // Daemon 最后确认的 seq（用于 replay）
+  bridgeSocketPath?: string; // Unix socket 路径
+  bridgePid?: number; // Bridge 进程 PID
+  bridgeStartedAt?: number; // Bridge 启动时间（防 PID 复用）
+  supportsLoadSession?: boolean; // Agent 是否支持 loadSession
+  lastKnownSeq?: number; // Daemon 最后确认的 seq（用于 replay）
 }
 ```
 
@@ -541,46 +545,46 @@ Daemon 即将退出 (版本更新 / 手动 stop / crash):
 
 ### 9.1 新增文件
 
-| 文件 | 职责 |
-|---|---|
-| `daemon/bridge/AgentSocketBridge.ts` | Bridge 进程主逻辑（状态机 + socket 服务 + ring buffer + ACP 管理） |
-| `daemon/bridge/protocol.ts` | Bridge 协议类型定义（DaemonToBridgeMessage / BridgeToDaemonMessage） |
-| `daemon/bridge/BridgeProcessManager.ts` | Bridge 进程启动/发现/清理 |
-| `daemon/bridge/BridgeConnection.ts` | Daemon 侧 socket 连接封装（connect / send / onMessage / replay） |
-| `daemon/bridge/BridgePermissionProxy.ts` | Bridge 侧权限代理（转发 permission request/response） |
-| `backends/acp/AgentBridgeBackend.ts` | 实现 AgentBackend 接口，通过 Bridge socket 通信（daemon 进程中 ACP agent 的唯一 backend） |
+| 文件                                     | 职责                                                                                      |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `daemon/bridge/AgentSocketBridge.ts`     | Bridge 进程主逻辑（状态机 + socket 服务 + ring buffer + ACP 管理）                        |
+| `daemon/bridge/protocol.ts`              | Bridge 协议类型定义（DaemonToBridgeMessage / BridgeToDaemonMessage）                      |
+| `daemon/bridge/BridgeProcessManager.ts`  | Bridge 进程启动/发现/清理                                                                 |
+| `daemon/bridge/BridgeConnection.ts`      | Daemon 侧 socket 连接封装（connect / send / onMessage / replay）                          |
+| `daemon/bridge/BridgePermissionProxy.ts` | Bridge 侧权限代理（转发 permission request/response）                                     |
+| `backends/acp/AgentBridgeBackend.ts`     | 实现 AgentBackend 接口，通过 Bridge socket 通信（daemon 进程中 ACP agent 的唯一 backend） |
 
 ### 9.2 修改文件
 
-| 文件 | 改动 |
-|---|---|
-| `daemon/sessions/sessionPersistence.ts` | PersistedSession 新增 bridge* 字段 |
-| `daemon/sessions/AgentSession.ts` | stopBackend/shutdown 区分 bridge 模式；新增 terminateBridge / detachBridge |
-| `daemon/sessions/ClaudeAcpSession.ts` | createBackend() 返回 AgentBridgeBackend |
-| `daemon/sessions/GeminiSession.ts` | createBackend() 返回 AgentBridgeBackend |
-| `daemon/sessions/OpenCodeSession.ts` | createBackend() 返回 AgentBridgeBackend |
-| `daemon/sessions/CodexAcpSession.ts` | createBackend() 返回 AgentBridgeBackend |
-| `daemon/run.ts` | recovery loop 新增 bridge re-attach 路径；版本更新逻辑新增决策分支 |
-| `index.ts` | 注册 `daemon bridge` 子命令 |
-| `daemon/sessions/AgentBackend.ts` | AgentStartOpts 新增 bridgeSocketPath 等字段 |
+| 文件                                    | 改动                                                                       |
+| --------------------------------------- | -------------------------------------------------------------------------- |
+| `daemon/sessions/sessionPersistence.ts` | PersistedSession 新增 bridge\* 字段                                        |
+| `daemon/sessions/AgentSession.ts`       | stopBackend/shutdown 区分 bridge 模式；新增 terminateBridge / detachBridge |
+| `daemon/sessions/ClaudeAcpSession.ts`   | createBackend() 返回 AgentBridgeBackend                                    |
+| `daemon/sessions/GeminiSession.ts`      | createBackend() 返回 AgentBridgeBackend                                    |
+| `daemon/sessions/OpenCodeSession.ts`    | createBackend() 返回 AgentBridgeBackend                                    |
+| `daemon/sessions/CodexAcpSession.ts`    | createBackend() 返回 AgentBridgeBackend                                    |
+| `daemon/run.ts`                         | recovery loop 新增 bridge re-attach 路径；版本更新逻辑新增决策分支         |
+| `index.ts`                              | 注册 `daemon bridge` 子命令                                                |
+| `daemon/sessions/AgentBackend.ts`       | AgentStartOpts 新增 bridgeSocketPath 等字段                                |
 
 ### 9.3 无需修改
 
-| 文件 | 原因 |
-|---|---|
-| `daemon/ipc/IPCServer.ts` | daemon ↔ CLI 通道，与 bridge 无关 |
-| `daemon/ipc/IPCClient.ts` | 同上 |
-| `daemon/ipc/protocol.ts` | 同上 |
-| `server/*` | Server 侧无感知 |
-| `app/*` | App 侧无感知 |
-| `packages/core/src/implementations/agent/acp.ts` | ACP SDK 不改动，bridge 内部调用 |
-| `persistence.ts` | 无需新增配置（bridge 是唯一模式，无开关） |
+| 文件                                             | 原因                                      |
+| ------------------------------------------------ | ----------------------------------------- |
+| `daemon/ipc/IPCServer.ts`                        | daemon ↔ CLI 通道，与 bridge 无关         |
+| `daemon/ipc/IPCClient.ts`                        | 同上                                      |
+| `daemon/ipc/protocol.ts`                         | 同上                                      |
+| `server/*`                                       | Server 侧无感知                           |
+| `app/*`                                          | App 侧无感知                              |
+| `packages/core/src/implementations/agent/acp.ts` | ACP SDK 不改动，bridge 内部调用           |
+| `persistence.ts`                                 | 无需新增配置（bridge 是唯一模式，无开关） |
 
 ## 10. 实现阶段
 
 ### Phase 1: 基础设施
 
-1. **PersistedSession 扩展**：bridge* 字段
+1. **PersistedSession 扩展**：bridge\* 字段
 2. **Bridge 协议定义**：`daemon/bridge/protocol.ts`（含 permission 消息）
 3. **BridgeProcessManager**：spawn, isAlive, connect, cleanup, 就绪信号（PID 文件约定）
 
@@ -612,27 +616,27 @@ Daemon 即将退出 (版本更新 / 手动 stop / crash):
 
 ## 11. 边界情况
 
-| 场景 | 处理 |
-|---|---|
-| Bridge spawn 后 daemon 立即 crash | Bridge 进入 DETACHED，无限等待新 daemon re-attach |
-| Bridge 自身 crash（极少见） | 新 daemon 通过 isAlive 检测到，走 loadSession / startSession fallback |
-| PID 复用（旧 bridge PID 被新进程占用） | bridgeStartedAt 双验证：PID 存活 + 启动时间匹配 |
-| Bridge socket 文件残留（bridge 已死但 .sock 未删） | BridgeProcessManager.cleanupStale() 在 daemon 启动时清理 |
-| 两个 daemon 同时 connect 同一个 bridge | Bridge 单连接模式：新连接 kick 掉旧连接 |
-| Ring buffer 溢出（理论上不可能） | 上限 10000 条；无 daemon 时 agent 最多完成一个 turn 的输出（远小于 10000）；`oldestAvailableSeq` 做防御性校验 |
-| ACP agent 支持 loadSession 但 loadSession 调用失败 | 已有 fallback：loadSession 失败 → startSession 新建（实现于 RFC-004 前置工作） |
-| Bridge spawn 竞态（daemon connect 时 socket 未 listen） | PID 文件约定：bridge 先 listen socket，再写 PID 文件；daemon 等 PID 文件出现后再 connect |
-| Daemon 断开期间 ACP agent 请求权限 | 无 daemon 连接 → BridgePermissionProxy 无法转发 → 权限请求超时/拒绝 → agent 报错但不崩溃 |
+| 场景                                                    | 处理                                                                                                          |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Bridge spawn 后 daemon 立即 crash                       | Bridge 进入 DETACHED，无限等待新 daemon re-attach                                                             |
+| Bridge 自身 crash（极少见）                             | 新 daemon 通过 isAlive 检测到，走 loadSession / startSession fallback                                         |
+| PID 复用（旧 bridge PID 被新进程占用）                  | bridgeStartedAt 双验证：PID 存活 + 启动时间匹配                                                               |
+| Bridge socket 文件残留（bridge 已死但 .sock 未删）      | BridgeProcessManager.cleanupStale() 在 daemon 启动时清理                                                      |
+| 两个 daemon 同时 connect 同一个 bridge                  | Bridge 单连接模式：新连接 kick 掉旧连接                                                                       |
+| Ring buffer 溢出（理论上不可能）                        | 上限 10000 条；无 daemon 时 agent 最多完成一个 turn 的输出（远小于 10000）；`oldestAvailableSeq` 做防御性校验 |
+| ACP agent 支持 loadSession 但 loadSession 调用失败      | 已有 fallback：loadSession 失败 → startSession 新建（实现于 RFC-004 前置工作）                                |
+| Bridge spawn 竞态（daemon connect 时 socket 未 listen） | PID 文件约定：bridge 先 listen socket，再写 PID 文件；daemon 等 PID 文件出现后再 connect                      |
+| Daemon 断开期间 ACP agent 请求权限                      | 无 daemon 连接 → BridgePermissionProxy 无法转发 → 权限请求超时/拒绝 → agent 报错但不崩溃                      |
 
 ## 12. 与现有机制的关系
 
-| 机制 | 角色 | Bridge 是否改变它 |
-|---|---|---|
-| `loadSession()` (已实现) | Bridge 死亡时的 fallback | 否，仍然作为兜底 |
-| `--resume` (Claude native) | Claude 非 ACP 的恢复路径 | 否，不受影响 |
-| `sessionPersistence` | 持久化框架 | 扩展字段，不改机制 |
-| `IPCServer/Client` | Daemon ↔ CLI 通道 | 不涉及 |
-| `setupOfflineReconnection` | Daemon ↔ Server 断线重连 | 不涉及 |
-| `outbox` | Daemon → Server 消息缓冲 | 不涉及 |
-| `onReconnected` (App) | App ↔ Server 断线重连 | 不涉及 |
-| `AcpPermissionHandler` | 权限审批 | 仍在 daemon 侧运行，bridge 通过 socket 转发 |
+| 机制                       | 角色                     | Bridge 是否改变它                           |
+| -------------------------- | ------------------------ | ------------------------------------------- |
+| `loadSession()` (已实现)   | Bridge 死亡时的 fallback | 否，仍然作为兜底                            |
+| `--resume` (Claude native) | Claude 非 ACP 的恢复路径 | 否，不受影响                                |
+| `sessionPersistence`       | 持久化框架               | 扩展字段，不改机制                          |
+| `IPCServer/Client`         | Daemon ↔ CLI 通道        | 不涉及                                      |
+| `setupOfflineReconnection` | Daemon ↔ Server 断线重连 | 不涉及                                      |
+| `outbox`                   | Daemon → Server 消息缓冲 | 不涉及                                      |
+| `onReconnected` (App)      | App ↔ Server 断线重连    | 不涉及                                      |
+| `AcpPermissionHandler`     | 权限审批                 | 仍在 daemon 侧运行，bridge 通过 socket 转发 |

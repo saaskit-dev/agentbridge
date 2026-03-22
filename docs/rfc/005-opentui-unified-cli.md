@@ -11,16 +11,20 @@
 Claude agent 有两种运行模式，数据获取方式完全不同：
 
 **Remote (SDK) 模式**：
+
 ```
 @anthropic-ai/claude-code SDK → onMessage 回调 → NormalizedMessage → server 同步
 ```
+
 结构化数据直接可用，同步是天然的。
 
 **Local (PTY) 模式**：
+
 ```
 pty.spawn(claude) → raw terminal bytes → 转发给 CLI 显示
                   → .jsonl file scanner → sendClaudeSessionMessage → server 同步（旁路）
 ```
+
 PTY 只产生 ANSI 转义字节流，无结构化数据。必须通过读取 Claude Code 写入的 `~/.claude/projects/<project>/<sessionId>.jsonl` 文件来获取对话内容同步给 server。
 
 ### 问题
@@ -51,12 +55,14 @@ PTY 只产生 ANSI 转义字节流，无结构化数据。必须通过读取 Cla
 ### 核心思路
 
 一份 NormalizedMessage 数据流，两个消费者：
+
 1. **OpenTUI 渲染层**：将 NormalizedMessage 渲染为终端 UI（markdown、diff、tool call 进度、权限提示等）
 2. **Server 同步**：现有的 `sendNormalizedMessage()` 路径，无需改动
 
 ### 需要渲染的消息类型
 
 基于现有 NormalizedMessage 定义：
+
 - `role: 'agent'` + text content → markdown 渲染
 - `role: 'agent'` + tool-call → 工具调用展示（名称、参数、进度）
 - `role: 'agent'` + tool-result → 工具结果展示（成功/错误）
@@ -68,6 +74,7 @@ PTY 只产生 ANSI 转义字节流，无结构化数据。必须通过读取 Cla
 ### 可以删除的代码
 
 实现后可删除：
+
 - `ClaudeBackend.startLocalMode()` 及所有 PTY 相关逻辑
 - `sessionScanner.ts` 及 `.jsonl` 文件扫描机制
 - `ClaudeSession` 中的 scanner 生命周期管理
@@ -95,23 +102,23 @@ RFC-004 的**核心目标 — 统一所有 agent 的 CLI 渲染**已通过 RFC-0
 
 ### 已实现
 
-| 目标 | 状态 | 说明 |
-|------|------|------|
-| 统一 NormalizedMessage 协议 | ✅ | 所有 backend 输出 NormalizedMessage |
-| 统一 CLIRenderer | ✅ | `client/CLIRenderer.ts` — agent 无关的 chalk 渲染器 |
-| 统一 Ink UI | ✅ | `ui/ink/RemoteModeDisplay.tsx` — 所有 agent 的 remote 模式共用 |
-| 单一 daemon 架构 | ✅ | RFC-003 完成，AgentSession + AgentBackend |
-| 删除 per-agent launcher | ✅ | `runClaude.ts` / `runCodex.ts` / `runGemini.ts` / `runOpenCode.ts` 全部删除 |
-| 统一入口 | ✅ | 所有 agent 通过 `runWithDaemonIPC()` 启动 |
+| 目标                        | 状态 | 说明                                                                        |
+| --------------------------- | ---- | --------------------------------------------------------------------------- |
+| 统一 NormalizedMessage 协议 | ✅   | 所有 backend 输出 NormalizedMessage                                         |
+| 统一 CLIRenderer            | ✅   | `client/CLIRenderer.ts` — agent 无关的 chalk 渲染器                         |
+| 统一 Ink UI                 | ✅   | `ui/ink/RemoteModeDisplay.tsx` — 所有 agent 的 remote 模式共用              |
+| 单一 daemon 架构            | ✅   | RFC-003 完成，AgentSession + AgentBackend                                   |
+| 删除 per-agent launcher     | ✅   | `runClaude.ts` / `runCodex.ts` / `runGemini.ts` / `runOpenCode.ts` 全部删除 |
+| 统一入口                    | ✅   | 所有 agent 通过 `runWithDaemonIPC()` 启动                                   |
 
 ### 未实现
 
-| 目标 | 状态 | 说明 |
-|------|------|------|
-| 移除 PTY scanning | ⏳ | `sessionScanner.ts` 仍存在，Claude local PTY 模式仍在使用 |
-| 采用 OpenTUI 库 | ❌ | 未启动。当前使用 chalk + Ink 组合 |
-| 移除 node-pty 依赖 | ⏳ | Claude local PTY 模式仍需要 |
-| 完全移除 Claude local 模式 | ❌ | 仍活跃。`CLIClient.ts` 在 `stdin.isTTY === true` 时自动进入 local 模式 |
+| 目标                       | 状态 | 说明                                                                   |
+| -------------------------- | ---- | ---------------------------------------------------------------------- |
+| 移除 PTY scanning          | ⏳   | `sessionScanner.ts` 仍存在，Claude local PTY 模式仍在使用              |
+| 采用 OpenTUI 库            | ❌   | 未启动。当前使用 chalk + Ink 组合                                      |
+| 移除 node-pty 依赖         | ⏳   | Claude local PTY 模式仍需要                                            |
+| 完全移除 Claude local 模式 | ❌   | 仍活跃。`CLIClient.ts` 在 `stdin.isTTY === true` 时自动进入 local 模式 |
 
 ### 实际架构
 

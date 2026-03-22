@@ -37,23 +37,26 @@ function flattenConfigOptions(
     return undefined;
   }
 
-  return selectOptions.map((option) => ({
+  return selectOptions.map(option => ({
     id: option.id,
     name: option.name,
     ...(option.description ? { description: option.description } : {}),
     category: (option.category ?? 'model') as ConfigOption['category'],
     type: 'select',
-    options: option.options.flatMap((entry: SessionConfigSelectOption | SessionConfigSelectGroup) => (
-      isSelectGroup(entry)
-        ? entry.options.map((groupOption) => ({
-            value: groupOption.value,
-            label: `${entry.name} / ${groupOption.name}`,
-          }))
-        : [{
-            value: entry.value,
-            label: entry.name,
-          }]
-    )),
+    options: option.options.flatMap(
+      (entry: SessionConfigSelectOption | SessionConfigSelectGroup) =>
+        isSelectGroup(entry)
+          ? entry.options.map(groupOption => ({
+              value: groupOption.value,
+              label: `${entry.name} / ${groupOption.name}`,
+            }))
+          : [
+              {
+                value: entry.value,
+                label: entry.name,
+              },
+            ]
+    ),
     currentValue: option.currentValue,
   }));
 }
@@ -62,24 +65,22 @@ function inferCurrentValue(
   configOptions: ConfigOption[] | undefined,
   category: ConfigOption['category']
 ): string | undefined {
-  return configOptions?.find((option) => option.category === category)?.currentValue;
+  return configOptions?.find(option => option.category === category)?.currentValue;
 }
 
 export function getModeConfigOptionId(
   capabilities: SessionCapabilities | null | undefined
 ): string | null {
-  return capabilities?.configOptions?.find((option) => option.category === 'mode')?.id ?? null;
+  return capabilities?.configOptions?.find(option => option.category === 'mode')?.id ?? null;
 }
 
 export function getModelConfigOptionId(
   capabilities: SessionCapabilities | null | undefined
 ): string | null {
-  return capabilities?.configOptions?.find((option) => option.category === 'model')?.id ?? null;
+  return capabilities?.configOptions?.find(option => option.category === 'model')?.id ?? null;
 }
 
-export function mapAcpSessionCapabilities(
-  source: CapabilitySnapshotSource
-): SessionCapabilities {
+export function mapAcpSessionCapabilities(source: CapabilitySnapshotSource): SessionCapabilities {
   const configOptions = flattenConfigOptions(source.configOptions);
   const currentModel = inferCurrentValue(configOptions, 'model');
   const currentMode = inferCurrentValue(configOptions, 'mode');
@@ -88,7 +89,7 @@ export function mapAcpSessionCapabilities(
     ...(source.models
       ? {
           models: {
-            available: source.models.availableModels.map((model) => ({
+            available: source.models.availableModels.map(model => ({
               id: model.modelId,
               name: model.name,
               ...(model.description ? { description: model.description } : {}),
@@ -100,7 +101,7 @@ export function mapAcpSessionCapabilities(
     ...(source.modes
       ? {
           modes: {
-            available: source.modes.availableModes.map((mode) => ({
+            available: source.modes.availableModes.map(mode => ({
               id: mode.id,
               name: mode.name,
               ...(mode.description ? { description: mode.description } : {}),
@@ -128,43 +129,42 @@ export function mergeAcpSessionCapabilities(
   update: SessionUpdate
 ): SessionCapabilities {
   switch (update.sessionUpdate) {
-    case 'available_commands_update':
-      {
-        const dedupedCommands = new Map<string, { id: string; name: string; description?: string }>();
-        for (const command of update.availableCommands) {
-          dedupedCommands.set(command.name, {
-            id: command.name,
-            name: command.name,
-            ...(command.description ? { description: command.description } : {}),
-          });
-        }
-        return {
-          ...current,
-          commands: Array.from(dedupedCommands.values()),
-        };
+    case 'available_commands_update': {
+      const dedupedCommands = new Map<string, { id: string; name: string; description?: string }>();
+      for (const command of update.availableCommands) {
+        dedupedCommands.set(command.name, {
+          id: command.name,
+          name: command.name,
+          ...(command.description ? { description: command.description } : {}),
+        });
       }
+      return {
+        ...current,
+        commands: Array.from(dedupedCommands.values()),
+      };
+    }
 
     case 'current_mode_update': {
-        const modeId = (update as ProtocolCurrentModeUpdate).modeId;
-        if (!modeId) {
-          return current;
-        }
-
-        const next: SessionCapabilities = { ...current };
-        if (next.modes) {
-          next.modes = {
-            ...next.modes,
-            current: modeId,
-          };
-        }
-        const modeOptionId = getModeConfigOptionId(next);
-        if (modeOptionId && next.configOptions) {
-          next.configOptions = next.configOptions.map((option) =>
-            option.id === modeOptionId ? { ...option, currentValue: modeId } : option
-          );
-        }
-        return next;
+      const modeId = (update as ProtocolCurrentModeUpdate).modeId;
+      if (!modeId) {
+        return current;
       }
+
+      const next: SessionCapabilities = { ...current };
+      if (next.modes) {
+        next.modes = {
+          ...next.modes,
+          current: modeId,
+        };
+      }
+      const modeOptionId = getModeConfigOptionId(next);
+      if (modeOptionId && next.configOptions) {
+        next.configOptions = next.configOptions.map(option =>
+          option.id === modeOptionId ? { ...option, currentValue: modeId } : option
+        );
+      }
+      return next;
+    }
 
     case 'config_option_update': {
       const configOptions = flattenConfigOptions(update.configOptions);
@@ -213,14 +213,14 @@ export function applyCapabilitySelection(
     return next;
   }
 
-  next.configOptions = next.configOptions.map((option) => {
+  next.configOptions = next.configOptions.map(option => {
     if (option.id !== selection.optionId) {
       return option;
     }
     return { ...option, currentValue: selection.value! };
   });
 
-  const updatedOption = next.configOptions.find((option) => option.id === selection.optionId);
+  const updatedOption = next.configOptions.find(option => option.id === selection.optionId);
   if (updatedOption?.category === 'model' && next.models) {
     next.models = { ...next.models, current: selection.value };
   }

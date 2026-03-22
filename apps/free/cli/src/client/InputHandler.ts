@@ -113,11 +113,14 @@ export class InputHandler {
       terminal: false,
     });
 
-    this.rl.on('line', (line) => {
+    this.rl.on('line', line => {
       if (this.stopped) return;
       const text = line.trim();
       if (!text) return;
-      logger.info('[InputHandler] line input forwarded', { sessionId: this.sessionId, length: text.length });
+      logger.info('[InputHandler] line input forwarded', {
+        sessionId: this.sessionId,
+        length: text.length,
+      });
       this.ipcClient.send({ type: 'send_input', sessionId: this.sessionId, text });
     });
 
@@ -212,7 +215,9 @@ export class InputHandler {
      * be misinterpreted as an intentional keypress, immediately switching back to local.
      */
     let ready = false;
-    setTimeout(() => { ready = true; }, 300);
+    setTimeout(() => {
+      ready = true;
+    }, 300);
 
     this.stdinDataHandler = (chunk: Buffer | string) => {
       if (this.stopped) return;
@@ -270,7 +275,11 @@ export class InputHandler {
 
     // Restore cooked mode if terminal was in raw mode
     if (process.stdin.isTTY && (this.activeMode === 'pty' || this.activeMode === 'idle')) {
-      try { process.stdin.setRawMode(false); } catch { /* ignore */ }
+      try {
+        process.stdin.setRawMode(false);
+      } catch {
+        /* ignore */
+      }
     }
 
     // Pause stdin so the Node event loop can exit.

@@ -1,42 +1,42 @@
-import type { TraceContext, WireTrace } from './types.js'
+import type { TraceContext, WireTrace } from './types.js';
 
-export type IdGenerator = () => string
+export type IdGenerator = () => string;
 
-let _generateId: IdGenerator = () => crypto.randomUUID()
+let _generateId: IdGenerator = () => crypto.randomUUID();
 
 export function setIdGenerator(fn: IdGenerator): void {
-  _generateId = fn
+  _generateId = fn;
 }
 
 function generateTraceId(): string {
-  return _generateId()
+  return _generateId();
 }
 
 export function createTrace(opts?: {
-  sessionId?: string
-  machineId?: string
-  userId?: string
+  sessionId?: string;
+  machineId?: string;
+  userId?: string;
 }): TraceContext {
   return {
     traceId: generateTraceId(),
     sessionId: opts?.sessionId,
     machineId: opts?.machineId,
     userId: opts?.userId,
-  }
+  };
 }
 
 export function continueTrace(upstream: {
-  traceId: string
-  sessionId?: string
-  machineId?: string
-  userId?: string
+  traceId: string;
+  sessionId?: string;
+  machineId?: string;
+  userId?: string;
 }): TraceContext {
   return {
     traceId: upstream.traceId,
     sessionId: upstream.sessionId,
     machineId: upstream.machineId,
     userId: upstream.userId,
-  }
+  };
 }
 
 /**
@@ -46,24 +46,24 @@ export function resumeTrace(traceId: string, opts?: { sessionId?: string }): Tra
   return {
     traceId,
     sessionId: opts?.sessionId,
-  }
+  };
 }
 
 export function injectTrace(ctx: TraceContext, carrier: Record<string, unknown>): void {
-  const wire: WireTrace = { tid: ctx.traceId }
-  if (ctx.sessionId) wire.ses = ctx.sessionId
-  if (ctx.machineId) wire.mid = ctx.machineId
-  carrier._trace = wire
+  const wire: WireTrace = { tid: ctx.traceId };
+  if (ctx.sessionId) wire.ses = ctx.sessionId;
+  if (ctx.machineId) wire.mid = ctx.machineId;
+  carrier._trace = wire;
 }
 
 export function extractTrace(carrier: Record<string, unknown>): TraceContext | undefined {
-  const wire = carrier._trace as WireTrace | undefined
+  const wire = carrier._trace as WireTrace | undefined;
   if (!wire || typeof wire.tid !== 'string') {
-    return undefined
+    return undefined;
   }
   return {
     traceId: wire.tid,
     sessionId: wire.ses,
     machineId: wire.mid,
-  }
+  };
 }

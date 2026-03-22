@@ -19,10 +19,7 @@ const withFmtConsteval = config => {
   return withDangerousMod(config, [
     'ios',
     modConfig => {
-      const podfilePath = path.join(
-        modConfig.modRequest.platformProjectRoot,
-        'Podfile'
-      );
+      const podfilePath = path.join(modConfig.modRequest.platformProjectRoot, 'Podfile');
 
       if (!fs.existsSync(podfilePath)) {
         console.warn('⚠️ Podfile not found, skipping fmt consteval fix');
@@ -67,8 +64,7 @@ const withFmtConsteval = config => {
 
       if (match) {
         const insertIndex = match.index + match[0].length;
-        podfile =
-          podfile.slice(0, insertIndex) + '\n' + fmtFix + podfile.slice(insertIndex);
+        podfile = podfile.slice(0, insertIndex) + '\n' + fmtFix + podfile.slice(insertIndex);
 
         fs.writeFileSync(podfilePath, podfile);
         console.log('✅ Added fmt consteval workaround to Podfile (base.h patch approach)');

@@ -22,9 +22,7 @@ describe('mapAcpSessionCapabilities', () => {
         currentModelId: 'claude-sonnet-4-5',
       },
       modes: {
-        availableModes: [
-          { id: 'default', name: 'Default', description: 'Standard coding mode' },
-        ],
+        availableModes: [{ id: 'default', name: 'Default', description: 'Standard coding mode' }],
         currentModeId: 'default',
       },
       configOptions: [

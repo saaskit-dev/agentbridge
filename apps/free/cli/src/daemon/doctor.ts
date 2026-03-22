@@ -21,7 +21,12 @@ function isFreeCLIProcess(name: string, cmd: string): boolean {
   if (cmd.includes('free-cli') || cmd.includes('@saaskit-dev/free')) return true;
   // The compiled entrypoint lives at apps/free/cli/dist/cli.mjs (or cli-dev.mjs) —
   // but we must exclude other cli.mjs files (e.g. tsx's own cli.mjs used by the server).
-  if (name === 'node' && (cmd.includes('dist/cli.mjs') || cmd.includes('dist/cli-dev.mjs')) && !cmd.includes('tsx/dist/')) return true;
+  if (
+    name === 'node' &&
+    (cmd.includes('dist/cli.mjs') || cmd.includes('dist/cli-dev.mjs')) &&
+    !cmd.includes('tsx/dist/')
+  )
+    return true;
   // Catch 'free' or 'free-dev' binary name (e.g. installed via npm/curl or link:dev)
   if (name === 'free' || name === 'free-dev') return true;
   return false;
@@ -81,9 +86,10 @@ export async function findRunawayFreeProcesses(): Promise<Array<{ pid: number; c
   // Use configuration.variant to scope cleanup to the current environment.
   // curl install and npm global are both 'production' — they manage each other's processes.
   // dev (APP_ENV=development) is isolated.
-  const allowedTypes = configuration.variant === 'development'
-    ? ['dev-daemon-spawned', 'dev-daemon-version-check']
-    : ['daemon-spawned-session', 'daemon-version-check'];
+  const allowedTypes =
+    configuration.variant === 'development'
+      ? ['dev-daemon-spawned', 'dev-daemon-version-check']
+      : ['daemon-spawned-session', 'daemon-version-check'];
 
   // Filter to just runaway processes:
   // - Exclude current process

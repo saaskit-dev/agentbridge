@@ -36,8 +36,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     promise.then(
-      v => { clearTimeout(timer); resolve(v); },
-      e => { clearTimeout(timer); reject(e); },
+      v => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      e => {
+        clearTimeout(timer);
+        reject(e);
+      }
     );
   });
 }
@@ -103,7 +109,6 @@ type V3SessionMessage = {
   createdAt: number;
   updatedAt: number;
 };
-
 
 function decodeUserId(token: string): string | undefined {
   try {
@@ -211,7 +216,13 @@ export class ApiSessionClient extends EventEmitter {
     //
 
     this.socket.on('connect', () => {
-      logger.info('[CLI] Session connected', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId, isFirstConnect: this.isFirstConnect, lastSeq: this.lastSeq });
+      logger.info('[CLI] Session connected', {
+        userId: this.userId,
+        sessionId: this.sessionId,
+        traceId: getProcessTraceContext()?.traceId,
+        isFirstConnect: this.isFirstConnect,
+        lastSeq: this.lastSeq,
+      });
       // Set replay mode BEFORE clearing flag — replay handler fires after connect
       this.nextReplayMode = this.isFirstConnect ? 'recovery' : 'reconnect';
       this.isFirstConnect = false;
@@ -234,12 +245,22 @@ export class ApiSessionClient extends EventEmitter {
     );
 
     this.socket.on('disconnect', reason => {
-      logger.info('[CLI] Session disconnected', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId, reason });
+      logger.info('[CLI] Session disconnected', {
+        userId: this.userId,
+        sessionId: this.sessionId,
+        traceId: getProcessTraceContext()?.traceId,
+        reason,
+      });
       this.rpcHandlerManager.onSocketDisconnect();
     });
 
     this.socket.on('connect_error', error => {
-      logger.error('[CLI] Session connect failed', undefined, { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId, error: error.message });
+      logger.error('[CLI] Session connect failed', undefined, {
+        userId: this.userId,
+        sessionId: this.sessionId,
+        traceId: getProcessTraceContext()?.traceId,
+        error: error.message,
+      });
       this.rpcHandlerManager.onSocketDisconnect();
     });
 
@@ -248,47 +269,61 @@ export class ApiSessionClient extends EventEmitter {
     // during a keepAlive check, it emits this event so the daemon can shut down.
     this.socket.on('session-archived', (data: { sid: string }) => {
       if (data?.sid === this.sessionId) {
-        logger.info('[CLI] Server notified session archived in DB', { userId: this.userId, sessionId: this.sessionId });
+        logger.info('[CLI] Server notified session archived in DB', {
+          userId: this.userId,
+          sessionId: this.sessionId,
+        });
         this.emit('archived');
       }
     });
 
     // Server replay after reconnection (RFC-010 §3.3)
-    this.socket.on('replay', async (data: { sessionId: string; messages: any[]; hasMore: boolean }) => {
-      if (data?.sessionId !== this.sessionId || !Array.isArray(data.messages)) return;
-      const mode = this.nextReplayMode;
-      logger.info('[CLI] Replay received', {
-        sessionId: this.sessionId,
-        count: data.messages.length,
-        hasMore: data.hasMore,
-        replayMode: mode,
-      });
+    this.socket.on(
+      'replay',
+      async (data: { sessionId: string; messages: any[]; hasMore: boolean }) => {
+        if (data?.sessionId !== this.sessionId || !Array.isArray(data.messages)) return;
+        const mode = this.nextReplayMode;
+        logger.info('[CLI] Replay received', {
+          sessionId: this.sessionId,
+          count: data.messages.length,
+          hasMore: data.hasMore,
+          replayMode: mode,
+        });
 
-      if (mode === 'recovery' && this.lastSeq > 0) {
-        // Crash recovery (first connect, agent already has history via --resume):
-        // only update lastSeq — routing would cause duplicate responses since the
-        // agent has already seen these messages.
-        for (const message of data.messages) {
-          if (message.seq > this.lastSeq) this.lastSeq = message.seq;
-        }
-        if (data.hasMore) this.fetchRemainingSeqs();
-      } else {
-        // Reconnect, OR first connect on a brand-new session (lastSeq === 0):
-        // agent has no prior history, so route messages so the agent sees them.
-        for (const message of data.messages) {
-          if (message.seq > this.lastSeq) this.lastSeq = message.seq;
-          if (message.content?.t !== 'encrypted') continue;
-          if (message.traceId) setCurrentTurnTrace(resumeTrace(message.traceId));
-          try {
-            const body = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, message.content.c);
-            this.routeIncomingMessage(body);
-          } catch (error) {
-            logger.error('[CLI] Replay decrypt failed', undefined, { sessionId: this.sessionId, messageId: message.id, error: safeStringify(error) });
+        if (mode === 'recovery' && this.lastSeq > 0) {
+          // Crash recovery (first connect, agent already has history via --resume):
+          // only update lastSeq — routing would cause duplicate responses since the
+          // agent has already seen these messages.
+          for (const message of data.messages) {
+            if (message.seq > this.lastSeq) this.lastSeq = message.seq;
           }
+          if (data.hasMore) this.fetchRemainingSeqs();
+        } else {
+          // Reconnect, OR first connect on a brand-new session (lastSeq === 0):
+          // agent has no prior history, so route messages so the agent sees them.
+          for (const message of data.messages) {
+            if (message.seq > this.lastSeq) this.lastSeq = message.seq;
+            if (message.content?.t !== 'encrypted') continue;
+            if (message.traceId) setCurrentTurnTrace(resumeTrace(message.traceId));
+            try {
+              const body = await decryptFromWireString(
+                this.encryptionKey,
+                this.encryptionVariant,
+                message.content.c
+              );
+              this.routeIncomingMessage(body);
+            } catch (error) {
+              logger.error('[CLI] Replay decrypt failed', undefined, {
+                sessionId: this.sessionId,
+                messageId: message.id,
+                error: safeStringify(error),
+              });
+            }
+          }
+          if (data.hasMore) this.receiveSync.invalidate();
         }
-        if (data.hasMore) this.receiveSync.invalidate();
       }
-    });
+    );
 
     // Server events
     this.socket.on('update', async (data: Update) => {
@@ -301,7 +336,10 @@ export class ApiSessionClient extends EventEmitter {
         });
 
         if (!data.body) {
-          logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!', { userId: this.userId, sessionId: this.sessionId });
+          logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!', {
+            userId: this.userId,
+            sessionId: this.sessionId,
+          });
           return;
         }
 
@@ -313,11 +351,13 @@ export class ApiSessionClient extends EventEmitter {
           // can overwrite currentTurnTrace between here and fetchMessages() running.
           if (data._trace?.tid) {
             const wire = data._trace;
-            setCurrentTurnTrace(continueTrace({
-              traceId: wire.tid,
-              sessionId: wire.ses,
-              machineId: wire.mid,
-            }));
+            setCurrentTurnTrace(
+              continueTrace({
+                traceId: wire.tid,
+                sessionId: wire.ses,
+                machineId: wire.mid,
+              })
+            );
           }
 
           const messageSeq = data.body.message?.seq;
@@ -346,18 +386,26 @@ export class ApiSessionClient extends EventEmitter {
             this.routeIncomingMessage(body);
             this.lastSeq = messageSeq;
           } catch (decryptError) {
-            logger.error('[SOCKET] Fast-path decrypt failed, falling back to slow path', undefined, {
-              userId: this.userId,
-              sessionId: this.sessionId,
-              seq: messageSeq,
-              error: safeStringify(decryptError),
-            });
+            logger.error(
+              '[SOCKET] Fast-path decrypt failed, falling back to slow path',
+              undefined,
+              {
+                userId: this.userId,
+                sessionId: this.sessionId,
+                seq: messageSeq,
+                error: safeStringify(decryptError),
+              }
+            );
             this.receiveSync.invalidate();
           }
         } else if (data.body.t === 'update-session') {
           if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
             const mv = data.body.metadata.value;
-            this.metadata = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, mv);
+            this.metadata = await decryptFromWireString(
+              this.encryptionKey,
+              this.encryptionVariant,
+              mv
+            );
             this.metadataVersion = data.body.metadata.version;
           }
           if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
@@ -586,7 +634,11 @@ export class ApiSessionClient extends EventEmitter {
       if (!hasMore || maxSeq === afterSeq) break;
       afterSeq = maxSeq;
     }
-    logger.debug('[API] fetchRemainingSeqs done', { sessionId: this.sessionId, lastSeq: this.lastSeq, pages });
+    logger.debug('[API] fetchRemainingSeqs done', {
+      sessionId: this.sessionId,
+      lastSeq: this.lastSeq,
+      pages,
+    });
   }
 
   /** Server accepts at most 100 messages per batch. */
@@ -656,7 +708,11 @@ export class ApiSessionClient extends EventEmitter {
   }
 
   private async enqueueMessage(content: unknown): Promise<string> {
-    const encrypted = await encryptToWireString(this.encryptionKey, this.encryptionVariant, content);
+    const encrypted = await encryptToWireString(
+      this.encryptionKey,
+      this.encryptionVariant,
+      content
+    );
     const trace = getWireTrace();
     const id = randomUUID();
     this.pendingOutbox.push({
@@ -716,7 +772,9 @@ export class ApiSessionClient extends EventEmitter {
    * Send a normalized message (pre-formatted with role and content).
    * Used by AgentSession to pipe backend output directly.
    */
-  async sendNormalizedMessage(msg: Pick<NormalizedMessage, 'role' | 'content'> & Partial<NormalizedMessage>): Promise<string> {
+  async sendNormalizedMessage(
+    msg: Pick<NormalizedMessage, 'role' | 'content'> & Partial<NormalizedMessage>
+  ): Promise<string> {
     return this.enqueueMessage(msg);
   }
 
@@ -731,7 +789,10 @@ export class ApiSessionClient extends EventEmitter {
    * Legacy ACP wrapper kept for compatibility. New daemon output should already
    * be normalized before reaching ApiSessionClient.
    */
-  async sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
+  async sendAgentMessage(
+    provider: 'gemini' | 'codex' | 'claude' | 'opencode',
+    body: ACPMessageData
+  ) {
     const content = {
       role: 'agent',
       content: {
@@ -814,7 +875,11 @@ export class ApiSessionClient extends EventEmitter {
    * Send session death message
    */
   sendSessionDeath() {
-    this.socket.emit('session-end', { sid: this.sessionId, time: Date.now(), _trace: getWireTrace() });
+    this.socket.emit('session-end', {
+      sid: this.sessionId,
+      time: Date.now(),
+      _trace: getWireTrace(),
+    });
   }
 
   /**
@@ -856,37 +921,53 @@ export class ApiSessionClient extends EventEmitter {
    * @param handler - Handler function that returns the updated metadata
    */
   updateMetadata(handler: (metadata: Metadata) => Metadata) {
-    this.metadataLock.inLock(async () => {
-      await backoff(async () => {
-        const updated = handler(this.metadata!);
-        const answer = await withTimeout(
-          this.socket.emitWithAck('update-metadata', {
-            sid: this.sessionId,
-            expectedVersion: this.metadataVersion,
-            metadata: await encryptToWireString(this.encryptionKey, this.encryptionVariant, updated),
-            _trace: getWireTrace(),
-          }),
-          ACK_TIMEOUT,
-          'update-metadata',
-        );
-        if (answer.result === 'success') {
-          const am = answer.metadata;
-          this.metadata = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, am);
-          this.metadataVersion = answer.version;
-        } else if (answer.result === 'version-mismatch') {
-          if (answer.version > this.metadataVersion) {
-            this.metadataVersion = answer.version;
+    this.metadataLock
+      .inLock(async () => {
+        await backoff(async () => {
+          const updated = handler(this.metadata!);
+          const answer = await withTimeout(
+            this.socket.emitWithAck('update-metadata', {
+              sid: this.sessionId,
+              expectedVersion: this.metadataVersion,
+              metadata: await encryptToWireString(
+                this.encryptionKey,
+                this.encryptionVariant,
+                updated
+              ),
+              _trace: getWireTrace(),
+            }),
+            ACK_TIMEOUT,
+            'update-metadata'
+          );
+          if (answer.result === 'success') {
             const am = answer.metadata;
-            this.metadata = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, am);
+            this.metadata = await decryptFromWireString(
+              this.encryptionKey,
+              this.encryptionVariant,
+              am
+            );
+            this.metadataVersion = answer.version;
+          } else if (answer.result === 'version-mismatch') {
+            if (answer.version > this.metadataVersion) {
+              this.metadataVersion = answer.version;
+              const am = answer.metadata;
+              this.metadata = await decryptFromWireString(
+                this.encryptionKey,
+                this.encryptionVariant,
+                am
+              );
+            }
+            throw new Error('Metadata version mismatch');
+          } else if (answer.result === 'error') {
+            // Hard error - ignore
           }
-          throw new Error('Metadata version mismatch');
-        } else if (answer.result === 'error') {
-          // Hard error - ignore
-        }
+        });
+      })
+      .catch(e => {
+        logger.error('[apiSession] updateMetadata failed after backoff exhaustion', undefined, {
+          error: String(e),
+        });
       });
-    }).catch(e => {
-      logger.error('[apiSession] updateMetadata failed after backoff exhaustion', undefined, { error: String(e) });
-    });
   }
 
   /**
@@ -894,82 +975,102 @@ export class ApiSessionClient extends EventEmitter {
    * @param handler - Handler function that returns the updated agent state
    */
   updateAgentState(handler: (metadata: AgentState) => AgentState) {
-    logger.debug('Updating agent state', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId });
-    this.agentStateLock.inLock(async () => {
-      await backoff(async () => {
-        const updated = handler(this.agentState || {});
-        const answer = await withTimeout(
-          this.socket.emitWithAck('update-state', {
-            sid: this.sessionId,
-            expectedVersion: this.agentStateVersion,
-            _trace: getWireTrace(),
-            agentState: updated
-              ? await encryptToWireString(this.encryptionKey, this.encryptionVariant, updated)
-              : null,
-          }),
-          ACK_TIMEOUT,
-          'update-state',
-        );
-        if (answer.result === 'success') {
-          const as = answer.agentState;
-          this.agentState = as
-            ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, as)
-            : null;
-          this.agentStateVersion = answer.version;
-          logger.debug('Agent state updated', { userId: this.userId, sessionId: this.sessionId, traceId: getProcessTraceContext()?.traceId });
-        } else if (answer.result === 'version-mismatch') {
-          if (answer.version > this.agentStateVersion) {
-            this.agentStateVersion = answer.version;
+    logger.debug('Updating agent state', {
+      userId: this.userId,
+      sessionId: this.sessionId,
+      traceId: getProcessTraceContext()?.traceId,
+    });
+    this.agentStateLock
+      .inLock(async () => {
+        await backoff(async () => {
+          const updated = handler(this.agentState || {});
+          const answer = await withTimeout(
+            this.socket.emitWithAck('update-state', {
+              sid: this.sessionId,
+              expectedVersion: this.agentStateVersion,
+              _trace: getWireTrace(),
+              agentState: updated
+                ? await encryptToWireString(this.encryptionKey, this.encryptionVariant, updated)
+                : null,
+            }),
+            ACK_TIMEOUT,
+            'update-state'
+          );
+          if (answer.result === 'success') {
             const as = answer.agentState;
             this.agentState = as
               ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, as)
               : null;
+            this.agentStateVersion = answer.version;
+            logger.debug('Agent state updated', {
+              userId: this.userId,
+              sessionId: this.sessionId,
+              traceId: getProcessTraceContext()?.traceId,
+            });
+          } else if (answer.result === 'version-mismatch') {
+            if (answer.version > this.agentStateVersion) {
+              this.agentStateVersion = answer.version;
+              const as = answer.agentState;
+              this.agentState = as
+                ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, as)
+                : null;
+            }
+            throw new Error('Agent state version mismatch');
+          } else if (answer.result === 'error') {
+            // Hard error - ignore
           }
-          throw new Error('Agent state version mismatch');
-        } else if (answer.result === 'error') {
-          // Hard error - ignore
-        }
+        });
+      })
+      .catch(e => {
+        logger.error('[apiSession] updateAgentState failed after backoff exhaustion', undefined, {
+          error: String(e),
+        });
       });
-    }).catch(e => {
-      logger.error('[apiSession] updateAgentState failed after backoff exhaustion', undefined, { error: String(e) });
-    });
   }
 
   updateCapabilities(capabilities: SessionCapabilities | null) {
-    this.capabilitiesLock.inLock(async () => {
-      await backoff(async () => {
-        const answer = await withTimeout(
-          this.socket.emitWithAck('update-capabilities', {
-            sid: this.sessionId,
-            expectedVersion: this.capabilitiesVersion,
-            _trace: getWireTrace(),
-            capabilities: capabilities
-              ? await encryptToWireString(this.encryptionKey, this.encryptionVariant, capabilities)
-              : null,
-          }),
-          ACK_TIMEOUT,
-          'update-capabilities',
-        );
-        if (answer.result === 'success') {
-          const cv = answer.capabilities;
-          this.capabilities = cv
-            ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, cv)
-            : null;
-          this.capabilitiesVersion = answer.version;
-        } else if (answer.result === 'version-mismatch') {
-          if (answer.version > this.capabilitiesVersion) {
-            this.capabilitiesVersion = answer.version;
+    this.capabilitiesLock
+      .inLock(async () => {
+        await backoff(async () => {
+          const answer = await withTimeout(
+            this.socket.emitWithAck('update-capabilities', {
+              sid: this.sessionId,
+              expectedVersion: this.capabilitiesVersion,
+              _trace: getWireTrace(),
+              capabilities: capabilities
+                ? await encryptToWireString(
+                    this.encryptionKey,
+                    this.encryptionVariant,
+                    capabilities
+                  )
+                : null,
+            }),
+            ACK_TIMEOUT,
+            'update-capabilities'
+          );
+          if (answer.result === 'success') {
             const cv = answer.capabilities;
             this.capabilities = cv
               ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, cv)
               : null;
+            this.capabilitiesVersion = answer.version;
+          } else if (answer.result === 'version-mismatch') {
+            if (answer.version > this.capabilitiesVersion) {
+              this.capabilitiesVersion = answer.version;
+              const cv = answer.capabilities;
+              this.capabilities = cv
+                ? await decryptFromWireString(this.encryptionKey, this.encryptionVariant, cv)
+                : null;
+            }
+            throw new Error('Capabilities version mismatch');
           }
-          throw new Error('Capabilities version mismatch');
-        }
+        });
+      })
+      .catch(e => {
+        logger.error('[apiSession] updateCapabilities failed after backoff exhaustion', undefined, {
+          error: String(e),
+        });
       });
-    }).catch(e => {
-      logger.error('[apiSession] updateCapabilities failed after backoff exhaustion', undefined, { error: String(e) });
-    });
   }
 
   // ============================================================

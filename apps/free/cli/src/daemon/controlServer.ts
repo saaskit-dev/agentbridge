@@ -7,17 +7,14 @@ import fastify from 'fastify';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { SessionSummary } from '@/daemon/sessions/types';
-import type { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
+import type {
+  SpawnSessionOptions,
+  SpawnSessionResult,
+} from '@/modules/common/registerCommonHandlers';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('daemon/controlServer');
-const AgentTypeSchema = z.enum([
-  'claude',
-  'claude-native',
-  'codex',
-  'gemini',
-  'opencode',
-]);
+const AgentTypeSchema = z.enum(['claude', 'claude-native', 'codex', 'gemini', 'opencode']);
 
 export function startDaemonControlServer({
   getSessions,
@@ -155,7 +152,11 @@ export function startDaemonControlServer({
               reply.code(500);
               return { success: false, error: 'Failed to spawn session: no session ID returned' };
             }
-            return { success: true, sessionId: result.sessionId, approvedNewDirectoryCreation: true };
+            return {
+              success: true,
+              sessionId: result.sessionId,
+              approvedNewDirectoryCreation: true,
+            };
 
           case 'requestToApproveDirectoryCreation':
             reply.code(409);

@@ -65,7 +65,7 @@ export class IPCClient {
 
     const reader = readline.createInterface({ input: this.socket, crlfDelay: Infinity });
 
-    reader.on('line', (line) => {
+    reader.on('line', line => {
       try {
         const msg = JSON.parse(line) as IPCServerMessage;
         this.dispatch(msg);
@@ -74,16 +74,19 @@ export class IPCClient {
       }
     });
 
-    this.socket.on('close', (hadError) => {
+    this.socket.on('close', hadError => {
       if (!this.destroyed) {
-        logger.info('[IPCClient] socket closed, will reconnect', { hadError, socketPath: this.socketPath });
+        logger.info('[IPCClient] socket closed, will reconnect', {
+          hadError,
+          socketPath: this.socketPath,
+        });
         this.scheduleReconnect();
       } else {
         logger.debug('[IPCClient] socket closed (destroyed, no reconnect)');
       }
     });
 
-    this.socket.on('error', (err) => {
+    this.socket.on('error', err => {
       // close event fires after error and triggers reconnect; just log here
       logger.error('[IPCClient] socket error', err);
     });
@@ -116,7 +119,9 @@ export class IPCClient {
         for (const msg of pending) {
           if (!this.socket?.writable) {
             const remaining = pending.slice(pending.indexOf(msg));
-            logger.warn('[IPCClient] socket closed during replay, re-buffering remaining', { remaining: remaining.length });
+            logger.warn('[IPCClient] socket closed during replay, re-buffering remaining', {
+              remaining: remaining.length,
+            });
             this.pendingSendInputs.push(...remaining);
             break;
           }
@@ -161,7 +166,9 @@ export class IPCClient {
     } else {
       // Other message types (attach, detach, etc.) are not buffered:
       // attach is replayed via onReconnect; others are fire-and-forget.
-      logger.debug('[IPCClient] message dropped (socket not writable, non-bufferable type)', { type: msg.type });
+      logger.debug('[IPCClient] message dropped (socket not writable, non-bufferable type)', {
+        type: msg.type,
+      });
     }
   }
 

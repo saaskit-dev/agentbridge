@@ -37,7 +37,11 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
       // a final message concurrently with output.end() (e.g. PTY onData
       // firing in the same tick as onExit). Throwing here would crash the
       // daemon process.
-      logger.debug('[PushableAsyncIterable] push after done, dropping', { id: this.instanceId, queueSize: this.queue.length, totalPushed: this.pushCount });
+      logger.debug('[PushableAsyncIterable] push after done, dropping', {
+        id: this.instanceId,
+        queueSize: this.queue.length,
+        totalPushed: this.pushCount,
+      });
       return;
     }
 
@@ -62,11 +66,18 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
    */
   end(): void {
     if (this.isDone) {
-      logger.debug('[PushableAsyncIterable] end() called but already done', { id: this.instanceId });
+      logger.debug('[PushableAsyncIterable] end() called but already done', {
+        id: this.instanceId,
+      });
       return;
     }
 
-    logger.debug('[PushableAsyncIterable] ending', { id: this.instanceId, queueSize: this.queue.length, waiters: this.waiters.length, totalPushed: this.pushCount });
+    logger.debug('[PushableAsyncIterable] ending', {
+      id: this.instanceId,
+      queueSize: this.queue.length,
+      waiters: this.waiters.length,
+      totalPushed: this.pushCount,
+    });
     this.isDone = true;
     this.cleanup();
   }
@@ -76,11 +87,19 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
    */
   setError(err: Error): void {
     if (this.isDone) {
-      logger.debug('[PushableAsyncIterable] setError() called but already done', { id: this.instanceId, error: err.message });
+      logger.debug('[PushableAsyncIterable] setError() called but already done', {
+        id: this.instanceId,
+        error: err.message,
+      });
       return;
     }
 
-    logger.warn('[PushableAsyncIterable] error set', { id: this.instanceId, error: err.message, waiters: this.waiters.length, totalPushed: this.pushCount });
+    logger.warn('[PushableAsyncIterable] error set', {
+      id: this.instanceId,
+      error: err.message,
+      waiters: this.waiters.length,
+      totalPushed: this.pushCount,
+    });
     this.error = err;
     this.isDone = true;
     this.cleanup();
@@ -101,7 +120,11 @@ export class PushableAsyncIterable<T> implements AsyncIterableIterator<T> {
       }
     }
     if (waiterCount > 0) {
-      logger.debug('[PushableAsyncIterable] cleanup resolved waiters', { id: this.instanceId, waiterCount, hadError: this.error != null });
+      logger.debug('[PushableAsyncIterable] cleanup resolved waiters', {
+        id: this.instanceId,
+        waiterCount,
+        hadError: this.error != null,
+      });
     }
   }
 

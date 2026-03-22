@@ -84,7 +84,14 @@ export function spawnFreeCLI(args: string[], options: SpawnOptions = {}): ChildP
 
   // Use the same Node.js flags that the wrapper script uses
   // Inject --variant so spawned processes are identifiable by environment (dev vs production)
-  const nodeArgs = ['--no-warnings', '--no-deprecation', entrypoint, '--variant', configuration.variant, ...args];
+  const nodeArgs = [
+    '--no-warnings',
+    '--no-deprecation',
+    entrypoint,
+    '--variant',
+    configuration.variant,
+    ...args,
+  ];
 
   // Sanity check of the entrypoint path exists
   if (!waitForEntrypointSync(entrypoint)) {
@@ -95,7 +102,10 @@ export function spawnFreeCLI(args: string[], options: SpawnOptions = {}): ChildP
 
   // Ensure APP_ENV is propagated so child processes inherit the correct variant
   // without relying solely on the --variant CLI flag.
-  const env = { ...options.env ?? process.env, APP_ENV: configuration.isDev ? 'development' : 'production' };
+  const env = {
+    ...(options.env ?? process.env),
+    APP_ENV: configuration.isDev ? 'development' : 'production',
+  };
 
   // Use absolute path to the current runtime to avoid PATH issues in daemon processes
   // process.execPath gives us the absolute path to the node/bun binary running this process

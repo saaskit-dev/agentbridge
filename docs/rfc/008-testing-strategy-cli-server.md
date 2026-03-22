@@ -599,36 +599,36 @@ This keeps regressions localized and avoids discovering protocol bugs only at th
 
 ### 已实现的测试基础设施
 
-| 组件 | RFC 描述 | 实现文件 | 状态 |
-|------|---------|---------|------|
-| Fake App Client | §1 | `cli/src/test-helpers/FakeAppClient.ts`（245 行） | ✅ |
-| Fake CLI Session Client | — | `cli/src/test-helpers/FakeCliSessionClient.ts`（87 行） | ✅（RFC 未提，额外实现） |
-| Integration Environment | — | `cli/src/test-helpers/integrationEnvironment.ts`（180 行） | ✅（RFC 未提，额外实现） |
-| Daemon Test Harness | — | `cli/src/test-helpers/daemonTestHarness.ts`（110 行） | ✅（RFC 未提，额外实现） |
-| Fake ACP Agent | §2 | — | ❌ 未实现 |
-| Assertion Helpers | §3 | 内联在各测试文件中 | ⚠️ 部分（未提取为独立模块） |
-| Fixture Library | §4 | — | ❌ 未实现 |
+| 组件                    | RFC 描述 | 实现文件                                                   | 状态                        |
+| ----------------------- | -------- | ---------------------------------------------------------- | --------------------------- |
+| Fake App Client         | §1       | `cli/src/test-helpers/FakeAppClient.ts`（245 行）          | ✅                          |
+| Fake CLI Session Client | —        | `cli/src/test-helpers/FakeCliSessionClient.ts`（87 行）    | ✅（RFC 未提，额外实现）    |
+| Integration Environment | —        | `cli/src/test-helpers/integrationEnvironment.ts`（180 行） | ✅（RFC 未提，额外实现）    |
+| Daemon Test Harness     | —        | `cli/src/test-helpers/daemonTestHarness.ts`（110 行）      | ✅（RFC 未提，额外实现）    |
+| Fake ACP Agent          | §2       | —                                                          | ❌ 未实现                   |
+| Assertion Helpers       | §3       | 内联在各测试文件中                                         | ⚠️ 部分（未提取为独立模块） |
+| Fixture Library         | §4       | —                                                          | ❌ 未实现                   |
 
 ### 已实现的测试文件
 
-| 测试文件 | 对应 RFC 层级 | 测试数 |
-|---------|-------------|--------|
-| `cli/src/api/messageLifecycle.integration.test.ts` | Layer 3 (CLI-Server Integration) | 4 |
-| `cli/src/api/cliServerRoundtrip.integration.test.ts` | Layer 3 (CLI-Server Integration) | 3 |
-| `cli/src/daemon/daemon.integration.test.ts` | Layer 3 (Daemon lifecycle) | 11 |
-| `cli/src/api/daemonAgentSmoke.integration.test.ts` | Layer 4 (Real Agent Smoke) | 2（env 门控） |
-| `cli/src/__tests__/acpSdkAgentMatrix.test.ts` | Layer 4 (ACP SDK Matrix) | 进行中（env 门控） |
-| `app/sources/__tests__/e2e-scenarios.ts` | Layer 5 (App Consumer) | 18 场景 |
+| 测试文件                                             | 对应 RFC 层级                    | 测试数             |
+| ---------------------------------------------------- | -------------------------------- | ------------------ |
+| `cli/src/api/messageLifecycle.integration.test.ts`   | Layer 3 (CLI-Server Integration) | 4                  |
+| `cli/src/api/cliServerRoundtrip.integration.test.ts` | Layer 3 (CLI-Server Integration) | 3                  |
+| `cli/src/daemon/daemon.integration.test.ts`          | Layer 3 (Daemon lifecycle)       | 11                 |
+| `cli/src/api/daemonAgentSmoke.integration.test.ts`   | Layer 4 (Real Agent Smoke)       | 2（env 门控）      |
+| `cli/src/__tests__/acpSdkAgentMatrix.test.ts`        | Layer 4 (ACP SDK Matrix)         | 进行中（env 门控） |
+| `app/sources/__tests__/e2e-scenarios.ts`             | Layer 5 (App Consumer)           | 18 场景            |
 
 ### 各层覆盖状态
 
-| Layer | 名称 | 状态 | 说明 |
-|-------|------|------|------|
-| Layer 1 | Pure Unit Tests | ✅ 已有 | `reducer.spec.ts`、`typesRaw.spec.ts`、`encryption.test.ts` 等 |
-| Layer 2 | Component Integration | ⚠️ 部分 | `FakeCliSessionClient` + `FakeAppClient` 存在，Fake ACP Agent 缺失 |
-| Layer 3 | CLI-Server Integration | ✅ 实质性 | messageLifecycle + cliServerRoundtrip + daemon lifecycle |
-| Layer 4 | Real Agent Smoke | ✅ 存在 | `FREE_RUN_REAL_AGENT_SMOKE=1` 门控 |
-| Layer 5 | App Consumer Tests | ✅ 存在 | Metro module injection (RFC-008) |
+| Layer   | 名称                   | 状态      | 说明                                                               |
+| ------- | ---------------------- | --------- | ------------------------------------------------------------------ |
+| Layer 1 | Pure Unit Tests        | ✅ 已有   | `reducer.spec.ts`、`typesRaw.spec.ts`、`encryption.test.ts` 等     |
+| Layer 2 | Component Integration  | ⚠️ 部分   | `FakeCliSessionClient` + `FakeAppClient` 存在，Fake ACP Agent 缺失 |
+| Layer 3 | CLI-Server Integration | ✅ 实质性 | messageLifecycle + cliServerRoundtrip + daemon lifecycle           |
+| Layer 4 | Real Agent Smoke       | ✅ 存在   | `FREE_RUN_REAL_AGENT_SMOKE=1` 门控                                 |
+| Layer 5 | App Consumer Tests     | ✅ 存在   | Metro module injection (RFC-008)                                   |
 
 ### 尚未实现
 

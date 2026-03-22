@@ -74,11 +74,13 @@ async function main() {
       mimeType: 'application/json',
     },
     async () => ({
-      contents: [{
-        uri: 'free://tools',
-        text: JSON.stringify({ tools: ['change_title'] }),
-        mimeType: 'application/json',
-      }],
+      contents: [
+        {
+          uri: 'free://tools',
+          text: JSON.stringify({ tools: ['change_title'] }),
+          mimeType: 'application/json',
+        },
+      ],
     })
   );
 

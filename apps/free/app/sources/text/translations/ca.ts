@@ -240,6 +240,12 @@ export const ca: TranslationStructure = {
     sessionNotFound: 'Sessió no trobada',
     voiceSessionFailed: "Ha fallat l'inici de la sessió de veu",
     voiceServiceUnavailable: 'El servei de veu no està disponible temporalment',
+    voiceNotConfigured: 'Voice feature is not configured. Please contact support.',
+    voiceNotInitialized:
+      'Voice service failed to initialize. Please restart the app and try again.',
+    voiceMicPermissionWeb:
+      'Microphone access is required for voice. Please allow microphone permission in your browser settings.',
+    voiceTokenRejected: 'Voice service is not available on this server.',
     oauthInitializationFailed: 'Ha fallat la inicialització del flux OAuth',
     tokenStorageFailed: "Ha fallat l'emmagatzematge dels tokens d'autenticació",
     oauthStateMismatch: 'Ha fallat la validació de seguretat. Si us plau, torna-ho a provar',
@@ -305,16 +311,18 @@ export const ca: TranslationStructure = {
       success: 'Worktree creat amb èxit',
     },
     inputPlaceholder: 'En què voldries treballar?',
-    capabilityDiscoveryNotice: 'Envia el teu primer missatge per carregar modes, models i comandes.',
+    capabilityDiscoveryNotice:
+      'Envia el teu primer missatge per carregar modes, models i comandes.',
   },
 
   agentPicker: {
     headerTitle: 'Selecciona un agent',
-    heroEyebrow: 'Selector d\'implementació',
-    heroTitle: 'Tria el temps d\'execució amb el qual vols començar.',
-    heroDescription: 'Cada opció de sota es descobreix a partir de les implementacions registrades a la màquina seleccionada. Les entrades clàssiques i ACP es mantenen separades intencionadament.',
+    heroEyebrow: "Selector d'implementació",
+    heroTitle: "Tria el temps d'execució amb el qual vols començar.",
+    heroDescription:
+      'Cada opció de sota es descobreix a partir de les implementacions registrades a la màquina seleccionada. Les entrades clàssiques i ACP es mantenen separades intencionadament.',
     experimentalSection: 'Experimental',
-    experimentalCaption: 'Agents opcionals darrere de la configuració d\'experiments.',
+    experimentalCaption: "Agents opcionals darrere de la configuració d'experiments.",
     noAgentsTitle: 'No hi ha agents disponibles',
     noAgentsDescription: 'Aquesta màquina no ha informat de cap implementació executable.',
     tagAcp: 'ACP',
@@ -431,7 +439,8 @@ export const ca: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Versió ${currentVersion} instal·lada. Actualitzeu a ${requiredVersion} o posterior`,
-    updateCliInstructions: 'Si us plau executeu curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    updateCliInstructions:
+      'Si us plau executeu curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Elimina la sessió',
     deleteSessionSubtitle: 'Elimina permanentment aquesta sessió',
     deleteSessionConfirm: 'Eliminar la sessió permanentment?',
@@ -463,7 +472,7 @@ export const ca: TranslationStructure = {
       badgeYolo: 'YOLO',
     },
     agentTitle: 'Agent',
-    agentModeTitle: 'Mode d\'agent',
+    agentModeTitle: "Mode d'agent",
     experimentalSection: 'Experimental',
     agent: {
       claude: 'Claude',
@@ -817,8 +826,8 @@ export const ca: TranslationStructure = {
     unknownEvent: 'Esdeveniment desconegut',
     usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
     unknownTime: 'temps desconegut',
-    permissionRequest: ({ toolName }: { toolName: string }) => "Permission request for " + toolName,
-    permissionMode: ({ mode }: { mode: string }) => "Permission mode: " + mode,
+    permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
+    permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
   },
 
   codex: {
@@ -963,25 +972,28 @@ export const ca: TranslationStructure = {
 
   diagnostics: {
     title: 'Registres de diagnòstic',
-    subtitle: "Exporta els registres per ajudar a diagnosticar problemes",
+    subtitle: 'Exporta els registres per ajudar a diagnosticar problemes',
     preview: 'Previsualització',
     export: 'Exportar',
     timeRange: 'Interval de temps',
     entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
       `${count} ${count === 1 ? 'entrada' : 'entrades'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'sessió' : 'sessions'}` : ''}`,
     share: 'Compartir registres',
-    shareSubtitle: "Obre el full de compartició del sistema per desar o enviar",
+    shareSubtitle: 'Obre el full de compartició del sistema per desar o enviar',
     copyToClipboard: 'Copiar al porta-retalls',
     copySubtitle: 'Copia les dades del registre com a text JSONL',
     whatIsIncluded: "Què s'inclou",
-    whatIsIncludedSubtitle: 'Registres de diagnòstic de l\'app — sense contingut de missatges ni dades personals',
-    privacyNote: "Els registres s'anonimitzen i es netegen abans d'exportar. El contingut dels missatges i les dades sensibles mai s'inclouen.",
+    whatIsIncludedSubtitle:
+      "Registres de diagnòstic de l'app — sense contingut de missatges ni dades personals",
+    privacyNote:
+      "Els registres s'anonimitzen i es netegen abans d'exportar. El contingut dels missatges i les dades sensibles mai s'inclouen.",
     noLogs: 'Sense registres',
     noLogsMessage: "No hi ha entrades de registre per exportar en l'interval de temps seleccionat.",
     exported: 'Exportat',
     exportFailed: "Error en l'exportació",
     copied: 'Copiat',
-    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'entrada copiada' : 'entrades copiades'} al porta-retalls`,
+    copiedToClipboard: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'entrada copiada' : 'entrades copiades'} al porta-retalls`,
   },
 } as const;
 

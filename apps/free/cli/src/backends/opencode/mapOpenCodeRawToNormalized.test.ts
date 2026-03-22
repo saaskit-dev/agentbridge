@@ -34,7 +34,9 @@ describe('mapOpenCodeRawToNormalized', () => {
     const result = mapOpenCodeRawToNormalized(msg);
     expect(result?.role).toBe('event');
     expect(result?.role === 'event' && result.content.type).toBe('error');
-    expect(result?.role === 'event' && (result.content as { message: string }).message).toBe('bad thing');
+    expect(result?.role === 'event' && (result.content as { message: string }).message).toBe(
+      'bad thing'
+    );
   });
 
   it('maps tool-call to agent tool-call content', () => {
@@ -80,7 +82,10 @@ describe('mapOpenCodeRawToNormalized', () => {
     const result = mapOpenCodeRawToNormalized(msg);
     expect(result?.role).toBe('event');
     expect(result?.role === 'event' && result.content.type).toBe('token_count');
-    const usage = result?.role === 'event' ? (result.content as { usage: { input_tokens: number } }).usage : null;
+    const usage =
+      result?.role === 'event'
+        ? (result.content as { usage: { input_tokens: number } }).usage
+        : null;
     expect(usage?.input_tokens).toBe(100);
   });
 
@@ -93,7 +98,11 @@ describe('mapOpenCodeRawToNormalized', () => {
   });
 
   it('maps patch-apply-begin to CodexPatch tool-call', () => {
-    const msg = { type: 'patch-apply-begin', call_id: 'patch-1', changes: {} } as unknown as AgentMessage;
+    const msg = {
+      type: 'patch-apply-begin',
+      call_id: 'patch-1',
+      changes: {},
+    } as unknown as AgentMessage;
     const result = mapOpenCodeRawToNormalized(msg);
     const block = result?.role === 'agent' ? result.content[0] : null;
     expect(block?.type).toBe('tool-call');

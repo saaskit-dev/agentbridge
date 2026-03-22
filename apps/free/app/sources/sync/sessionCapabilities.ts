@@ -70,58 +70,66 @@ export type CapabilityCategory = keyof Pick<
   'models' | 'modes' | 'configOptions' | 'commands'
 >;
 
-const capabilityPresets: Record<'claude' | 'gemini' | 'opencode' | 'cursor', SessionCapabilities> = {
-  claude: {
-    models: {
-      available: [
-        { id: 'default', name: 'Default', description: 'Balanced performance' },
-        { id: 'adaptiveUsage', name: 'Adaptive Usage', description: 'Automatically choose model' },
-        { id: 'sonnet', name: 'Sonnet', description: 'Fast and efficient' },
-        { id: 'opus', name: 'Opus', description: 'Most capable model' },
-      ],
-      current: 'default',
+const capabilityPresets: Record<'claude' | 'gemini' | 'opencode' | 'cursor', SessionCapabilities> =
+  {
+    claude: {
+      models: {
+        available: [
+          { id: 'default', name: 'Default', description: 'Balanced performance' },
+          {
+            id: 'adaptiveUsage',
+            name: 'Adaptive Usage',
+            description: 'Automatically choose model',
+          },
+          { id: 'sonnet', name: 'Sonnet', description: 'Fast and efficient' },
+          { id: 'opus', name: 'Opus', description: 'Most capable model' },
+        ],
+        current: 'default',
+      },
     },
-  },
-  gemini: {
-    models: {
-      available: [
-        { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Most capable' },
-        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Fast and efficient' },
-        {
-          id: 'gemini-2.5-flash-lite',
-          name: 'Gemini 2.5 Flash Lite',
-          description: 'Fastest',
-        },
-      ],
-      current: 'gemini-2.5-pro',
+    gemini: {
+      models: {
+        available: [
+          { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Most capable' },
+          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Fast and efficient' },
+          {
+            id: 'gemini-2.5-flash-lite',
+            name: 'Gemini 2.5 Flash Lite',
+            description: 'Fastest',
+          },
+        ],
+        current: 'gemini-2.5-pro',
+      },
     },
-  },
-  opencode: {
-    models: {
-      available: [{ id: 'default', name: 'Default', description: 'Use provider default model' }],
-      current: 'default',
+    opencode: {
+      models: {
+        available: [{ id: 'default', name: 'Default', description: 'Use provider default model' }],
+        current: 'default',
+      },
     },
-  },
-  cursor: {
-    models: {
-      available: [
-        { id: 'default[]', name: 'Auto', description: 'Automatically select best model' },
-        { id: 'claude-sonnet-4-6[thinking=true,context=200k,effort=medium]', name: 'Sonnet 4.6' },
-        { id: 'claude-opus-4-6[thinking=true,context=200k,effort=high,fast=false]', name: 'Opus 4.6' },
-        { id: 'gpt-5.4[reasoning=medium,context=272k,fast=false]', name: 'GPT-5.4' },
-      ],
-      current: 'default[]',
+    cursor: {
+      models: {
+        available: [
+          { id: 'default[]', name: 'Auto', description: 'Automatically select best model' },
+          { id: 'claude-sonnet-4-6[thinking=true,context=200k,effort=medium]', name: 'Sonnet 4.6' },
+          {
+            id: 'claude-opus-4-6[thinking=true,context=200k,effort=high,fast=false]',
+            name: 'Opus 4.6',
+          },
+          { id: 'gpt-5.4[reasoning=medium,context=272k,fast=false]', name: 'GPT-5.4' },
+        ],
+        current: 'default[]',
+      },
+      modes: {
+        available: [
+          { id: 'agent', name: 'Agent', description: 'Full agent capabilities with tool access' },
+          { id: 'plan', name: 'Plan', description: 'Read-only mode for planning' },
+          { id: 'ask', name: 'Ask', description: 'Q&A mode - no edits or command execution' },
+        ],
+        current: 'agent',
+      },
     },
-    modes: {
-      available: [
-        { id: 'agent', name: 'Agent', description: 'Full agent capabilities with tool access' },
-        { id: 'plan', name: 'Plan', description: 'Read-only mode for planning' },
-        { id: 'ask', name: 'Ask', description: 'Q&A mode - no edits or command execution' },
-      ],
-      current: 'agent',
-    },
-  },
-};
+  };
 
 export function getAgentCapabilityPreset(agentType: AgentType): SessionCapabilities {
   const presetFlavor = getCapabilityPresetFlavor(agentType);
@@ -180,7 +188,10 @@ export function getDefaultDiscoveredModelId(
     return null;
   }
 
-  if (capabilities?.models?.current && models.some(model => model.id === capabilities.models?.current)) {
+  if (
+    capabilities?.models?.current &&
+    models.some(model => model.id === capabilities.models?.current)
+  ) {
     return capabilities.models.current;
   }
 
@@ -214,7 +225,11 @@ export function getDisplayCapabilities(params: {
   let didChange = false;
   let next = capabilities;
 
-  if (next.configOptions?.length && desiredConfigOptions && Object.keys(desiredConfigOptions).length > 0) {
+  if (
+    next.configOptions?.length &&
+    desiredConfigOptions &&
+    Object.keys(desiredConfigOptions).length > 0
+  ) {
     let didConfigChange = false;
     const configOptions = next.configOptions.map(option => {
       const desiredValue = desiredConfigOptions[option.id];

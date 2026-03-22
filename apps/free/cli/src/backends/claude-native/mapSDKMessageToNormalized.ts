@@ -14,13 +14,19 @@
 
 import { createId } from '@paralleldrive/cuid2';
 import type { NormalizedMessage, UsageData } from '@/daemon/sessions/types';
-import type { SDKMessage, SDKAssistantMessage, SDKUserMessage, SDKResultMessage, SDKSystemMessage } from '@/claude/sdk/types';
+import type {
+  SDKMessage,
+  SDKAssistantMessage,
+  SDKUserMessage,
+  SDKResultMessage,
+  SDKSystemMessage,
+} from '@/claude/sdk/types';
 
 function nowMs(): number {
   return Date.now();
 }
 
-const base = () => ({ createdAt: nowMs(), isSidechain: false } as const);
+const base = () => ({ createdAt: nowMs(), isSidechain: false }) as const;
 
 export type SDKMapperState = {
   /** IDs of tool calls that have been started but not yet closed via tool_result. */
@@ -59,7 +65,10 @@ export function flushSDKOpenToolCalls(state: SDKMapperState): NormalizedMessage[
   return results;
 }
 
-export function mapSDKMessageToNormalized(message: SDKMessage, state: SDKMapperState): NormalizedMessage[] {
+export function mapSDKMessageToNormalized(
+  message: SDKMessage,
+  state: SDKMapperState
+): NormalizedMessage[] {
   const results: NormalizedMessage[] = [];
 
   if (message.type === 'system') {
@@ -82,7 +91,14 @@ export function mapSDKMessageToNormalized(message: SDKMessage, state: SDKMapperS
           ...base(),
           id: createId(),
           role: 'agent',
-          content: [{ type: 'thinking', thinking: block.thinking as string, uuid: createId(), parentUUID: null }],
+          content: [
+            {
+              type: 'thinking',
+              thinking: block.thinking as string,
+              uuid: createId(),
+              parentUUID: null,
+            },
+          ],
         });
       } else if (block.type === 'tool_use' && typeof block.id === 'string') {
         const name = typeof block.name === 'string' ? block.name : 'unknown';

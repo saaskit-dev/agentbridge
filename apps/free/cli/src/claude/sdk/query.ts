@@ -390,7 +390,11 @@ export function query(config: { prompt: QueryPrompt; options?: QueryOptions }): 
       pid: child.pid,
       cwd,
     });
-    try { child.kill('SIGTERM'); } catch { /* ignore */ }
+    try {
+      child.kill('SIGTERM');
+    } catch {
+      /* ignore */
+    }
   };
 
   config.options?.abort?.addEventListener('abort', cleanup, { once: true });

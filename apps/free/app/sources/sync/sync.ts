@@ -13,12 +13,22 @@ import {
   SUPPORTED_SCHEMA_VERSION,
 } from './settings';
 import { Profile, profileParse } from './profile';
-import { loadPendingSettings, savePendingSettings, loadPendingOutbox, savePendingOutbox } from './persistence';
+import {
+  loadPendingSettings,
+  savePendingSettings,
+  loadPendingOutbox,
+  savePendingOutbox,
+} from './persistence';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
-import { Logger, continueTrace, toError, type TraceContext } from '@saaskit-dev/agentbridge/telemetry';
+import {
+  Logger,
+  continueTrace,
+  toError,
+  type TraceContext,
+} from '@saaskit-dev/agentbridge/telemetry';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
@@ -62,7 +72,6 @@ function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boo
   );
 }
 
-
 /**
  * Minimal wire trace — mirrors packages/core WireTrace without adding a Node.js dependency.
  * Must stay in sync with packages/core/src/telemetry/types.ts WireTrace.
@@ -94,6 +103,9 @@ class Sync {
   private pendingOutbox = new Map<string, OutboxMessage[]>();
   private sessionMessageQueue = new Map<string, NormalizedMessage[]>();
   private sessionQueueProcessing = new Set<string>();
+  private sessionBatchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Serializes handleUpdate calls so seq continuity checks see consistent state. */
+  private _updateQueue = Promise.resolve();
   private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
   private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
   private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -126,7 +138,9 @@ class Sync {
 
   constructor() {
     // Initialize local SQLite message cache (RFC-010 §7)
-    messageDB.init().catch((e: unknown) => logger.warn('[sync] messageDB init failed', { error: String(e) }));
+    messageDB
+      .init()
+      .catch((e: unknown) => logger.warn('[sync] messageDB init failed', { error: String(e) }));
 
     this.sessionsSync = new InvalidateSync(this.fetchSessions);
     this.settingsSync = new InvalidateSync(this.syncSettings);
@@ -272,15 +286,18 @@ class Sync {
         const cachedSeq = await messageDB.getLastSeq(sessionId);
         if (cachedSeq > 0) {
           this.sessionLastSeq.set(sessionId, cachedSeq);
-          // Load latest 500 messages (DESC via beforeSeq, then reversed in applyMessages sort)
-          const cached = await messageDB.getMessages(sessionId, { limit: 500, beforeSeq: cachedSeq + 1 });
+          // Load latest 500 messages (DESC via beforeSeq, reversed to ASC before reducer)
+          const cached = await messageDB.getMessages(sessionId, {
+            limit: 500,
+            beforeSeq: cachedSeq + 1,
+          });
           if (cached.length > 0) {
-            // Track oldest loaded seq for "load older" pagination
             const minSeq = Math.min(...cached.map(m => m.seq));
             this.sessionOldestSeq.set(sessionId, minSeq);
-            // If we hit the limit, there are probably older messages
-            if (cached.length >= 500) {
-              storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: true });
+            if (cached.length >= 500 || minSeq > 1) {
+              storage
+                .getState()
+                .setSessionOlderMessagesState(sessionId, { hasOlderMessages: true });
             }
 
             const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -291,21 +308,36 @@ class Sync {
                   const raw = JSON.parse(msg.content);
                   const n = normalizeRawMessage(msg.id, msg.created_at, raw);
                   if (n) normalized.push(n);
-                } catch { /* skip corrupt cache entries */ }
+                } catch {
+                  /* skip corrupt cache entries */
+                }
               }
               if (normalized.length > 0) {
+                // Cache loads with ORDER BY seq DESC (to get latest N rows).
+                // Reverse to ASC so the reducer processes messages chronologically —
+                // mergeIntoPreviousRootAgentText requires createdAt >= previous.createdAt.
+                normalized.reverse();
                 this.enqueueMessages(sessionId, normalized);
-                logger.debug('[sync] loaded from SQLite cache', { sessionId, count: normalized.length, lastSeq: cachedSeq, oldestSeq: minSeq });
+                logger.debug('[sync] loaded from SQLite cache', {
+                  sessionId,
+                  count: normalized.length,
+                  lastSeq: cachedSeq,
+                  oldestSeq: minSeq,
+                });
               }
             }
           }
         }
       } catch (error) {
-        logger.debug('[sync] SQLite cache read failed, will fetch from server', { sessionId, error: String(error) });
+        logger.debug('[sync] SQLite cache read failed, will fetch from server', {
+          sessionId,
+          error: String(error),
+        });
       }
-      // Always fetch from server to get latest (incremental if we have cached lastSeq)
-      this.getMessagesSync(sessionId).invalidate();
     }
+
+    // Always fetch from server to get latest (incremental if we have cached lastSeq)
+    this.getMessagesSync(sessionId).invalidate();
 
     // Also invalidate git status sync for this session
     gitStatusSync.getSync(sessionId).invalidate();
@@ -349,6 +381,8 @@ class Sync {
     return sync;
   }
 
+  private readonly BATCH_WINDOW_MS = 50;
+
   private enqueueMessages(sessionId: string, messages: NormalizedMessage[]) {
     if (messages.length === 0) {
       return;
@@ -367,16 +401,34 @@ class Sync {
       return;
     }
 
+    const existingTimer = this.sessionBatchTimers.get(sessionId);
+    if (existingTimer) {
+      return;
+    }
+
+    this.sessionBatchTimers.set(
+      sessionId,
+      setTimeout(() => {
+        this.sessionBatchTimers.delete(sessionId);
+        this.processMessageQueue(sessionId);
+      }, this.BATCH_WINDOW_MS)
+    );
+  }
+
+  private processMessageQueue(sessionId: string) {
     this.sessionQueueProcessing.add(sessionId);
-    while (true) {
-      const pending = this.sessionMessageQueue.get(sessionId);
-      if (!pending || pending.length === 0) {
-        this.sessionQueueProcessing.delete(sessionId);
-        break;
+    try {
+      while (true) {
+        const pending = this.sessionMessageQueue.get(sessionId);
+        if (!pending || pending.length === 0) {
+          break;
+        }
+        const batch = pending.splice(0, pending.length);
+        logger.debug('enqueueMessages: processing batch', { sessionId, batchSize: batch.length });
+        this.applyMessages(sessionId, batch);
       }
-      const batch = pending.splice(0, pending.length);
-      logger.debug('enqueueMessages: processing batch', { sessionId, batchSize: batch.length });
-      this.applyMessages(sessionId, batch);
+    } finally {
+      this.sessionQueueProcessing.delete(sessionId);
     }
   }
 
@@ -523,7 +575,13 @@ class Sync {
     const trace = makeWireTrace(sessionId);
     // Update session trace store so subsequent RPC calls on this session carry the same trace (RFC §7.1)
     setSessionTrace(sessionId, trace);
-    logger.info('[App] sending message', { userId: this.accountId, sessionId, id, traceId: trace.tid, preview: text.slice(0, 100) });
+    logger.info('[App] sending message', {
+      userId: this.accountId,
+      sessionId,
+      id,
+      traceId: trace.tid,
+      preview: text.slice(0, 100),
+    });
 
     // Determine sentFrom based on platform
     let sentFrom: string;
@@ -1708,7 +1766,11 @@ class Sync {
     // Drain in batches via WebSocket emitWithAck (RFC-010).
     while (pending.length > 0) {
       const batch = pending.slice(0, Sync.FLUSH_BATCH_SIZE);
-      logger.debug('flushOutbox: sending batch', { sessionId, batchSize: batch.length, total: pending.length });
+      logger.debug('flushOutbox: sending batch', {
+        sessionId,
+        batchSize: batch.length,
+        total: pending.length,
+      });
       try {
         const ack = await apiSocket.emitWithAck<{
           ok: boolean;
@@ -1727,7 +1789,11 @@ class Sync {
           throw new Error(`Failed to send messages for ${sessionId}: ${ack.error}`);
         }
 
-        logger.debug('flushOutbox: batch sent successfully', { sessionId, batchSize: batch.length, remaining: pending.length - batch.length });
+        logger.debug('flushOutbox: batch sent successfully', {
+          sessionId,
+          batchSize: batch.length,
+          remaining: pending.length - batch.length,
+        });
         pending.splice(0, batch.length);
         this.persistOutbox();
         if (Array.isArray(ack.messages) && ack.messages.length > 0) {
@@ -1738,10 +1804,31 @@ class Sync {
               maxSeq = message.seq;
             }
           }
-          this.sessionLastSeq.set(sessionId, maxSeq);
+          if (maxSeq > currentLastSeq) {
+            // Check if new messages are consecutive with current position.
+            // If there's a gap, DON'T advance sessionLastSeq — trigger a fetch
+            // so fetchMessages fills the gap and advances properly.
+            const newMsgs = ack.messages.filter(m => m.seq > currentLastSeq);
+            const minNewSeq =
+              newMsgs.length > 0 ? Math.min(...newMsgs.map(m => m.seq)) : currentLastSeq + 1;
+            if (minNewSeq <= currentLastSeq + 1) {
+              this.sessionLastSeq.set(sessionId, maxSeq);
+            } else {
+              logger.info('flushOutbox: seq gap detected, triggering fetch to fill', {
+                sessionId,
+                currentLastSeq,
+                minNewSeq,
+                maxSeq,
+              });
+              this.getMessagesSync(sessionId).invalidate();
+            }
+          }
         }
       } catch (error) {
-        logger.error('flushOutbox: failed to send batch', toError(error), { sessionId, batchSize: batch.length });
+        logger.error('flushOutbox: failed to send batch', toError(error), {
+          sessionId,
+          batchSize: batch.length,
+        });
         storage.getState().setSessionSendError(sessionId, {
           message: 'Message failed to send. Will retry automatically.',
           timestamp: Date.now(),
@@ -1776,10 +1863,12 @@ class Sync {
       throw new Error(`Session encryption not ready for ${sessionId}`);
     }
 
-    let afterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+    const startAfterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+    let afterSeq = startAfterSeq;
     let hasMore = true;
     let totalNormalized = 0;
     let pageCount = 0;
+    let minSeqSeen: number | undefined;
 
     while (hasMore && pageCount < Sync.MAX_FETCH_PAGES) {
       pageCount++;
@@ -1804,6 +1893,13 @@ class Sync {
       for (const message of messages) {
         if (message.seq > maxSeq) {
           maxSeq = message.seq;
+        }
+      }
+
+      if (startAfterSeq === 0 && messages.length > 0) {
+        const pageMin = Math.min(...messages.map(m => m.seq));
+        if (minSeqSeen === undefined || pageMin < minSeqSeen) {
+          minSeqSeen = pageMin;
         }
       }
 
@@ -1839,11 +1935,19 @@ class Sync {
           created_at: n.createdAt ?? Date.now(),
           updated_at: Date.now(),
         }));
-        messageDB.upsertMessages(sessionId, cacheEntries).catch(e => logger.debug('[sync] messageDB upsert failed', { sessionId, error: String(e) }));
+        messageDB
+          .upsertMessages(sessionId, cacheEntries)
+          .catch(e =>
+            logger.debug('[sync] messageDB upsert failed', { sessionId, error: String(e) })
+          );
       }
 
       this.sessionLastSeq.set(sessionId, maxSeq);
-      messageDB.updateLastSeq(sessionId, maxSeq).catch(e => logger.debug('[sync] messageDB updateLastSeq failed', { sessionId, error: String(e) }));
+      messageDB
+        .updateLastSeq(sessionId, maxSeq)
+        .catch(e =>
+          logger.debug('[sync] messageDB updateLastSeq failed', { sessionId, error: String(e) })
+        );
       hasMore = !!ack.hasMore;
       if (hasMore && maxSeq === afterSeq) {
         logger.debug(
@@ -1856,8 +1960,21 @@ class Sync {
 
     if (hasMore && pageCount >= Sync.MAX_FETCH_PAGES) {
       logger.info(
-        `💬 fetchMessages: hit page cap (${Sync.MAX_FETCH_PAGES}) for ${sessionId}, stopped at seq ${afterSeq}`
+        `💬 fetchMessages: hit page cap (${Sync.MAX_FETCH_PAGES}) for ${sessionId}, stopped at seq ${afterSeq}, scheduling continuation`
       );
+      // Schedule another fetch round to continue loading remaining messages.
+      // InvalidateSync._invalidatedDouble chains rounds until hasMore === false.
+      this.getMessagesSync(sessionId).invalidate();
+    }
+
+    if (startAfterSeq === 0 && minSeqSeen !== undefined) {
+      if (!this.sessionOldestSeq.has(sessionId)) {
+        this.sessionOldestSeq.set(sessionId, minSeqSeen);
+      }
+      const existingOlderState = storage.getState().sessionMessages[sessionId];
+      if (existingOlderState && !existingOlderState.hasOlderMessages && minSeqSeen > 1) {
+        storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: true });
+      }
     }
 
     storage.getState().applyMessagesLoaded(sessionId);
@@ -1874,7 +1991,8 @@ class Sync {
    */
   async loadOlderMessages(sessionId: string) {
     const sessionMessages = storage.getState().sessionMessages[sessionId];
-    if (!sessionMessages || sessionMessages.isLoadingOlder || !sessionMessages.hasOlderMessages) return;
+    if (!sessionMessages || sessionMessages.isLoadingOlder || !sessionMessages.hasOlderMessages)
+      return;
 
     const beforeSeq = this.sessionOldestSeq.get(sessionId);
     if (beforeSeq == null || beforeSeq <= 1) {
@@ -1885,7 +2003,10 @@ class Sync {
     storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: true });
     try {
       const encryption = this.encryption.getSessionEncryption(sessionId);
-      if (!encryption) return;
+      if (!encryption) {
+        storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: false });
+        return;
+      }
 
       const ack = await apiSocket.emitWithAck<{
         ok: boolean;
@@ -1899,7 +2020,10 @@ class Sync {
       });
 
       if (!ack.ok || !Array.isArray(ack.messages) || ack.messages.length === 0) {
-        storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: false, isLoadingOlder: false });
+        storage.getState().setSessionOlderMessagesState(sessionId, {
+          hasOlderMessages: false,
+          isLoadingOlder: false,
+        });
         return;
       }
 
@@ -1931,7 +2055,11 @@ class Sync {
           created_at: n.createdAt ?? Date.now(),
           updated_at: Date.now(),
         }));
-        messageDB.upsertMessages(sessionId, cacheEntries).catch(e => logger.debug('[sync] messageDB upsert failed', { sessionId, error: String(e) }));
+        messageDB
+          .upsertMessages(sessionId, cacheEntries)
+          .catch(e =>
+            logger.debug('[sync] messageDB upsert failed', { sessionId, error: String(e) })
+          );
       }
 
       storage.getState().setSessionOlderMessagesState(sessionId, {
@@ -1939,7 +2067,10 @@ class Sync {
         isLoadingOlder: false,
       });
     } catch (error) {
-      logger.error('[sync] loadOlderMessages failed', undefined, { sessionId, error: String(error) });
+      logger.error('[sync] loadOlderMessages failed', undefined, {
+        sessionId,
+        error: String(error),
+      });
       storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: false });
     }
   }
@@ -2010,19 +2141,28 @@ class Sync {
     });
   };
 
-  private handleUpdate = async (update: unknown) => {
+  /** Serialized entry point — ensures updates are processed in arrival order. */
+  private handleUpdate = (update: unknown) => {
+    this._updateQueue = this._updateQueue
+      .then(() => this._handleUpdateImpl(update))
+      .catch(e => logger.error('handleUpdate failed', toError(e)));
+  };
+
+  private _handleUpdateImpl = async (update: unknown) => {
     // RFC §9.1 Step 8: extract _trace from incoming server update before Zod strips it
-    const rawWireTrace = (update && typeof update === 'object') ? (update as Record<string, unknown>)._trace : undefined;
+    const rawWireTrace =
+      update && typeof update === 'object' ? (update as Record<string, unknown>)._trace : undefined;
     let traceCtx: TraceContext | undefined;
     if (rawWireTrace && typeof (rawWireTrace as any).tid === 'string') {
       const wt = rawWireTrace as WireTrace;
       traceCtx = continueTrace({ traceId: wt.tid, sessionId: wt.ses, machineId: wt.mid });
       // RFC §7.1: keep session trace fresh so subsequent RPC calls carry the correct trace
-      if (wt.ses) setSessionTrace(wt.ses, {
-        tid: traceCtx.traceId,
-        ses: traceCtx.sessionId,
-        mid: traceCtx.machineId,
-      });
+      if (wt.ses)
+        setSessionTrace(wt.ses, {
+          tid: traceCtx.traceId,
+          ses: traceCtx.sessionId,
+          mid: traceCtx.machineId,
+        });
     }
     const log = traceCtx ? logger.withContext(traceCtx) : logger;
 
@@ -2049,11 +2189,7 @@ class Sync {
       if (updateData.body.message) {
         const decrypted = await encryption.decryptMessage(updateData.body.message);
         if (decrypted) {
-          lastMessage = normalizeRawMessage(
-            decrypted.id,
-            decrypted.createdAt,
-            decrypted.content
-          );
+          lastMessage = normalizeRawMessage(decrypted.id, decrypted.createdAt, decrypted.content);
           // Propagate traceId from server DB (same as fetchMessages path)
           if (lastMessage && decrypted.traceId) {
             lastMessage.traceId = decrypted.traceId;
@@ -2189,10 +2325,20 @@ class Sync {
       this.pendingOutbox.delete(sessionId);
       this.persistOutbox();
       this.sessionLastSeq.delete(sessionId);
+      this.sessionOldestSeq.delete(sessionId);
       this.sessionMessageQueue.delete(sessionId);
       this.sessionQueueProcessing.delete(sessionId);
+      const batchTimer = this.sessionBatchTimers.get(sessionId);
+      if (batchTimer) {
+        clearTimeout(batchTimer);
+        this.sessionBatchTimers.delete(sessionId);
+      }
       clearSessionTrace(sessionId);
-      messageDB.deleteSession(sessionId).catch(e => logger.debug('[sync] messageDB deleteSession failed', { sessionId, error: String(e) }));
+      messageDB
+        .deleteSession(sessionId)
+        .catch(e =>
+          logger.debug('[sync] messageDB deleteSession failed', { sessionId, error: String(e) })
+        );
 
       logger.debug(`🗑️ Session ${sessionId} deleted from local storage`);
     } else if (updateData.body.t === 'update-session') {
@@ -2555,7 +2701,9 @@ class Sync {
         const userProfile = users[feedItem.body.uid];
         if (userProfile === null || userProfile === undefined) {
           // User was not found or 404, don't store this item
-          logger.debug(`📰 Skipping feed item ${feedItem.id} - user ${feedItem.body.uid} not found`);
+          logger.debug(
+            `📰 Skipping feed item ${feedItem.id} - user ${feedItem.body.uid} not found`
+          );
           return;
         }
       }

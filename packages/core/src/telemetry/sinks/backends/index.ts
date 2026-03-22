@@ -1,6 +1,6 @@
-export type { RemoteBackend, RemoteRequest, DeviceMetadata } from './types.js'
-export { AxiomBackend } from './axiom.js'
-export { NewRelicBackend } from './newrelic.js'
-export { ServerRelayBackend } from './serverRelay.js'
-export type { ServerRelayBackendOptions } from './serverRelay.js'
-export { createRemoteBackend, setTelemetryToken } from './config.js'
+export type { RemoteBackend, RemoteRequest, DeviceMetadata } from './types.js';
+export { AxiomBackend } from './axiom.js';
+export { NewRelicBackend } from './newrelic.js';
+export { ServerRelayBackend } from './serverRelay.js';
+export type { ServerRelayBackendOptions } from './serverRelay.js';
+export { createRemoteBackend, setTelemetryToken } from './config.js';

@@ -29,7 +29,6 @@ vi.mock('@/configuration', () => ({
   },
 }));
 
-
 vi.mock('@/api/rpc/RpcHandlerManager', () => ({
   RpcHandlerManager: class {
     onSocketConnect = vi.fn();
@@ -70,7 +69,10 @@ function makeSession() {
   };
 }
 
-async function encryptContent(session: ReturnType<typeof makeSession>, content: unknown): Promise<string> {
+async function encryptContent(
+  session: ReturnType<typeof makeSession>,
+  content: unknown
+): Promise<string> {
   return encryptToWireString(session.encryptionKey, session.encryptionVariant, content);
 }
 
@@ -135,7 +137,9 @@ describe('ApiSessionClient v3 messages API migration', () => {
       }),
       off: vi.fn(),
       emit: vi.fn(),
-      timeout: vi.fn(function (this: any) { return this; }),
+      timeout: vi.fn(function (this: any) {
+        return this;
+      }),
       emitWithAck: vi.fn(async () => ({ result: 'error' })),
       volatile: {
         emit: vi.fn(),
@@ -562,7 +566,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
       content: { type: 'text', text: 'fast-path' },
     };
 
-    emitSocketEvent('update', createNewMessageUpdate(2, await encryptContent(session, userMessage)));
+    emitSocketEvent(
+      'update',
+      createNewMessageUpdate(2, await encryptContent(session, userMessage))
+    );
 
     await waitForCheck(() => {
       expect(onUserMessage).toHaveBeenCalledTimes(1);
@@ -738,9 +745,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     const sendCalls = mockSocket.emitWithAck.mock.calls.filter(
       (call: any[]) => call[0] === 'send-messages'
     );
-    const batchSizes = sendCalls.map(
-      (call: any[]) => (call[1].messages as unknown[]).length
-    );
+    const batchSizes = sendCalls.map((call: any[]) => (call[1].messages as unknown[]).length);
     expect(batchSizes.length).toBeGreaterThanOrEqual(2);
     expect(batchSizes.every((s: number) => s <= 100)).toBe(true);
     expect(batchSizes.reduce((a: number, b: number) => a + b, 0)).toBe(totalMessages);

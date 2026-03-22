@@ -41,7 +41,12 @@ export const ConnectButton = React.memo(() => {
           justifyContent: 'center',
         }}
       >
-        <Ionicons name="link-outline" size={16} color={theme.colors.textSecondary} style={{ marginRight: 6 }} />
+        <Ionicons
+          name="link-outline"
+          size={16}
+          color={theme.colors.textSecondary}
+          style={{ marginRight: 6 }}
+        />
         <Text
           style={{
             fontSize: 14,
@@ -106,7 +111,11 @@ export const ConnectButton = React.memo(() => {
                 opacity: manualUrl.trim() ? 1 : 0.5,
               }}
             >
-              <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
+              <Ionicons
+                name="checkmark-circle"
+                size={24}
+                color={theme.colors.button.primary.background}
+              />
             </TouchableOpacity>
           </View>
         </View>

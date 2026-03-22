@@ -44,10 +44,7 @@ function bumpVersion(version, type) {
 function updateVersion(newVersion) {
   // 更新 app.config.js
   let appConfig = fs.readFileSync(APP_CONFIG_PATH, 'utf8');
-  appConfig = appConfig.replace(
-    /version:\s*['"][^'"]+['"]/,
-    `version: '${newVersion}'`
-  );
+  appConfig = appConfig.replace(/version:\s*['"][^'"]+['"]/, `version: '${newVersion}'`);
   fs.writeFileSync(APP_CONFIG_PATH, appConfig);
 
   console.log(`✅ App 版本已更新: ${newVersion}`);

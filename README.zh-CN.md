@@ -179,13 +179,13 @@ FREE_SERVER_URL=https://your-server.example.com free
 npm install @saaskit-dev/agentbridge
 ```
 
-| 导入路径 | 适用场景 |
-|----------|----------|
-| `@saaskit-dev/agentbridge` | 完整 SDK（Node.js） |
-| `@saaskit-dev/agentbridge/common` | React Native / 浏览器（无 `node:*` 导入） |
-| `@saaskit-dev/agentbridge/types` | 纯类型定义 |
-| `@saaskit-dev/agentbridge/encryption` | 加密原语 |
-| `@saaskit-dev/agentbridge/telemetry` | 结构化日志 |
+| 导入路径                              | 适用场景                                  |
+| ------------------------------------- | ----------------------------------------- |
+| `@saaskit-dev/agentbridge`            | 完整 SDK（Node.js）                       |
+| `@saaskit-dev/agentbridge/common`     | React Native / 浏览器（无 `node:*` 导入） |
+| `@saaskit-dev/agentbridge/types`      | 纯类型定义                                |
+| `@saaskit-dev/agentbridge/encryption` | 加密原语                                  |
+| `@saaskit-dev/agentbridge/telemetry`  | 结构化日志                                |
 
 核心接口：
 
@@ -207,13 +207,13 @@ const crypto = createCrypto();
 
 ## 安全性
 
-| 层级 | 机制 |
-|------|------|
+| 层级         | 机制                                |
+| ------------ | ----------------------------------- |
 | **密钥交换** | X25519（Curve25519 Diffie-Hellman） |
-| **对称加密** | AES-256-GCM |
-| **身份认证** | Ed25519 签名 + 挑战-响应 |
-| **传输安全** | TLS + 端到端加密（双重加密） |
-| **密钥存储** | 私钥文件权限 `chmod 0600` |
+| **对称加密** | AES-256-GCM                         |
+| **身份认证** | Ed25519 签名 + 挑战-响应            |
+| **传输安全** | TLS + 端到端加密（双重加密）        |
+| **密钥存储** | 私钥文件权限 `chmod 0600`           |
 
 - 所有数据在离开你的电脑之前就已加密
 - 中继服务器看不到任何明文 —— 它只转发加密数据
@@ -273,20 +273,20 @@ pnpm install
 
 ## 环境变量
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `FREE_SERVER_URL` | 后端服务器地址 | `https://free-server.saaskit.app` |
-| `FREE_HOME_DIR` | 数据目录 | `~/.free` |
-| `FREE_DISABLE_CAFFEINATE` | 禁用 macOS 防休眠 | `false` |
+| 变量                      | 说明              | 默认值                            |
+| ------------------------- | ----------------- | --------------------------------- |
+| `FREE_SERVER_URL`         | 后端服务器地址    | `https://free-server.saaskit.app` |
+| `FREE_HOME_DIR`           | 数据目录          | `~/.free`                         |
+| `FREE_DISABLE_CAFFEINATE` | 禁用 macOS 防休眠 | `false`                           |
 
 ## 系统要求
 
-| Agent | 要求 |
-|-------|------|
-| Claude Code | 已安装并认证 `claude` CLI |
-| Gemini | 已安装 `gemini` CLI（`npm i -g @google/gemini-cli`） |
-| Codex | 已安装 `codex` CLI |
-| OpenCode | 已安装 `opencode` CLI |
+| Agent       | 要求                                                 |
+| ----------- | ---------------------------------------------------- |
+| Claude Code | 已安装并认证 `claude` CLI                            |
+| Gemini      | 已安装 `gemini` CLI（`npm i -g @google/gemini-cli`） |
+| Codex       | 已安装 `codex` CLI                                   |
+| OpenCode    | 已安装 `opencode` CLI                                |
 
 ## 参与贡献
 

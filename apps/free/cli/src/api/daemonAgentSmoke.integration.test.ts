@@ -15,9 +15,7 @@ import { spawnDaemonSession, stopDaemon, stopDaemonSession } from '@/daemon/cont
 
 const runRealAgentSmoke = process.env.FREE_RUN_REAL_AGENT_SMOKE === '1';
 
-type SmokeResult =
-  | { kind: 'capabilities'; value: unknown }
-  | { kind: 'error'; value: unknown };
+type SmokeResult = { kind: 'capabilities'; value: unknown } | { kind: 'error'; value: unknown };
 
 async function waitForSmokeOutcome(
   appClient: FakeAppClient,
@@ -28,7 +26,7 @@ async function waitForSmokeOutcome(
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
-    const capabilityUpdate = appClient.receivedUpdates.find((event) => {
+    const capabilityUpdate = appClient.receivedUpdates.find(event => {
       return (
         event.body?.t === 'update-session' &&
         event.body.id === sessionId &&
@@ -45,9 +43,10 @@ async function waitForSmokeOutcome(
 
     const fetched = await appClient.fetchMessages(session);
     for (const message of fetched.messages) {
-      const decrypted = await appClient.decryptSessionMessage(session, message) as
-        | { role?: string; content?: unknown }
-        | null;
+      const decrypted = (await appClient.decryptSessionMessage(session, message)) as {
+        role?: string;
+        content?: unknown;
+      } | null;
       if (decrypted?.role !== 'event') {
         continue;
       }
@@ -70,9 +69,9 @@ function expectSmokeOutcome(outcome: SmokeResult): void {
     expect(
       Boolean(
         (capabilities as { models?: unknown })?.models ||
-          (capabilities as { modes?: unknown })?.modes ||
-          (capabilities as { configOptions?: unknown })?.configOptions ||
-          (capabilities as { commands?: unknown })?.commands
+        (capabilities as { modes?: unknown })?.modes ||
+        (capabilities as { configOptions?: unknown })?.configOptions ||
+        (capabilities as { commands?: unknown })?.commands
       )
     ).toBe(true);
     return;
@@ -178,12 +177,15 @@ describe.skipIf(!runRealAgentSmoke)(
 
 async function fetchSessionDelete(token: string, sessionId: string): Promise<void> {
   try {
-    await fetch(`${process.env.FREE_SERVER_URL || 'http://localhost:3005'}/v1/sessions/${sessionId}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    await fetch(
+      `${process.env.FREE_SERVER_URL || 'http://localhost:3005'}/v1/sessions/${sessionId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
   } catch {
     // ignore cleanup failures
   }

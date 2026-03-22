@@ -385,9 +385,15 @@ async function logsCommand(argv: string[]): Promise<void> {
 
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
-      case '--trace': traceId = argv[++i]; break;
-      case '--session': sessionId = argv[++i]; break;
-      case '--level': level = argv[++i]; break;
+      case '--trace':
+        traceId = argv[++i];
+        break;
+      case '--session':
+        sessionId = argv[++i];
+        break;
+      case '--level':
+        level = argv[++i];
+        break;
       case '--since': {
         const raw = argv[++i];
         const m = raw?.match(/^(\d+)(m|h|d)$/);
@@ -400,12 +406,16 @@ async function logsCommand(argv: string[]): Promise<void> {
         }
         break;
       }
-      case '--jsonl': outputFormat = 'jsonl'; break;
+      case '--jsonl':
+        outputFormat = 'jsonl';
+        break;
     }
   }
 
   if (!traceId && !sessionId && !level && !since) {
-    console.error('Provide at least one filter: --trace <id>, --session <id>, --level <lvl>, --since <Nm/h/d>');
+    console.error(
+      'Provide at least one filter: --trace <id>, --session <id>, --level <lvl>, --since <Nm/h/d>'
+    );
     process.exit(1);
   }
 
@@ -416,7 +426,8 @@ async function logsCommand(argv: string[]): Promise<void> {
 
   let files: string[] = [];
   try {
-    files = fs.readdirSync(logsDir)
+    files = fs
+      .readdirSync(logsDir)
       .filter(f => f.startsWith('server-') && f.endsWith('.jsonl'))
       .map(f => path.join(logsDir, f))
       .sort();
@@ -433,7 +444,11 @@ async function logsCommand(argv: string[]): Promise<void> {
     for (const line of lines) {
       if (!line.trim()) continue;
       let entry: any;
-      try { entry = JSON.parse(line); } catch { continue; }
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        continue;
+      }
 
       if (traceId && entry.traceId !== traceId) continue;
       if (sessionId && entry.sessionId !== sessionId) continue;

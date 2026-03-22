@@ -40,9 +40,11 @@ const agentEventSchema = z.discriminatedUnion('type', [
     type: z.literal('status'),
     state: z.enum(['working', 'idle']),
   }),
-  z.object({
-    type: z.literal('token_count'),
-  }).passthrough(),
+  z
+    .object({
+      type: z.literal('token_count'),
+    })
+    .passthrough(),
   z.object({
     type: z.literal('error'),
     message: z.string(),
@@ -181,11 +183,9 @@ const rawToolResultContentSchema = z
   .object({
     type: z.literal('tool_result'),
     tool_use_id: z.string(),
-    content: z.union([
-      z.string(),
-      z.array(z.object({ type: z.string() }).passthrough()),
-      z.null(),
-    ]).optional(), // Tool results can contain text strings, arrays of typed blocks, or null
+    content: z
+      .union([z.string(), z.array(z.object({ type: z.string() }).passthrough()), z.null()])
+      .optional(), // Tool results can contain text strings, arrays of typed blocks, or null
     is_error: z.boolean().optional(),
     permissions: z
       .object({
@@ -687,7 +687,7 @@ export type NormalizedMessage = (
   | {
       role: 'event';
       content: AgentEvent;
-  }
+    }
 ) & {
   id: string;
   createdAt: number;
@@ -705,11 +705,15 @@ export function normalizeRawMessage(
   // Zod transform handles normalization during validation
   const parsed = rawRecordSchema.safeParse(raw);
   if (!parsed.success) {
-    logger.error('normalizeRawMessage validation failed', new Error(JSON.stringify(parsed.error.issues)), {
-      id,
+    logger.error(
+      'normalizeRawMessage validation failed',
+      new Error(JSON.stringify(parsed.error.issues)),
+      {
+        id,
 
-      createdAt,
-    });
+        createdAt,
+      }
+    );
     return null;
   }
   raw = parsed.data;
@@ -767,7 +771,7 @@ export function normalizeRawMessage(
     if (Array.isArray(raw.content)) {
       return {
         id,
-  
+
         createdAt,
         role: 'agent',
         isSidechain: raw.isSidechain ?? false,
@@ -829,7 +833,7 @@ export function normalizeRawMessage(
         }
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: raw.content.data.isSidechain ?? false,
@@ -851,7 +855,7 @@ export function normalizeRawMessage(
           // Return as a special agent message with sidechain content
           return {
             id,
-      
+
             createdAt,
             role: 'agent',
             isSidechain: true,
@@ -869,7 +873,7 @@ export function normalizeRawMessage(
         if (raw.content.data.message && typeof raw.content.data.message.content === 'string') {
           return {
             id,
-      
+
             createdAt,
             role: 'user',
             isSidechain: false,
@@ -920,7 +924,7 @@ export function normalizeRawMessage(
         }
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: raw.content.data.isSidechain ?? false,
@@ -932,7 +936,7 @@ export function normalizeRawMessage(
     if (raw.content.type === 'event') {
       return {
         id,
-  
+
         createdAt,
         role: 'event',
         content: raw.content.data,
@@ -944,7 +948,7 @@ export function normalizeRawMessage(
         // Cast codex messages to agent text messages
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -963,7 +967,7 @@ export function normalizeRawMessage(
         // Cast codex messages to agent text messages
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -982,7 +986,7 @@ export function normalizeRawMessage(
         // Cast tool calls to agent tool-call messages
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1004,7 +1008,7 @@ export function normalizeRawMessage(
         // Cast tool call results to agent tool-result messages
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1049,7 +1053,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'turn-end') {
         return {
           id: messageId,
-    
+
           createdAt: messageCreatedAt,
           role: 'event',
           isSidechain: false,
@@ -1065,7 +1069,7 @@ export function normalizeRawMessage(
 
         return {
           id: messageId,
-    
+
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1085,7 +1089,7 @@ export function normalizeRawMessage(
         if (envelope.role === 'user') {
           return {
             id: messageId,
-      
+
             createdAt: messageCreatedAt,
             role: 'user',
             isSidechain: false,
@@ -1099,7 +1103,7 @@ export function normalizeRawMessage(
 
         return {
           id: messageId,
-    
+
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1125,7 +1129,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'tool-call-start') {
         return {
           id: messageId,
-    
+
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1147,7 +1151,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'tool-call-end') {
         return {
           id: messageId,
-    
+
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1168,7 +1172,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'file') {
         return {
           id: messageId,
-    
+
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1193,7 +1197,7 @@ export function normalizeRawMessage(
       if (envelope.ev.t === 'photo') {
         return {
           id: messageId,
-    
+
           createdAt: messageCreatedAt,
           role: 'agent',
           isSidechain,
@@ -1222,7 +1226,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'message') {
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1240,7 +1244,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'reasoning') {
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1258,7 +1262,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'tool-call') {
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1279,7 +1283,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'tool-result') {
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1300,7 +1304,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'tool-call-result') {
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1320,7 +1324,7 @@ export function normalizeRawMessage(
       if (raw.content.data.type === 'thinking') {
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1339,7 +1343,7 @@ export function normalizeRawMessage(
         // Map file-edit to tool-call for UI rendering
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1367,7 +1371,7 @@ export function normalizeRawMessage(
         // Map terminal-output to tool-result
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,
@@ -1388,7 +1392,7 @@ export function normalizeRawMessage(
         // Map permission-request to tool-call for UI to show permission dialog
         return {
           id,
-    
+
           createdAt,
           role: 'agent',
           isSidechain: false,

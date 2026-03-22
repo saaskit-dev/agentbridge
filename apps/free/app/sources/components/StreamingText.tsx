@@ -113,12 +113,11 @@ export function StreamingText({
   // Determine what text to display
   const isCurrentMessage = state.messageId === messageId;
   const isStreaming = state.isStreaming && isCurrentMessage;
-  const displayText =
-    isStreaming
-      ? state.pendingText
-      : state.isComplete && isCurrentMessage && state.finalText
-        ? state.finalText
-        : finalText;
+  const displayText = isStreaming
+    ? state.pendingText
+    : state.isComplete && isCurrentMessage && state.finalText
+      ? state.finalText
+      : finalText;
 
   // Reset when message ID changes
   useEffect(() => {

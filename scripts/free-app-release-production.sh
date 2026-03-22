@@ -22,7 +22,7 @@ cd "$APP_DIR"
 case "${1:-}" in
     submit)
         echo "📋 提交 App Store 审核..."
-        eas submit --profile production --platform ios --latest --non-interactive
+        APP_ENV=production eas submit --profile production --platform ios --latest
         ;;
     ios)
         echo "🍎 构建 iOS → TestFlight..."

@@ -1,14 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import React from 'react';
-import {
-  View,
-  Text,
-  Platform,
-  Pressable,
-  useWindowDimensions,
-} from 'react-native';
+import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
@@ -16,13 +9,7 @@ import { AgentInput } from '@/components/AgentInput';
 import { ChatFooter } from '@/components/ChatFooter';
 import { Typography } from '@/constants/Typography';
 import { machineListSupportedAgents, machineSpawnNewSession } from '@/sync/ops';
-import {
-  useAllMachines,
-  storage,
-  useLocalSetting,
-  useSetting,
-  useSessions,
-} from '@/sync/storage';
+import { useAllMachines, storage, useLocalSetting, useSetting, useSessions } from '@/sync/storage';
 import { layout } from '@/components/layout';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
@@ -38,8 +25,6 @@ import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import {
   coerceAgentType,
-  getAgentDescription,
-  getAgentDisplayName,
   isAcpAgent,
   isExperimentalAgent,
   type AppAgentFlavor,
@@ -183,25 +168,23 @@ function NewSessionWizard() {
   const sessions = useSessions();
 
   // Wizard state
-  const [agentType, setAgentType] = React.useState<AppAgentFlavor>(
-    () => {
-      // Check if agent type was provided in temp data
-      if (tempSessionData?.agentType) {
-        const requestedAgentType = coerceAgentType(tempSessionData.agentType);
-        if (isExperimentalAgent(requestedAgentType) && !experimentsEnabled) {
-          return 'claude';
-        }
-        return requestedAgentType;
+  const [agentType, setAgentType] = React.useState<AppAgentFlavor>(() => {
+    // Check if agent type was provided in temp data
+    if (tempSessionData?.agentType) {
+      const requestedAgentType = coerceAgentType(tempSessionData.agentType);
+      if (isExperimentalAgent(requestedAgentType) && !experimentsEnabled) {
+        return 'claude';
       }
-      if (typeof lastUsedAgent === 'string') {
-        const savedAgentType = coerceAgentType(lastUsedAgent);
-        if (!isExperimentalAgent(savedAgentType) || experimentsEnabled) {
-          return savedAgentType;
-        }
-      }
-      return 'claude';
+      return requestedAgentType;
     }
-  );
+    if (typeof lastUsedAgent === 'string') {
+      const savedAgentType = coerceAgentType(lastUsedAgent);
+      if (!isExperimentalAgent(savedAgentType) || experimentsEnabled) {
+        return savedAgentType;
+      }
+    }
+    return 'claude';
+  });
   const [supportedAgentTypes, setSupportedAgentTypes] = React.useState<AppAgentFlavor[]>([
     'claude',
     'codex',
@@ -259,21 +242,18 @@ function NewSessionWizard() {
     };
   }, [selectedMachineId, agentType]);
 
-  const draftCapabilities = React.useMemo(
-    () => {
-      const latestCapabilities = getLatestCapabilitiesForAgent(
-        sessions as any[],
-        selectedMachineId,
-        agentType
-      );
-      return resolveDraftCapabilities({
-        agentType,
-        cachedCapabilities,
-        latestCapabilities,
-      });
-    },
-    [cachedCapabilities, sessions, selectedMachineId, agentType]
-  );
+  const draftCapabilities = React.useMemo(() => {
+    const latestCapabilities = getLatestCapabilitiesForAgent(
+      sessions as any[],
+      selectedMachineId,
+      agentType
+    );
+    return resolveDraftCapabilities({
+      agentType,
+      cachedCapabilities,
+      latestCapabilities,
+    });
+  }, [cachedCapabilities, sessions, selectedMachineId, agentType]);
   const displayCapabilities = React.useMemo(() => {
     if (
       !devModeEnabled ||
@@ -664,7 +644,10 @@ function NewSessionWizard() {
         if (displayCapabilitiesWithDraftMode.modes?.current) {
           storage
             .getState()
-            .updateSessionDesiredAgentMode(result.sessionId, displayCapabilitiesWithDraftMode.modes.current);
+            .updateSessionDesiredAgentMode(
+              result.sessionId,
+              displayCapabilitiesWithDraftMode.modes.current
+            );
         }
         if (modelMode && modelMode !== 'default') {
           if (modelConfigOption) {
@@ -730,14 +713,14 @@ function NewSessionWizard() {
       dotColor: isOnline ? theme.colors.success : theme.colors.textDestructive,
       isPulsing: isOnline,
       cliStatus: includeCLI
-          ? {
-              'claude-native': cliAvailability.claudeNative,
-              'claude': cliAvailability.claude,
-              'codex': cliAvailability.codex,
-              ...(experimentsEnabled && {
-                gemini: cliAvailability.gemini,
-                opencode: cliAvailability.opencode,
-                cursor: cliAvailability.cursor,
+        ? {
+            'claude-native': cliAvailability.claudeNative,
+            claude: cliAvailability.claude,
+            codex: cliAvailability.codex,
+            ...(experimentsEnabled && {
+              gemini: cliAvailability.gemini,
+              opencode: cliAvailability.opencode,
+              cursor: cliAvailability.cursor,
             }),
           }
         : undefined,
@@ -770,64 +753,64 @@ function NewSessionWizard() {
   }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
 
   return (
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={
-          Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0
-        }
-        style={styles.container}
-      >
-        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-          {/* Session type selector only if experiments enabled */}
-          {experimentsEnabled && (
-            <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
-              <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                <SessionTypeSelector value={sessionType} onChange={setSessionType} />
-              </View>
-            </View>
-          )}
-
-          {/* AgentInput with inline chips - sticky at bottom */}
-          <View
-            style={{
-              paddingHorizontal: screenWidth > 700 ? 16 : 8,
-              paddingBottom: Math.max(16, safeArea.bottom),
-            }}
-          >
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={
+        Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0
+      }
+      style={styles.container}
+    >
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        {/* Session type selector only if experiments enabled */}
+        {experimentsEnabled && (
+          <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
             <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-              {shouldShowCapabilityDiscoveryNotice && (
-                <ChatFooter notice={t('newSession.capabilityDiscoveryNotice')} />
-              )}
-              <AgentInput
-                value={sessionPrompt}
-                onChangeText={setSessionPrompt}
-                onSend={handleCreateSession}
-                isSendDisabled={!canCreate}
-                isSending={isCreating}
-                placeholder={t('newSession.inputPlaceholder')}
-                autocompletePrefixes={[]}
-                autocompleteSuggestions={async () => []}
-                agentType={agentType}
-                availableAgentTypes={visibleAgentTypes}
-                onAgentChange={setAgentType}
-                permissionMode={permissionMode}
-                onPermissionModeChange={handlePermissionModeChange}
-                modelMode={modelMode}
-                onModelModeChange={setModelMode}
-                capabilities={displayCapabilitiesWithDraftMode}
-                onAgentModeChange={setDraftAgentMode}
-                connectionStatus={connectionStatus}
-                machineName={
-                  selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host
-                }
-                onMachineClick={handleMachineClick}
-                currentPath={selectedPath}
-                onPathClick={handlePathClick}
-              />
+              <SessionTypeSelector value={sessionType} onChange={setSessionType} />
             </View>
           </View>
+        )}
+
+        {/* AgentInput with inline chips - sticky at bottom */}
+        <View
+          style={{
+            paddingHorizontal: screenWidth > 700 ? 16 : 8,
+            paddingBottom: Math.max(16, safeArea.bottom),
+          }}
+        >
+          <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+            {shouldShowCapabilityDiscoveryNotice && (
+              <ChatFooter notice={t('newSession.capabilityDiscoveryNotice')} />
+            )}
+            <AgentInput
+              value={sessionPrompt}
+              onChangeText={setSessionPrompt}
+              onSend={handleCreateSession}
+              isSendDisabled={!canCreate}
+              isSending={isCreating}
+              placeholder={t('newSession.inputPlaceholder')}
+              autocompletePrefixes={[]}
+              autocompleteSuggestions={async () => []}
+              agentType={agentType}
+              availableAgentTypes={visibleAgentTypes}
+              onAgentChange={setAgentType}
+              permissionMode={permissionMode}
+              onPermissionModeChange={handlePermissionModeChange}
+              modelMode={modelMode}
+              onModelModeChange={setModelMode}
+              capabilities={displayCapabilitiesWithDraftMode}
+              onAgentModeChange={setDraftAgentMode}
+              connectionStatus={connectionStatus}
+              machineName={
+                selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host
+              }
+              onMachineClick={handleMachineClick}
+              currentPath={selectedPath}
+              onPathClick={handlePathClick}
+            />
+          </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 

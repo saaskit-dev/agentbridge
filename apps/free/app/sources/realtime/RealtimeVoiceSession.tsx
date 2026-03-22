@@ -108,12 +108,8 @@ export const RealtimeVoiceSession: React.FC = () => {
       logger.debug('Realtime message:', data);
     },
     onError: error => {
-      // Log but don't block app - voice features will be unavailable
-      // This prevents initialization errors from showing "Terminals error" on startup
       logger.warn('Realtime voice not available:', error);
-      // Don't set error status during initialization - just set disconnected
-      // This allows the app to continue working without voice features
-      storage.getState().setRealtimeStatus('disconnected');
+      storage.getState().setRealtimeStatus('error');
       storage.getState().setRealtimeMode('idle', true); // immediate mode change
     },
     onStatusChange: data => {
@@ -130,7 +126,7 @@ export const RealtimeVoiceSession: React.FC = () => {
       storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
     },
     onDebug: message => {
-      console.debug('Realtime debug:', message);
+      logger.debug('Realtime debug:', message);
     },
   });
 

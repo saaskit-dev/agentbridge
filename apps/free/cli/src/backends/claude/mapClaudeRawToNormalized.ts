@@ -46,15 +46,17 @@ export function mapClaudeRawToNormalized(msg: AgentMessage): NormalizedMessage |
       return {
         ...base,
         role: 'agent',
-        content: [{
-          type: 'tool-call',
-          id: String(msg.callId),
-          name: msg.toolName,
-          input: msg.args ?? {},
-          description: null,
-          uuid: id,
-          parentUUID: null,
-        }],
+        content: [
+          {
+            type: 'tool-call',
+            id: String(msg.callId),
+            name: msg.toolName,
+            input: msg.args ?? {},
+            description: null,
+            uuid: id,
+            parentUUID: null,
+          },
+        ],
       };
     }
 
@@ -64,14 +66,16 @@ export function mapClaudeRawToNormalized(msg: AgentMessage): NormalizedMessage |
       return {
         ...base,
         role: 'agent',
-        content: [{
-          type: 'tool-result',
-          tool_use_id: String(msg.callId),
-          content: msg.result,
-          is_error: isError,
-          uuid: id,
-          parentUUID: null,
-        }],
+        content: [
+          {
+            type: 'tool-result',
+            tool_use_id: String(msg.callId),
+            content: msg.result,
+            is_error: isError,
+            uuid: id,
+            parentUUID: null,
+          },
+        ],
       };
     }
 
@@ -129,15 +133,17 @@ export function mapClaudeRawToNormalized(msg: AgentMessage): NormalizedMessage |
         return {
           ...base,
           role: 'agent',
-          content: [{
-            type: 'tool-call',
-            id: callId,
-            name: 'CodexBash',
-            input: inputs,
-            description: null,
-            uuid: id,
-            parentUUID: null,
-          }],
+          content: [
+            {
+              type: 'tool-call',
+              id: callId,
+              name: 'CodexBash',
+              input: inputs,
+              description: null,
+              uuid: id,
+              parentUUID: null,
+            },
+          ],
         };
       }
 
@@ -146,15 +152,17 @@ export function mapClaudeRawToNormalized(msg: AgentMessage): NormalizedMessage |
         return {
           ...base,
           role: 'agent',
-          content: [{
-            type: 'tool-call',
-            id: callId,
-            name: 'CodexPatch',
-            input: { auto_approved: m.auto_approved, changes: m.changes },
-            description: null,
-            uuid: id,
-            parentUUID: null,
-          }],
+          content: [
+            {
+              type: 'tool-call',
+              id: callId,
+              name: 'CodexPatch',
+              input: { auto_approved: m.auto_approved, changes: m.changes },
+              description: null,
+              uuid: id,
+              parentUUID: null,
+            },
+          ],
         };
       }
 
@@ -163,14 +171,16 @@ export function mapClaudeRawToNormalized(msg: AgentMessage): NormalizedMessage |
         return {
           ...base,
           role: 'agent',
-          content: [{
-            type: 'tool-result',
-            tool_use_id: callId,
-            content: { stdout: m.stdout, stderr: m.stderr, success: m.success },
-            is_error: !m.success,
-            uuid: id,
-            parentUUID: null,
-          }],
+          content: [
+            {
+              type: 'tool-result',
+              tool_use_id: callId,
+              content: { stdout: m.stdout, stderr: m.stderr, success: m.success },
+              is_error: !m.success,
+              uuid: id,
+              parentUUID: null,
+            },
+          ],
         };
       }
 

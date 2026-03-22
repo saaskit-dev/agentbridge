@@ -374,7 +374,11 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
     return JSON.parse(content) as DaemonLocallyPersistedState;
   } catch (error) {
     // State corrupted somehow :(
-    logger.error(`[PERSISTENCE] Daemon state file corrupted: ${configuration.daemonStateFile}`, undefined, { error: safeStringify(error) });
+    logger.error(
+      `[PERSISTENCE] Daemon state file corrupted: ${configuration.daemonStateFile}`,
+      undefined,
+      { error: safeStringify(error) }
+    );
     return null;
   }
 }

@@ -129,8 +129,7 @@ class ActivityCache {
 
       return false;
     } catch (error) {
-      log.error(`Error validating machine ${machineId}: ${error}`
-      );
+      log.error(`Error validating machine ${machineId}: ${error}`);
       return false;
     }
   }

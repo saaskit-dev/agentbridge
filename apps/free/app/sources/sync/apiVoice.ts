@@ -40,11 +40,9 @@ export async function fetchVoiceToken(
   });
 
   if (!response.ok) {
-    // 400 means the endpoint doesn't exist yet on this server.
-    // Allow voice anyway to not break users on experimental/custom servers
-    // that haven't been updated with the token endpoint yet.
     if (response.status === 400) {
-      return { allowed: true };
+      logger.warn('[Voice] Server rejected voice token request (400)', { sessionId, serverUrl });
+      return { allowed: false, token: undefined, agentId };
     }
     throw new Error(`Voice token request failed: ${response.status}`);
   }

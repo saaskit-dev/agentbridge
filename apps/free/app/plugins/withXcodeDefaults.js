@@ -8,9 +8,9 @@ const path = require('path');
  * 1. Scheme 的 Run action 使用 Release 配置（而非默认的 Debug）
  * 2. 设置 App Category 为 Developer Tools（通过 build setting，让 Xcode General tab 正确显示）
  */
-module.exports = (config) => {
+module.exports = config => {
   // ── 1. App Category build setting ─────────────────────────────────────────
-  config = withXcodeProject(config, (cfg) => {
+  config = withXcodeProject(config, cfg => {
     const project = cfg.modResults;
     const buildConfigs = project.pbxXCBuildConfigurationSection();
 
@@ -31,7 +31,7 @@ module.exports = (config) => {
   // ── 2. Scheme Run → Release ───────────────────────────────────────────────
   config = withDangerousMod(config, [
     'ios',
-    (cfg) => {
+    cfg => {
       const projectRoot = cfg.modRequest.projectRoot;
       const schemesDir = path.join(
         projectRoot,

@@ -26,7 +26,10 @@ class AuthModule {
 
     const secretRaw = process.env.FREE_MASTER_SECRET ?? '';
     // Log a prefix of the seed so we can diagnose cross-restart key mismatches without leaking the full secret
-    log.info('Initializing auth module', { seedPrefix: secretRaw.slice(0, 8), seedLen: secretRaw.length });
+    log.info('Initializing auth module', {
+      seedPrefix: secretRaw.slice(0, 8),
+      seedLen: secretRaw.length,
+    });
 
     const generator = await privacyKit.createPersistentTokenGenerator({
       service: 'free',
@@ -105,7 +108,9 @@ class AuthModule {
     try {
       const verified = await this.tokens.verifier.verify(token);
       if (!verified) {
-        log.warn('Token cryptographic verification returned null', { tokenPrefix: token.slice(-12) });
+        log.warn('Token cryptographic verification returned null', {
+          tokenPrefix: token.slice(-12),
+        });
         return null;
       }
 
@@ -121,7 +126,10 @@ class AuthModule {
 
       return { userId, extras };
     } catch (error) {
-      log.error('Token verification threw', { error: String(error), tokenPrefix: token.slice(-12) });
+      log.error('Token verification threw', {
+        error: String(error),
+        tokenPrefix: token.slice(-12),
+      });
       return null;
     }
   }

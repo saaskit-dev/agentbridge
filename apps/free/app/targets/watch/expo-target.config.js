@@ -1,5 +1,5 @@
 /** @type {import('@bacons/apple-targets/app.plugin').ConfigFunction} */
-module.exports = (config) => {
+module.exports = config => {
   // 从主 app bundleIdentifier 派生 watch bundleId：
   //   app.saaskit.freecode.dev → app.saaskit.freecode.watch.dev
   //   app.saaskit.freecode     → app.saaskit.freecode.watch

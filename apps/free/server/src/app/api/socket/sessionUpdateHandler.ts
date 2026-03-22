@@ -53,7 +53,12 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
       // Check version
       if (session.metadataVersion !== expectedVersion) {
-        log.debug('[update-metadata] version mismatch', { userId, sessionId: sid, expected: expectedVersion, actual: session.metadataVersion });
+        log.debug('[update-metadata] version mismatch', {
+          userId,
+          sessionId: sid,
+          expected: expectedVersion,
+          actual: session.metadataVersion,
+        });
         callback({
           result: 'version-mismatch',
           version: session.metadataVersion,
@@ -110,9 +115,17 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
       // Send success response with new version via callback
       callback({ result: 'success', version: expectedVersion + 1, metadata: metadata });
-      log.debug('[update-metadata] success', { userId, sessionId: sid, version: expectedVersion + 1 });
+      log.debug('[update-metadata] success', {
+        userId,
+        sessionId: sid,
+        version: expectedVersion + 1,
+      });
     } catch (error) {
-      log.error('Error in update-metadata', undefined, { userId, sessionId: data?.sid, error: safeStringify(error) });
+      log.error('Error in update-metadata', undefined, {
+        userId,
+        sessionId: data?.sid,
+        error: safeStringify(error),
+      });
       if (callback) {
         callback({ result: 'error' });
       }
@@ -151,7 +164,12 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
       // Check version
       if (session.agentStateVersion !== expectedVersion) {
-        log.debug('[update-state] version mismatch', { userId, sessionId: sid, expected: expectedVersion, actual: session.agentStateVersion });
+        log.debug('[update-state] version mismatch', {
+          userId,
+          sessionId: sid,
+          expected: expectedVersion,
+          actual: session.agentStateVersion,
+        });
         callback({
           result: 'version-mismatch',
           version: session.agentStateVersion,
@@ -210,7 +228,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       callback({ result: 'success', version: expectedVersion + 1, agentState: agentState });
       log.debug('[update-state] success', { userId, sessionId: sid, version: expectedVersion + 1 });
     } catch (error) {
-      log.error('Error in update-state', undefined, { userId, sessionId: data?.sid, error: safeStringify(error) });
+      log.error('Error in update-state', undefined, {
+        userId,
+        sessionId: data?.sid,
+        error: safeStringify(error),
+      });
       if (callback) {
         callback({ result: 'error' });
       }
@@ -305,7 +327,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         version: expectedVersion + 1,
         capabilities,
       });
-      log.debug('[update-capabilities] success', { userId, sessionId: sid, version: expectedVersion + 1 });
+      log.debug('[update-capabilities] success', {
+        userId,
+        sessionId: sid,
+        version: expectedVersion + 1,
+      });
     } catch (error) {
       log.error('Error in update-capabilities', undefined, {
         userId,
@@ -325,7 +351,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       if (!data || typeof data.time !== 'number' || !data.sid) {
         return;
       }
-      log.debug('[session-alive] received', { userId, sessionId: data.sid, thinking: data.thinking ?? false });
+      log.debug('[session-alive] received', {
+        userId,
+        sessionId: data.sid,
+        thinking: data.thinking ?? false,
+      });
 
       let t = data.time;
       if (t > Date.now()) {
@@ -341,7 +371,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       const validity = await activityCache.isSessionValid(sid, userId);
       if (validity === 'archived' || validity === 'deleted') {
         // Session was intentionally ended — tell the daemon to shut down
-        log.info('[session-alive] session archived/deleted in DB, notifying daemon', { userId, sessionId: sid });
+        log.info('[session-alive] session archived/deleted in DB, notifying daemon', {
+          userId,
+          sessionId: sid,
+        });
         activityBroadcaster.remove(userId, sid);
         socket.emit('session-archived', { sid });
         return;
@@ -366,14 +399,25 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
       // Queue activity for batched broadcast (flushes every 3s; thinking changes emit immediately)
       activityBroadcaster.queue(userId, sid, true, t, thinking || false);
-      log.debug('[session-alive] activity queued', { userId, sessionId: sid, thinking: thinking || false });
+      log.debug('[session-alive] activity queued', {
+        userId,
+        sessionId: sid,
+        thinking: thinking || false,
+      });
     } catch (error) {
-      log.error('Error in session-alive', undefined, { userId, sessionId: data?.sid, error: safeStringify(error) });
+      log.error('Error in session-alive', undefined, {
+        userId,
+        sessionId: data?.sid,
+        error: safeStringify(error),
+      });
     }
   });
 
   /** Per-message content character limit. Default: 10M chars. */
-  const MESSAGE_CONTENT_MAX_CHARS = parseInt(process.env.MESSAGE_CONTENT_MAX_CHARS ?? '10000000', 10);
+  const MESSAGE_CONTENT_MAX_CHARS = parseInt(
+    process.env.MESSAGE_CONTENT_MAX_CHARS ?? '10000000',
+    10
+  );
 
   const sendMessagesLock = new AsyncLock();
   socket.on('send-messages', async (data: any, callback: (response: any) => void) => {
@@ -406,7 +450,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         }
 
         log.debug('[send-messages] received', {
-          sid, userId, messageCount: messages.length,
+          sid,
+          userId,
+          messageCount: messages.length,
           ids: messages.map((m: any) => m.id),
         });
 
@@ -433,7 +479,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         const contentById = new Map(uniqueMessages.map(m => [m.id, m.content]));
         const traceById = new Map<string, WireTrace>(
           uniqueMessages
-            .filter(m => m._trace && typeof m._trace === 'object' && typeof m._trace.tid === 'string')
+            .filter(
+              m => m._trace && typeof m._trace === 'object' && typeof m._trace.tid === 'string'
+            )
             .map(m => [m.id, m._trace as WireTrace])
         );
 
@@ -448,7 +496,13 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
           const newMessages = uniqueMessages.filter(m => !existingIds.has(m.id));
           const seqs = await allocateSessionSeqBatch(sid, newMessages.length, tx);
 
-          const createdMessages: Array<{ id: string; seq: number; traceId: string | null; createdAt: Date; updatedAt: Date }> = [];
+          const createdMessages: Array<{
+            id: string;
+            seq: number;
+            traceId: string | null;
+            createdAt: Date;
+            updatedAt: Date;
+          }> = [];
           for (let i = 0; i < newMessages.length; i++) {
             const message = newMessages[i];
             const trace = traceById.get(message.id);
@@ -460,7 +514,14 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 content: { t: 'encrypted', c: message.content },
                 traceId: trace?.tid ?? null,
               },
-              select: { id: true, seq: true, content: true, traceId: true, createdAt: true, updatedAt: true },
+              select: {
+                id: true,
+                seq: true,
+                content: true,
+                traceId: true,
+                createdAt: true,
+                updatedAt: true,
+              },
             });
             createdMessages.push(created);
           }
@@ -472,7 +533,8 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         });
 
         log.debug('[send-messages] stored', {
-          sid, userId,
+          sid,
+          userId,
           newCount: txResult.createdMessages.length,
           seqs: txResult.createdMessages.map(m => m.seq),
           elapsed: Date.now() - requestStart,
@@ -486,7 +548,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
           const trace = traceById.get(message.id);
           const updatePayload = buildNewMessageUpdate(
             { ...message, content: { t: 'encrypted', c: content } },
-            sid, updSeq, randomKeyNaked(12), trace
+            sid,
+            updSeq,
+            randomKeyNaked(12),
+            trace
           );
           eventRouter.emitUpdate({
             userId,
@@ -508,13 +573,20 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         });
 
         log.info('[send-messages] complete', {
-          sid, userId,
+          sid,
+          userId,
           requestedCount: messages.length,
           createdCount: txResult.createdMessages.length,
           elapsed: Date.now() - requestStart,
         });
+
+        activityBroadcaster.recordContent(sid);
       } catch (error) {
-        log.error('Error in send-messages', undefined, { userId, sessionId: data?.sessionId, error: safeStringify(error) });
+        log.error('Error in send-messages', undefined, {
+          userId,
+          sessionId: data?.sessionId,
+          error: safeStringify(error),
+        });
         if (callback) callback({ ok: false, error: 'Internal error' });
       }
     });
@@ -529,7 +601,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         callback({ ok: false, error: 'Missing sessionId' });
         return;
       }
-      const limit = typeof rawLimit === 'number' && rawLimit >= 1 && rawLimit <= 500 ? Math.floor(rawLimit) : 100;
+      const limit =
+        typeof rawLimit === 'number' && rawLimit >= 1 && rawLimit <= 500
+          ? Math.floor(rawLimit)
+          : 100;
 
       const session = await db.session.findFirst({
         where: { id: sid, accountId: userId },
@@ -547,13 +622,26 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
           where: { sessionId: sid, seq: { lt: beforeSeq } },
           orderBy: { seq: 'desc' },
           take: limit + 1,
-          select: { id: true, seq: true, content: true, traceId: true, createdAt: true, updatedAt: true },
+          select: {
+            id: true,
+            seq: true,
+            content: true,
+            traceId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         });
         const hasOlderMessages = messages.length > limit;
         const page = hasOlderMessages ? messages.slice(0, limit) : messages;
         page.reverse(); // Back to ASC order
 
-        log.debug('[fetch-messages] older', { sessionId: sid, userId, beforeSeq, count: page.length, hasOlderMessages });
+        log.debug('[fetch-messages] older', {
+          sessionId: sid,
+          userId,
+          beforeSeq,
+          count: page.length,
+          hasOlderMessages,
+        });
 
         callback({
           ok: true,
@@ -578,13 +666,26 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         where: { sessionId: sid, seq: { gt: afterSeq } },
         orderBy: { seq: 'asc' },
         take: limit + 1,
-        select: { id: true, seq: true, content: true, traceId: true, createdAt: true, updatedAt: true },
+        select: {
+          id: true,
+          seq: true,
+          content: true,
+          traceId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       });
 
       const hasMore = messages.length > limit;
       const page = hasMore ? messages.slice(0, limit) : messages;
 
-      log.debug('[fetch-messages]', { sessionId: sid, userId, afterSeq, count: page.length, hasMore });
+      log.debug('[fetch-messages]', {
+        sessionId: sid,
+        userId,
+        afterSeq,
+        count: page.length,
+        hasMore,
+      });
 
       callback({
         ok: true,
@@ -599,7 +700,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         hasMore,
       });
     } catch (error) {
-      log.error('Error in fetch-messages', undefined, { userId, sessionId: data?.sessionId, error: safeStringify(error) });
+      log.error('Error in fetch-messages', undefined, {
+        userId,
+        sessionId: data?.sessionId,
+        error: safeStringify(error),
+      });
       if (callback) callback({ ok: false, error: 'Internal error' });
     }
   });
@@ -649,7 +754,11 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       });
       log.info('[session-end] session archived', { userId, sessionId: sid });
     } catch (error) {
-      log.error('Error in session-end', undefined, { userId, sessionId: data?.sid, error: safeStringify(error) });
+      log.error('Error in session-end', undefined, {
+        userId,
+        sessionId: data?.sid,
+        error: safeStringify(error),
+      });
     }
   });
 }

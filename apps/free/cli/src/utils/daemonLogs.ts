@@ -31,9 +31,10 @@ export async function listDaemonLogFiles(limit: number = 50): Promise<LogFileInf
     }
 
     const logs = readdirSync(logsDir)
-      .filter(file =>
-        file.endsWith('-daemon.log') ||                          // legacy format
-        (file.startsWith('daemon-') && (file.endsWith('.log') || file.endsWith('.jsonl')))  // current + new telemetry format
+      .filter(
+        file =>
+          file.endsWith('-daemon.log') || // legacy format
+          (file.startsWith('daemon-') && (file.endsWith('.log') || file.endsWith('.jsonl'))) // current + new telemetry format
       )
       .map(file => {
         const fullPath = join(logsDir, file);

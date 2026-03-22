@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { mapSDKMessageToNormalized, createSDKMapperState, flushSDKOpenToolCalls } from './mapSDKMessageToNormalized';
-import type { SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@/claude/sdk/types';
+import {
+  mapSDKMessageToNormalized,
+  createSDKMapperState,
+  flushSDKOpenToolCalls,
+} from './mapSDKMessageToNormalized';
+import type {
+  SDKAssistantMessage,
+  SDKResultMessage,
+  SDKSystemMessage,
+  SDKUserMessage,
+} from '@/claude/sdk/types';
 
 describe('mapSDKMessageToNormalized', () => {
   it('ignores system init messages for app sync', () => {
@@ -91,14 +100,14 @@ describe('mapSDKMessageToNormalized', () => {
     expect(result).toHaveLength(2);
     expect(result[0]?.role).toBe('event');
     expect(result[0]?.role === 'event' && result[0].content.type).toBe('token_count');
-    expect(result[1]?.role === 'event' && result[1].content.type === 'status'
-      ? result[1].content.state
-      : null).toBe('idle');
     expect(
-      result.some(
-        item => item.role === 'event' && item.content.type === 'message'
-      )
-    ).toBe(false);
+      result[1]?.role === 'event' && result[1].content.type === 'status'
+        ? result[1].content.state
+        : null
+    ).toBe('idle');
+    expect(result.some(item => item.role === 'event' && item.content.type === 'message')).toBe(
+      false
+    );
   });
 
   it('maps execution errors to error events and idle status', () => {
@@ -118,9 +127,11 @@ describe('mapSDKMessageToNormalized', () => {
     expect(result).toHaveLength(2);
     expect(result[0]?.role).toBe('event');
     expect(result[0]?.role === 'event' && result[0].content.type).toBe('error');
-    expect(result[1]?.role === 'event' && result[1].content.type === 'status'
-      ? result[1].content.state
-      : null).toBe('idle');
+    expect(
+      result[1]?.role === 'event' && result[1].content.type === 'status'
+        ? result[1].content.state
+        : null
+    ).toBe('idle');
   });
 
   it('tracks open tool calls across messages and removes them when tool_result arrives', () => {
@@ -168,7 +179,12 @@ describe('mapSDKMessageToNormalized', () => {
       subtype: 'success',
       result: '',
       num_turns: 1,
-      usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
       total_cost_usd: 0,
       duration_ms: 100,
       duration_api_ms: 100,
@@ -179,9 +195,11 @@ describe('mapSDKMessageToNormalized', () => {
 
     // Should have: synthetic tool-result (flush) + token_count + idle
     expect(msgs).toHaveLength(3);
-    expect(msgs[0]?.role === 'agent' && msgs[0].content[0]?.type === 'tool-result'
-      ? msgs[0].content[0].is_error
-      : null).toBe(true);
+    expect(
+      msgs[0]?.role === 'agent' && msgs[0].content[0]?.type === 'tool-result'
+        ? msgs[0].content[0].is_error
+        : null
+    ).toBe(true);
     expect(state.openToolCallIds.size).toBe(0);
   });
 });
@@ -206,9 +224,9 @@ describe('flushSDKOpenToolCalls', () => {
     expect(toolUseIds).toContain('call-1');
     expect(toolUseIds).toContain('call-2');
     flushed.forEach(m => {
-      expect(m.role === 'agent' && m.content[0]?.type === 'tool-result'
-        ? m.content[0].is_error
-        : null).toBe(true);
+      expect(
+        m.role === 'agent' && m.content[0]?.type === 'tool-result' ? m.content[0].is_error : null
+      ).toBe(true);
     });
     expect(state.openToolCallIds.size).toBe(0);
   });

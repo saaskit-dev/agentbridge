@@ -22,8 +22,12 @@ import type { MessageDB } from './messageDBSchema';
 
 export const messageDB: MessageDB = {
   async init() {},
-  async getMessages() { return []; },
-  async getLastSeq() { return 0; },
+  async getMessages() {
+    return [];
+  },
+  async getLastSeq() {
+    return 0;
+  },
   async upsertMessages() {},
   async updateLastSeq() {},
   async deleteSession() {},

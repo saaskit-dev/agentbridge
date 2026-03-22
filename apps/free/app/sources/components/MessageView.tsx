@@ -62,7 +62,13 @@ function RenderBlock(props: {
       );
 
     case 'agent-event':
-      return <AgentEventBlock event={props.message.event} metadata={props.metadata} sessionId={props.sessionId} />;
+      return (
+        <AgentEventBlock
+          event={props.message.event}
+          metadata={props.metadata}
+          sessionId={props.sessionId}
+        />
+      );
 
     default:
       // Exhaustive check - TypeScript will error if we miss a case
@@ -75,7 +81,12 @@ function RenderBlock(props: {
 function CopyableDevText({ label, value, color }: { label: string; value: string; color: string }) {
   const [copied, setCopied] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  React.useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    []
+  );
   const handlePress = React.useCallback(async () => {
     await Clipboard.setStringAsync(value);
     setCopied(true);
@@ -100,14 +111,21 @@ function CopyableDevText({ label, value, color }: { label: string; value: string
 }
 
 /** Small monospace overlay shown in dev mode below a message. */
-function DevTraceBadge(props: { traceId?: string; id: string; alignSelf?: 'flex-start' | 'flex-end' }) {
+function DevTraceBadge(props: {
+  traceId?: string;
+  id: string;
+  alignSelf?: 'flex-start' | 'flex-end';
+}) {
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
   if (!devModeEnabled) return null;
   return (
-    <View style={[styles.devBadgeContainer, props.alignSelf ? { alignSelf: props.alignSelf } : undefined]}>
-      {!!props.traceId && (
-        <CopyableDevText label="trace" value={props.traceId} color="#888" />
-      )}
+    <View
+      style={[
+        styles.devBadgeContainer,
+        props.alignSelf ? { alignSelf: props.alignSelf } : undefined,
+      ]}
+    >
+      {!!props.traceId && <CopyableDevText label="trace" value={props.traceId} color="#888" />}
       <CopyableDevText label="id" value={props.id} color="#aaa" />
     </View>
   );
@@ -167,7 +185,11 @@ function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string })
   );
 }
 
-function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null; sessionId: string }) {
+function AgentEventBlock(props: {
+  event: AgentEvent;
+  metadata: Metadata | null;
+  sessionId: string;
+}) {
   const { theme } = useUnistyles();
   const [loadingDecision, setLoadingDecision] = React.useState<'allow' | 'deny' | null>(null);
   const [resolved, setResolved] = React.useState<'allow' | 'deny' | null>(null);
@@ -180,14 +202,16 @@ function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null; 
       if (!isPending || loadingDecision !== null) return;
       setLoadingDecision(decision);
       try {
-        await apiSocket.sessionRPC<{ ok: boolean }, { requestId: string; toolName: string; decision: 'allow' | 'deny' }>(
-          props.sessionId,
-          'permission_response',
-          { requestId, toolName, decision }
-        );
+        await apiSocket.sessionRPC<
+          { ok: boolean },
+          { requestId: string; toolName: string; decision: 'allow' | 'deny' }
+        >(props.sessionId, 'permission_response', { requestId, toolName, decision });
         setResolved(decision);
       } catch (error) {
-        logger.error('[MessageView] permission_response RPC failed', toError(error), { requestId, decision });
+        logger.error('[MessageView] permission_response RPC failed', toError(error), {
+          requestId,
+          decision,
+        });
       } finally {
         setLoadingDecision(null);
       }
@@ -195,7 +219,12 @@ function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null; 
 
     return (
       <View style={styles.permissionRequestContainer}>
-        <Text style={[styles.agentEventText, { color: theme.colors.text, fontWeight: '500', marginBottom: 4 }]}>
+        <Text
+          style={[
+            styles.agentEventText,
+            { color: theme.colors.text, fontWeight: '500', marginBottom: 4 },
+          ]}
+        >
           {t('message.permissionRequest', { toolName })}
         </Text>
         <Text style={[styles.agentEventText, { fontSize: 12, marginBottom: 8, opacity: 0.6 }]}>
@@ -214,13 +243,18 @@ function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null; 
             activeOpacity={0.7}
           >
             {loadingDecision === 'allow' ? (
-              <ActivityIndicator size="small" color={theme.colors.permissionButton.allow.background} />
+              <ActivityIndicator
+                size="small"
+                color={theme.colors.permissionButton.allow.background}
+              />
             ) : (
-              <Text style={[
-                styles.permissionButtonText,
-                { color: theme.colors.permissionButton.allow.background },
-                resolved === 'allow' && { color: theme.colors.text, fontWeight: '600' },
-              ]}>
+              <Text
+                style={[
+                  styles.permissionButtonText,
+                  { color: theme.colors.permissionButton.allow.background },
+                  resolved === 'allow' && { color: theme.colors.text, fontWeight: '600' },
+                ]}
+              >
                 {t('common.yes')}
               </Text>
             )}
@@ -237,13 +271,18 @@ function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null; 
             activeOpacity={0.7}
           >
             {loadingDecision === 'deny' ? (
-              <ActivityIndicator size="small" color={theme.colors.permissionButton.deny.background} />
+              <ActivityIndicator
+                size="small"
+                color={theme.colors.permissionButton.deny.background}
+              />
             ) : (
-              <Text style={[
-                styles.permissionButtonText,
-                { color: theme.colors.permissionButton.deny.background },
-                resolved === 'deny' && { color: theme.colors.text, fontWeight: '600' },
-              ]}>
+              <Text
+                style={[
+                  styles.permissionButtonText,
+                  { color: theme.colors.permissionButton.deny.background },
+                  resolved === 'deny' && { color: theme.colors.text, fontWeight: '600' },
+                ]}
+              >
                 {t('common.no')}
               </Text>
             )}

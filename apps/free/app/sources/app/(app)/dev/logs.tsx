@@ -111,7 +111,10 @@ export default function LogsScreen() {
 
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
-        await Sharing.shareAsync(file.uri, { mimeType: 'application/x-ndjson', UTI: 'public.text' });
+        await Sharing.shareAsync(file.uri, {
+          mimeType: 'application/x-ndjson',
+          UTI: 'public.text',
+        });
       } else {
         Modal.alert('Exported', `Saved to: ${file.uri}`);
       }
@@ -159,7 +162,9 @@ export default function LogsScreen() {
     <View style={{ flex: 1, backgroundColor: '#F5F5F5' }}>
       {/* Header with actions */}
       <ItemList>
-        <ItemGroup title={`Logs (${entries.length}${levelFilter || componentFilter ? ' filtered' : ''})`}>
+        <ItemGroup
+          title={`Logs (${entries.length}${levelFilter || componentFilter ? ' filtered' : ''})`}
+        >
           <Item
             title="Export Diagnostic Bundle"
             subtitle={`${allEntries.length} entries`}
@@ -187,7 +192,10 @@ export default function LogsScreen() {
       <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
         <Text style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>LEVEL</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <Pressable style={filterChipStyle(levelFilter === null)} onPress={() => setLevelFilter(null)}>
+          <Pressable
+            style={filterChipStyle(levelFilter === null)}
+            onPress={() => setLevelFilter(null)}
+          >
             <Text style={filterChipTextStyle(levelFilter === null)}>All</Text>
           </Pressable>
           {LEVELS.map(level => (
@@ -207,7 +215,10 @@ export default function LogsScreen() {
         <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
           <Text style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>COMPONENT</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <Pressable style={filterChipStyle(componentFilter === null)} onPress={() => setComponentFilter(null)}>
+            <Pressable
+              style={filterChipStyle(componentFilter === null)}
+              onPress={() => setComponentFilter(null)}
+            >
               <Text style={filterChipTextStyle(componentFilter === null)}>All</Text>
             </Pressable>
             {components.map(comp => (
@@ -224,7 +235,15 @@ export default function LogsScreen() {
       )}
 
       {/* Logs display */}
-      <View style={{ flex: 1, backgroundColor: '#FFFFFF', marginHorizontal: 16, marginBottom: 16, borderRadius: 8 }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: '#FFFFFF',
+          marginHorizontal: 16,
+          marginBottom: 16,
+          borderRadius: 8,
+        }}
+      >
         {entries.length === 0 ? (
           <View
             style={{

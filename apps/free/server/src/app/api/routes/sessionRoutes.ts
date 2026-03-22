@@ -255,16 +255,35 @@ export function sessionRoutes(app: Fastify) {
 
       // Look up existing active/offline session by client-provided ID
       const session = await db.session.findUnique({ where: { id } });
-      if (session && session.accountId === userId && (session.status === 'active' || session.status === 'offline')) {
-        log.info(`Resuming existing session: ${session.id}`, { sessionId: session.id, userId, traceId });
+      if (
+        session &&
+        session.accountId === userId &&
+        (session.status === 'active' || session.status === 'offline')
+      ) {
+        log.info(`Resuming existing session: ${session.id}`, {
+          sessionId: session.id,
+          userId,
+          traceId,
+        });
 
         // Re-activate offline sessions on daemon restart/crash recovery.
         let activeSession = session;
         if (session.status === 'offline') {
-          log.info(`Re-activating offline session on daemon recovery: ${session.id}`, { sessionId: session.id, userId, traceId });
+          log.info(`Re-activating offline session on daemon recovery: ${session.id}`, {
+            sessionId: session.id,
+            userId,
+            traceId,
+          });
           activeSession = await db.session.update({
             where: { id: session.id },
-            data: { status: 'active', lastActiveAt: new Date() },
+            data: {
+              status: 'active',
+              lastActiveAt: new Date(),
+              // Clear agentState to remove stale pending requests from previous daemon instance.
+              // The new daemon will rebuild fresh state. This prevents UI showing old permission
+              // requests that the new daemon's memory doesn't know about.
+              agentState: null,
+            },
           });
           activityCache.evictSession(session.id);
         }
@@ -291,7 +310,11 @@ export function sessionRoutes(app: Fastify) {
 
       // ID exists but belongs to another user, or is archived/deleted — tell client to retry
       if (session) {
-        log.info(`Session ID conflict: ${id} exists but not resumable`, { userId, traceId, existingStatus: session.status });
+        log.info(`Session ID conflict: ${id} exists but not resumable`, {
+          userId,
+          traceId,
+          existingStatus: session.status,
+        });
         reply.code(409);
         return { error: 'session_id_conflict' };
       }

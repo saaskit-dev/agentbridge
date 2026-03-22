@@ -54,8 +54,7 @@ export function voiceRoutes(app: Fastify) {
         });
 
         if (!response.ok) {
-          log.info(`RevenueCat check failed for user ${userId}: ${response.status}`
-          );
+          log.info(`RevenueCat check failed for user ${userId}: ${response.status}`);
           return reply.send({
             allowed: false,
             agentId,

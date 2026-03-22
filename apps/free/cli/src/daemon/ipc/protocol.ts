@@ -10,7 +10,13 @@
  *   control sequences (arrow keys, function keys, Ctrl combos).
  */
 
-import type { NormalizedMessage, AgentType, SessionLifecycleState, SessionSummary, SessionInitiator } from '@/daemon/sessions/types';
+import type {
+  NormalizedMessage,
+  AgentType,
+  SessionLifecycleState,
+  SessionSummary,
+  SessionInitiator,
+} from '@/daemon/sessions/types';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
 import type { PermissionMode } from '@/api/types';
 

@@ -88,7 +88,8 @@ export function usageHandler(userId: string, socket: Socket) {
             },
           });
 
-          log.info(`Usage report saved: key=${key}, sessionId=${sessionId || 'none'}, userId=${userId}`
+          log.info(
+            `Usage report saved: key=${key}, sessionId=${sessionId || 'none'}, userId=${userId}`
           );
 
           // Emit usage ephemeral update if sessionId is provided

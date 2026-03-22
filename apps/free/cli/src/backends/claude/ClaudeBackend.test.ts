@@ -108,13 +108,13 @@ describe('ClaudeBackend', () => {
 
     const capabilityEvents: SessionCapabilities[] = [];
     const iterator = backend.capabilities[Symbol.asyncIterator]();
-    const firstRead = iterator.next().then((result) => {
+    const firstRead = iterator.next().then(result => {
       if (!result.done) {
         capabilityEvents.push(result.value);
       }
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       models: {
@@ -129,12 +129,12 @@ describe('ClaudeBackend', () => {
     });
     await firstRead;
 
-    const secondRead = iterator.next().then((result) => {
+    const secondRead = iterator.next().then(result => {
       if (!result.done) {
         capabilityEvents.push(result.value);
       }
     });
-    const updateHandler = mockOnSessionUpdate.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const updateHandler = mockOnSessionUpdate.mock.calls[0]?.[0] as (value: unknown) => void;
     updateHandler({
       sessionUpdate: 'available_commands_update',
       availableCommands: [{ name: '/compact', description: 'Compact context' }],
@@ -178,10 +178,7 @@ describe('ClaudeBackend', () => {
 
     expect(mockStartSession).toHaveBeenCalledWith();
     expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'claude-opus');
-    expect(mockSendPrompt).toHaveBeenCalledWith(
-      'acp-session-1',
-      expect.stringContaining('hello')
-    );
+    expect(mockSendPrompt).toHaveBeenCalledWith('acp-session-1', expect.stringContaining('hello'));
     expect(mockSetSessionModel.mock.invocationCallOrder[0]).toBeLessThan(
       mockSendPrompt.mock.invocationCallOrder[0]
     );
@@ -198,7 +195,7 @@ describe('ClaudeBackend', () => {
       session: makeSession(),
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       models: {
@@ -244,7 +241,7 @@ describe('ClaudeBackend', () => {
       session: makeSession(),
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       models: {
@@ -272,12 +269,18 @@ describe('ClaudeBackend', () => {
     await backend.sendMessage('hello');
     mockSetSessionModel.mockClear();
     mockSetSessionConfigOption.mockClear();
-    mockSetSessionModel.mockRejectedValueOnce(new Error('ACP unstable_setSessionModel is not supported by this SDK connection'));
+    mockSetSessionModel.mockRejectedValueOnce(
+      new Error('ACP unstable_setSessionModel is not supported by this SDK connection')
+    );
 
     await backend.setModel('claude-opus');
 
     expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'claude-opus');
-    expect(mockSetSessionConfigOption).toHaveBeenCalledWith('acp-session-1', 'model_picker', 'claude-opus');
+    expect(mockSetSessionConfigOption).toHaveBeenCalledWith(
+      'acp-session-1',
+      'model_picker',
+      'claude-opus'
+    );
   });
 
   it('routes setConfig model option changes through set_model API', async () => {
@@ -291,7 +294,7 @@ describe('ClaudeBackend', () => {
       session: makeSession(),
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       models: {
@@ -324,7 +327,11 @@ describe('ClaudeBackend', () => {
     await backend.setConfig?.('model_picker', 'claude-opus');
 
     expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'claude-opus');
-    expect(mockSetSessionConfigOption).not.toHaveBeenCalledWith('acp-session-1', 'model_picker', 'claude-opus');
+    expect(mockSetSessionConfigOption).not.toHaveBeenCalledWith(
+      'acp-session-1',
+      'model_picker',
+      'claude-opus'
+    );
   });
 
   it('does not apply model when set_model unavailable and no model config option', async () => {
@@ -339,7 +346,7 @@ describe('ClaudeBackend', () => {
     });
 
     // Session with models but no model config option
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       models: {
@@ -378,7 +385,7 @@ describe('ClaudeBackend', () => {
       session: makeSession(),
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       modes: {
@@ -423,7 +430,7 @@ describe('ClaudeBackend', () => {
       session: makeSession(),
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       modes: {
@@ -469,7 +476,7 @@ describe('ClaudeBackend', () => {
       session: makeSession(),
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       modes: {
@@ -515,7 +522,7 @@ describe('ClaudeBackend', () => {
       session: makeSession(),
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       modes: {
@@ -548,7 +555,11 @@ describe('ClaudeBackend', () => {
     await backend.setMode('plan');
 
     expect(mockSetSessionMode).toHaveBeenCalledWith('acp-session-1', 'plan');
-    expect(mockSetSessionConfigOption).toHaveBeenCalledWith('acp-session-1', 'workflow_mode', 'plan');
+    expect(mockSetSessionConfigOption).toHaveBeenCalledWith(
+      'acp-session-1',
+      'workflow_mode',
+      'plan'
+    );
   });
 
   // ─── Config selections ───────────────────────────────────────────────────────
@@ -564,7 +575,7 @@ describe('ClaudeBackend', () => {
       session: makeSession(),
     });
 
-    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as ((value: unknown) => void);
+    const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
     startedHandler({
       sessionId: 'acp-session-1',
       configOptions: [
@@ -626,7 +637,7 @@ describe('ClaudeBackend', () => {
 
     const iterator = backend.output[Symbol.asyncIterator]();
     const nextOutput = iterator.next();
-    const onMessageHandler = mockOnMessage.mock.calls[0]?.[0] as ((msg: AgentMessage) => void);
+    const onMessageHandler = mockOnMessage.mock.calls[0]?.[0] as (msg: AgentMessage) => void;
     onMessageHandler({ type: 'model-output', textDelta: 'hello' } as AgentMessage);
 
     const result = await nextOutput;

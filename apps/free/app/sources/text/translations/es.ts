@@ -240,6 +240,12 @@ export const es: TranslationStructure = {
     sessionNotFound: 'Sesión no encontrada',
     voiceSessionFailed: 'Falló al iniciar sesión de voz',
     voiceServiceUnavailable: 'El servicio de voz no está disponible temporalmente',
+    voiceNotConfigured: 'Voice feature is not configured. Please contact support.',
+    voiceNotInitialized:
+      'Voice service failed to initialize. Please restart the app and try again.',
+    voiceMicPermissionWeb:
+      'Microphone access is required for voice. Please allow microphone permission in your browser settings.',
+    voiceTokenRejected: 'Voice service is not available on this server.',
     oauthInitializationFailed: 'Falló al inicializar el flujo OAuth',
     tokenStorageFailed: 'Falló al almacenar los tokens de autenticación',
     oauthStateMismatch: 'Falló la validación de seguridad. Inténtalo de nuevo',
@@ -313,7 +319,8 @@ export const es: TranslationStructure = {
     headerTitle: 'Seleccionar agente',
     heroEyebrow: 'Selector de implementación',
     heroTitle: 'Elige el entorno de ejecución con el que deseas comenzar.',
-    heroDescription: 'Cada opción a continuación se descubre a partir de las implementaciones registradas en la máquina seleccionada. Las entradas clásicas y ACP se mantienen separadas a propósito.',
+    heroDescription:
+      'Cada opción a continuación se descubre a partir de las implementaciones registradas en la máquina seleccionada. Las entradas clásicas y ACP se mantienen separadas a propósito.',
     experimentalSection: 'Experimental',
     experimentalCaption: 'Agentes opcionales detrás de la configuración de experimentos.',
     noAgentsTitle: 'No hay agentes disponibles',
@@ -432,7 +439,8 @@ export const es: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Versión ${currentVersion} instalada. Actualice a ${requiredVersion} o posterior`,
-    updateCliInstructions: 'Por favor ejecute curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    updateCliInstructions:
+      'Por favor ejecute curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: 'Eliminar sesión',
     deleteSessionSubtitle: 'Eliminar permanentemente esta sesión',
     deleteSessionConfirm: '¿Eliminar sesión permanentemente?',
@@ -818,8 +826,8 @@ export const es: TranslationStructure = {
     unknownEvent: 'Evento desconocido',
     usageLimitUntil: ({ time }: { time: string }) => `Límite de uso alcanzado hasta ${time}`,
     unknownTime: 'tiempo desconocido',
-    permissionRequest: ({ toolName }: { toolName: string }) => "Permission request for " + toolName,
-    permissionMode: ({ mode }: { mode: string }) => "Permission mode: " + mode,
+    permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
+    permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
   },
 
   codex: {
@@ -976,14 +984,17 @@ export const es: TranslationStructure = {
     copyToClipboard: 'Copiar al portapapeles',
     copySubtitle: 'Copiar datos de registro como texto JSONL',
     whatIsIncluded: 'Qué se incluye',
-    whatIsIncludedSubtitle: 'Registros de diagnóstico de la app — sin contenido de mensajes ni datos personales',
-    privacyNote: 'Los registros se anonimizan y limpian antes de exportar. El contenido de los mensajes y los datos sensibles nunca se incluyen.',
+    whatIsIncludedSubtitle:
+      'Registros de diagnóstico de la app — sin contenido de mensajes ni datos personales',
+    privacyNote:
+      'Los registros se anonimizan y limpian antes de exportar. El contenido de los mensajes y los datos sensibles nunca se incluyen.',
     noLogs: 'Sin registros',
     noLogsMessage: 'No hay entradas de registro para exportar en el rango de tiempo seleccionado.',
     exported: 'Exportado',
     exportFailed: 'Error al exportar',
     copied: 'Copiado',
-    copiedToClipboard: ({ count }: { count: number }) => `${count} ${count === 1 ? 'entrada copiada' : 'entradas copiadas'} al portapapeles`,
+    copiedToClipboard: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'entrada copiada' : 'entradas copiadas'} al portapapeles`,
   },
 } as const;
 

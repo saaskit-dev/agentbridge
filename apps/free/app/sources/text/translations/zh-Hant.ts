@@ -239,6 +239,10 @@ export const zhHant: TranslationStructure = {
     sessionNotFound: '工作階段未找到',
     voiceSessionFailed: '啟動語音工作階段失敗',
     voiceServiceUnavailable: '語音服務暫時無法使用',
+    voiceNotConfigured: '語音功能未配置，請聯繫支持。',
+    voiceNotInitialized: '語音服務初始化失敗，請重新啟動應用後重試。',
+    voiceMicPermissionWeb: '語音功能需要麥克風權限，請在瀏覽器設定中允許麥克風訪問。',
+    voiceTokenRejected: '當前伺服器不支援語音服務。',
     oauthInitializationFailed: '初始化 OAuth 流程失敗',
     tokenStorageFailed: '儲存驗證權杖失敗',
     oauthStateMismatch: '安全驗證失敗。請重試',
@@ -425,7 +429,8 @@ export const zhHant: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `已安裝版本 ${currentVersion}。請更新到 ${requiredVersion} 或更高版本`,
-    updateCliInstructions: '請執行 curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    updateCliInstructions:
+      '請執行 curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
     deleteSession: '刪除工作階段',
     deleteSessionSubtitle: '永久刪除此工作階段',
     deleteSessionConfirm: '永久刪除工作階段？',
@@ -799,8 +804,8 @@ export const zhHant: TranslationStructure = {
     unknownEvent: '未知事件',
     usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
     unknownTime: '未知時間',
-    permissionRequest: ({ toolName }: { toolName: string }) => "Permission request for " + toolName,
-    permissionMode: ({ mode }: { mode: string }) => "Permission mode: " + mode,
+    permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
+    permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
   },
 
   codex: {

@@ -4,13 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import {
-  afterEach,
-  describe,
-  expect,
-  it,
-  onTestFailed,
-} from 'vitest';
+import { afterEach, describe, expect, it, onTestFailed } from 'vitest';
 import {
   ClientSideConnection,
   PROTOCOL_VERSION,
@@ -143,11 +137,7 @@ function getSkipReason(spec: AgentSpec): string | null {
     return 'OPENAI_API_KEY not set';
   }
 
-  if (
-    spec.id === 'gemini' &&
-    !process.env.GEMINI_API_KEY &&
-    !process.env.GOOGLE_API_KEY
-  ) {
+  if (spec.id === 'gemini' && !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY) {
     return 'GEMINI_API_KEY or GOOGLE_API_KEY not set';
   }
 
@@ -186,13 +176,16 @@ function pickAlternateConfigOption(session: NewSessionResponse): {
   value: string;
 } | null {
   const option = (session.configOptions ?? []).find(
-    candidate => candidate.type === 'select' && candidate.category !== 'mode' && candidate.category !== 'model'
+    candidate =>
+      candidate.type === 'select' && candidate.category !== 'mode' && candidate.category !== 'model'
   );
   if (!option || option.type !== 'select') {
     return null;
   }
 
-  const next = flattenSelectOptions(option.options).find(value => value.value !== option.currentValue);
+  const next = flattenSelectOptions(option.options).find(
+    value => value.value !== option.currentValue
+  );
   if (!next) {
     return null;
   }
@@ -203,9 +196,7 @@ function pickAlternateConfigOption(session: NewSessionResponse): {
   };
 }
 
-function choosePermissionResponse(
-  request: RequestPermissionRequest
-): RequestPermissionResponse {
+function choosePermissionResponse(request: RequestPermissionRequest): RequestPermissionResponse {
   const rejectOption = request.options.find(
     option => option.kind === 'reject_once' || option.kind === 'reject_always'
   );
@@ -246,7 +237,8 @@ function collectTextChunks(updates: SessionUpdate[]): string {
   return updates
     .filter(update => update.sessionUpdate === 'agent_message_chunk')
     .map(update => {
-      const content = (update as Extract<SessionUpdate, { sessionUpdate: 'agent_message_chunk' }>).content as ContentBlock & {
+      const content = (update as Extract<SessionUpdate, { sessionUpdate: 'agent_message_chunk' }>)
+        .content as ContentBlock & {
         text?: string;
       };
       if (content.type !== 'text') {
@@ -388,7 +380,9 @@ describe.skipIf(!runRealSdkMatrix)('ACP SDK agent matrix', () => {
             value: alternateMode,
           });
 
-          const updatedModeOption = response.configOptions.find(option => option.id === modeConfig.id);
+          const updatedModeOption = response.configOptions.find(
+            option => option.id === modeConfig.id
+          );
           expect(updatedModeOption?.type).toBe('select');
           if (updatedModeOption?.type === 'select') {
             expect(updatedModeOption.currentValue).toBe(alternateMode);
@@ -428,7 +422,9 @@ describe.skipIf(!runRealSdkMatrix)('ACP SDK agent matrix', () => {
                 const modelOption = (update.configOptions as SessionConfigOption[]).find(option => {
                   return option.type === 'select' && option.category === 'model';
                 });
-                return modelOption?.type === 'select' && modelOption.currentValue === alternateModel;
+                return (
+                  modelOption?.type === 'select' && modelOption.currentValue === alternateModel
+                );
               }),
             10_000,
             `${spec.id} model confirmation=${alternateModel}`

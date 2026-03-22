@@ -18,8 +18,8 @@
     "noUnusedParameters": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "jsx": "react-jsx",
+    "jsx": "react-jsx"
   },
   "exclude": ["node_modules", "dist", "**/dist/**", "examples", "**/node_modules/**"],
-  "references": [],
+  "references": []
 }

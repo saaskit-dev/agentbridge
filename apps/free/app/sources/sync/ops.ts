@@ -330,7 +330,11 @@ export async function machineUpdateMetadata(
       }
 
       retryCount++;
-      logger.debug('[ops] machineUpdateMetadata version conflict, retrying', { machineId, retryCount, currentVersion });
+      logger.debug('[ops] machineUpdateMetadata version conflict, retrying', {
+        machineId,
+        retryCount,
+        currentVersion,
+      });
 
       // If we've exhausted retries, throw error
       if (retryCount >= maxRetries) {

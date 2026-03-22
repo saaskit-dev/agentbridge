@@ -98,30 +98,28 @@ export async function setup() {
   ensureDir(join(freeHomeDir, 'logs'));
   const serverLogStream = createWriteStream(serverLogFile, { flags: 'a' });
 
-  serverProcess = spawn(
-    'pnpm',
-    ['--filter', '@free/server', 'standalone', 'serve'],
-    {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        PORT: String(isolatedServerPort),
-        APP_ENV: 'development',
-        FREE_HOME_DIR: freeHomeDir,
-        FREE_MASTER_SECRET: 'free-cli-integration-test-secret',
-        JWT_SECRET: 'free-cli-integration-jwt-secret',
-        DATA_DIR: dataDir,
-        PGLITE_DIR: pgliteDir,
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }
-  );
+  serverProcess = spawn('pnpm', ['--filter', '@free/server', 'standalone', 'serve'], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      PORT: String(isolatedServerPort),
+      APP_ENV: 'development',
+      FREE_HOME_DIR: freeHomeDir,
+      FREE_MASTER_SECRET: 'free-cli-integration-test-secret',
+      JWT_SECRET: 'free-cli-integration-jwt-secret',
+      DATA_DIR: dataDir,
+      PGLITE_DIR: pgliteDir,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 
   serverProcess.stdout?.pipe(serverLogStream);
   serverProcess.stderr?.pipe(serverLogStream);
   serverProcess.once('exit', () => serverLogStream.end());
 
-  console.log(`[globalSetup] Starting integration server on port ${isolatedServerPort} (PID ${serverProcess.pid})`);
+  console.log(
+    `[globalSetup] Starting integration server on port ${isolatedServerPort} (PID ${serverProcess.pid})`
+  );
   console.log(`[globalSetup] Server log: ${serverLogFile}`);
 
   await waitForHealth(`http://localhost:${isolatedServerPort}`);

@@ -1,6 +1,11 @@
 import 'react-native-quick-base64';
 import '../theme.css';
-import { initAppTelemetry, loadPersistedTelemetry, setTelemetryAuthToken, setAnalyticsEnabled } from '@/appTelemetry';
+import {
+  initAppTelemetry,
+  loadPersistedTelemetry,
+  setTelemetryAuthToken,
+  setAnalyticsEnabled,
+} from '@/appTelemetry';
 import { FontAwesome } from '@expo/vector-icons';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import * as Fonts from 'expo-font';

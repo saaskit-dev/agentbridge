@@ -75,7 +75,11 @@ export class RpcHandlerManager {
       });
 
       // Encrypt and return the response
-      const wireResponse = await encryptToWireString(this.encryptionKey, this.encryptionVariant, result);
+      const wireResponse = await encryptToWireString(
+        this.encryptionKey,
+        this.encryptionVariant,
+        result
+      );
       this.logger('[RPC] Sending encrypted response', {
         method: request.method,
         responseLength: wireResponse.length,

@@ -49,7 +49,11 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
         recipientFilter: { type: 'user-scoped-only' },
       });
     } catch (error) {
-      log.error('Error in machine-alive', undefined, { userId, machineId: data?.machineId, error: safeStringify(error) });
+      log.error('Error in machine-alive', undefined, {
+        userId,
+        machineId: data?.machineId,
+        error: safeStringify(error),
+      });
     }
   });
 
@@ -145,7 +149,11 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
         metadata: metadata,
       });
     } catch (error) {
-      log.error('Error in machine-update-metadata', undefined, { userId, machineId: data?.machineId, error: safeStringify(error) });
+      log.error('Error in machine-update-metadata', undefined, {
+        userId,
+        machineId: data?.machineId,
+        error: safeStringify(error),
+      });
       if (callback) {
         callback({ result: 'error', message: 'Internal error' });
       }
@@ -246,7 +254,11 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
         daemonState: daemonState,
       });
     } catch (error) {
-      log.error('Error in machine-update-state', undefined, { userId, machineId: data?.machineId, error: safeStringify(error) });
+      log.error('Error in machine-update-state', undefined, {
+        userId,
+        machineId: data?.machineId,
+        error: safeStringify(error),
+      });
       if (callback) {
         callback({ result: 'error', message: 'Internal error' });
       }

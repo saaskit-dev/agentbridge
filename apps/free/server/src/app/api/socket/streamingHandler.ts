@@ -101,8 +101,7 @@ export function streamingHandler(userId: string, socket: Socket, connection: Cli
         skipSenderConnection: connection,
       });
     } catch (error) {
-      log.error(`Error handling streaming:text-complete: ${error}`
-      );
+      log.error(`Error handling streaming:text-complete: ${error}`);
     }
   });
 
@@ -135,8 +134,7 @@ export function streamingHandler(userId: string, socket: Socket, connection: Cli
         skipSenderConnection: connection,
       });
     } catch (error) {
-      log.error(`Error handling streaming:thinking-delta: ${error}`
-      );
+      log.error(`Error handling streaming:thinking-delta: ${error}`);
     }
   });
 }

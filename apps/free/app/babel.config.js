@@ -22,7 +22,7 @@ module.exports = function (api) {
   // is invalid syntax at runtime. This plugin replaces import.meta with a
   // plain object so packages like wa-sqlite (which use import.meta.url to
   // locate their .wasm file) can be bundled without errors.
-  const transformImportMeta = (babel) => ({
+  const transformImportMeta = babel => ({
     visitor: {
       MetaProperty(path) {
         if (path.node.meta.name === 'import' && path.node.property.name === 'meta') {
@@ -30,9 +30,9 @@ module.exports = function (api) {
             babel.types.objectExpression([
               babel.types.objectProperty(
                 babel.types.identifier('url'),
-                babel.types.stringLiteral(''),
+                babel.types.stringLiteral('')
               ),
-            ]),
+            ])
           );
         }
       },

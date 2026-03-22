@@ -28,8 +28,9 @@ describe('AgentSessionFactory', () => {
   });
 
   it('create throws for unregistered agent type', () => {
-    expect(() => AgentSessionFactory.create('__never_registered__', makeOpts()))
-      .toThrow(/Unknown agentType/);
+    expect(() => AgentSessionFactory.create('__never_registered__', makeOpts())).toThrow(
+      /Unknown agentType/
+    );
   });
 
   it('register and create round-trip', () => {

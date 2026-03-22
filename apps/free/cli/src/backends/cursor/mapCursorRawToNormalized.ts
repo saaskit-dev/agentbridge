@@ -62,15 +62,17 @@ export function mapCursorRawToNormalized(msg: AgentMessage): NormalizedMessage |
       return {
         ...base,
         role: 'agent',
-        content: [{
-          type: 'tool-call',
-          id: String(msg.callId),
-          name: msg.toolName,
-          input: msg.args ?? {},
-          description: null,
-          uuid: id,
-          parentUUID: null,
-        }],
+        content: [
+          {
+            type: 'tool-call',
+            id: String(msg.callId),
+            name: msg.toolName,
+            input: msg.args ?? {},
+            description: null,
+            uuid: id,
+            parentUUID: null,
+          },
+        ],
       };
     }
 
@@ -80,14 +82,16 @@ export function mapCursorRawToNormalized(msg: AgentMessage): NormalizedMessage |
       return {
         ...base,
         role: 'agent',
-        content: [{
-          type: 'tool-result',
-          tool_use_id: String(msg.callId),
-          content: msg.result,
-          is_error: isError,
-          uuid: id,
-          parentUUID: null,
-        }],
+        content: [
+          {
+            type: 'tool-result',
+            tool_use_id: String(msg.callId),
+            content: msg.result,
+            is_error: isError,
+            uuid: id,
+            parentUUID: null,
+          },
+        ],
       };
     }
 

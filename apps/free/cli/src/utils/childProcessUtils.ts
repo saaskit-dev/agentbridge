@@ -14,7 +14,14 @@ export function getChildPids(parentPid: number): Promise<number[]> {
         resolve([]);
         return;
       }
-      resolve(stdout.trim().split('\n').filter(Boolean).map(Number).filter(n => !isNaN(n)));
+      resolve(
+        stdout
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .map(Number)
+          .filter(n => !isNaN(n))
+      );
     });
   });
 }
