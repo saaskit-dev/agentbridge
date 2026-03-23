@@ -116,6 +116,26 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       if (normalized) {
         this.output.push(normalized);
       }
+
+      // When the child process exits, the ACP backend emits status:'stopped'.
+      // End the output stream so pipeBackendOutput terminates and AgentSession
+      // can detect the crash and restart the backend.
+      if (msg.type === 'status' && msg.status === 'stopped') {
+        this.logger.warn(`[${this.agentType}] backend process stopped, ending output stream`, {
+          apiSessionId: this.apiSessionId,
+          acpSessionId: this.acpSessionId,
+          detail: msg.detail,
+        });
+        this.exitInfo = {
+          reason: msg.detail ?? 'process stopped',
+        };
+        if (!this.output.done) {
+          this.output.end();
+        }
+        if (!this.capabilities.done) {
+          this.capabilities.end();
+        }
+      }
     });
 
     this.capabilityBackend.onSessionStarted?.(response => {

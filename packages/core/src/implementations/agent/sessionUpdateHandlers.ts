@@ -154,19 +154,14 @@ export function handleAgentMessageChunk(update: SessionUpdate, ctx: HandlerConte
   const text = (content as { text?: string }).text;
   if (typeof text !== 'string') return { handled: false };
 
-  const isThinking = /^\*\*[^*]+\*\*\n/.test(text);
-  if (isThinking) {
-    ctx.emit({ type: 'event', name: 'thinking', payload: { text } });
-  } else {
-    ctx.emit({ type: 'model-output', textDelta: text });
-    // Reset response complete timeout on activity
-    ctx.resetResponseCompleteTimeout();
-    ctx.clearIdleTimeout();
-    const idleTimeoutMs = ctx.transport.getIdleTimeout?.() ?? DEFAULT_IDLE_TIMEOUT_MS;
-    ctx.setIdleTimeout(() => {
-      if (ctx.activeToolCalls.size === 0) ctx.emitIdleStatus();
-    }, idleTimeoutMs);
-  }
+  ctx.emit({ type: 'model-output', textDelta: text });
+  // Reset response complete timeout on activity
+  ctx.resetResponseCompleteTimeout();
+  ctx.clearIdleTimeout();
+  const idleTimeoutMs = ctx.transport.getIdleTimeout?.() ?? DEFAULT_IDLE_TIMEOUT_MS;
+  ctx.setIdleTimeout(() => {
+    if (ctx.activeToolCalls.size === 0) ctx.emitIdleStatus();
+  }, idleTimeoutMs);
   return { handled: true };
 }
 
@@ -217,7 +212,11 @@ export function startToolCall(
       ctx.activeToolCalls.delete(toolCallId);
       ctx.toolCallStartTimes.delete(toolCallId);
       ctx.toolCallTimeouts.delete(toolCallId);
-      if (ctx.activeToolCalls.size === 0) ctx.emitIdleStatus();
+      // Do NOT call emitIdleStatus() here — the tool hasn't actually completed,
+      // we just lost patience tracking it. Resolving the waitForResponseComplete
+      // promise prematurely causes the message loop to send new prompts while
+      // the agent is still processing this tool call, leading to zombie sessions.
+      // The response complete timeout (10-20 min) handles overall turn timeouts.
     }, timeoutMs);
     ctx.toolCallTimeouts.set(toolCallId, timeout);
   }

@@ -1155,7 +1155,10 @@ export abstract class AgentSession<TMode> {
       mode: this.opts.mode,
       startingMode: this.opts.startingMode,
       broadcast: this.opts.broadcast,
-      onSessionIdResolved: id => this.updateResumeId(id),
+      onSessionIdResolved: id => {
+        this.updateResumeId(id);
+        this.session.updateMetadata(m => ({ ...m, agentSessionId: id }));
+      },
     };
   }
 

@@ -302,6 +302,27 @@ async function withRetry<T>(
 }
 
 /**
+ * Run a promise with a timeout. Rejects with a descriptive error if the
+ * operation doesn't complete within `ms` milliseconds.
+ */
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          logger.warn(`[AcpBackend] ${label} timed out after ${ms / 1000}s`);
+          reject(new Error(`${label} timed out after ${ms / 1000}s`));
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
  * Convert Node.js streams to Web Streams for ACP SDK
  */
 function nodeToWebStreams(
@@ -616,14 +637,29 @@ export class AcpBackend implements IAgentBackend {
       });
 
       this.process.on('exit', (code, signal) => {
-        if (!this.disposed && code !== 0 && code !== null) {
+        if (this.disposed) return;
+
+        const reason = `Process exited (code=${code ?? 'null'}, signal=${signal ?? 'none'})`;
+
+        if (code !== 0 && code !== null) {
           logger.error('[ACP] Process exit', undefined, {
             agent: this.transport.agentName,
             code,
             signal: signal || 'none',
           });
-          this.emit({ type: 'status', status: 'stopped', detail: `Exit code: ${code}` });
+        } else {
+          logger.debug('[ACP] Process exit', {
+            agent: this.transport.agentName,
+            code,
+            signal: signal || 'none',
+          });
         }
+
+        // Immediately reject any pending waitForResponseComplete so the caller
+        // (messageLoop) is unblocked instead of waiting for the response timeout.
+        this.rejectPendingResponse(new Error(reason));
+
+        this.emit({ type: 'status', status: 'stopped', detail: reason });
       });
 
       // Create Web Streams from Node streams
@@ -1059,7 +1095,10 @@ export class AcpBackend implements IAgentBackend {
         });
       }
 
-      return { sessionId };
+      // Return the real ACP session ID (from session/new response) so callers can persist it
+      // for crash recovery. localSessionId is only an internal log-correlation UUID and has
+      // no corresponding on-disk session file — using it as a resume ID would always fail.
+      return { sessionId: this.acpSessionId };
     } catch (error) {
       logger.error('[ACP] Session start failed', toError(error), {
         agent: this.transport.agentName,
@@ -1132,7 +1171,14 @@ export class AcpBackend implements IAgentBackend {
       if (!this.connection.loadSession) {
         throw new Error('ACP session/load is not supported by this SDK connection');
       }
-      await this.connection.loadSession(loadSessionRequest);
+
+      // loadSession replays history which can take a while, but if the agent
+      // never responds at all the await hangs forever.
+      await withTimeout(
+        this.connection.loadSession(loadSessionRequest),
+        5 * 60_000,
+        'loadSession()'
+      );
       this.logAcpResponse('load_session', { ok: true });
 
       // Store the session ID
@@ -1309,7 +1355,12 @@ export class AcpBackend implements IAgentBackend {
       this.logAcpRequest('prompt', promptRequest, {
         promptLength: prompt.length,
       });
-      await this.connection.prompt(promptRequest);
+
+      // connection.prompt() is a JSONRPC request that waits for an ack from the
+      // child process.  If the process is hung (0% CPU, internal deadlock, etc.),
+      // the await would hang forever — there is no built-in timeout in the SDK.
+      await withTimeout(this.connection.prompt(promptRequest), 2 * 60_000, 'prompt()');
+
       this.logAcpResponse(
         'prompt',
         { ok: true },
@@ -1337,6 +1388,34 @@ export class AcpBackend implements IAgentBackend {
   }
 
   /**
+   * Reject the pending waitForResponseComplete promise (if any) and clean up
+   * timer state. Safe to call multiple times — subsequent calls are no-ops.
+   */
+  private rejectPendingResponse(error: Error): void {
+    const hadPending = this.responseCompleteRejecter != null;
+    if (this.responseCompleteTimeout) {
+      clearTimeout(this.responseCompleteTimeout);
+      this.responseCompleteTimeout = null;
+    }
+    const rejecter = this.responseCompleteRejecter;
+    this.responseCompleteRejecter = null;
+    this.idleResolver = null;
+    this.waitingForResponse = false;
+    if (rejecter) {
+      logger.warn('[AcpBackend] rejecting pending response', {
+        agent: this.transport.agentName,
+        acpSessionId: this.acpSessionId,
+        reason: error.message,
+      });
+      rejecter(error);
+    } else if (hadPending) {
+      logger.debug('[AcpBackend] rejectPendingResponse called but rejecter already consumed', {
+        reason: error.message,
+      });
+    }
+  }
+
+  /**
    * Get appropriate timeout based on current activity state
    */
   private getResponseCompleteTimeoutMs(): number {
@@ -1354,26 +1433,34 @@ export class AcpBackend implements IAgentBackend {
       return; // Not waiting, nothing to reset
     }
 
+    // Clear the previous timeout to prevent orphaned timers from corrupting
+    // state on subsequent turns (idleResolver, responseCompleteRejecter, waitingForResponse).
+    if (this.responseCompleteTimeout) {
+      clearTimeout(this.responseCompleteTimeout);
+    }
+
     const timeoutMs = this.getResponseCompleteTimeoutMs();
-    this.responseCompleteTimeout = setTimeout(async () => {
-      this.responseCompleteTimeout = null;
-      const rejecter = this.responseCompleteRejecter;
-      this.responseCompleteRejecter = null;
-      this.idleResolver = null;
-      this.waitingForResponse = false;
+    this.responseCompleteTimeout = setTimeout(() => {
       const timeoutMin = Math.round(timeoutMs / 60000);
+      logger.warn('[AcpBackend] response complete timeout fired', {
+        agent: this.transport.agentName,
+        acpSessionId: this.acpSessionId,
+        timeoutMin,
+        activeToolCalls: this.activeToolCalls.size,
+      });
+      const error = new Error(
+        `Response timed out after ${timeoutMin} minutes. ` +
+          `The LLM may still be running. You can continue sending messages.`
+      );
 
-      // Cancel the current LLM turn on timeout
-      await this.cancelCurrentTurn();
+      // Reject FIRST to unblock the caller immediately — cancelCurrentTurn
+      // may hang if the child process is dead or the connection is broken.
+      this.rejectPendingResponse(error);
 
-      if (rejecter) {
-        rejecter(
-          new Error(
-            `Response timed out after ${timeoutMin} minutes. ` +
-              `The LLM may still be running. You can continue sending messages.`
-          )
-        );
-      }
+      // Fire-and-forget cancel so we don't block the reject
+      this.cancelCurrentTurn().catch(err =>
+        logger.debug('[AcpBackend] cancelCurrentTurn error after timeout:', err)
+      );
     }, timeoutMs);
   }
 
@@ -1388,7 +1475,8 @@ export class AcpBackend implements IAgentBackend {
     try {
       const cancelRequest = { sessionId: this.acpSessionId };
       this.logAcpRequest('cancel', cancelRequest, { reason: 'response-timeout' });
-      await this.connection.cancel(cancelRequest);
+      await withTimeout(this.connection.cancel(cancelRequest), 10_000, 'cancel()');
+
       this.logAcpResponse('cancel', { ok: true }, { reason: 'response-timeout' });
       this.emit({
         type: 'status',
@@ -1463,7 +1551,7 @@ export class AcpBackend implements IAgentBackend {
     try {
       const cancelRequest = { sessionId: this.acpSessionId };
       this.logAcpRequest('cancel', cancelRequest, { requestedSessionId: _sessionId });
-      await this.connection.cancel(cancelRequest);
+      await withTimeout(this.connection.cancel(cancelRequest), 10_000, 'cancel()');
       this.logAcpResponse('cancel', { ok: true }, { requestedSessionId: _sessionId });
       this.emit({ type: 'status', status: 'stopped', detail: 'Cancelled by user' });
     } catch (error) {
@@ -1483,7 +1571,11 @@ export class AcpBackend implements IAgentBackend {
       modeId,
     };
     this.logAcpRequest('set_mode', request, { requestedSessionId: _sessionId });
-    const response = await this.connection.setSessionMode(request);
+    const response = await withTimeout(
+      this.connection.setSessionMode(request),
+      30_000,
+      'setSessionMode()'
+    );
     this.logAcpResponse('set_mode', response, { requestedSessionId: _sessionId });
     return response;
   }
@@ -1500,7 +1592,11 @@ export class AcpBackend implements IAgentBackend {
       modelId,
     };
     this.logAcpRequest('set_model', request, { requestedSessionId: _sessionId });
-    const response = await this.connection.unstable_setSessionModel(request);
+    const response = await withTimeout(
+      this.connection.unstable_setSessionModel(request),
+      30_000,
+      'setSessionModel()'
+    );
     this.logAcpResponse('set_model', response, { requestedSessionId: _sessionId });
     return response;
   }
@@ -1522,7 +1618,11 @@ export class AcpBackend implements IAgentBackend {
       value,
     };
     this.logAcpRequest('set_config_option', request, { requestedSessionId: _sessionId });
-    const response = await this.connection.setSessionConfigOption(request);
+    const response = await withTimeout(
+      this.connection.setSessionConfigOption(request),
+      30_000,
+      'setSessionConfigOption()'
+    );
     this.logAcpResponse('set_config_option', response, { requestedSessionId: _sessionId });
     return response;
   }
