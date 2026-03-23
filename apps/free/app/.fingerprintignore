@@ -1,6 +1,0 @@
-# Firebase config files are injected via EAS secrets during build.
-# Local files may differ from EAS secrets, causing fingerprint mismatch.
-# These are native-only configs that don't affect OTA JS compatibility.
-firebase/GoogleService-Info.production.plist
-firebase/GoogleService-Info.development.plist
-firebase/google-services.json
