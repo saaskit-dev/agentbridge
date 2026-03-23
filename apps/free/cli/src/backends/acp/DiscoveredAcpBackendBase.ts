@@ -227,12 +227,23 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   /**
    * Resolve the ACP session ID: resume an existing session if the backend supports it,
    * otherwise start a new one. Calls onSessionIdResolved so AgentSession can persist the ID.
+   *
+   * Always calls startSession() first to initialize the connection and discover agent
+   * capabilities. Then, if a resumeSessionId is available and the agent supports loadSession,
+   * attempts to replace the session with the resumed one.
    */
   private async resolveAcpSession(): Promise<{ sessionId: string; resumed: boolean }> {
+    // Step 1: Always startSession to initialize the connection, spawn the agent process,
+    // and discover capabilities (agentCapabilities is null until initialize completes).
+    const { sessionId: freshSessionId } = await this.acpBackend!.startSession();
+
+    // Step 2: If we have a resumeSessionId and the agent supports loadSession,
+    // attempt to load the previous session (replacing the fresh one).
     if (this.resumeSessionId && this.capabilityBackend?.supportsLoadSession?.()) {
       this.logger.info(`[${this.agentType}] attempting session resume via loadSession`, {
         apiSessionId: this.apiSessionId,
         resumeSessionId: this.resumeSessionId,
+        freshSessionId,
       });
       try {
         const { sessionId } = await this.capabilityBackend.loadSession!(
@@ -243,16 +254,18 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         this.onSessionIdResolved?.(sessionId);
         return { sessionId, resumed: true };
       } catch (err) {
-        this.logger.warn(`[${this.agentType}] loadSession failed, falling back to new session`, {
+        this.logger.warn(`[${this.agentType}] loadSession failed, keeping fresh session`, {
           apiSessionId: this.apiSessionId,
           resumeSessionId: this.resumeSessionId,
+          freshSessionId,
           error: safeStringify(err),
         });
       }
     }
-    const { sessionId } = await this.acpBackend!.startSession();
-    this.onSessionIdResolved?.(sessionId);
-    return { sessionId, resumed: false };
+
+    // Fall through: use the fresh session from startSession()
+    this.onSessionIdResolved?.(freshSessionId);
+    return { sessionId: freshSessionId, resumed: false };
   }
 
   /** Convert the MCP server URL into the array format expected by loadSession. */

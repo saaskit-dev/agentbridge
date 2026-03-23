@@ -40,7 +40,7 @@ describe('CodexBackend', () => {
       env: {},
       mcpServerUrl: '',
       freeMcpToolNames: [],
-      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() } } as never,
+      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() }, updateAgentState: vi.fn() } as never,
     });
 
     const iterator = backend.capabilities[Symbol.asyncIterator]();
@@ -68,7 +68,7 @@ describe('CodexBackend', () => {
       env: {},
       mcpServerUrl: '',
       freeMcpToolNames: [],
-      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() } } as never,
+      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() }, updateAgentState: vi.fn() } as never,
     });
     await backend.sendMessage('hello');
     await backend.setMode('full-auto');
@@ -85,7 +85,7 @@ describe('CodexBackend', () => {
       model: 'gpt-5-codex-medium',
       mcpServerUrl: '',
       freeMcpToolNames: [],
-      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() } } as never,
+      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() }, updateAgentState: vi.fn() } as never,
     });
     await backend.sendMessage('hello');
 
@@ -106,7 +106,7 @@ describe('CodexBackend', () => {
       mode: 'full-auto',
       mcpServerUrl: '',
       freeMcpToolNames: [],
-      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() } } as never,
+      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() }, updateAgentState: vi.fn() } as never,
     });
 
     const startedHandler = mockOnSessionStarted.mock.calls[0]?.[0] as (value: unknown) => void;
@@ -138,7 +138,7 @@ describe('CodexBackend', () => {
       env: {},
       mcpServerUrl: '',
       freeMcpToolNames: [],
-      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() } } as never,
+      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() }, updateAgentState: vi.fn() } as never,
     });
     await backend.sendMessage('hello');
     await backend.runCommand?.('/plan');
