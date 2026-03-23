@@ -356,6 +356,8 @@ export const zhHans: TranslationStructure = {
   session: {
     inputPlaceholder: '输入消息...',
     sendFailed: '发送失败，点击重试',
+    sendBlockedServerDisconnected: '服务器已断开，无法发送消息',
+    sendBlockedDaemonOffline: '会话离线，无法发送消息',
   },
 
   commandPalette: {

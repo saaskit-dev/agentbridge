@@ -366,6 +366,8 @@ export const ca: TranslationStructure = {
   session: {
     inputPlaceholder: 'Escriu un missatge...',
     sendFailed: 'Error en enviar. Toca per reintentar.',
+    sendBlockedServerDisconnected: 'Servidor desconnectat, no es pot enviar el missatge',
+    sendBlockedDaemonOffline: 'Sessió fora de línia, no es pot enviar el missatge',
   },
 
   commandPalette: {

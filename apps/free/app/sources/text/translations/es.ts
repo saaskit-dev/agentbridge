@@ -366,6 +366,8 @@ export const es: TranslationStructure = {
   session: {
     inputPlaceholder: 'Escriba un mensaje ...',
     sendFailed: 'Error al enviar. Toca para reintentar.',
+    sendBlockedServerDisconnected: 'Servidor desconectado, no se puede enviar el mensaje',
+    sendBlockedDaemonOffline: 'Sesión sin conexión, no se puede enviar el mensaje',
   },
 
   commandPalette: {

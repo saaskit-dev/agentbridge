@@ -17,7 +17,19 @@ import { ToolViewProps } from './types';
 function parseResults(result: any): Array<{ type?: string; tool_name?: string; name?: string }> {
   if (!result) return [];
 
-  // Direct array
+  // Claude API content blocks: [{type: "text", text: "..."}]
+  // Must check before generic Array.isArray — these are NOT tool reference objects.
+  if (
+    Array.isArray(result) &&
+    result.length > 0 &&
+    result[0]?.type === 'text' &&
+    typeof result[0]?.text === 'string'
+  ) {
+    const combinedText = result.map((b: any) => b.text ?? '').join('\n');
+    return parseResults(combinedText);
+  }
+
+  // Direct array of tool reference objects
   if (Array.isArray(result)) return result;
 
   // Object with .tools array

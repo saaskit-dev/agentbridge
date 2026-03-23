@@ -356,6 +356,8 @@ export const zhHant: TranslationStructure = {
   session: {
     inputPlaceholder: '輸入訊息...',
     sendFailed: '傳送失敗，點擊重試',
+    sendBlockedServerDisconnected: '伺服器已斷開，無法傳送訊息',
+    sendBlockedDaemonOffline: '工作階段離線，無法傳送訊息',
   },
 
   commandPalette: {

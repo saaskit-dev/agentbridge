@@ -36,7 +36,11 @@ export const realtimeClientTools = {
 
     logger.debug('🔍 messageClaudeCode called with:', message);
     logger.debug('📤 Sending message to session:', sessionId);
-    sync.sendMessage(sessionId, message);
+    const result = await sync.sendMessage(sessionId, message);
+    if (!result.ok) {
+      const reason = result.reason === 'server_disconnected' ? 'server disconnected' : 'session offline';
+      return `error (${reason})`;
+    }
     return "sent [DO NOT say anything else, simply say 'sent']";
   },
 

@@ -472,6 +472,8 @@ export const ru: TranslationStructure = {
   session: {
     inputPlaceholder: 'Введите сообщение...',
     sendFailed: 'Ошибка отправки. Нажмите для повтора.',
+    sendBlockedServerDisconnected: 'Сервер отключён, невозможно отправить сообщение',
+    sendBlockedDaemonOffline: 'Сессия офлайн, невозможно отправить сообщение',
   },
 
   commandPalette: {

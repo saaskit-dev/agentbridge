@@ -658,9 +658,12 @@ function NewSessionWizard() {
           }
         }
 
-        // Send initial message if provided
+        // Send initial message if provided.
+        // skipPresenceCheck: daemon was just spawned, keepAlive hasn't arrived yet.
         if (sessionPrompt.trim()) {
-          await sync.sendMessage(result.sessionId, sessionPrompt);
+          await sync.sendMessage(result.sessionId, sessionPrompt, undefined, {
+            skipPresenceCheck: true,
+          });
         }
 
         router.replace(`/session/${result.sessionId}`, {
