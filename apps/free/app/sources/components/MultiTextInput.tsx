@@ -135,8 +135,17 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         logger.debug('📝 MultiTextInput.native: Text changed:', JSON.stringify({ text }));
 
         onChangeText(text);
+
+        // Eagerly notify onStateChange with the fresh text and current selection.
+        // handleSelectionChange uses `value` from its closure, which may be stale
+        // when RN fires onSelectionChange in the same tick as onChangeText (before
+        // the parent re-renders). By also reporting here we guarantee the consumer
+        // sees the correct text immediately.
+        if (onStateChange) {
+          onStateChange({ text, selection: selectionRef.current });
+        }
       },
-      [onChangeText]
+      [onChangeText, onStateChange]
     );
 
     const handleSelectionChange = React.useCallback(

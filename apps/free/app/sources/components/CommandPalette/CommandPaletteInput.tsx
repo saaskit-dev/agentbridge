@@ -18,15 +18,14 @@ export function CommandPaletteInput({
 }: CommandPaletteInputProps) {
   const handleKeyDown = React.useCallback(
     (e: any) => {
-      if (Platform.OS === 'web' && onKeyPress) {
-        const key = e.nativeEvent.key;
+      if (!onKeyPress) return;
+      const key = e.nativeEvent.key;
 
-        // Handle navigation keys
-        if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(key)) {
-          e.preventDefault();
-          e.stopPropagation();
-          onKeyPress(key);
-        }
+      if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(key)) {
+        // preventDefault/stopPropagation only available on web
+        e.preventDefault?.();
+        e.stopPropagation?.();
+        onKeyPress(key);
       }
     },
     [onKeyPress]

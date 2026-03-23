@@ -28,15 +28,22 @@ export function CommandPaletteResults({
   // Scroll to selected item when index changes
   useEffect(() => {
     const selectedItem = itemRefs.current[selectedIndex];
-    if (selectedItem && scrollViewRef.current) {
-      // For web, we need to use the DOM API
-      if (typeof (selectedItem as any).scrollIntoView === 'function') {
-        (selectedItem as any).scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-        });
-      }
+    if (!selectedItem || !scrollViewRef.current) return;
+
+    // Web: use DOM scrollIntoView
+    if (typeof (selectedItem as any).scrollIntoView === 'function') {
+      (selectedItem as any).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
     }
+
+    // Native: measure item position and scroll to it
+    (selectedItem as any).measureLayout?.(
+      (scrollViewRef.current as any).getInnerViewNode?.() ?? scrollViewRef.current,
+      (_x: number, y: number) => {
+        scrollViewRef.current?.scrollTo({ y, animated: true });
+      },
+      () => {} // measurement failure — ignore
+    );
   }, [selectedIndex]);
 
   if (categories.length === 0 || allCommands.length === 0) {

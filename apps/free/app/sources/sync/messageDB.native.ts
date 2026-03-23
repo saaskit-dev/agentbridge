@@ -73,4 +73,10 @@ export const messageDB: MessageDB = {
     await d.runAsync('DELETE FROM messages WHERE session_id = ?', [sessionId]);
     await d.runAsync('DELETE FROM session_sync WHERE session_id = ?', [sessionId]);
   },
+
+  async deleteAll() {
+    const d = await getDB();
+    await d.runAsync('DELETE FROM messages');
+    await d.runAsync('DELETE FROM session_sync');
+  },
 };

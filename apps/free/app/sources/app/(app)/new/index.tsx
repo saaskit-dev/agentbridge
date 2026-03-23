@@ -160,7 +160,6 @@ function NewSessionWizard() {
 
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
   const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
-  const defaultPermissionMode = useSetting('defaultPermissionMode');
   const lastUsedModelMode = useSetting('lastUsedModelMode');
   const lastUsedAgentMode = useSetting('lastUsedAgentMode');
   const experimentsEnabled = useSetting('experiments');
@@ -205,7 +204,7 @@ function NewSessionWizard() {
     if (lastUsedPermissionMode && validModes.includes(lastUsedPermissionMode as PermissionMode)) {
       return lastUsedPermissionMode as PermissionMode;
     }
-    return storage.getState().settings.defaultPermissionMode ?? 'accept-edits';
+    return 'accept-edits';
   });
 
   // Session details state

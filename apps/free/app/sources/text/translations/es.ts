@@ -26,7 +26,7 @@ export const es: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: 'Bandeja',
-    sessions: 'Terminales',
+    sessions: 'Sesiones',
     settings: 'Configuración',
   },
 
@@ -84,12 +84,15 @@ export const es: TranslationStructure = {
     connecting: 'conectando',
     disconnected: 'desconectado',
     error: 'error',
+    authError: 'sesión expirada, cerrando sesión...',
     online: 'en línea',
     offline: 'desconectado',
     lastSeen: ({ time }: { time: string }) => `visto por última vez ${time}`,
     permissionRequired: 'permiso requerido',
     activeNow: 'Activo ahora',
     unknown: 'desconocido',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0 ? 'sin máquinas' : `${count} ${count === 1 ? 'máquina' : 'máquinas'} en línea`,
   },
 
   time: {
@@ -220,10 +223,7 @@ export const es: TranslationStructure = {
     enhancedSessionWizardEnabled: 'Lanzador de sesión con perfil activo',
     enhancedSessionWizardDisabled: 'Usando el lanzador de sesión estándar',
 
-    // Default permission mode
-    defaultPermissionMode: 'Modo de permisos predeterminado',
-    defaultPermissionModeSubtitle: 'Modo de permisos predeterminado para nuevas sesiones',
-  },
+},
 
   errors: {
     networkError: 'Error de conexión',
@@ -828,6 +828,20 @@ export const es: TranslationStructure = {
     unknownTime: 'tiempo desconocido',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: 'Desliza para actualizar',
+    releaseToRefresh: 'Suelta para actualizar',
+    refreshing: 'Actualizando...',
+    pullToLoadEarlier: 'Desliza para cargar anteriores',
+    releaseToLoadEarlier: 'Suelta para cargar anteriores',
+    loadingEarlier: 'Cargando...',
+    scrollToBottom: 'Ir abajo',
+    newMessages: ({ count }: { count: number }) =>
+      `${count} ${count === 1 ? 'mensaje nuevo' : 'mensajes nuevos'}`,
+    today: 'Hoy',
+    yesterday: 'Ayer',
   },
 
   codex: {

@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import chalk from 'chalk';
 import packageJson from '../../package.json';
 import { configuration } from '@/configuration';
-import { checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
+import { checkIfDaemonRunningAndCleanupStaleState, listDaemonSessions } from '@/daemon/controlClient';
 import { findRunawayFreeProcesses, findAllFreeProcesses } from '@/daemon/doctor';
 import { readSettings, readCredentials } from '@/persistence';
 import { readDaemonState } from '@/persistence';
@@ -177,6 +177,33 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
         console.log(chalk.bold('\n📄 Daemon State:'));
         console.log(chalk.blue(`Location: ${configuration.daemonStateFile}`));
         console.log(chalk.gray(JSON.stringify(state, null, 2)));
+      }
+    }
+
+    // Active daemon sessions
+    if (daemonCheck.status === 'running') {
+      try {
+        const sessions = await listDaemonSessions();
+        if (sessions.length > 0) {
+          console.log(chalk.bold('\n📡 Active Daemon Sessions'));
+          console.log(chalk.gray(`  Total: ${sessions.length} session(s)\n`));
+          for (const s of sessions) {
+            const stateColor = s.state === 'working' ? chalk.yellow : chalk.green;
+            const agentColor = chalk.cyan;
+            console.log(
+              `  ${agentColor(s.agentType.padEnd(10))} ${stateColor(s.state.padEnd(12))} ${chalk.gray(s.sessionId)}`
+            );
+            console.log(
+              `  ${''.padEnd(10)} ${chalk.gray(`cwd: ${s.cwd}  started: ${s.startedAt}  by: ${s.startedBy}`)}`
+            );
+          }
+        } else {
+          console.log(chalk.bold('\n📡 Active Daemon Sessions'));
+          console.log(chalk.gray('  No active sessions'));
+        }
+      } catch {
+        console.log(chalk.bold('\n📡 Active Daemon Sessions'));
+        console.log(chalk.red('  ❌ Failed to query daemon sessions'));
       }
     }
 

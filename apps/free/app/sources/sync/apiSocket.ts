@@ -33,6 +33,7 @@ class ApiSocket {
   private encryption: Encryption | null = null;
   private messageHandlers: Map<string, (data: any) => void> = new Map();
   private reconnectedListeners: Set<() => void> = new Set();
+  private authErrorListeners: Set<(message: string) => void> = new Set();
   private statusListeners: Set<
     (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void
   > = new Set();
@@ -58,6 +59,8 @@ class ApiSocket {
     }
 
     this.updateStatus('connecting');
+    // eslint-disable-next-line no-console
+    console.warn('[DEV-DIAG] SyncSocket connecting to:', this.config.endpoint);
 
     this.socket = io(this.config.endpoint, {
       path: '/v1/updates',
@@ -90,6 +93,11 @@ class ApiSocket {
   onReconnected = (listener: () => void) => {
     this.reconnectedListeners.add(listener);
     return () => this.reconnectedListeners.delete(listener);
+  };
+
+  onAuthError = (listener: (message: string) => void) => {
+    this.authErrorListeners.add(listener);
+    return () => this.authErrorListeners.delete(listener);
   };
 
   onStatusChange = (
@@ -279,6 +287,8 @@ class ApiSocket {
 
     // Connection events
     this.socket.on('connect', () => {
+      // eslint-disable-next-line no-console
+      console.warn('[DEV-DIAG] SyncSocket CONNECTED, id:', this.socket?.id);
       logger.info('[SyncSocket] Connected', {
         recovered: this.socket?.recovered,
         socketId: this.socket?.id,
@@ -290,19 +300,38 @@ class ApiSocket {
     });
 
     this.socket.on('disconnect', reason => {
+      // eslint-disable-next-line no-console
+      console.warn('[DEV-DIAG] SyncSocket DISCONNECTED, reason:', reason);
       logger.info('[SyncSocket] Disconnected', { reason });
       this.updateStatus('disconnected');
     });
 
     // Error events
     this.socket.on('connect_error', error => {
+      // eslint-disable-next-line no-console
+      console.warn('[DEV-DIAG] SyncSocket connect_error:', String(error));
       logger.warn('[SyncSocket] Connection error', { error: String(error) });
       this.updateStatus('error');
     });
 
-    this.socket.on('error', error => {
-      logger.error('[SyncSocket] Error', toError(error));
-      this.updateStatus('error');
+    this.socket.on('error', (error: any) => {
+      const message = typeof error === 'object' ? error?.message ?? String(error) : String(error);
+      const isAuthError =
+        message.includes('authentication') ||
+        message.includes('token') ||
+        message.includes('auth');
+
+      if (isAuthError) {
+        logger.error('[SyncSocket] Auth error — stopping reconnection', { message });
+        // Stop reconnection to avoid infinite connect→reject→reconnect loop
+        this.socket?.disconnect();
+        this.socket = null;
+        this.updateStatus('error');
+        this.authErrorListeners.forEach(l => l(message));
+      } else {
+        logger.error('[SyncSocket] Error', toError(error));
+        this.updateStatus('error');
+      }
     });
 
     // Message handling

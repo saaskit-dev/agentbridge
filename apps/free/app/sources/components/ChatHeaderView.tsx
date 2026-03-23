@@ -119,7 +119,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
             >
               {title}
             </Text>
-            {subtitle && (
+            {subtitle && !devSessionId && (
               <Text
                 numberOfLines={1}
                 ellipsizeMode="tail"
@@ -135,14 +135,10 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                 {subtitle}
               </Text>
             )}
-          </View>
-
-          {/* Dev mode: session ID centered in header, tap-to-copy */}
-          {!!devSessionId && (
-            <View pointerEvents="box-none" style={styles.devIdContainer}>
+            {!!devSessionId && (
               <CopyableBadge label="sid" value={devSessionId} />
-            </View>
-          )}
+            )}
+          </View>
 
           {avatarId && onAvatarPress && (
             <Pressable onPress={onAvatarPress} hitSlop={15} style={styles.avatarButton}>
@@ -200,12 +196,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Platform.select({ ios: -8, default: -8 }),
-  },
-  devIdContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 2,
-    alignItems: 'center',
   },
 });

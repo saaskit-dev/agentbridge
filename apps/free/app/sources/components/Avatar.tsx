@@ -10,6 +10,7 @@ import {
   getAgentFlavorBadgeContainerSize,
   getAgentFlavorBadgeIconSize,
   getAgentFlavorIconSource,
+  isMonochromeFlavor,
 } from '@/sync/agentIcons';
 import { useSetting } from '@/sync/storage';
 
@@ -89,7 +90,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
               source={flavorIcon}
               style={{ width: iconSize, height: iconSize }}
               contentFit="contain"
-              tintColor={effectiveFlavor === 'codex' ? theme.colors.text : undefined}
+              tintColor={isMonochromeFlavor(effectiveFlavor) ? theme.colors.text : undefined}
             />
           </View>
         </View>
@@ -136,7 +137,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
             source={flavorIcon}
             style={{ width: iconSize, height: iconSize }}
             contentFit="contain"
-            tintColor={effectiveFlavor === 'codex' ? theme.colors.text : undefined}
+            tintColor={isMonochromeFlavor(effectiveFlavor) ? theme.colors.text : undefined}
           />
         </View>
       </View>

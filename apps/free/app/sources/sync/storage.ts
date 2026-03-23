@@ -147,6 +147,8 @@ interface StorageState {
     error: { message: string; timestamp: number } | null
   ) => void;
   isDataReady: boolean;
+  authError: string | null;
+  setAuthError: (error: string | null) => void;
   nativeUpdateStatus: { available: boolean; updateUrl?: string } | null;
   applySessions: (
     sessions: (Omit<Session, 'presence'> & { presence?: 'online' | number })[]
@@ -358,6 +360,9 @@ export const storage = create<StorageState>()((set, get) => {
     socketLastDisconnectedAt: null,
     sessionSendErrors: {},
     isDataReady: false,
+    authError: null,
+    setAuthError: (error: string | null) =>
+      set(() => ({ authError: error })),
     nativeUpdateStatus: null,
     isMutableToolCall: (sessionId: string, callId: string) => {
       const sessionMessages = get().sessionMessages[sessionId];
@@ -409,14 +414,14 @@ export const storage = create<StorageState>()((set, get) => {
           const savedDesiredConfigOption = savedDesiredConfigOptions[session.id];
           const existingModelMode = state.sessions[session.id]?.modelMode;
           const savedModelMode = savedModelModes[session.id];
-          const defaultPermissionMode: PermissionMode = isSandboxEnabled(session.metadata)
+          const fallbackPermissionMode: PermissionMode = isSandboxEnabled(session.metadata)
             ? 'yolo'
-            : ((state.settings.defaultPermissionMode as PermissionMode) ?? 'accept-edits');
+            : 'accept-edits';
           const resolvedPermissionMode: PermissionMode =
             existingPermissionMode ||
             savedPermissionMode ||
             session.permissionMode ||
-            defaultPermissionMode;
+            fallbackPermissionMode;
 
           mergedSessions[session.id] = {
             ...session,
@@ -1570,6 +1575,7 @@ export function useSocketStatus() {
       status: state.socketStatus,
       lastConnectedAt: state.socketLastConnectedAt,
       lastDisconnectedAt: state.socketLastDisconnectedAt,
+      authError: state.authError,
     }))
   );
 }

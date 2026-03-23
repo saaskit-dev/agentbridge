@@ -28,7 +28,7 @@ export const zhHans: TranslationStructure = {
   tabs: {
     // Tab navigation labels
     inbox: '收件箱',
-    sessions: '终端',
+    sessions: '会话',
     settings: '设置',
   },
 
@@ -86,12 +86,15 @@ export const zhHans: TranslationStructure = {
     connecting: '连接中',
     disconnected: '已断开',
     error: '错误',
+    authError: '会话已过期，正在登出...',
     online: '在线',
     offline: '离线',
     lastSeen: ({ time }: { time: string }) => `最后活跃时间 ${time}`,
     permissionRequired: '需要权限',
     activeNow: '当前活跃',
     unknown: '未知',
+    machinesOnline: ({ count }: { count: number }) =>
+      count === 0 ? '无设备' : `${count} 台设备在线`,
   },
 
   time: {
@@ -219,10 +222,7 @@ export const zhHans: TranslationStructure = {
     enhancedSessionWizardEnabled: '配置文件优先启动器已激活',
     enhancedSessionWizardDisabled: '使用标准会话启动器',
 
-    // Default permission mode
-    defaultPermissionMode: '默认权限模式',
-    defaultPermissionModeSubtitle: '新会话启动后的默认权限模式',
-  },
+},
 
   errors: {
     networkError: '发生网络错误',
@@ -806,6 +806,19 @@ export const zhHans: TranslationStructure = {
     unknownTime: '未知时间',
     permissionRequest: ({ toolName }: { toolName: string }) => 'Permission request for ' + toolName,
     permissionMode: ({ mode }: { mode: string }) => 'Permission mode: ' + mode,
+  },
+
+  chatList: {
+    pullToRefresh: '下拉刷新',
+    releaseToRefresh: '释放以刷新',
+    refreshing: '刷新中...',
+    pullToLoadEarlier: '上拉加载更早消息',
+    releaseToLoadEarlier: '释放以加载更早消息',
+    loadingEarlier: '加载中...',
+    scrollToBottom: '回到底部',
+    newMessages: ({ count }: { count: number }) => `${count} 条新消息`,
+    today: '今天',
+    yesterday: '昨天',
   },
 
   codex: {

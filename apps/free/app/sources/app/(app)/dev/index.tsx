@@ -20,7 +20,7 @@ export default function DevScreen() {
   const [debugMode, setDebugMode] = useLocalSettingMutable('debugMode');
   const [verboseLogging, setVerboseLogging] = React.useState(false);
   const socketStatus = useSocketStatus();
-  const anonymousId = sync.encryption!.anonId;
+  const anonymousId = sync.encryption?.anonId ?? 'N/A';
   const { theme } = useUnistyles();
 
   const handleEditServerUrl = async () => {
@@ -48,12 +48,16 @@ export default function DevScreen() {
   const handleClearCache = async () => {
     const confirmed = await Modal.confirm(
       'Clear Cache',
-      'Are you sure you want to clear all cached data?',
+      'Are you sure you want to clear all cached data? Messages will be re-fetched from the server.',
       { confirmText: 'Clear', destructive: true }
     );
     if (confirmed) {
-      console.log('Cache cleared');
-      Modal.alert('Success', 'Cache has been cleared');
+      try {
+        await sync.clearMessageCache();
+        Modal.alert('Success', 'Cache has been cleared');
+      } catch (e) {
+        Modal.alert('Error', `Failed to clear cache: ${e}`);
+      }
     }
   };
 

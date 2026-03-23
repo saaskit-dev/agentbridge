@@ -23,6 +23,16 @@ DIM='\033[2m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# ─── Metro bundler 局域网 IP 自动检测 ──────────────────────────────────────
+# 每次都检测 Wi-Fi IP，确保手机能连上（优先 Wi-Fi en1，其次有线 en0）
+_WIFI_IP=$(ipconfig getifaddr en1 2>/dev/null || true)
+_LAN_IP="${_WIFI_IP:-$(ipconfig getifaddr en0 2>/dev/null || true)}"
+if [ -n "$_LAN_IP" ]; then
+    export REACT_NATIVE_PACKAGER_HOSTNAME="$_LAN_IP"
+    echo -e "${BLUE}>>>${NC} Metro bundler hostname: $_LAN_IP (${_WIFI_IP:+Wi-Fi}${_WIFI_IP:-Ethernet})"
+fi
+unset _WIFI_IP _LAN_IP
+
 # ─── 工具函数 ──────────────────────────────────────────────────────────────
 
 die()  { echo -e "${RED}$*${NC}" >&2; exit 1; }
@@ -125,13 +135,24 @@ ensure_prebuild() {
 cmd_ios() {
     ensure_prebuild ios
     cd "$APP_DIR"
-    npx expo run:ios "$@"
+    # If dev server is already running, skip bundler and just build+install
+    if curl -sf "http://${REACT_NATIVE_PACKAGER_HOSTNAME:-localhost}:8081/status" >/dev/null 2>&1; then
+        info "Metro already running at $REACT_NATIVE_PACKAGER_HOSTNAME:8081, building with --no-bundler"
+        npx expo run:ios --no-bundler "$@"
+    else
+        npx expo run:ios "$@"
+    fi
 }
 
 cmd_android() {
     ensure_prebuild android
     cd "$APP_DIR"
-    npx expo run:android "$@"
+    if curl -sf "http://${REACT_NATIVE_PACKAGER_HOSTNAME:-localhost}:8081/status" >/dev/null 2>&1; then
+        info "Metro already running at $REACT_NATIVE_PACKAGER_HOSTNAME:8081, building with --no-bundler"
+        npx expo run:android --no-bundler "$@"
+    else
+        npx expo run:android "$@"
+    fi
 }
 
 # ─── dev ───────────────────────────────────────────────────────────────────

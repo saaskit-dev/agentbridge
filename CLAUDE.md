@@ -1,3 +1,12 @@
+# CLI Environments
+
+| | 命令 | 数据目录 | LaunchAgent label |
+|---|---|---|---|
+| **线上** | `free` | `~/.free/` | `app.saaskit.free.daemon` |
+| **开发** | `free-dev` | `~/.free-dev/` | `app.saaskit.free.daemon-dev` |
+
+两套环境完全隔离（daemon 进程、session 数据、credentials、日志各自独立）。`./run dev` 启动的是开发环境。
+
 # Architecture Rules
 
 ## No Circular Dependencies

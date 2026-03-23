@@ -55,4 +55,12 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return context.resolveRequest(context, moduleName, platform);
 };
 
+// Bind Metro to LAN IP so physical devices can connect
+if (process.env.REACT_NATIVE_PACKAGER_HOSTNAME) {
+  config.server = {
+    ...config.server,
+    host: process.env.REACT_NATIVE_PACKAGER_HOSTNAME,
+  };
+}
+
 module.exports = config;

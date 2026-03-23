@@ -53,19 +53,9 @@ describe('settingsParse', () => {
     expect(result.preferredLanguage).toBe('en');
   });
 
-  it('migrates legacy permission modes in defaultPermissionMode', () => {
-    const result = settingsParse({ defaultPermissionMode: 'bypassPermissions' });
-    expect(result.defaultPermissionMode).toBe('yolo');
-  });
-
   it('migrates legacy permission modes in lastUsedPermissionMode', () => {
     const result = settingsParse({ lastUsedPermissionMode: 'acceptEdits' });
     expect(result.lastUsedPermissionMode).toBe('accept-edits');
-  });
-
-  it('keeps valid permission modes unchanged', () => {
-    const result = settingsParse({ defaultPermissionMode: 'read-only' });
-    expect(result.defaultPermissionMode).toBe('read-only');
   });
 
   it('clears unknown legacy permission mode in lastUsedPermissionMode', () => {

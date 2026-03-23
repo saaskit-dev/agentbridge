@@ -59,11 +59,6 @@ export const SettingsSchema = z.object({
     .describe('Last selected permission mode for new sessions'),
   lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
   lastUsedAgentMode: z.string().nullable().describe('Last selected agent mode for new sessions'),
-  // Default permission mode for new sessions (开启后权限模式)
-  defaultPermissionMode: z
-    .enum(['read-only', 'accept-edits', 'yolo'])
-    .describe('Default permission mode for new sessions'),
-
   // Favorite directories for quick path selection
   favoriteDirectories: z
     .array(z.string())
@@ -146,9 +141,6 @@ export const settingsDefaults: Settings = {
   lastUsedPermissionMode: null,
   lastUsedModelMode: null,
   lastUsedAgentMode: null,
-  // Default permission mode (开启后权限模式)
-  defaultPermissionMode: 'accept-edits',
-
   // Default favorite directories (real common directories on Unix-like systems)
   favoriteDirectories: ['~/Desktop', '~/Documents'],
   // Favorite machines (empty by default)
@@ -203,12 +195,6 @@ export function settingsParse(settings: unknown): Settings {
     };
     return legacyMap[mode];
   };
-  if (parsed.data.defaultPermissionMode === undefined) {
-    // Might have been stripped by zod because it was a legacy value — read raw
-    const rawDefault = (settings as any).defaultPermissionMode;
-    const migrated = migratePermissionMode(rawDefault);
-    if (migrated) parsed.data.defaultPermissionMode = migrated;
-  }
   if (parsed.data.lastUsedPermissionMode) {
     const migrated = migratePermissionMode(parsed.data.lastUsedPermissionMode);
     if (migrated) parsed.data.lastUsedPermissionMode = migrated;
