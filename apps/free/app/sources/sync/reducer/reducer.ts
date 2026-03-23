@@ -1131,6 +1131,18 @@ export function reducer(
   }
 
   //
+  // Phase 5.5: Post-processing merge of consecutive agent-text messages
+  //
+  // Streaming text chunks from the ACP backend arrive as separate NormalizedMessages.
+  // When they land in different reducer calls, Phase 2 may insert tool-call root messages
+  // between Phase 1 text messages, preventing the inline merge in Phase 1. This pass
+  // scans rootMessageIds for consecutive agent-text blocks that should be one message
+  // (same isThinking, compatible traceId, within the streaming window) and merges them.
+  //
+
+  mergeConsecutiveAgentTexts(state, changed);
+
+  //
   // Collect changed messages (only root-level messages)
   //
 
@@ -1204,6 +1216,59 @@ function getLastRootMessage(state: ReducerState): ReducerMessage | null {
   const lastRootMessageId = state.rootMessageIds.at(-1);
   if (!lastRootMessageId) return null;
   return state.messages.get(lastRootMessageId) ?? null;
+}
+
+/**
+ * Post-processing: merge consecutive agent-text root messages that should be one block.
+ *
+ * Two adjacent agent-text root messages are mergeable when:
+ * - same isThinking flag
+ * - compatible traceId (both undefined, or same value)
+ * - second message's createdAt is within STREAM_CHUNK_WINDOW_MS of the first
+ *
+ * When merged, the second message's text is appended to the first and the second
+ * is removed from rootMessageIds (and state.messages).
+ */
+function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): void {
+  let i = 0;
+  while (i < state.rootMessageIds.length - 1) {
+    const currentId = state.rootMessageIds[i];
+    const nextId = state.rootMessageIds[i + 1];
+    const current = state.messages.get(currentId);
+    const next = state.messages.get(nextId);
+
+    if (
+      current &&
+      next &&
+      current.role === 'agent' &&
+      next.role === 'agent' &&
+      current.text !== null &&
+      next.text !== null &&
+      !current.tool &&
+      !current.event &&
+      !next.tool &&
+      !next.event &&
+      // Only merge chunks from DIFFERENT source messages (streaming chunks).
+      // Multiple text blocks within a single agent message (same realID) are
+      // intentionally separate and must not be merged.
+      current.realID !== next.realID &&
+      Boolean(current.isThinking) === Boolean(next.isThinking) &&
+      next.createdAt >= current.createdAt &&
+      next.createdAt - current.createdAt <= STREAM_CHUNK_WINDOW_MS &&
+      !(current.traceId && next.traceId && current.traceId !== next.traceId)
+    ) {
+      // Merge next into current
+      current.text += next.text;
+      changed.add(currentId);
+      // Remove next from rootMessageIds and state.messages
+      state.rootMessageIds.splice(i + 1, 1);
+      state.messages.delete(nextId);
+      changed.delete(nextId);
+      // Don't increment i — check the new i+1 against the merged current
+    } else {
+      i++;
+    }
+  }
 }
 
 function mergeIntoPreviousRootAgentText(
