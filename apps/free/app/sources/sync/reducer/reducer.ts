@@ -676,15 +676,12 @@ export function reducer(
           const isThinking = c.type === 'thinking';
           const chunkText = isThinking ? c.thinking : c.text;
 
-          if (
-            msg.content.length === 1 &&
-            mergeIntoPreviousRootAgentText(state, msg.createdAt, chunkText, isThinking, msg.traceId)
-          ) {
-            const lastRootMessageId = state.rootMessageIds.at(-1);
-            if (lastRootMessageId) {
-              changed.add(lastRootMessageId);
+          if (msg.content.length === 1) {
+            const mergedIntoId = mergeIntoPreviousRootAgentText(state, msg.createdAt, chunkText, isThinking, msg.traceId);
+            if (mergedIntoId) {
+              changed.add(mergedIntoId);
+              continue;
             }
-            continue;
           }
 
           const mid = allocateId();
@@ -1233,26 +1230,56 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
   let i = 0;
   while (i < state.rootMessageIds.length - 1) {
     const currentId = state.rootMessageIds[i];
-    const nextId = state.rootMessageIds[i + 1];
     const current = state.messages.get(currentId);
+
+    // Only consider non-thinking text roots as merge targets
+    if (
+      !current ||
+      current.role !== 'agent' ||
+      current.text === null ||
+      current.tool ||
+      current.event ||
+      current.isThinking
+    ) {
+      i++;
+      continue;
+    }
+
+    // Scan forward past thinking roots (same trace) to find the next non-thinking text root
+    let j = i + 1;
+    while (j < state.rootMessageIds.length) {
+      const candidate = state.messages.get(state.rootMessageIds[j]);
+      if (!candidate) break;
+      // Skip thinking root messages from compatible trace
+      if (candidate.role === 'agent' && candidate.text !== null && candidate.isThinking) {
+        if (!(candidate.traceId && current.traceId && candidate.traceId !== current.traceId)) {
+          j++;
+          continue;
+        }
+        break; // Different trace — turn boundary
+      }
+      break;
+    }
+
+    if (j >= state.rootMessageIds.length) {
+      i++;
+      continue;
+    }
+
+    const nextId = state.rootMessageIds[j];
     const next = state.messages.get(nextId);
 
     if (
-      current &&
       next &&
-      current.role === 'agent' &&
       next.role === 'agent' &&
-      current.text !== null &&
       next.text !== null &&
-      !current.tool &&
-      !current.event &&
       !next.tool &&
       !next.event &&
+      !next.isThinking &&
       // Only merge chunks from DIFFERENT source messages (streaming chunks).
       // Multiple text blocks within a single agent message (same realID) are
       // intentionally separate and must not be merged.
       current.realID !== next.realID &&
-      Boolean(current.isThinking) === Boolean(next.isThinking) &&
       next.createdAt >= current.createdAt &&
       next.createdAt - current.createdAt <= STREAM_CHUNK_WINDOW_MS &&
       !(current.traceId && next.traceId && current.traceId !== next.traceId)
@@ -1260,36 +1287,62 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
       // Merge next into current
       current.text += next.text;
       changed.add(currentId);
-      // Remove next from rootMessageIds and state.messages
-      state.rootMessageIds.splice(i + 1, 1);
+      // Remove the merged text root (keep thinking roots in between)
+      state.rootMessageIds.splice(j, 1);
       state.messages.delete(nextId);
       changed.delete(nextId);
-      // Don't increment i — check the new i+1 against the merged current
+      // Don't increment i — check the new j against the merged current
     } else {
       i++;
     }
   }
 }
 
+/**
+ * Try to merge a text/thinking chunk into a previous root agent-text message.
+ * Returns the internal ID of the root message that was merged into, or null if
+ * no suitable merge target was found.
+ *
+ * Walks backwards through rootMessageIds, skipping over thinking root messages
+ * that may have been interleaved by the ACP backend during streaming (e.g.
+ * agent_thought_chunk between agent_message_chunk updates).
+ */
 function mergeIntoPreviousRootAgentText(
   state: ReducerState,
   createdAt: number,
   chunkText: string,
   isThinking: boolean,
   traceId?: string
-): boolean {
-  const previous = getLastRootMessage(state);
-  if (!previous) return false;
-  if (previous.role !== 'agent' || previous.text === null || previous.tool || previous.event) {
-    return false;
-  }
-  if (Boolean(previous.isThinking) !== isThinking) return false;
-  if (createdAt < previous.createdAt) return false;
-  if (createdAt - previous.createdAt > STREAM_CHUNK_WINDOW_MS) return false;
-  if (previous.traceId && traceId && previous.traceId !== traceId) return false;
+): string | null {
+  for (let i = state.rootMessageIds.length - 1; i >= 0; i--) {
+    const rootId = state.rootMessageIds[i];
+    const candidate = state.messages.get(rootId);
+    if (!candidate) break;
 
-  previous.text += chunkText;
-  return true;
+    // Skip thinking root messages from the same trace — they don't interrupt
+    // text continuity within a single agent turn.
+    if (candidate.role === 'agent' && candidate.text !== null && candidate.isThinking && !isThinking) {
+      // Only skip if traceIds are compatible (same trace or unknown)
+      if (!(candidate.traceId && traceId && candidate.traceId !== traceId)) {
+        continue;
+      }
+      // Different trace — this is a turn boundary, stop looking
+      return null;
+    }
+
+    // Found a non-thinking root: check if it's compatible for merge
+    if (candidate.role !== 'agent' || candidate.text === null || candidate.tool || candidate.event) {
+      return null;
+    }
+    if (Boolean(candidate.isThinking) !== isThinking) return null;
+    if (createdAt < candidate.createdAt) return null;
+    if (createdAt - candidate.createdAt > STREAM_CHUNK_WINDOW_MS) return null;
+    if (candidate.traceId && traceId && candidate.traceId !== traceId) return null;
+
+    candidate.text += chunkText;
+    return rootId;
+  }
+  return null;
 }
 
 function convertReducerMessageToMessage(

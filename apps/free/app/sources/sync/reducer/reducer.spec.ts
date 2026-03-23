@@ -3023,4 +3023,142 @@ describe('reducer', () => {
       }
     });
   });
+
+  describe('text merge across interleaved thinking', () => {
+    it('should merge text chunks separated by thinking chunks (Phase 1 inline)', () => {
+      const state = createReducer();
+
+      // First text chunk
+      reducer(state, [
+        {
+          id: 'text-1',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-x',
+          content: [{ type: 'text', text: 'Hello ', uuid: 't1', parentUUID: null }],
+        },
+      ]);
+
+      // Thinking chunk interleaved
+      reducer(state, [
+        {
+          id: 'think-1',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-x',
+          content: [{ type: 'thinking', thinking: 'reasoning...', uuid: 'th1', parentUUID: null }],
+        },
+      ]);
+
+      // Second text chunk — should merge into text-1 despite thinking in between
+      const result = reducer(state, [
+        {
+          id: 'text-2',
+          createdAt: 1200,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-x',
+          content: [{ type: 'text', text: 'World', uuid: 't2', parentUUID: null }],
+        },
+      ]);
+
+      // Should find the merged text message (text-1 absorbed text-2)
+      const textMessages = result.messages.filter(
+        m => m.kind === 'agent-text' && !m.isThinking
+      );
+      expect(textMessages).toHaveLength(1);
+      if (textMessages[0].kind === 'agent-text') {
+        expect(textMessages[0].text).toBe('Hello World');
+      }
+    });
+
+    it('should merge text chunks separated by thinking in a single batch (Phase 5.5)', () => {
+      const state = createReducer();
+
+      const result = reducer(state, [
+        {
+          id: 'text-a',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-y',
+          content: [{ type: 'text', text: 'Part A ', uuid: 'a', parentUUID: null }],
+        },
+        {
+          id: 'think-a',
+          createdAt: 1050,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-y',
+          content: [{ type: 'thinking', thinking: 'hmm', uuid: 'ta', parentUUID: null }],
+        },
+        {
+          id: 'text-b',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-y',
+          content: [{ type: 'text', text: 'Part B', uuid: 'b', parentUUID: null }],
+        },
+      ]);
+
+      const textMessages = result.messages.filter(
+        m => m.kind === 'agent-text' && !m.isThinking
+      );
+      expect(textMessages).toHaveLength(1);
+      if (textMessages[0].kind === 'agent-text') {
+        expect(textMessages[0].text).toBe('Part A Part B');
+      }
+    });
+
+    it('should NOT merge text across different traceIds even when separated by thinking', () => {
+      const state = createReducer();
+
+      reducer(state, [
+        {
+          id: 'text-1',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-old',
+          content: [{ type: 'text', text: 'Old turn', uuid: 'o1', parentUUID: null }],
+        },
+      ]);
+
+      reducer(state, [
+        {
+          id: 'think-1',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-new',
+          content: [{ type: 'thinking', thinking: 'new reasoning', uuid: 'tn1', parentUUID: null }],
+        },
+      ]);
+
+      const result = reducer(state, [
+        {
+          id: 'text-2',
+          createdAt: 1200,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-new',
+          content: [{ type: 'text', text: 'New turn', uuid: 'n1', parentUUID: null }],
+        },
+      ]);
+
+      // result.messages only contains newly changed messages in this call.
+      // text-2 should NOT have been merged into text-1 (different traceId),
+      // so it creates a new root with only "New turn".
+      const textMessages = result.messages.filter(
+        m => m.kind === 'agent-text' && !m.isThinking
+      );
+      expect(textMessages).toHaveLength(1);
+      if (textMessages[0].kind === 'agent-text') {
+        expect(textMessages[0].text).toBe('New turn');
+      }
+    });
+  });
 });
