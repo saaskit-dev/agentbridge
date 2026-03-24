@@ -127,7 +127,8 @@ export class ActivityBroadcaster {
       if (this.stallEmitted.has(sid)) continue;
 
       const contentAt = this.lastContentAt.get(sid);
-      if (contentAt && now - contentAt < STALL_THRESHOLD_MS) continue;
+      if (!contentAt) continue; // no content recorded yet — session just started, not stalled
+      if (now - contentAt < STALL_THRESHOLD_MS) continue;
 
       const entry = this.lastThinkingState.get(sid);
       if (!entry) continue;

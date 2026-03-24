@@ -18,6 +18,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build core package
+        working-directory: packages/core
+        run: pnpm build
+
       - name: Build bundle & generate prisma
         working-directory: apps/free/server
         run: |
@@ -28,6 +32,10 @@ jobs:
         working-directory: apps/free/server
         run: |
           PGLITE_DIR=$(find "$GITHUB_WORKSPACE/node_modules/.pnpm" -path "*pglite/dist" -type d | head -1)
+          if [ -z "$PGLITE_DIR" ]; then
+            echo "ERROR: Could not find pglite dist directory"
+            exit 1
+          fi
           cp "$PGLITE_DIR/pglite.wasm" dist/
           cp "$PGLITE_DIR/pglite.data" dist/
 

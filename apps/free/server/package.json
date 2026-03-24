@@ -20,7 +20,7 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --clean",
-    "build:bundle": "esbuild src/standalone.ts --outfile=dist/bundle.cjs --format=cjs --bundle --platform=node --target=node22 --external:@prisma/client --external:@prisma/engines --external:pg-native --external:cpu-features --external:@node-rs/* --external:sharp --external:privacy-kit --banner:js=\"const import_meta_shim = { url: require('url').pathToFileURL(__filename).toString() };\" --define:import.meta=import_meta_shim",
+    "build:bundle": "esbuild src/standalone.ts --outfile=dist/bundle.cjs --format=cjs --bundle --platform=node --target=node20 --external:@prisma/client --external:@prisma/engines --external:pg-native --external:cpu-features --external:@node-rs/* --external:sharp --external:privacy-kit --banner:js=\"const import_meta_shim = { url: require('url').pathToFileURL(__filename).toString() };\" --define:import.meta=import_meta_shim",
     "dev": "tsx --env-file=.env ./src/main.ts",
     "start": "tsx ./src/main.ts",
     "standalone": "tsx --env-file=.env ./src/standalone.ts",
