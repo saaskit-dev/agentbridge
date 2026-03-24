@@ -136,6 +136,17 @@ export const ToolView = React.memo<ToolViewProps>(props => {
     logger.debug('isToolUseError', tool.result);
   }
 
+  // Permission resolved (approved/denied/canceled) → collapse to minimal header
+  const isPermissionResolved =
+    tool.permission &&
+    tool.permission.status !== 'pending' &&
+    // Don't collapse if the tool is still running (approved → executing)
+    tool.state !== 'running';
+
+  if (isPermissionResolved) {
+    minimal = true;
+  }
+
   // Check permission status first for denied/canceled states
   if (
     tool.permission &&
@@ -144,6 +155,12 @@ export const ToolView = React.memo<ToolViewProps>(props => {
     statusIcon = (
       <Ionicons name="remove-circle-outline" size={20} color={theme.colors.textSecondary} />
     );
+  } else if (
+    tool.permission &&
+    tool.permission.status === 'approved' &&
+    tool.state !== 'running'
+  ) {
+    statusIcon = <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
   } else if (isToolUseError) {
     statusIcon = (
       <Ionicons name="remove-circle-outline" size={20} color={theme.colors.textSecondary} />
@@ -289,17 +306,20 @@ export const ToolView = React.memo<ToolViewProps>(props => {
         );
       })()}
 
-      {/* Permission footer - always renders when permission exists to maintain consistent height */}
+      {/* Permission footer - only show when pending (collapse after approval/denial) */}
       {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}
-      {tool.permission && sessionId && tool.name !== 'AskUserQuestion' && (
-        <PermissionFooter
-          permission={tool.permission}
-          sessionId={sessionId}
-          toolName={tool.name}
-          toolInput={tool.input}
-          metadata={props.metadata}
-        />
-      )}
+      {tool.permission &&
+        tool.permission.status === 'pending' &&
+        sessionId &&
+        tool.name !== 'AskUserQuestion' && (
+          <PermissionFooter
+            permission={tool.permission}
+            sessionId={sessionId}
+            toolName={tool.name}
+            toolInput={tool.input}
+            metadata={props.metadata}
+          />
+        )}
     </View>
   );
 });

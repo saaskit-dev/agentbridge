@@ -866,7 +866,20 @@ export function reducer(
 
           // Update tool state and result
           message.tool.state = c.is_error ? 'error' : 'completed';
-          message.tool.result = c.content;
+          // Normalize result for permission-only tools: keep human-readable string
+          // instead of raw permission status object (fixes web/app data inconsistency)
+          if (
+            message.tool.permission &&
+            !c.is_error &&
+            c.content != null &&
+            typeof c.content === 'object' &&
+            'status' in c.content &&
+            'decision' in c.content
+          ) {
+            message.tool.result = 'Approved';
+          } else {
+            message.tool.result = c.content;
+          }
           message.tool.completedAt = msg.createdAt;
 
           // Update permission data if provided by backend
@@ -1016,7 +1029,19 @@ export function reducer(
               sidechainMessage.tool.state === 'running'
             ) {
               sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
-              sidechainMessage.tool.result = c.content;
+              // Normalize result for permission-only tools
+              if (
+                sidechainMessage.tool.permission &&
+                !c.is_error &&
+                c.content != null &&
+                typeof c.content === 'object' &&
+                'status' in c.content &&
+                'decision' in c.content
+              ) {
+                sidechainMessage.tool.result = 'Approved';
+              } else {
+                sidechainMessage.tool.result = c.content;
+              }
               sidechainMessage.tool.completedAt = msg.createdAt;
 
               // Update permission data if provided by backend
@@ -1057,7 +1082,19 @@ export function reducer(
               permissionMessage.tool.state === 'running'
             ) {
               permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
-              permissionMessage.tool.result = c.content;
+              // Normalize result for permission-only tools
+              if (
+                permissionMessage.tool.permission &&
+                !c.is_error &&
+                c.content != null &&
+                typeof c.content === 'object' &&
+                'status' in c.content &&
+                'decision' in c.content
+              ) {
+                permissionMessage.tool.result = 'Approved';
+              } else {
+                permissionMessage.tool.result = c.content;
+              }
               permissionMessage.tool.completedAt = msg.createdAt;
 
               // Update permission data if provided by backend
