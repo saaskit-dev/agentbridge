@@ -240,6 +240,7 @@ export abstract class AgentSession<TMode> {
     });
     // Reset counter so the auto-restart path in startBackendAndLoop doesn't enter dormant mode
     this.backendRestartCount = 0;
+    this._isForceRestarting = true;
     // Stop the backend — pipeBackendOutput will set shouldExit=true and close messageQueue,
     // causing messageLoop to exit. startBackendAndLoop sees shouldExit && !pendingExit → restart.
     // Race with a 10s timeout: if the backend is truly stuck, stop() may never resolve.
@@ -648,6 +649,7 @@ export abstract class AgentSession<TMode> {
   static RESTART_COOLDOWN_MS = 5_000;
   private backendRestartCount = 0;
   private lastBackendStartTime = 0;
+  private _isForceRestarting = false;
 
   async run(): Promise<void> {
     try {
@@ -724,6 +726,10 @@ export abstract class AgentSession<TMode> {
       this.pipeBackendOutput();
       this.pipeBackendCapabilities();
 
+      if (this.backendRestartCount > 0) {
+        this.publishVisibleInfo('Agent process restarted successfully.');
+      }
+
       await this.messageLoop();
 
       // If we get here, the message loop exited.
@@ -772,23 +778,34 @@ export abstract class AgentSession<TMode> {
           continue;
         }
 
+        const isForceRestart = this._isForceRestarting;
+        this._isForceRestarting = false;
         this.backendRestartCount++;
-        logger.warn('[AgentSession] backend crashed, restarting', {
-          sessionId: this.session.sessionId,
-          agentType: this.agentType,
-          attempt: this.backendRestartCount,
-          maxAttempts: AgentSession.MAX_BACKEND_RESTARTS,
-          exitCode: exitInfo?.exitCode,
-          exitSignal: exitInfo?.signal,
-          exitReason: exitInfo?.reason,
-        });
-        this.publishVisibleError(
-          new Error(
-            `Agent process crashed — restarting (attempt ${this.backendRestartCount}/${AgentSession.MAX_BACKEND_RESTARTS})`
-          ),
-          'backend crashed',
-          true
-        );
+
+        if (isForceRestart) {
+          logger.info('[AgentSession] force restarting backend', {
+            sessionId: this.session.sessionId,
+            agentType: this.agentType,
+          });
+          this.publishVisibleInfo('Agent process restarting...');
+        } else {
+          logger.warn('[AgentSession] backend crashed, restarting', {
+            sessionId: this.session.sessionId,
+            agentType: this.agentType,
+            attempt: this.backendRestartCount,
+            maxAttempts: AgentSession.MAX_BACKEND_RESTARTS,
+            exitCode: exitInfo?.exitCode,
+            exitSignal: exitInfo?.signal,
+            exitReason: exitInfo?.reason,
+          });
+          this.publishVisibleError(
+            new Error(
+              `Agent process crashed — restarting (attempt ${this.backendRestartCount}/${AgentSession.MAX_BACKEND_RESTARTS})`
+            ),
+            'backend crashed',
+            true
+          );
+        }
         const cooldownMs = (this.constructor as typeof AgentSession).RESTART_COOLDOWN_MS;
         const elapsed = Date.now() - this.lastBackendStartTime;
         if (elapsed < cooldownMs) {
@@ -1081,6 +1098,19 @@ export abstract class AgentSession<TMode> {
   protected resetStreamingText(): void {
     this.streamingTextMessageId = null;
     this.streamingFullText = '';
+  }
+
+  private publishVisibleInfo(message: string): void {
+    if (!this.session) return;
+    const msg: NormalizedMessage = {
+      id: randomUUID(),
+      createdAt: Date.now(),
+      role: 'event',
+      isSidechain: false,
+      content: { type: 'message', message },
+    };
+    this.maybeStreamOutputMessage(msg);
+    this.session.sendNormalizedMessage(msg);
   }
 
   private publishVisibleError(error: unknown, context: string, retryable = false): void {
