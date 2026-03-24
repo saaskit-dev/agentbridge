@@ -10,12 +10,25 @@ import { ToolViewProps } from './types';
  *
  * After normalization, tool.result can be:
  * - An array of {type, tool_name} objects (direct from Claude API)
+ * - A wrapped content block array [{type: "content", content: {type: "text", text: "..."}}]
  * - A JSON string containing such an array
+ * - A string with "Tool: <name>" lines
  * - A string containing <functions> XML block
  * - An object with a .tools array
  */
 function parseResults(result: any): Array<{ type?: string; tool_name?: string; name?: string }> {
   if (!result) return [];
+
+  // Wrapped content blocks: [{type: "content", content: {type: "text", text: "..."}}]
+  if (
+    Array.isArray(result) &&
+    result.length > 0 &&
+    result[0]?.type === 'content' &&
+    result[0]?.content?.type === 'text'
+  ) {
+    const combinedText = result.map((b: any) => b.content?.text ?? '').join('\n');
+    return parseResults(combinedText);
+  }
 
   // Claude API content blocks: [{type: "text", text: "..."}]
   // Must check before generic Array.isArray — these are NOT tool reference objects.
@@ -47,6 +60,15 @@ function parseResults(result: any): Array<{ type?: string; tool_name?: string; n
         // not JSON
       }
     }
+
+    // "Tool: xxx" lines (e.g. from ToolSearch result text)
+    const toolLineNames: Array<{ tool_name: string }> = [];
+    const toolLineRe = /^Tool:\s*(.+)$/gm;
+    let tlm;
+    while ((tlm = toolLineRe.exec(trimmed)) !== null) {
+      toolLineNames.push({ tool_name: tlm[1].trim() });
+    }
+    if (toolLineNames.length > 0) return toolLineNames;
 
     // <functions> block → extract tool names from <function> tags
     const names: Array<{ tool_name: string }> = [];
