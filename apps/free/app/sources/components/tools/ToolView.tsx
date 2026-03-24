@@ -160,7 +160,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
     tool.permission.status === 'approved' &&
     tool.state !== 'running'
   ) {
-    statusIcon = <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
+    statusIcon = <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />;
   } else if (isToolUseError) {
     statusIcon = (
       <Ionicons name="remove-circle-outline" size={20} color={theme.colors.textSecondary} />
@@ -182,7 +182,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
         break;
       case 'completed':
         // if (!noStatus) {
-        //     statusIcon = <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
+        //     statusIcon = <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />;
         // }
         break;
       case 'error':
