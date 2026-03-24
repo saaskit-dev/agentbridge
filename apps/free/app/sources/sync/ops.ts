@@ -633,6 +633,29 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
 }
 
 /**
+ * Force-restart the agent process for a session.
+ * Used as a last-resort recovery when the agent is stuck or unresponsive.
+ */
+export async function sessionRestart(
+  sessionId: string
+): Promise<{ success: boolean; message?: string }> {
+  logger.info('[ops] sessionRestart', { sessionId });
+  try {
+    const response = await apiSocket.sessionRPC<{ success: boolean; message: string }, {}>(
+      sessionId,
+      'restartAgent',
+      {}
+    );
+    if (!response) {
+      return { success: false, message: 'No response from session' };
+    }
+    return response;
+  } catch (error) {
+    return { success: false, message: safeStringify(error) };
+  }
+}
+
+/**
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)
  * The session should be inactive/archived before deletion

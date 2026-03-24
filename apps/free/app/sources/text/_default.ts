@@ -439,6 +439,12 @@ export const en = {
     }) => `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
     updateCliInstructions:
       'Please run curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    restartAgent: 'Force Restart Agent',
+    restartAgentConfirm:
+      'This will kill the current agent process and start a fresh one. The session and conversation history will be preserved.',
+    restartAgentSubtitle: 'Kill and restart the agent process',
+    restartAgentSuccess: 'Agent process is restarting.',
+    failedToRestartAgent: 'Failed to restart agent',
     deleteSession: 'Delete Session',
     deleteSessionSubtitle: 'Permanently remove this session',
     deleteSessionConfirm: 'Delete Session Permanently?',

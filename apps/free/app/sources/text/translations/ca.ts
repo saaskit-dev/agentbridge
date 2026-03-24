@@ -443,6 +443,11 @@ export const ca: TranslationStructure = {
     }) => `Versió ${currentVersion} instal·lada. Actualitzeu a ${requiredVersion} o posterior`,
     updateCliInstructions:
       'Si us plau executeu curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    restartAgent: "Reinici forçat de l'agent",
+    restartAgentConfirm: "Això acabarà el procés de l'agent actual i n'iniciarà un de nou. La sessió i l'historial de conversa es conservaran.",
+    restartAgentSubtitle: "Acabar i reiniciar el procés de l'agent",
+    restartAgentSuccess: "El procés de l'agent s'està reiniciant.",
+    failedToRestartAgent: "Error en reiniciar l'agent",
     deleteSession: 'Elimina la sessió',
     deleteSessionSubtitle: 'Elimina permanentment aquesta sessió',
     deleteSessionConfirm: 'Eliminar la sessió permanentment?',

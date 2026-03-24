@@ -458,6 +458,11 @@ export const pl: TranslationStructure = {
     }) => `Zainstalowana wersja ${currentVersion}. Zaktualizuj do ${requiredVersion} lub nowszej`,
     updateCliInstructions:
       'Proszę uruchomić curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    restartAgent: 'Wymuś restart agenta',
+    restartAgentConfirm: 'Spowoduje to zakończenie bieżącego procesu agenta i uruchomienie nowego. Sesja i historia rozmów zostaną zachowane.',
+    restartAgentSubtitle: 'Zakończ i uruchom ponownie proces agenta',
+    restartAgentSuccess: 'Proces agenta jest restartowany.',
+    failedToRestartAgent: 'Nie udało się zrestartować agenta',
     deleteSession: 'Usuń sesję',
     deleteSessionSubtitle: 'Trwale usuń tę sesję',
     deleteSessionConfirm: 'Usunąć sesję na stałe?',

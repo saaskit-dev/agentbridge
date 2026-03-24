@@ -219,6 +219,36 @@ export abstract class AgentSession<TMode> {
     await this.backend?.stop();
   }
 
+  /**
+   * Force-restart the agent backend process.
+   * Resets the restart counter and stops the current backend. The existing
+   * startBackendAndLoop() loop will detect the unexpected exit (shouldExit && !pendingExit)
+   * and automatically spin up a fresh backend.
+   *
+   * Used as a last-resort recovery when the agent is stuck / unresponsive.
+   */
+  async forceRestart(): Promise<void> {
+    if (this._isShuttingDown || this.pendingExit) {
+      logger.warn('[AgentSession] forceRestart ignored — session is shutting down', {
+        sessionId: this.session?.sessionId,
+      });
+      return;
+    }
+    logger.info('[AgentSession] forceRestart requested', {
+      sessionId: this.session?.sessionId,
+      agentType: this.agentType,
+    });
+    // Reset counter so the auto-restart path in startBackendAndLoop doesn't enter dormant mode
+    this.backendRestartCount = 0;
+    // Stop the backend — pipeBackendOutput will set shouldExit=true and close messageQueue,
+    // causing messageLoop to exit. startBackendAndLoop sees shouldExit && !pendingExit → restart.
+    // Race with a 10s timeout: if the backend is truly stuck, stop() may never resolve.
+    await Promise.race([
+      this.backend?.stop() ?? Promise.resolve(),
+      new Promise<void>(r => setTimeout(r, 10_000)),
+    ]);
+  }
+
   get sessionId(): string {
     if (!this.session) throw new Error('AgentSession.sessionId accessed before initialize()');
     return this.session.sessionId;
@@ -599,6 +629,19 @@ export abstract class AgentSession<TMode> {
       await this.abort();
       return { ok: true };
     });
+
+    this.session.rpcHandlerManager.registerHandler<{}, { success: boolean; message: string }>(
+      'restartAgent',
+      async () => {
+        logger.info('[AgentSession] session RPC restartAgent received', {
+          userId: this.userId,
+          sessionId: this.session.sessionId,
+          agentType: this.agentType,
+        });
+        void this.forceRestart();
+        return { success: true, message: 'Restarting agent process' };
+      }
+    );
   }
 
   static MAX_BACKEND_RESTARTS = 3;

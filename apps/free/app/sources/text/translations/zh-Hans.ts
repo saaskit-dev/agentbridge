@@ -433,6 +433,11 @@ export const zhHans: TranslationStructure = {
     }) => `已安装版本 ${currentVersion}。请更新到 ${requiredVersion} 或更高版本`,
     updateCliInstructions:
       '请运行 curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash',
+    restartAgent: '强制重启 Agent',
+    restartAgentConfirm: '这将终止当前 Agent 进程并启动一个新的。会话和对话历史将保留。',
+    restartAgentSubtitle: '终止并重启 Agent 进程',
+    restartAgentSuccess: 'Agent 进程正在重启。',
+    failedToRestartAgent: '重启 Agent 失败',
     deleteSession: '删除会话',
     deleteSessionSubtitle: '永久删除此会话',
     deleteSessionConfirm: '永久删除会话？',

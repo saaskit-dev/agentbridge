@@ -443,6 +443,11 @@ export const ja: TranslationStructure = {
       `バージョン ${currentVersion} がインストールされています。${requiredVersion} 以降に更新してください`,
     updateCliInstructions:
       'curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash を実行してください',
+    restartAgent: 'エージェントを強制再起動',
+    restartAgentConfirm: '現在のエージェントプロセスを終了し、新しいプロセスを起動します。セッションと会話履歴は保持されます。',
+    restartAgentSubtitle: 'エージェントプロセスを終了して再起動',
+    restartAgentSuccess: 'エージェントプロセスを再起動しています。',
+    failedToRestartAgent: 'エージェントの再起動に失敗しました',
     deleteSession: 'セッションを削除',
     deleteSessionSubtitle: 'このセッションを完全に削除',
     deleteSessionConfirm: 'セッションを完全に削除しますか？',

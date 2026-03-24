@@ -15,7 +15,7 @@ import { layout } from '@/components/layout';
 import { Typography } from '@/constants/Typography';
 import { useFreeAction } from '@/hooks/useFreeAction';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionKill, sessionDelete, sessionRestart } from '@/sync/ops';
 import { useSession, useIsDataReady } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
@@ -188,6 +188,26 @@ function SessionInfoContent({ session }: { session: Session }) {
       },
     ]);
   }, [performArchive]);
+
+  // Use FreeAction for force restart
+  const [restartingSession, performRestart] = useFreeAction(async () => {
+    const result = await sessionRestart(session.id);
+    if (!result.success) {
+      throw new FreeError(result.message || t('sessionInfo.failedToRestartAgent'), false);
+    }
+    Modal.alert(t('sessionInfo.restartAgent'), t('sessionInfo.restartAgentSuccess'));
+  });
+
+  const handleRestartAgent = useCallback(() => {
+    Modal.alert(t('sessionInfo.restartAgent'), t('sessionInfo.restartAgentConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('sessionInfo.restartAgent'),
+        style: 'destructive',
+        onPress: performRestart,
+      },
+    ]);
+  }, [performRestart]);
 
   // Use FreeAction for deletion - it handles errors automatically
   const [deletingSession, performDelete] = useFreeAction(async () => {
@@ -363,6 +383,19 @@ function SessionInfoContent({ session }: { session: Session }) {
               subtitle={t('sessionInfo.viewMachineSubtitle')}
               icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
               onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
+            />
+          )}
+          {sessionStatus.isConnected && (
+            <Item
+              title={t('sessionInfo.restartAgent')}
+              subtitle={
+                restartingSession
+                  ? t('sessionInfo.restartAgentSuccess')
+                  : t('sessionInfo.restartAgentSubtitle')
+              }
+              icon={<Ionicons name="refresh-outline" size={29} color="#FF9500" />}
+              onPress={handleRestartAgent}
+              disabled={restartingSession}
             />
           )}
           {sessionStatus.isConnected && (
