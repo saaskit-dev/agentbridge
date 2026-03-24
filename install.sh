@@ -71,8 +71,8 @@ ok "All prerequisites satisfied"
 if [ -d "$INSTALL_DIR/.git" ]; then
     info "Updating existing installation at $INSTALL_DIR ..."
     cd "$INSTALL_DIR"
-    git fetch origin "$BRANCH" --depth 1
-    git reset --hard FETCH_HEAD
+    git fetch origin "$BRANCH" --depth 1 --quiet
+    git reset --hard FETCH_HEAD --quiet
 elif [ -d "$INSTALL_DIR" ]; then
     # Directory exists but isn't a git repo - backup and re-clone
     warn "Directory $INSTALL_DIR exists but is not a git repository"
