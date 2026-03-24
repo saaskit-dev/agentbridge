@@ -70,7 +70,7 @@
     "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started free",
     "typecheck": "tsc --noEmit",
     "check:type-sync": "node scripts/check-normalized-message-sync.cjs",
-    "build": "shx rm -rf dist && node scripts/check-normalized-message-sync.cjs && npx tsc --noEmit && pkgroll && node scripts/generate-build-hash.cjs",
+    "build": "shx rm -rf dist && node scripts/check-normalized-message-sync.cjs && tsc --noEmit && pkgroll && node scripts/generate-build-hash.cjs",
     "test": "$npm_execpath run build && vitest run",
     "test:e2e-lifecycle": "bash scripts/e2e-lifecycle-test.sh",
     "start": "$npm_execpath run build && node ./dist/cli.mjs",
