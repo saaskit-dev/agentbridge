@@ -68,7 +68,11 @@
       "esbuild": ">=0.25.0",
       "basic-ftp": ">=5.2.0",
       "hono": ">=4.12.2"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "node-pty"
+    ]
   },
   "packageManager": "pnpm@10.32.1",
   "engines": {

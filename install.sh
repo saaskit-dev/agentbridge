@@ -57,10 +57,10 @@ if ! command -v pnpm &>/dev/null; then
     warn "pnpm not found, installing via corepack..."
     if command -v corepack &>/dev/null; then
         corepack enable
-        corepack prepare pnpm@8 --activate
+        corepack prepare pnpm@latest --activate
     else
         info "Installing pnpm via npm..."
-        npm install -g pnpm@8
+        npm install -g pnpm
     fi
 fi
 
@@ -72,8 +72,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
     info "Updating existing installation at $INSTALL_DIR ..."
     cd "$INSTALL_DIR"
     git fetch origin "$BRANCH" --depth 1
-    git checkout "$BRANCH"
-    git reset --hard "origin/$BRANCH"
+    git reset --hard FETCH_HEAD
 elif [ -d "$INSTALL_DIR" ]; then
     # Directory exists but isn't a git repo - backup and re-clone
     warn "Directory $INSTALL_DIR exists but is not a git repository"
