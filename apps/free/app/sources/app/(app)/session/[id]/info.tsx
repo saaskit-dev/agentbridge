@@ -7,6 +7,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { AgentFlavorIcon } from '@/components/AgentFlavorIcon';
 import { Avatar } from '@/components/Avatar';
 import { getAgentDisplayName, normalizeAgentFlavor } from '@/sync/agentFlavor';
+import { useLocalSetting } from '@/sync/storage';
 import { CodeView } from '@/components/CodeView';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -139,7 +140,8 @@ function formatDangerouslySkipPermissionsMetadata(
 function SessionInfoContent({ session }: { session: Session }) {
   const { theme } = useUnistyles();
   const router = useRouter();
-  const devModeEnabled = __DEV__;
+  const devModeEnabled = useLocalSetting('devModeEnabled');
+  const showDebugIds = useLocalSetting('showDebugIds');
   const sessionName = getSessionName(session);
   const sessionStatus = useSessionStatus(session);
 
@@ -548,8 +550,8 @@ function SessionInfoContent({ session }: { session: Session }) {
           )}
         </ItemGroup>
 
-        {/* Raw JSON (Dev Mode Only) */}
-        {devModeEnabled && (
+        {/* Raw JSON (Debug IDs) */}
+        {(devModeEnabled || __DEV__) && showDebugIds && (
           <ItemGroup title="Raw JSON (Dev Mode)">
             {session.agentState && (
               <>

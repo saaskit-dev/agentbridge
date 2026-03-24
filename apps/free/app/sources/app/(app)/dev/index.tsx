@@ -18,6 +18,7 @@ import { sync } from '@/sync/sync';
 export default function DevScreen() {
   const router = useRouter();
   const [debugMode, setDebugMode] = useLocalSettingMutable('debugMode');
+  const [showDebugIds, setShowDebugIds] = useLocalSettingMutable('showDebugIds');
   const [verboseLogging, setVerboseLogging] = React.useState(false);
   const socketStatus = useSocketStatus();
   const anonymousId = sync.encryption?.anonId ?? 'N/A';
@@ -128,6 +129,12 @@ export default function DevScreen() {
 
       {/* Debug Options */}
       <ItemGroup title="Debug Options">
+        <Item
+          title="Show Debug IDs"
+          subtitle="Show session IDs, agent IDs, and raw JSON in session info"
+          rightElement={<Switch value={showDebugIds} onValueChange={setShowDebugIds} />}
+          showChevron={false}
+        />
         <Item
           title="Debug Mode"
           rightElement={<Switch value={debugMode} onValueChange={setDebugMode} />}

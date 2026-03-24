@@ -336,14 +336,6 @@ export const SettingsView = React.memo(function SettingsView() {
             icon={<Ionicons name="construct-outline" size={29} color="#5856D6" />}
             onPress={() => router.push('/dev')}
           />
-          {devModeEnabled && !__DEV__ && (
-            <Item
-              title={t('settings.exitDeveloperMode')}
-              icon={<Ionicons name="exit-outline" size={29} color="#FF3B30" />}
-              showChevron={false}
-              onPress={() => setDevModeEnabled(false)}
-            />
-          )}
         </ItemGroup>
       )}
 
