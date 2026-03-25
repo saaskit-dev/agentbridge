@@ -2,6 +2,11 @@ name: Build & Push Server
 
 on:
   workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'apps/free/server/**'
+      - 'packages/core/**'
 
 jobs:
   build:
