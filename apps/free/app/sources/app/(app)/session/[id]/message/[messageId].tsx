@@ -7,6 +7,7 @@ import { ToolFullView } from '@/components/tools/ToolFullView';
 import { ToolHeader } from '@/components/tools/ToolHeader';
 import { ToolStatusIndicator } from '@/components/tools/ToolStatusIndicator';
 import { Typography } from '@/constants/Typography';
+import { Metadata } from '@/sync/storageTypes';
 import { useMessage, useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { Message } from '@/sync/typesMessage';
@@ -83,7 +84,7 @@ export default React.memo(() => {
       {message && message.kind === 'tool-call' && message.tool && (
         <Stack.Screen
           options={{
-            headerTitle: () => <ToolHeader tool={message.tool} />,
+            headerTitle: () => <ToolHeader tool={message.tool} metadata={session.metadata} />,
             headerRight: () => <ToolStatusIndicator tool={message.tool} />,
             headerStyle: {
               backgroundColor: theme.colors.header.background,
@@ -94,18 +95,24 @@ export default React.memo(() => {
         />
       )}
       <Deferred>
-        <FullView message={message} />
+        <FullView message={message} metadata={session.metadata} />
       </Deferred>
     </>
   );
 });
 
-function FullView(props: { message: Message }) {
+function FullView(props: { message: Message; metadata: Metadata | null }) {
   const { theme } = useUnistyles();
   const styles = stylesheet;
 
   if (props.message.kind === 'tool-call') {
-    return <ToolFullView tool={props.message.tool} messages={props.message.children} />;
+    return (
+      <ToolFullView
+        tool={props.message.tool}
+        metadata={props.metadata}
+        messages={props.message.children}
+      />
+    );
   }
   if (props.message.kind === 'agent-text') {
     return (

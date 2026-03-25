@@ -13,6 +13,7 @@ import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { normalizeAgentFlavor, usesAcpPermissionDecisions } from '@/sync/agentFlavor';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
+import { resolvePath } from '@/utils/pathUtils';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/tools/PermissionFooter');
 
@@ -91,6 +92,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     setLoadingButton('allow');
     try {
       await sessionAllow(sessionId, permission.id);
+      logger.info('tool_permission_decision', {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+        decision: 'approved',
+      });
     } catch (error) {
       logger.error('Failed to approve permission', toError(error), {
         sessionId,
@@ -116,6 +123,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
       await sessionAllow(sessionId, permission.id, 'accept-edits');
       // Update the session permission mode to 'accept-edits' for future permissions
       storage.getState().updateSessionPermissionMode(sessionId, 'accept-edits');
+      logger.info('tool_permission_decision', {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+        decision: 'accept-edits',
+      });
     } catch (error) {
       logger.error('Failed to approve all edits', toError(error), {
         sessionId,
@@ -147,6 +160,13 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
       }
 
       await sessionAllow(sessionId, permission.id, undefined, [toolIdentifier]);
+      logger.info('tool_permission_decision', {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+        decision: 'approved_for_session',
+        toolIdentifier,
+      });
     } catch (error) {
       logger.error('Failed to approve for session', toError(error), {
         sessionId,
@@ -170,6 +190,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     setLoadingButton('deny');
     try {
       await sessionDeny(sessionId, permission.id);
+      logger.info('tool_permission_decision', {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+        decision: 'denied',
+      });
     } catch (error) {
       logger.error('Failed to deny permission', toError(error), {
         sessionId,
@@ -188,6 +214,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     setLoadingButton('allow');
     try {
       await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved');
+      logger.info('tool_permission_decision', {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+        decision: 'approved',
+      });
     } catch (error) {
       logger.error('Failed to approve permission', toError(error), {
         sessionId,
@@ -205,6 +237,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     setLoadingForSession(true);
     try {
       await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved_for_session');
+      logger.info('tool_permission_decision', {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+        decision: 'approved_for_session',
+      });
     } catch (error) {
       logger.error('Failed to approve for session', toError(error), {
         sessionId,
@@ -222,6 +260,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     setLoadingButton('abort');
     try {
       await sessionDeny(sessionId, permission.id, undefined, undefined, 'abort');
+      logger.info('tool_permission_decision', {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+        decision: 'abort',
+      });
     } catch (error) {
       logger.error('Failed to abort permission', toError(error), {
         sessionId,
@@ -367,7 +411,120 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     iconDenied: {
       color: theme.colors.permissionButton.deny.background,
     },
+    summaryCard: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 10,
+      backgroundColor: theme.colors.tool.previewBackground,
+      borderWidth: 1,
+      borderColor: theme.colors.tool.cardBorder,
+      gap: 4,
+    },
+    summaryLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: theme.colors.tool.muted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.3,
+    },
+    summaryDecision: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: theme.colors.tool.title,
+    },
+    summaryMeta: {
+      fontSize: 12,
+      lineHeight: 16,
+      color: theme.colors.tool.subtitle,
+    },
   });
+
+  const getTargetSummary = (): string | null => {
+    if (typeof toolInput?.file_path === 'string') {
+      return resolvePath(toolInput.file_path, metadata);
+    }
+    if (typeof toolInput?.notebook_path === 'string') {
+      return resolvePath(toolInput.notebook_path, metadata);
+    }
+    if (typeof toolInput?.path === 'string') {
+      return resolvePath(toolInput.path, metadata);
+    }
+    if (typeof toolInput?.url === 'string') {
+      return toolInput.url;
+    }
+    if (Array.isArray(toolInput?.locations) && toolInput.locations[0]?.path) {
+      return resolvePath(toolInput.locations[0].path, metadata);
+    }
+    if (typeof toolInput?.command === 'string') {
+      return toolInput.command.length > 120
+        ? `${toolInput.command.slice(0, 117)}...`
+        : toolInput.command;
+    }
+    return null;
+  };
+
+  const renderResolvedSummary = (
+    decisionLabel: string,
+    tone: 'success' | 'warning' | 'error',
+    scopeLabel?: string
+  ) => {
+    const target = getTargetSummary();
+    const decisionColor =
+      tone === 'success'
+        ? theme.colors.tool.success
+        : tone === 'warning'
+          ? theme.colors.tool.warning
+          : theme.colors.tool.error;
+    const iconName: keyof typeof Ionicons.glyphMap =
+      tone === 'success'
+        ? 'checkmark-circle'
+        : tone === 'warning'
+          ? 'pause-circle'
+          : 'close-circle';
+    return (
+      <View style={styles.container}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>{toolName}</Text>
+          <View style={[styles.buttonContent, { gap: 8 }]}>
+            <Ionicons name={iconName} size={16} color={decisionColor} />
+            <Text style={[styles.summaryDecision, { color: decisionColor }]}>{decisionLabel}</Text>
+          </View>
+          {scopeLabel ? <Text style={styles.summaryMeta}>{scopeLabel}</Text> : null}
+          {target ? <Text style={styles.summaryMeta}>{target}</Text> : null}
+        </View>
+      </View>
+    );
+  };
+
+  if (!isPending) {
+    if (useAcpPermissions) {
+      if (isAcpApprovedForSession) {
+        return renderResolvedSummary(t('codex.permissions.yesForSession'), 'success');
+      }
+      if (isAcpAborted) {
+        return renderResolvedSummary(t('codex.permissions.stopAndExplain'), 'warning');
+      }
+      if (isAcpApproved) {
+        return renderResolvedSummary(t('common.yes'), 'success');
+      }
+      if (isDenied) {
+        return renderResolvedSummary(t('claude.permissions.noTellClaude'), 'error');
+      }
+    } else {
+      if (isApprovedViaAllEdits) {
+        return renderResolvedSummary(t('claude.permissions.yesAllowAllEdits'), 'success');
+      }
+      if (isApprovedForSession) {
+        return renderResolvedSummary(t('claude.permissions.yesForTool'), 'success');
+      }
+      if (isApprovedViaAllow) {
+        return renderResolvedSummary(t('common.yes'), 'success');
+      }
+      if (isDenied) {
+        return renderResolvedSummary(t('claude.permissions.noTellClaude'), 'error');
+      }
+    }
+  }
 
   // Render ACP-style buttons for Codex/OpenCode sessions
   if (useAcpPermissions) {

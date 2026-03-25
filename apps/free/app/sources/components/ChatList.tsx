@@ -386,6 +386,22 @@ const ChatListInternal = React.memo(
     const isAtBottom = useRef(true);
     const [showScrollFab, setShowScrollFab] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    const showScrollFabRef = useRef(false);
+    const unreadCountRef = useRef(0);
+
+    const updateShowScrollFab = useCallback((next: boolean) => {
+      if (showScrollFabRef.current === next) return;
+      showScrollFabRef.current = next;
+      setShowScrollFab(next);
+    }, []);
+
+    const updateUnreadCount = useCallback((next: number | ((prev: number) => number)) => {
+      const resolved =
+        typeof next === 'function' ? next(unreadCountRef.current) : next;
+      if (unreadCountRef.current === resolved) return;
+      unreadCountRef.current = resolved;
+      setUnreadCount(resolved);
+    }, []);
 
     // ----- unified scroll handler -----
     const handleScroll = useCallback(
@@ -401,10 +417,10 @@ const ChatListInternal = React.memo(
 
         // Show/hide scroll-to-bottom FAB
         if (isAtBottom.current && !wasAtBottom) {
-          setShowScrollFab(false);
-          setUnreadCount(0);
+          updateShowScrollFab(false);
+          updateUnreadCount(0);
         } else if (!isAtBottom.current && wasAtBottom) {
-          setShowScrollFab(true);
+          updateShowScrollFab(true);
         }
 
         // --- Native overscroll pull indicators ---
@@ -434,7 +450,7 @@ const ChatListInternal = React.memo(
           triggerLoad('older', () => sync.loadOlderMessages(props.sessionId));
         }
       },
-      [setPull, triggerLoad, props.sessionId, props.isLoadingOlder]
+      [setPull, triggerLoad, props.sessionId, props.isLoadingOlder, updateShowScrollFab, updateUnreadCount]
     );
 
     const handleScrollEndDrag = useCallback(() => {
@@ -457,17 +473,17 @@ const ChatListInternal = React.memo(
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           });
         } else {
-          setUnreadCount(prev => prev + added);
+          updateUnreadCount(prev => prev + added);
         }
       }
       prevMessageCount.current = count;
-    }, [props.messages.length]);
+    }, [props.messages.length, updateUnreadCount]);
 
     const handleScrollToBottom = useCallback(() => {
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-      setShowScrollFab(false);
-      setUnreadCount(0);
-    }, []);
+      updateShowScrollFab(false);
+      updateUnreadCount(0);
+    }, [updateShowScrollFab, updateUnreadCount]);
 
     // ----- build list items with separators -----
     const listItems = useMemo(() => buildListItems(props.messages), [props.messages]);

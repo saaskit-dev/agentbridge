@@ -5,7 +5,7 @@
 # 每次执行都会杀死历史进程，然后启动最新代码
 # ============================================================================
 
-set -e
+set -euo pipefail
 
 # 颜色定义
 RED='\033[0;31m'
@@ -37,6 +37,13 @@ unset _DEV_HOST
 LOG_DIR="$PROJECT_ROOT/.dev-logs"
 mkdir -p "$LOG_DIR"
 
+REQUIRED_BINS=(
+    "$PROJECT_ROOT/node_modules/.bin/tsc"
+    "$PROJECT_ROOT/apps/free/cli/node_modules/.bin/shx"
+    "$PROJECT_ROOT/apps/free/app/node_modules/.bin/expo"
+    "$PROJECT_ROOT/apps/free/server/node_modules/.bin/tsx"
+)
+
 # ============================================================================
 # 辅助函数
 # ============================================================================
@@ -63,6 +70,36 @@ log_section() {
     echo -e "${CYAN}  $1${NC}"
     echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
+}
+
+dependencies_installed() {
+    for bin in "${REQUIRED_BINS[@]}"; do
+        if [ ! -x "$bin" ]; then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+ensure_dependencies() {
+    if dependencies_installed; then
+        log_info "依赖已就绪"
+        return 0
+    fi
+
+    log_section "安装工作区依赖"
+    log_warn "检测到当前 worktree 缺少 node_modules，正在执行 pnpm install..."
+
+    cd "$PROJECT_ROOT"
+    pnpm install 2>&1 | tee "$LOG_DIR/pnpm-install.log"
+
+    if ! dependencies_installed; then
+        log_error "依赖安装后仍缺少必要工具，请检查 $LOG_DIR/pnpm-install.log"
+        exit 1
+    fi
+
+    log_success "依赖安装完成"
 }
 
 # ============================================================================
@@ -420,6 +457,8 @@ main() {
     done
 
     log_section "Free 开发环境"
+
+    ensure_dependencies
 
     # 清理
     if [ "$no_clean" = false ]; then

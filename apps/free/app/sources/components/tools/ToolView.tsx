@@ -7,8 +7,8 @@ import { CodeView } from '../CodeView';
 import { PermissionFooter } from './PermissionFooter';
 import { ToolError } from './ToolError';
 import { ToolSectionView } from './ToolSectionView';
+import { getToolSummary, getToolTitle } from './toolPresentation';
 import { getToolViewComponent } from './views/_all';
-import { formatMCPTitle } from './views/MCPToolView';
 import { knownTools } from '@/components/tools/knownTools';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { Metadata } from '@/sync/storageTypes';
@@ -34,12 +34,19 @@ export const ToolView = React.memo<ToolViewProps>(props => {
 
   // Create default onPress handler for navigation
   const handlePress = React.useCallback(() => {
+    logger.info('tool_card_open', {
+      toolName: tool.name,
+      state: tool.state,
+      sessionId,
+      messageId,
+      hasPermission: !!tool.permission,
+    });
     if (onPress) {
       onPress();
     } else if (sessionId && messageId) {
       router.push(`/session/${sessionId}/message/${messageId}`);
     }
-  }, [onPress, sessionId, messageId, router]);
+  }, [onPress, sessionId, messageId, router, tool.name, tool.permission, tool.state]);
 
   // Enable pressable if either onPress is provided or we have navigation params
   const isPressable = !!(onPress || (sessionId && messageId));
@@ -70,29 +77,19 @@ export const ToolView = React.memo<ToolViewProps>(props => {
     }
   }
 
-  // Handle optional title and function type
-  let toolTitle = tool.name;
+  let toolTitle = getToolTitle(tool, props.metadata);
 
   // Special handling for MCP tools
   if (tool.name.startsWith('mcp__')) {
-    toolTitle = formatMCPTitle(tool.name);
     icon = (
-      <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.textSecondary} />
+      <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.tool.subtitle} />
     );
     minimal = true;
-  } else if (knownTool?.title) {
-    if (typeof knownTool.title === 'function') {
-      toolTitle = knownTool.title({ tool, metadata: props.metadata });
-    } else {
-      toolTitle = knownTool.title;
-    }
   }
 
-  if (knownTool && typeof knownTool.extractSubtitle === 'function') {
-    const subtitle = knownTool.extractSubtitle({ tool, metadata: props.metadata });
-    if (typeof subtitle === 'string' && subtitle) {
-      description = subtitle;
-    }
+  const summary = getToolSummary(tool, props.metadata);
+  if (summary) {
+    description = summary;
   }
   if (knownTool && knownTool.minimal !== undefined) {
     if (typeof knownTool.minimal === 'function') {
@@ -111,14 +108,14 @@ export const ToolView = React.memo<ToolViewProps>(props => {
   ) {
     const parsedCmd = tool.input.parsed_cmd[0];
     if (parsedCmd.type === 'read') {
-      icon = <Octicons name="eye" size={18} color={theme.colors.text} />;
+      icon = <Octicons name="eye" size={18} color={theme.colors.tool.title} />;
     } else if (parsedCmd.type === 'write') {
-      icon = <Octicons name="file-diff" size={18} color={theme.colors.text} />;
+      icon = <Octicons name="file-diff" size={18} color={theme.colors.tool.title} />;
     } else {
-      icon = <Octicons name="terminal" size={18} color={theme.colors.text} />;
+      icon = <Octicons name="terminal" size={18} color={theme.colors.tool.title} />;
     }
   } else if (knownTool && typeof knownTool.icon === 'function') {
-    icon = knownTool.icon(18, theme.colors.text);
+    icon = knownTool.icon(18, theme.colors.tool.title);
   }
 
   if (knownTool && typeof knownTool.noStatus === 'boolean') {
@@ -174,7 +171,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
           statusIcon = (
             <ActivityIndicator
               size="small"
-              color={theme.colors.text}
+              color={theme.colors.tool.running}
               style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
             />
           );
@@ -187,7 +184,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
         break;
       case 'error':
         statusIcon = (
-          <Ionicons name="alert-circle-outline" size={20} color={theme.colors.warning} />
+          <Ionicons name="alert-circle-outline" size={20} color={theme.colors.tool.error} />
         );
         break;
     }
@@ -308,18 +305,15 @@ export const ToolView = React.memo<ToolViewProps>(props => {
 
       {/* Permission footer - only show when pending (collapse after approval/denial) */}
       {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}
-      {tool.permission &&
-        tool.permission.status === 'pending' &&
-        sessionId &&
-        tool.name !== 'AskUserQuestion' && (
-          <PermissionFooter
-            permission={tool.permission}
-            sessionId={sessionId}
-            toolName={tool.name}
-            toolInput={tool.input}
-            metadata={props.metadata}
-          />
-        )}
+      {tool.permission && sessionId && tool.name !== 'AskUserQuestion' && (
+        <PermissionFooter
+          permission={tool.permission}
+          sessionId={sessionId}
+          toolName={tool.name}
+          toolInput={tool.input}
+          metadata={props.metadata}
+        />
+      )}
     </View>
   );
 });
@@ -359,17 +353,19 @@ function ElapsedView(props: { from: number }) {
 
 const styles = StyleSheet.create(theme => ({
   container: {
-    backgroundColor: theme.colors.surfaceHigh,
-    borderRadius: 8,
+    backgroundColor: theme.colors.tool.cardBackground,
+    borderRadius: theme.borderRadius.lg,
     marginVertical: 4,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.tool.cardBorder,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 12,
-    backgroundColor: theme.colors.surfaceHighest,
+    backgroundColor: theme.colors.tool.headerBackground,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -382,6 +378,7 @@ const styles = StyleSheet.create(theme => ({
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    opacity: 0.92,
   },
   titleContainer: {
     flex: 1,
@@ -391,27 +388,30 @@ const styles = StyleSheet.create(theme => ({
   },
   elapsedText: {
     fontSize: 13,
-    color: theme.colors.textSecondary,
+    color: theme.colors.tool.muted,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
   },
   toolName: {
     fontSize: 14,
-    fontWeight: '500',
-    color: theme.colors.text,
+    fontWeight: '600',
+    color: theme.colors.tool.title,
   },
   status: {
     fontWeight: '400',
-    opacity: 0.3,
-    fontSize: 15,
+    opacity: 0.6,
+    fontSize: 14,
+    color: theme.colors.tool.muted,
   },
   toolDescription: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    color: theme.colors.tool.subtitle,
+    marginTop: 3,
   },
   content: {
     paddingHorizontal: 12,
     paddingTop: 8,
+    paddingBottom: 4,
     overflow: 'visible',
   },
 }));

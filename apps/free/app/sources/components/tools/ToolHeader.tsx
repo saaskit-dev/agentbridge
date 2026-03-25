@@ -1,51 +1,32 @@
-import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { knownTools } from '@/components/tools/knownTools';
+import { getToolHeaderIcon, getToolSubtitle, getToolTitle } from '@/components/tools/toolPresentation';
+import { Metadata } from '@/sync/storageTypes';
 import { ToolCall } from '@/sync/typesMessage';
 
 interface ToolHeaderProps {
   tool: ToolCall;
+  metadata: Metadata | null;
 }
 
-export function ToolHeader({ tool }: ToolHeaderProps) {
+export function ToolHeader({ tool, metadata }: ToolHeaderProps) {
   const { theme } = useUnistyles();
   const knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
   // Extract status first for Bash tool to potentially use as title
   let status: string | null = null;
   if (knownTool && typeof knownTool.extractStatus === 'function') {
-    const extractedStatus = knownTool.extractStatus({ tool, metadata: null });
+    const extractedStatus = knownTool.extractStatus({ tool, metadata });
     if (typeof extractedStatus === 'string' && extractedStatus) {
       status = extractedStatus;
     }
   }
 
-  // Handle optional title and function type
-  let toolTitle = tool.name;
-  if (knownTool?.title) {
-    if (typeof knownTool.title === 'function') {
-      toolTitle = knownTool.title({ tool, metadata: null });
-    } else {
-      toolTitle = knownTool.title;
-    }
-  }
-
-  const icon = knownTool?.icon ? (
-    knownTool.icon(18, theme.colors.header.tint)
-  ) : (
-    <Ionicons name="construct-outline" size={18} color={theme.colors.header.tint} />
-  );
-
-  // Extract subtitle using the same logic as ToolView
-  let subtitle = null;
-  if (knownTool && typeof knownTool.extractSubtitle === 'function') {
-    const extractedSubtitle = knownTool.extractSubtitle({ tool, metadata: null });
-    if (typeof extractedSubtitle === 'string' && extractedSubtitle) {
-      subtitle = extractedSubtitle;
-    }
-  }
+  const toolTitle = getToolTitle(tool, metadata);
+  const icon = getToolHeaderIcon(tool, metadata, 18, theme.colors.header.tint);
+  const subtitle = getToolSubtitle(tool, metadata);
 
   return (
     <View style={styles.container}>

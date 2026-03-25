@@ -65,7 +65,7 @@ export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
   return null;
 });
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create(theme => ({
   container: {
     gap: 4,
   },
@@ -74,17 +74,17 @@ const styles = StyleSheet.create({
   },
   todoText: {
     fontSize: 14,
-    color: '#000',
+    color: theme.colors.tool.title,
     flex: 1,
   },
   completedText: {
-    color: '#34C759',
+    color: theme.colors.tool.success,
     textDecorationLine: 'line-through',
   },
   inProgressText: {
-    color: '#007AFF',
+    color: theme.colors.tool.running,
   },
   pendingText: {
-    color: '#666',
+    color: theme.colors.tool.subtitle,
   },
-});
+}));
