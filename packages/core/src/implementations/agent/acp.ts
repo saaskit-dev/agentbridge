@@ -1300,6 +1300,15 @@ export class AcpBackend implements IAgentBackend {
   private idleResolver: (() => void) | null = null;
   private waitingForResponse = false;
 
+  /**
+   * True when emitIdleStatus ran while idleResolver was not yet registered.
+   * DiscoveredAcpBackendBase calls sendPrompt (await prompt) then waitForResponseComplete;
+   * the 500ms idle timer can fire after the last agent_message_chunk before prompt()
+   * returns, so idle is emitted with no waiter — waitForResponseComplete must not
+   * wait 10 minutes for a second idle that will never arrive.
+   */
+  private idleEmittedBeforeWaitForResponseComplete = false;
+
   // Dynamic response complete timeout (activity-based reset)
   private responseCompleteTimeout: ReturnType<typeof setTimeout> | null = null;
   private responseCompleteRejecter: ((error: Error) => void) | null = null;
@@ -1328,6 +1337,7 @@ export class AcpBackend implements IAgentBackend {
 
     this.emit({ type: 'status', status: 'running' });
     this.waitingForResponse = true;
+    this.idleEmittedBeforeWaitForResponseComplete = false;
 
     try {
       logger.info(
@@ -1373,6 +1383,7 @@ export class AcpBackend implements IAgentBackend {
         error: safeStringify(error),
       });
       this.waitingForResponse = false;
+      this.idleEmittedBeforeWaitForResponseComplete = false;
 
       // Don't emit status:error here — the caller (messageLoop) already
       // catches the throw and calls publishVisibleError().  Emitting AND
@@ -1396,6 +1407,7 @@ export class AcpBackend implements IAgentBackend {
     this.responseCompleteRejecter = null;
     this.idleResolver = null;
     this.waitingForResponse = false;
+    this.idleEmittedBeforeWaitForResponseComplete = false;
     if (rejecter) {
       logger.warn('[AcpBackend] rejecting pending response', {
         agent: this.transport.agentName,
@@ -1497,6 +1509,15 @@ export class AcpBackend implements IAgentBackend {
       return; // Already completed or no prompt sent
     }
 
+    // Idle already fired (500ms after last chunk) while await prompt() was still pending;
+    // idleResolver was null so emitIdleStatus could not resolve the waiter.
+    if (this.idleEmittedBeforeWaitForResponseComplete) {
+      this.idleEmittedBeforeWaitForResponseComplete = false;
+      this.waitingForResponse = false;
+      logger.info('[AcpBackend] waitForResponseComplete: idle already emitted before waiter');
+      return;
+    }
+
     return new Promise((resolve, reject) => {
       // Store rejecter for timeout callback
       this.responseCompleteRejecter = reject;
@@ -1533,6 +1554,8 @@ export class AcpBackend implements IAgentBackend {
     if (this.idleResolver) {
       logger.info('[AcpBackend] Resolving idle waiter');
       this.idleResolver();
+    } else if (this.waitingForResponse) {
+      this.idleEmittedBeforeWaitForResponseComplete = true;
     }
   }
 

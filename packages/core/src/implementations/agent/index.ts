@@ -27,6 +27,8 @@ export {
   DEFAULT_TOOL_CALL_TIMEOUT_MS,
   DEFAULT_RESPONSE_TIMEOUT_MS,
   TOOL_CALL_ACTIVE_TIMEOUT_MS,
+  HANDLED_SESSION_UPDATE_TYPES,
+  shouldLogUnhandledSessionUpdate,
   formatDuration,
   formatDurationMinutes,
   parseArgsFromContent,

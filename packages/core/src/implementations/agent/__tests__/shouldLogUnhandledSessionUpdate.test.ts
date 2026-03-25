@@ -3,9 +3,9 @@ import {
   HANDLED_SESSION_UPDATE_TYPES,
   shouldLogUnhandledSessionUpdate,
   type SessionUpdate,
-} from './sessionUpdateHandlers';
+} from '../sessionUpdateHandlers.js';
 
-describe('ACP session update coverage', () => {
+describe('shouldLogUnhandledSessionUpdate', () => {
   it('treats capability-related ACP updates as handled', () => {
     expect(HANDLED_SESSION_UPDATE_TYPES).toEqual(
       expect.arrayContaining([
