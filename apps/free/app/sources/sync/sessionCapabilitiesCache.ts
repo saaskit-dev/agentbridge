@@ -134,7 +134,13 @@ async function saveRemoteEnvelope(
     remoteVersion: conflict?.version,
   });
 
-  const remote = await fetchRemoteEnvelope(machineId, agentType, credentials);
+  // Use the value returned inline in the conflict error — avoids an extra GET round-trip
+  // and reduces the race window before our retry write.
+  const remoteFromConflict = conflict?.value ? parseEnvelope(conflict.value) : null;
+  const remote: CachedCapabilitiesEnvelope | null = remoteFromConflict
+    ? { ...remoteFromConflict, kvVersion: conflict.version }
+    : await fetchRemoteEnvelope(machineId, agentType, credentials);
+
   if (remote && remote.updatedAt >= envelope.updatedAt) {
     return remote;
   }
@@ -154,9 +160,14 @@ async function saveRemoteEnvelope(
   ]);
 
   if (!retry.success) {
-    throw new Error(
-      `Failed to persist capabilities cache after retry: remote version ${retry.errors[0]?.version ?? 'unknown'}`
-    );
+    // Return the latest remote version we know about so the caller can update
+    // local storage, preventing repeated conflicts on subsequent calls.
+    const latestRemoteVersion = retry.errors[0]?.version;
+    const err = new Error(
+      `Failed to persist capabilities cache after retry: remote version ${latestRemoteVersion ?? 'unknown'}`
+    ) as Error & { latestRemoteVersion?: number };
+    err.latestRemoteVersion = latestRemoteVersion;
+    throw err;
   }
 
   return {
@@ -239,6 +250,15 @@ export async function persistCachedCapabilities(params: {
           machineId,
           agentType,
         });
+        // Update local kvVersion to the latest remote version we observed, so
+        // the next call doesn't start from a stale version and fight again.
+        const latestRemoteVersion = (error as { latestRemoteVersion?: number }).latestRemoteVersion;
+        if (typeof latestRemoteVersion === 'number') {
+          const stale = loadLocalEnvelope(machineId, agentType);
+          if (stale) {
+            saveLocalEnvelope(machineId, agentType, { ...stale, kvVersion: latestRemoteVersion });
+          }
+        }
       }
     })
     .finally(() => {
