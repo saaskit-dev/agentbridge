@@ -9,6 +9,9 @@ import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+
+const logger = new Logger('app/dev/purchases');
 
 export default function PurchasesDevScreen() {
   // Get purchases directly from storage
@@ -41,7 +44,7 @@ export default function PurchasesDevScreen() {
         Modal.alert('Purchase Failed', result.error || 'Unknown error');
       }
     } catch (e) {
-      console.error('Error purchasing product', e);
+      logger.error('Error purchasing product', { error: String(e) });
     } finally {
       setIsPurchasing(false);
     }
@@ -55,27 +58,11 @@ export default function PurchasesDevScreen() {
         setOfferings(result.offerings);
 
         // Log full offerings data
-        console.log('=== RevenueCat Offerings ===');
-        console.log('Current offering:', result.offerings.current?.identifier || 'None');
-
-        if (result.offerings.current) {
-          console.log('\nCurrent Offering Packages:');
-          Object.entries(result.offerings.current.availablePackages || {}).forEach(
-            ([key, pkg]: [string, any]) => {
-              console.log(`  - ${key}: ${pkg.product.identifier} (${pkg.product.priceString})`);
-            }
-          );
-        }
-
-        console.log('\nAll Offerings:');
-        Object.entries(result.offerings.all || {}).forEach(([id, offering]: [string, any]) => {
-          console.log(
-            `  - ${id} (${Object.keys(offering.availablePackages || {}).length} packages)`
-          );
+        logger.debug('RevenueCat offerings fetched', {
+          currentOffering: result.offerings.current?.identifier || 'None',
+          allOfferings: Object.keys(result.offerings.all || {}),
+          offerings: result.offerings,
         });
-
-        console.log('\nFull JSON:', JSON.stringify(result.offerings, null, 2));
-        console.log('===========================');
       } else {
         Modal.alert('Error', result.error || 'Failed to fetch offerings');
       }

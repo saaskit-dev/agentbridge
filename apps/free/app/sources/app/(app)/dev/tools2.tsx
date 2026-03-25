@@ -4,6 +4,9 @@ import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ToolView } from '@/components/tools/ToolView';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+
+const logger = new Logger('app/dev/tools2');
 
 export default function Tools2Screen() {
   const [selectedExample, setSelectedExample] = useState<string>('all');
@@ -379,7 +382,7 @@ export function formatTime(date: Date): string {
         <ToolView
           tool={example}
           metadata={null}
-          onPress={() => console.log(`Pressed tool: ${key}`)}
+          onPress={() => logger.debug('Pressed tool', { key })}
         />
       </View>
     );

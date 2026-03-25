@@ -2,6 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, Switch, Dimensions } from 'react-native';
 import { StyleSheet, UnistylesRuntime, useUnistyles } from 'react-native-unistyles';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+
+const logger = new Logger('app/dev/unistyles-demo');
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -176,7 +179,7 @@ export default function UnistylesDemo() {
 
   const toggleColorScheme = () => {
     // Note: ColorScheme is typically system-controlled in React Native
-    console.log('Color scheme toggle requested - this would typically be system controlled');
+    logger.debug('Color scheme toggle requested - this would typically be system controlled');
   };
 
   return (
