@@ -3161,4 +3161,51 @@ describe('reducer', () => {
       }
     });
   });
+
+  describe('daemon-log event', () => {
+    it('creates an event message for daemon-log', () => {
+      const state = createReducer();
+      const messages: NormalizedMessage[] = [
+        {
+          id: 'daemon-log-1',
+          createdAt: 1000,
+          role: 'event',
+          content: {
+            type: 'daemon-log',
+            level: 'error',
+            component: 'daemon/session',
+            message: 'Backend crashed',
+            error: 'SIGTERM',
+          },
+          isSidechain: false,
+        },
+      ];
+
+      const result = reducer(state, messages);
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].kind).toBe('agent-event');
+    });
+
+    it('deduplicates daemon-log events', () => {
+      const state = createReducer();
+      const msg: NormalizedMessage = {
+        id: 'daemon-log-dup',
+        createdAt: 1000,
+        role: 'event',
+        content: {
+          type: 'daemon-log',
+          level: 'warn',
+          component: 'daemon/ipc',
+          message: 'Slow reconnect',
+        },
+        isSidechain: false,
+      };
+
+      const result1 = reducer(state, [msg]);
+      expect(result1.messages).toHaveLength(1);
+
+      const result2 = reducer(state, [msg]);
+      expect(result2.messages).toHaveLength(0);
+    });
+  });
 });

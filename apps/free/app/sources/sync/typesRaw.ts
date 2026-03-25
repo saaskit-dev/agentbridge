@@ -51,6 +51,13 @@ const agentEventSchema = z.discriminatedUnion('type', [
     retryable: z.boolean(),
   }),
   z.object({
+    type: z.literal('daemon-log'),
+    level: z.enum(['error', 'warn']),
+    component: z.string(),
+    message: z.string(),
+    error: z.string().optional(),
+  }),
+  z.object({
     type: z.literal('permission_request'),
     requestId: z.string(),
     toolName: z.string(),

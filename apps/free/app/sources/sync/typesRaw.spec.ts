@@ -1639,7 +1639,6 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
 
       const normalized = normalizeRawMessage(
         'msg-2',
-        null,
         Date.now(),
         messageWithHyphenatedUnknownFields
       );
@@ -2008,6 +2007,63 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
           },
         },
       } as any);
+
+      expect(normalized).toBeNull();
+    });
+  });
+
+  describe('daemon-log event', () => {
+    it('accepts error level daemon-log', () => {
+      const normalized = normalizeRawMessage('dl1', 1000, {
+        role: 'event',
+        content: {
+          type: 'daemon-log',
+          level: 'error',
+          component: 'daemon/session',
+          message: 'Backend crashed',
+          error: 'SIGTERM',
+        },
+      });
+
+      expect(normalized).not.toBeNull();
+      expect(normalized!.role).toBe('event');
+      expect(normalized!.content).toMatchObject({
+        type: 'daemon-log',
+        level: 'error',
+        component: 'daemon/session',
+        message: 'Backend crashed',
+        error: 'SIGTERM',
+      });
+    });
+
+    it('accepts warn level daemon-log', () => {
+      const normalized = normalizeRawMessage('dl2', 1000, {
+        role: 'event',
+        content: {
+          type: 'daemon-log',
+          level: 'warn',
+          component: 'daemon/ipc',
+          message: 'Slow reconnect',
+        },
+      });
+
+      expect(normalized).not.toBeNull();
+      expect(normalized!.content).toMatchObject({
+        type: 'daemon-log',
+        level: 'warn',
+      });
+    });
+
+    it('rejects invalid level', () => {
+      const normalized = normalizeRawMessage('dl3', 1000, {
+        role: 'event',
+        content: {
+          type: 'daemon-log',
+          level: 'debug',
+          component: 'test',
+          message: 'should fail',
+        },
+      });
 
       expect(normalized).toBeNull();
     });

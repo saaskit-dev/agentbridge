@@ -354,9 +354,31 @@ function AgentEventBlock(props: {
       </View>
     );
   }
+  if (props.event.type === 'daemon-log') {
+    return <DaemonLogBlock event={props.event} />;
+  }
   return (
     <View style={styles.agentEventContainer}>
       <Text style={styles.agentEventText}>{t('message.unknownEvent')}</Text>
+    </View>
+  );
+}
+
+function DaemonLogBlock(props: {
+  event: { type: 'daemon-log'; level: 'error' | 'warn'; component: string; message: string; error?: string };
+}) {
+  const { theme } = useUnistyles();
+  const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
+  if (!devModeEnabled) return null;
+
+  const { level, component, message, error } = props.event;
+  const color = level === 'error' ? theme.colors.warningCritical : theme.colors.warning;
+  return (
+    <View style={[styles.agentEventContainer, { opacity: 0.8 }]}>
+      <Text style={[styles.agentEventText, { color, fontSize: 11 }]}>
+        {component}: {message}
+        {error ? `\n${error}` : ''}
+      </Text>
     </View>
   );
 }

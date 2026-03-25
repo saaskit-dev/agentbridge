@@ -39,7 +39,8 @@ import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { OfflineReconnectionHandle } from '@/utils/serverConnectionErrors';
 import { startFreeServer } from '@/claude/utils/startFreeServer';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, getCollector, isCollectorReady } from '@saaskit-dev/agentbridge/telemetry';
+import type { LogEntry, LogSink } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify, toError } from '@saaskit-dev/agentbridge';
 import { getProcessTraceContext } from '@/telemetry';
 import { hashObject } from '@/utils/deterministicJson';
@@ -149,6 +150,8 @@ export abstract class AgentSession<TMode> {
   /** Messages arriving before initialize() completes are buffered here. */
   private readonly PRE_INIT_QUEUE_LIMIT = 32;
   private preInitQueue: Array<{ text: string }> = [];
+  /** Forwards daemon error-level logs to the App as daemon-log events. */
+  private devErrorSink: DaemonLogSink | null = null;
 
   constructor(protected readonly opts: AgentSessionOpts) {
     this.userId = decodeUserId(opts.credential.token);
@@ -652,6 +655,16 @@ export abstract class AgentSession<TMode> {
   private _isForceRestarting = false;
 
   async run(): Promise<void> {
+    // Attach a sink that forwards error-level log entries to the App as
+    // daemon-log events. The App shows them only when developer mode is on.
+    if (isCollectorReady() && this.session) {
+      this.devErrorSink = new DaemonLogSink(
+        this.session.sessionId,
+        (entry) => this.forwardDaemonLog(entry),
+      );
+      getCollector().addSink(this.devErrorSink);
+    }
+
     try {
       while (true) {
         try {
@@ -889,6 +902,11 @@ export abstract class AgentSession<TMode> {
       reason,
     });
 
+    if (this.devErrorSink && isCollectorReady()) {
+      getCollector().removeSink(this.devErrorSink);
+      this.devErrorSink = null;
+    }
+
     if (this.keepAliveInterval) {
       clearInterval(this.keepAliveInterval);
       this.keepAliveInterval = null;
@@ -1115,11 +1133,19 @@ export abstract class AgentSession<TMode> {
 
   private publishVisibleError(error: unknown, context: string, retryable = false): void {
     const message = safeStringify(error);
-    logger.error(`[AgentSession] ${context}`, toError(error), {
-      userId: this.userId,
-      sessionId: this.session?.sessionId,
-      traceId: getProcessTraceContext()?.traceId,
-    });
+    // Suppress this session's DaemonLogSink while logging — this error is
+    // already sent to the App as a user-facing error event.
+    const sid = this.session?.sessionId;
+    if (sid) DaemonLogSink.suppressedSessionIds.add(sid);
+    try {
+      logger.error(`[AgentSession] ${context}`, toError(error), {
+        userId: this.userId,
+        sessionId: this.session?.sessionId,
+        traceId: getProcessTraceContext()?.traceId,
+      });
+    } finally {
+      if (sid) DaemonLogSink.suppressedSessionIds.delete(sid);
+    }
 
     if (!this.session) {
       return;
@@ -1141,6 +1167,30 @@ export abstract class AgentSession<TMode> {
       },
     };
     this.maybeStreamOutputMessage(msg);
+    this.session.sendNormalizedMessage(msg);
+  }
+
+  /**
+   * Forward a daemon-level log entry to the App as a daemon-log event.
+   * The App only renders these when the developer mode toggle is on.
+   */
+  private forwardDaemonLog(entry: LogEntry): void {
+    if (!this.session) return;
+    const msg: NormalizedMessage = {
+      id: randomUUID(),
+      createdAt: Date.now(),
+      role: 'event',
+      isSidechain: false,
+      content: {
+        type: 'daemon-log',
+        level: 'error',
+        component: entry.component,
+        message: entry.message,
+        error: entry.error?.message,
+      },
+    };
+    // Send directly — daemon-log is filtered in DAEMON_ONLY_EVENTS-like fashion
+    // but we DO want it to reach the server (for App display).
     this.session.sendNormalizedMessage(msg);
   }
 
@@ -1256,4 +1306,45 @@ export abstract class AgentSession<TMode> {
     };
     return { metadata, state };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Daemon log forwarding sink
+// ---------------------------------------------------------------------------
+
+/**
+ * LogSink that forwards error-level entries to the App as daemon-log events.
+ * Registered per-session in all environments. The App decides whether to
+ * render them based on the developer mode toggle.
+ *
+ * Only entries whose sessionId matches this session are forwarded.
+ * Entries with no sessionId (daemon-global errors) are skipped to avoid
+ * broadcasting the same error to every active session.
+ */
+class DaemonLogSink implements LogSink {
+  readonly name = 'daemon-log-forward';
+  private readonly sessionId: string;
+  private readonly forward: (entry: LogEntry) => void;
+
+  /**
+   * Session IDs currently inside publishVisibleError — their logger.error()
+   * calls are suppressed to avoid duplicate error + daemon-log events.
+   * Per-session set avoids the concurrency issue of a single boolean flag.
+   */
+  static readonly suppressedSessionIds = new Set<string>();
+
+  constructor(sessionId: string, forward: (entry: LogEntry) => void) {
+    this.sessionId = sessionId;
+    this.forward = forward;
+  }
+
+  write(entry: LogEntry): void {
+    if (entry.level !== 'error') return;
+    if (entry.sessionId !== this.sessionId) return;
+    if (DaemonLogSink.suppressedSessionIds.has(this.sessionId)) return;
+    this.forward(entry);
+  }
+
+  async flush(): Promise<void> {}
+  async close(): Promise<void> {}
 }
