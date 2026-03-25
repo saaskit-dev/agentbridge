@@ -1,9 +1,8 @@
 name: Typecheck (core + CLI)
 
+# Manual only — not on push/PR until the team turns it on.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   typecheck:
