@@ -107,6 +107,7 @@ export class Logger {
       if (resolvedCtx.sessionId) entry.sessionId = resolvedCtx.sessionId;
       if (resolvedCtx.machineId) entry.machineId = resolvedCtx.machineId;
       if (resolvedCtx.userId) entry.userId = resolvedCtx.userId;
+      if (resolvedCtx.acpSessionId) entry.acpSessionId = resolvedCtx.acpSessionId;
     }
     const resolvedData = Logger.toData(data);
     if (resolvedData) entry.data = resolvedData;

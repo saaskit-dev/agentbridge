@@ -54,6 +54,7 @@ export class ConsoleSink implements LogSink {
     let extra = '';
     if (entry.traceId) extra += ` trace=${entry.traceId.slice(0, 8)}`;
     if (entry.sessionId) extra += ` session=${entry.sessionId.slice(0, 8)}`;
+    if (entry.acpSessionId) extra += ` acpSession=${entry.acpSessionId.slice(0, 8)}`;
     if (entry.durationMs != null) extra += ` ${entry.durationMs}ms`;
     if (entry.data) {
       for (const [k, v] of Object.entries(entry.data)) {

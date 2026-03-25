@@ -1,6 +1,7 @@
 import type { SessionConfigOption } from '@agentclientprotocol/sdk';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify } from '@saaskit-dev/agentbridge';
+import { setAcpSessionId } from '@/telemetry';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
@@ -45,7 +46,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   protected desiredConfigSelections = new Map<string, string>();
   protected permissionHandler: AcpPermissionHandler | null = null;
   protected currentPermissionMode: PermissionMode = 'accept-edits';
-  protected apiSessionId: string | null = null;
   private resumeSessionId: string | null = null;
   private startCwd: string = '';
   private startMcpServerUrl: string = '';
@@ -75,7 +75,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   }
 
   async start(opts: AgentStartOpts): Promise<void> {
-    this.apiSessionId = opts.session.sessionId;
     this.currentPermissionMode = opts.permissionMode ?? 'accept-edits';
     this.permissionHandler = new AcpPermissionHandler(opts.session, this.currentPermissionMode);
 
@@ -106,11 +105,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
 
     backend.onMessage((msg: AgentMessage) => {
       if (process.env.APP_ENV === 'development') {
-        this.logger.debug(`[${this.agentType}] raw message`, {
-          apiSessionId: this.apiSessionId,
-          acpSessionId: this.acpSessionId,
-          raw: msg,
-        });
+        this.logger.debug(`[${this.agentType}] raw message`, { raw: msg });
       }
       const normalized = this.mapRawMessage(msg);
       if (normalized) {
@@ -122,8 +117,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       // can detect the crash and restart the backend.
       if (msg.type === 'status' && msg.status === 'stopped') {
         this.logger.warn(`[${this.agentType}] backend process stopped, ending output stream`, {
-          apiSessionId: this.apiSessionId,
-          acpSessionId: this.acpSessionId,
           detail: msg.detail,
         });
         this.exitInfo = {
@@ -140,8 +133,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
 
     this.capabilityBackend.onSessionStarted?.(response => {
       this.logger.info(`[${this.agentType}] ACP session started`, {
-        apiSessionId: this.apiSessionId,
-        sessionId: response.sessionId,
         requestedInitialModel: this.initialModel,
         requestedInitialMode: this.initialMode,
         discoveredModelCurrent: response.models?.currentModelId ?? null,
@@ -156,8 +147,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.capabilityBackend.onSessionUpdate?.(update => {
       const protocolUpdate = update as typeof update & ProtocolCurrentModeUpdate;
       this.logger.info(`[${this.agentType}] ACP session update`, {
-        apiSessionId: this.apiSessionId,
-        acpSessionId: this.acpSessionId,
         sessionUpdate: update.sessionUpdate ?? null,
         currentModeId:
           update.sessionUpdate === 'current_mode_update' ? protocolUpdate.modeId : undefined,
@@ -174,7 +163,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     });
 
     this.logger.info(`[${this.agentType}] backend started`, {
-      apiSessionId: this.apiSessionId,
       cwd: opts.cwd,
       model: opts.model ?? null,
       mode: opts.mode ?? null,
@@ -196,8 +184,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.isFirstMessage = false;
 
     this.logger.info(`[${this.agentType}] sending message with permission context`, {
-      apiSessionId: this.apiSessionId,
-      acpSessionId: this.acpSessionId,
       permissionMode: this.currentPermissionMode,
       permissionHandlerAttached: this.permissionHandler != null,
       isFirstAcpPrompt: this.acpSessionId == null,
@@ -206,9 +192,8 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     if (!this.acpSessionId) {
       const { sessionId, resumed } = await this.resolveAcpSession();
       this.acpSessionId = sessionId;
+      setAcpSessionId(sessionId);
       this.logger.info(`[${this.agentType}] session ${resumed ? 'resumed' : 'created'}`, {
-        apiSessionId: this.apiSessionId,
-        acpSessionId: sessionId,
         resumed,
         requestedInitialModel: this.initialModel,
         requestedInitialMode: this.initialMode,
@@ -224,24 +209,25 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     }
 
     this.logger.debug(`[${this.agentType}] sending prompt`, {
-      apiSessionId: this.apiSessionId,
-      acpSessionId: this.acpSessionId,
       preview: text.slice(0, 100),
     });
     try {
       await this.acpBackend.sendPrompt(this.acpSessionId, prompt);
       await this.acpBackend.waitForResponseComplete?.();
     } catch (err) {
-      this.exitInfo = {
-        reason: `sendPrompt/waitForResponseComplete failed: ${safeStringify(err)}`,
-        error: err instanceof Error ? err : undefined,
-      };
+      // Response complete timeout means the agent went silent — a cancel was
+      // already sent, the child process may still be alive.  Don't set exitInfo
+      // so AgentSession doesn't treat it as a crash.
+      const isTimeout = err instanceof Error && err.message.includes('timed out');
+      if (!isTimeout) {
+        this.exitInfo = {
+          reason: `sendPrompt/waitForResponseComplete failed: ${safeStringify(err)}`,
+          error: err instanceof Error ? err : undefined,
+        };
+      }
       throw err;
     }
-    this.logger.debug(`[${this.agentType}] response complete`, {
-      apiSessionId: this.apiSessionId,
-      acpSessionId: this.acpSessionId,
-    });
+    this.logger.debug(`[${this.agentType}] response complete`);
   }
 
   /**
@@ -261,7 +247,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     // attempt to load the previous session (replacing the fresh one).
     if (this.resumeSessionId && this.capabilityBackend?.supportsLoadSession?.()) {
       this.logger.info(`[${this.agentType}] attempting session resume via loadSession`, {
-        apiSessionId: this.apiSessionId,
         resumeSessionId: this.resumeSessionId,
         freshSessionId,
       });
@@ -275,7 +260,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         return { sessionId, resumed: true };
       } catch (err) {
         this.logger.warn(`[${this.agentType}] loadSession failed, keeping fresh session`, {
-          apiSessionId: this.apiSessionId,
+
           resumeSessionId: this.resumeSessionId,
           freshSessionId,
           error: safeStringify(err),
@@ -318,8 +303,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       this.exitInfo = { reason: 'stopped gracefully' };
     }
     this.logger.info(`[${this.agentType}] backend stopped`, {
-      apiSessionId: this.apiSessionId,
-      acpSessionId: this.acpSessionId,
       reason: this.exitInfo.reason,
     });
     if (!this.capabilities.done) {
@@ -359,7 +342,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     }
 
     this.logger.info(`[${this.agentType}] applying runtime model selection`, {
-      sessionId: this.acpSessionId,
       modelId,
       modelOptionId,
     });
@@ -385,7 +367,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     }
 
     this.logger.info(`[${this.agentType}] applying runtime mode selection`, {
-      sessionId: this.acpSessionId,
       modeId,
     });
     await this.applyModeSelection(this.acpSessionId, modeId);
@@ -451,7 +432,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     }
 
     this.logger.debug(`[${this.agentType}] running command`, {
-      sessionId: this.acpSessionId,
       commandId,
     });
     await this.acpBackend.sendPrompt(this.acpSessionId, commandId);
@@ -460,7 +440,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
 
   protected publishCapabilities(capabilities: SessionCapabilities): void {
     this.logger.info(`[${this.agentType}] publishing capabilities`, {
-      acpSessionId: this.acpSessionId,
       requestedInitialModel: this.initialModel,
       requestedInitialMode: this.initialMode,
       appliedModelSelection: this.appliedModelSelection,

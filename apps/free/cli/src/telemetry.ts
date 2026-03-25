@@ -52,6 +52,19 @@ export function setCurrentTurnTrace(ctx: TraceContext | undefined): void {
   currentTurnTrace = ctx;
 }
 
+/**
+ * Called by ACP backends after createSession/loadSession to inject the ACP protocol
+ * session ID into the global trace context. All subsequent logs automatically include it.
+ */
+export function setAcpSessionId(id: string | null): void {
+  if (processTraceCtx) {
+    processTraceCtx = { ...processTraceCtx, acpSessionId: id ?? undefined };
+  }
+  if (currentTurnTrace) {
+    currentTurnTrace = { ...currentTurnTrace, acpSessionId: id ?? undefined };
+  }
+}
+
 export function initCliTelemetry(): void {
   if (initialized) return;
   initialized = true;

@@ -338,7 +338,7 @@ function nodeToWebStreams(
         hooks?.onClientWrite?.(decoder.decode(chunk));
         const ok = stdin.write(chunk, err => {
           if (err) {
-            logger.debug(`[AcpBackend] Error writing to stdin:`, err);
+            logger.warn(`[AcpBackend] Error writing to stdin:`, err);
             reject(err);
           }
         });
@@ -370,7 +370,7 @@ function nodeToWebStreams(
         controller.close();
       });
       stdout.on('error', err => {
-        logger.debug(`[AcpBackend] Stdout error:`, err);
+        logger.warn(`[AcpBackend] Stdout error:`, err);
         controller.error(err);
       });
     },
@@ -441,8 +441,6 @@ export class AcpBackend implements IAgentBackend {
     logger.debug('[AcpBackend] ACP request', {
       method,
       agentName: this.config.agentName,
-      localSessionId: this.localSessionId,
-      acpSessionId: this.acpSessionId,
       childPid: this.process?.pid ?? null,
       payload: serializeForLog(payload),
       ...extra,
@@ -453,8 +451,6 @@ export class AcpBackend implements IAgentBackend {
     logger.debug('[AcpBackend] ACP response', {
       method,
       agentName: this.config.agentName,
-      localSessionId: this.localSessionId,
-      acpSessionId: this.acpSessionId,
       childPid: this.process?.pid ?? null,
       payload: serializeForLog(payload),
       ...extra,
@@ -469,8 +465,6 @@ export class AcpBackend implements IAgentBackend {
     logger.debug('[AcpBackend] ACP notification', {
       method,
       agentName: this.config.agentName,
-      localSessionId: this.localSessionId,
-      acpSessionId: this.acpSessionId,
       childPid: this.process?.pid ?? null,
       payload: serializeForLog(payload),
       ...extra,
@@ -485,8 +479,6 @@ export class AcpBackend implements IAgentBackend {
     logger.debug('[AcpBackend] ACP wire', {
       direction,
       agentName: this.config.agentName,
-      localSessionId: this.localSessionId,
-      acpSessionId: this.acpSessionId,
       childPid: this.process?.pid ?? null,
       payload,
       ...extra,
@@ -563,7 +555,7 @@ export class AcpBackend implements IAgentBackend {
     this.emit({ type: 'status', status: 'starting' });
 
     try {
-      logger.debug(`[AcpBackend] Starting session: ${sessionId}`);
+      logger.info(`[AcpBackend] Starting session: ${sessionId}`);
 
       // Spawn the ACP agent process
       const args = this.config.args || [];
@@ -620,7 +612,7 @@ export class AcpBackend implements IAgentBackend {
           hasActiveInvestigation,
         };
 
-        logger.debug(`[AcpBackend] Agent stderr: ${text.trim()}`);
+        logger.warn(`[AcpBackend] Agent stderr: ${text.trim()}`);
 
         // Let transport handler process stderr and optionally emit messages
         if (this.transport.handleStderr) {
@@ -648,7 +640,7 @@ export class AcpBackend implements IAgentBackend {
             signal: signal || 'none',
           });
         } else {
-          logger.debug('[ACP] Process exit', {
+          logger.info('[ACP] Process exit', {
             agent: this.transport.agentName,
             code,
             signal: signal || 'none',
@@ -755,7 +747,7 @@ export class AcpBackend implements IAgentBackend {
               }
             }
           } catch (error) {
-            logger.debug(`[AcpBackend] Error filtering stdout stream:`, error);
+            logger.warn(`[AcpBackend] Error filtering stdout stream:`, error);
             controller.error(error);
           } finally {
             reader.releaseLock();
@@ -967,7 +959,7 @@ export class AcpBackend implements IAgentBackend {
       };
 
       const initTimeout = this.transport.getInitTimeout();
-      logger.debug(`[AcpBackend] Initializing connection (timeout: ${initTimeout}ms)...`);
+      logger.info(`[AcpBackend] Initializing connection (timeout: ${initTimeout}ms)...`);
       this.logAcpRequest('initialize', initRequest, { timeoutMs: initTimeout });
 
       // Initialize the connection with timeout and retry
@@ -1016,7 +1008,7 @@ export class AcpBackend implements IAgentBackend {
         logger.debug(`[AcpBackend] Agent capabilities:`, this.agentCapabilities);
       }
 
-      logger.debug(`[AcpBackend] Initialize completed`);
+      logger.info(`[AcpBackend] Initialize completed`);
 
       // Create a new session with retry
       const mcpServers = this.config.mcpServers
@@ -1038,7 +1030,7 @@ export class AcpBackend implements IAgentBackend {
         mcpServers: mcpServers as unknown as NewSessionRequest['mcpServers'],
       };
 
-      logger.debug(`[AcpBackend] Creating new session...`);
+      logger.info(`[AcpBackend] Creating new session...`);
       this.logAcpRequest('new_session', newSessionRequest);
 
       const sessionResponse = await withRetry(
@@ -1079,7 +1071,7 @@ export class AcpBackend implements IAgentBackend {
       );
       this.acpSessionId = sessionResponse.sessionId;
       this.logAcpResponse('new_session', sessionResponse);
-      logger.debug(`[AcpBackend] Session created: ${this.acpSessionId}`);
+      logger.info(`[AcpBackend] Session created: ${this.acpSessionId}`);
       this.emitSessionStarted(sessionResponse);
 
       this.emitIdleStatus();
@@ -1145,7 +1137,7 @@ export class AcpBackend implements IAgentBackend {
       throw new Error('Connection not initialized');
     }
 
-    logger.debug(`[AcpBackend] Loading session: ${sessionId}`);
+    logger.info(`[AcpBackend] Loading session: ${sessionId}`);
 
     try {
       // Convert mcpServers to ACP format
@@ -1184,7 +1176,7 @@ export class AcpBackend implements IAgentBackend {
       // Store the session ID
       this.acpSessionId = sessionId;
 
-      logger.debug(`[AcpBackend] Session loaded: ${sessionId}`);
+      logger.info(`[AcpBackend] Session loaded: ${sessionId}`);
 
       return { sessionId };
     } catch (error) {
@@ -1297,7 +1289,7 @@ export class AcpBackend implements IAgentBackend {
     // Log unhandled session update types for debugging
     const updateTypeStr = sessionUpdateType as string;
     if (shouldLogUnhandledSessionUpdate(update as SessionUpdate)) {
-      logger.debug(
+      logger.warn(
         `[AcpBackend] Unhandled session update type: ${updateTypeStr}`,
         JSON.stringify(update, null, 2)
       );
@@ -1338,7 +1330,7 @@ export class AcpBackend implements IAgentBackend {
     this.waitingForResponse = true;
 
     try {
-      logger.debug(
+      logger.info(
         `[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`
       );
 
@@ -1356,10 +1348,16 @@ export class AcpBackend implements IAgentBackend {
         promptLength: prompt.length,
       });
 
-      // connection.prompt() is a JSONRPC request that waits for an ack from the
-      // child process.  If the process is hung (0% CPU, internal deadlock, etc.),
-      // the await would hang forever — there is no built-in timeout in the SDK.
-      await withTimeout(this.connection.prompt(promptRequest), 2 * 60_000, 'prompt()');
+      // connection.prompt() is a JSONRPC request that resolves when the agent
+      // finishes the full turn (returns PromptResponse with StopReason).
+      // A normal turn can easily take 2–20+ minutes with tool calls, so we
+      // do NOT apply a timeout here.  The activity-based responseCompleteTimeout
+      // (10/20 min inactivity) in waitForResponseComplete() is the safeguard —
+      // it cancels the turn if the agent goes silent, which causes prompt()
+      // to resolve with StopReason::Cancelled.
+      // If the child process dies, the process exit handler calls
+      // rejectPendingResponse() which unblocks waitForResponseComplete().
+      await this.connection.prompt(promptRequest);
 
       this.logAcpResponse(
         'prompt',
@@ -1368,12 +1366,9 @@ export class AcpBackend implements IAgentBackend {
           promptLength: prompt.length,
         }
       );
-      logger.debug('[AcpBackend] Prompt request sent to ACP connection');
-
-      // Don't emit 'idle' here - it will be emitted after all message chunks are received
-      // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
+      logger.info('[AcpBackend] Prompt turn completed');
     } catch (error) {
-      logger.error('[ACP] Prompt send failed', toError(error), {
+      logger.error('[ACP] Prompt failed', toError(error), {
         agent: this.transport.agentName,
         error: safeStringify(error),
       });
@@ -1404,7 +1399,6 @@ export class AcpBackend implements IAgentBackend {
     if (rejecter) {
       logger.warn('[AcpBackend] rejecting pending response', {
         agent: this.transport.agentName,
-        acpSessionId: this.acpSessionId,
         reason: error.message,
       });
       rejecter(error);
@@ -1444,7 +1438,6 @@ export class AcpBackend implements IAgentBackend {
       const timeoutMin = Math.round(timeoutMs / 60000);
       logger.warn('[AcpBackend] response complete timeout fired', {
         agent: this.transport.agentName,
-        acpSessionId: this.acpSessionId,
         timeoutMin,
         activeToolCalls: this.activeToolCalls.size,
       });
@@ -1459,7 +1452,7 @@ export class AcpBackend implements IAgentBackend {
 
       // Fire-and-forget cancel so we don't block the reject
       this.cancelCurrentTurn().catch(err =>
-        logger.debug('[AcpBackend] cancelCurrentTurn error after timeout:', err)
+        logger.warn('[AcpBackend] cancelCurrentTurn error after timeout:', err)
       );
     }, timeoutMs);
   }
@@ -1484,7 +1477,7 @@ export class AcpBackend implements IAgentBackend {
         detail: 'Response timed out after inactivity',
       });
     } catch (error) {
-      logger.debug('[AcpBackend] Error cancelling turn on timeout:', error);
+      logger.warn('[AcpBackend] Error cancelling turn on timeout:', error);
     }
   }
 
@@ -1538,7 +1531,7 @@ export class AcpBackend implements IAgentBackend {
     this.emit({ type: 'status', status: 'idle' });
     // Resolve any waiting promises
     if (this.idleResolver) {
-      logger.debug('[AcpBackend] Resolving idle waiter');
+      logger.info('[AcpBackend] Resolving idle waiter');
       this.idleResolver();
     }
   }
@@ -1555,7 +1548,7 @@ export class AcpBackend implements IAgentBackend {
       this.logAcpResponse('cancel', { ok: true }, { requestedSessionId: _sessionId });
       this.emit({ type: 'status', status: 'stopped', detail: 'Cancelled by user' });
     } catch (error) {
-      logger.debug('[AcpBackend] Error cancelling:', error);
+      logger.warn('[AcpBackend] Error cancelling:', error);
     }
   }
 
@@ -1647,7 +1640,7 @@ export class AcpBackend implements IAgentBackend {
   async dispose(): Promise<void> {
     if (this.disposed) return;
 
-    logger.debug('[AcpBackend] Disposing backend');
+    logger.info('[AcpBackend] Disposing backend');
     this.disposed = true;
 
     // Try graceful shutdown first
@@ -1661,7 +1654,7 @@ export class AcpBackend implements IAgentBackend {
         ]);
         this.logAcpResponse('cancel', { ok: true }, { reason: 'dispose' });
       } catch (error) {
-        logger.debug('[AcpBackend] Error during graceful shutdown:', error);
+        logger.warn('[AcpBackend] Error during graceful shutdown:', error);
       }
     }
 
@@ -1674,7 +1667,7 @@ export class AcpBackend implements IAgentBackend {
       await new Promise<void>(resolve => {
         const timeout = setTimeout(() => {
           if (this.process) {
-            logger.debug('[AcpBackend] Force killing process');
+            logger.info('[AcpBackend] Force killing process');
             this.process.kill('SIGKILL');
           }
           resolve();

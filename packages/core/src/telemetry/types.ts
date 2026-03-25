@@ -6,6 +6,7 @@ export interface TraceContext {
   readonly sessionId?: string;
   readonly machineId?: string;
   readonly userId?: string;
+  readonly acpSessionId?: string;
 }
 
 export interface LogEntry {
@@ -17,6 +18,7 @@ export interface LogEntry {
   sessionId?: string;
   machineId?: string;
   userId?: string;
+  acpSessionId?: string;
   message: string;
   data?: Record<string, unknown>;
   error?: {

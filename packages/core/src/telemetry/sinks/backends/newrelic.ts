@@ -45,6 +45,7 @@ export class NewRelicBackend implements RemoteBackend {
             ...(entry.traceId ? { traceId: entry.traceId } : {}),
             ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
             ...(entry.machineId ? { machineId: entry.machineId } : {}),
+            ...(entry.acpSessionId ? { acpSessionId: entry.acpSessionId } : {}),
             ...(entry.durationMs != null ? { durationMs: entry.durationMs } : {}),
             ...(entry.error
               ? {
