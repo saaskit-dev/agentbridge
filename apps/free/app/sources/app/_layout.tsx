@@ -2,7 +2,6 @@ import 'react-native-quick-base64';
 import '../theme.css';
 import {
   initAppTelemetry,
-  loadPersistedTelemetry,
   setTelemetryAuthToken,
   setAnalyticsEnabled,
 } from '@/appTelemetry';
@@ -38,8 +37,7 @@ import { useWatchConnectivity } from '@/hooks/useWatchConnectivity';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/layout');
 
-// Initialize telemetry — in-memory ring buffer for diagnostics (Settings → Support)
-// Guard against double-init on Expo hot reload
+// Initialize telemetry — guard against double-init on Expo hot reload
 initAppTelemetry();
 
 // Configure notification handler for foreground notifications
@@ -191,8 +189,6 @@ export default function RootLayout() {
   React.useEffect(() => {
     (async () => {
       try {
-        // Load persisted telemetry logs from AsyncStorage (non-blocking best-effort)
-        void loadPersistedTelemetry();
         await loadFonts();
         await sodium.ready;
         let credentials = await TokenStorage.getCredentials();

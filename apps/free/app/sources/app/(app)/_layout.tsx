@@ -117,12 +117,6 @@ export default function RootLayout() {
           headerTitle: t('settings.features'),
         }}
       />
-<Stack.Screen
-        name="settings/diagnostics"
-        options={{
-          headerTitle: t('diagnostics.title'),
-        }}
-      />
       <Stack.Screen
         name="terminal/connect"
         options={{

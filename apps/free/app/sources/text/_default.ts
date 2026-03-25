@@ -984,32 +984,6 @@ export const en = {
     friendAccepted: ({ name }: { name: string }) => `You are now friends with ${name}`,
     friendAcceptedGeneric: 'Friend request accepted',
   },
-
-  diagnostics: {
-    // Diagnostic export screen (Settings → About → Export Diagnostic Logs)
-    title: 'Diagnostic Logs',
-    subtitle: 'Export logs to help diagnose issues',
-    preview: 'Preview',
-    export: 'Export',
-    timeRange: 'Time Range',
-    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
-      `${count} ${count === 1 ? 'entry' : 'entries'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'session' : 'sessions'}` : ''}`,
-    share: 'Share Logs',
-    shareSubtitle: 'Open system share sheet to save or send',
-    copyToClipboard: 'Copy to Clipboard',
-    copySubtitle: 'Copy raw log data as JSONL text',
-    whatIsIncluded: 'What is included',
-    whatIsIncludedSubtitle: 'App diagnostic logs — no message content, no personal data',
-    privacyNote:
-      'Logs are anonymized and sanitized before export. Message content and sensitive data are never included.',
-    noLogs: 'No Logs',
-    noLogsMessage: 'There are no log entries to export for the selected time range.',
-    exported: 'Exported',
-    exportFailed: 'Export Failed',
-    copied: 'Copied',
-    copiedToClipboard: ({ count }: { count: number }) =>
-      `${count} ${count === 1 ? 'entry' : 'entries'} copied to clipboard`,
-  },
 } as const;
 
 export type Translations = typeof en;

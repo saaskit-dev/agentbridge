@@ -1020,32 +1020,6 @@ export const ru: TranslationStructure = {
     friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
     friendAcceptedGeneric: 'Запрос в друзья принят',
   },
-
-  diagnostics: {
-    title: 'Диагностические логи',
-    subtitle: 'Экспорт логов для диагностики проблем',
-    preview: 'Предпросмотр',
-    export: 'Экспорт',
-    timeRange: 'Временной диапазон',
-    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
-      `${count} ${count === 1 ? 'запись' : count < 5 ? 'записи' : 'записей'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'сессия' : sessions < 5 ? 'сессии' : 'сессий'}` : ''}`,
-    share: 'Поделиться логами',
-    shareSubtitle: 'Открыть системный диалог для сохранения или отправки',
-    copyToClipboard: 'Копировать в буфер обмена',
-    copySubtitle: 'Скопировать данные логов в формате JSONL',
-    whatIsIncluded: 'Что включено',
-    whatIsIncludedSubtitle:
-      'Диагностические логи приложения — без содержимого сообщений и личных данных',
-    privacyNote:
-      'Логи анонимизируются и очищаются перед экспортом. Содержимое сообщений и конфиденциальные данные никогда не включаются.',
-    noLogs: 'Нет логов',
-    noLogsMessage: 'Нет записей логов для экспорта за выбранный период.',
-    exported: 'Экспортировано',
-    exportFailed: 'Ошибка экспорта',
-    copied: 'Скопировано',
-    copiedToClipboard: ({ count }: { count: number }) =>
-      `${count} ${count === 1 ? 'запись скопирована' : 'записей скопировано'} в буфер обмена`,
-  },
 } as const;
 
 export type TranslationsRu = typeof ru;

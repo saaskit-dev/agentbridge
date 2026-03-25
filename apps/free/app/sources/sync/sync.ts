@@ -432,6 +432,23 @@ class Sync {
     }
   }
 
+  /**
+   * Cancel the pending batch timer and immediately process all queued messages.
+   * Called before applyMessagesLoaded() to avoid a race where the "loaded" marker
+   * creates an empty session entry before cached messages have been applied.
+   */
+  private flushMessageQueue(sessionId: string) {
+    const timer = this.sessionBatchTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.sessionBatchTimers.delete(sessionId);
+    }
+    const pending = this.sessionMessageQueue.get(sessionId);
+    if (pending && pending.length > 0) {
+      this.processMessageQueue(sessionId);
+    }
+  }
+
   private hasPendingOutboxMessages() {
     if (this.sendAbortControllers.size > 0) {
       return true;
@@ -897,8 +914,7 @@ class Sync {
     }
 
     const data = await response.json();
-    // eslint-disable-next-line no-console
-    console.warn('[DEV-DIAG] fetchSessions: got', Array.isArray(data.sessions) ? data.sessions.length : 0, 'sessions');
+    logger.debug('[sync] fetchSessions: got sessions', { count: Array.isArray(data.sessions) ? data.sessions.length : 0 });
     const sessions = data.sessions as Array<{
       id: string;
       tag: string | null;
@@ -2006,6 +2022,12 @@ class Sync {
       }
     }
 
+    // Flush any pending batched messages (from cache or earlier pages) before
+    // marking the session as loaded. Without this, applyMessagesLoaded may create
+    // an empty session entry (messages=[]) when the batch timer hasn't fired yet,
+    // causing ChatList to unmount and remount — losing scroll position on web.
+    this.flushMessageQueue(sessionId);
+
     storage.getState().applyMessagesLoaded(sessionId);
 
     // Reconcile hasOlderMessages with sessionOldestSeq.
@@ -2981,8 +3003,7 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
 
   // Initialize socket connection
   const API_ENDPOINT = getServerUrl();
-  // eslint-disable-next-line no-console
-  console.warn('[DEV-DIAG] syncInit serverUrl:', API_ENDPOINT);
+  logger.debug('[sync] syncInit', { serverUrl: API_ENDPOINT });
   apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);
 
   // Wire socket status to storage

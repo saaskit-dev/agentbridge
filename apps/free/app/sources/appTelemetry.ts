@@ -1,12 +1,6 @@
 /**
  * App-level telemetry initialization
  *
- * Holds the MemorySink singleton so both the layout (init) and the
- * logs UI (read) can share the same instance without circular deps.
- *
- * Persistence: entries are flushed to AsyncStorage every 5s and on background,
- * so diagnostics survive iOS/Android app kills.
- *
  * RemoteSink: ON by default (RFC §21.2), sends all log levels (debug/info/warn/error)
  * to the server relay which forwards to New Relic. Auth token is set lazily after login.
  * deviceId uses sync.anonId (user-level anonymous identifier) for cross-device tracking.
@@ -15,12 +9,11 @@
  * via setGlobalContextProvider() which reads from appTraceStore.
  */
 
-import { AppState, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import {
   initTelemetry,
   isCollectorReady,
-  MemorySink,
   RemoteSink,
   ServerRelayBackend,
   setGlobalContextProvider,
@@ -31,35 +24,6 @@ import { getServerUrl } from '@/sync/serverConfig';
 import { sync } from '@/sync/sync';
 import { getSessionTrace, wireTraceToContext } from '@/sync/appTraceStore';
 import { getCurrentRealtimeSessionId } from '@/realtime/realtimeSessionState';
-
-// AsyncStorage is not available on web — use lazy require to avoid module load crash
-// On native (iOS/Android), entries are flushed every 5s and on background app kill
-const nativePersistence: NonNullable<ConstructorParameters<typeof MemorySink>[0]>['persistence'] =
-  Platform.OS !== 'web'
-    ? (() => {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        return {
-          storage: AsyncStorage,
-          key: '@telemetry/logs',
-          maxPersistedEntries: 2000,
-          flushIntervalMs: 5000,
-        };
-      })()
-    : undefined;
-
-export const appMemorySink = new MemorySink({
-  maxEntries: 500,
-  persistence: nativePersistence,
-});
-
-// Flush to disk immediately when the app goes to background (before OS may kill it)
-// AppState.addEventListener is a no-op on web so this is safe cross-platform
-AppState.addEventListener('change', nextState => {
-  if (nextState === 'background') {
-    void appMemorySink.flush();
-  }
-});
 
 // Lazily-resolved auth token for RemoteSink — set after login, cleared on logout
 let _telemetryAuthToken: string | undefined;
@@ -110,10 +74,6 @@ export function initAppTelemetry(): void {
     initTelemetry({
       layer: 'app',
       sinks: [
-        appMemorySink,
-        // RemoteSink ON by default (RFC §21.2) — user can opt-out in Settings → Privacy
-        // Auth token is lazy: before login entries stay buffered, after login they upload
-        // minLevel: 'debug' — all levels sent to server for comprehensive diagnostics
         new RemoteSink({
           backend: new ServerRelayBackend({
             serverUrl,
@@ -129,12 +89,7 @@ export function initAppTelemetry(): void {
   }
 }
 
-/** Load persisted log entries from AsyncStorage into the in-memory buffer. */
-export async function loadPersistedTelemetry(): Promise<void> {
-  await appMemorySink.loadPersistedEntries();
-}
-
-/** Remove the RemoteSink from the collector (user opted out of telemetry). @deprecated Use setAnalyticsEnabled(false) */
+/** @deprecated Use setAnalyticsEnabled(false) */
 export function disableRemoteTelemetry(): void {
   _analyticsEnabled = false;
   _telemetryAuthToken = undefined;

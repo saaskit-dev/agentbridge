@@ -63,8 +63,7 @@ class ApiSocket {
     }
 
     this.updateStatus('connecting');
-    // eslint-disable-next-line no-console
-    console.warn('[DEV-DIAG] SyncSocket connecting to:', this.config.endpoint);
+    logger.debug('[SyncSocket] connecting to', { endpoint: this.config.endpoint });
 
     this.socket = io(this.config.endpoint, {
       path: '/v1/updates',
@@ -291,8 +290,6 @@ class ApiSocket {
 
     // Connection events
     this.socket.on('connect', () => {
-      // eslint-disable-next-line no-console
-      console.warn('[DEV-DIAG] SyncSocket CONNECTED, id:', this.socket?.id);
       logger.info('[SyncSocket] Connected', {
         recovered: this.socket?.recovered,
         socketId: this.socket?.id,
@@ -304,16 +301,12 @@ class ApiSocket {
     });
 
     this.socket.on('disconnect', reason => {
-      // eslint-disable-next-line no-console
-      console.warn('[DEV-DIAG] SyncSocket DISCONNECTED, reason:', reason);
       logger.info('[SyncSocket] Disconnected', { reason });
       this.updateStatus('disconnected');
     });
 
     // Error events
     this.socket.on('connect_error', error => {
-      // eslint-disable-next-line no-console
-      console.warn('[DEV-DIAG] SyncSocket connect_error:', String(error));
       logger.warn('[SyncSocket] Connection error', { error: String(error) });
       this.updateStatus('error');
     });

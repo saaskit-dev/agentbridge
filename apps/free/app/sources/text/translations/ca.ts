@@ -990,32 +990,6 @@ export const ca: TranslationStructure = {
     friendAccepted: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
     friendAcceptedGeneric: "Sol·licitud d'amistat acceptada",
   },
-
-  diagnostics: {
-    title: 'Registres de diagnòstic',
-    subtitle: 'Exporta els registres per ajudar a diagnosticar problemes',
-    preview: 'Previsualització',
-    export: 'Exportar',
-    timeRange: 'Interval de temps',
-    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
-      `${count} ${count === 1 ? 'entrada' : 'entrades'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'sessió' : 'sessions'}` : ''}`,
-    share: 'Compartir registres',
-    shareSubtitle: 'Obre el full de compartició del sistema per desar o enviar',
-    copyToClipboard: 'Copiar al porta-retalls',
-    copySubtitle: 'Copia les dades del registre com a text JSONL',
-    whatIsIncluded: "Què s'inclou",
-    whatIsIncludedSubtitle:
-      "Registres de diagnòstic de l'app — sense contingut de missatges ni dades personals",
-    privacyNote:
-      "Els registres s'anonimitzen i es netegen abans d'exportar. El contingut dels missatges i les dades sensibles mai s'inclouen.",
-    noLogs: 'Sense registres',
-    noLogsMessage: "No hi ha entrades de registre per exportar en l'interval de temps seleccionat.",
-    exported: 'Exportat',
-    exportFailed: "Error en l'exportació",
-    copied: 'Copiat',
-    copiedToClipboard: ({ count }: { count: number }) =>
-      `${count} ${count === 1 ? 'entrada copiada' : 'entrades copiades'} al porta-retalls`,
-  },
 } as const;
 
 export type TranslationsCa = typeof ca;

@@ -962,27 +962,4 @@ export const zhHans: TranslationStructure = {
     friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
     friendAcceptedGeneric: '好友请求已接受',
   },
-
-  diagnostics: {
-    title: '诊断日志',
-    subtitle: '导出日志以帮助诊断问题',
-    preview: '预览',
-    export: '导出',
-    timeRange: '时间范围',
-    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
-      `${count} 条记录${sessions > 0 ? `，${sessions} 个会话` : ''}`,
-    share: '分享日志',
-    shareSubtitle: '打开系统分享面板进行保存或发送',
-    copyToClipboard: '复制到剪贴板',
-    copySubtitle: '将原始日志数据复制为 JSONL 文本',
-    whatIsIncluded: '包含内容',
-    whatIsIncludedSubtitle: '应用诊断日志 — 不含消息内容，不含个人数据',
-    privacyNote: '日志在导出前会进行匿名化和脱敏处理。消息内容和敏感数据不会被包含。',
-    noLogs: '无日志',
-    noLogsMessage: '所选时间范围内没有日志条目可导出。',
-    exported: '已导出',
-    exportFailed: '导出失败',
-    copied: '已复制',
-    copiedToClipboard: ({ count }: { count: number }) => `${count} 条记录已复制到剪贴板`,
-  },
 } as const;

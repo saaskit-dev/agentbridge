@@ -985,29 +985,4 @@ export const ja: TranslationStructure = {
     friendAccepted: ({ name }: { name: string }) => `${name}さんと友達になりました`,
     friendAcceptedGeneric: '友達リクエストが承認されました',
   },
-
-  diagnostics: {
-    title: '診断ログ',
-    subtitle: 'ログをエクスポートして問題を診断',
-    preview: 'プレビュー',
-    export: 'エクスポート',
-    timeRange: '時間範囲',
-    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
-      `${count}件のエントリ${sessions > 0 ? `、${sessions}件のセッション` : ''}`,
-    share: 'ログを共有',
-    shareSubtitle: 'システム共有シートを開いて保存または送信',
-    copyToClipboard: 'クリップボードにコピー',
-    copySubtitle: 'ログデータをJSONLテキストとしてコピー',
-    whatIsIncluded: '含まれる内容',
-    whatIsIncludedSubtitle: 'アプリ診断ログ — メッセージ内容も個人情報も含まれません',
-    privacyNote:
-      'ログはエクスポート前に匿名化・サニタイズされます。メッセージ内容と機密データは含まれません。',
-    noLogs: 'ログなし',
-    noLogsMessage: '選択した時間範囲にエクスポートするログエントリがありません。',
-    exported: 'エクスポート完了',
-    exportFailed: 'エクスポート失敗',
-    copied: 'コピー済み',
-    copiedToClipboard: ({ count }: { count: number }) =>
-      `${count}件のエントリをクリップボードにコピーしました`,
-  },
 } as const;

@@ -14,6 +14,9 @@ import { Modal } from '@/modal';
 import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
 import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+
+const logger = new Logger('app/dev/index');
 
 export default function DevScreen() {
   const router = useRouter();
@@ -145,11 +148,6 @@ export default function DevScreen() {
           subtitle="Log all network requests and responses"
           rightElement={<Switch value={verboseLogging} onValueChange={setVerboseLogging} />}
           showChevron={false}
-        />
-        <Item
-          title="View Logs"
-          icon={<Ionicons name="document-text-outline" size={28} color="#007AFF" />}
-          onPress={() => router.push('/dev/logs')}
         />
       </ItemGroup>
 
@@ -295,7 +293,7 @@ export default function DevScreen() {
               { confirmText: 'Reset', destructive: true }
             );
             if (confirmed) {
-              console.log('App state reset');
+              logger.info('App state reset');
             }
           }}
         />

@@ -991,32 +991,6 @@ export const es: TranslationStructure = {
     friendAccepted: ({ name }: { name: string }) => `Ahora eres amigo de ${name}`,
     friendAcceptedGeneric: 'Solicitud de amistad aceptada',
   },
-
-  diagnostics: {
-    title: 'Registros de diagnóstico',
-    subtitle: 'Exportar registros para ayudar a diagnosticar problemas',
-    preview: 'Vista previa',
-    export: 'Exportar',
-    timeRange: 'Rango de tiempo',
-    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
-      `${count} ${count === 1 ? 'entrada' : 'entradas'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'sesión' : 'sesiones'}` : ''}`,
-    share: 'Compartir registros',
-    shareSubtitle: 'Abrir panel de compartir del sistema para guardar o enviar',
-    copyToClipboard: 'Copiar al portapapeles',
-    copySubtitle: 'Copiar datos de registro como texto JSONL',
-    whatIsIncluded: 'Qué se incluye',
-    whatIsIncludedSubtitle:
-      'Registros de diagnóstico de la app — sin contenido de mensajes ni datos personales',
-    privacyNote:
-      'Los registros se anonimizan y limpian antes de exportar. El contenido de los mensajes y los datos sensibles nunca se incluyen.',
-    noLogs: 'Sin registros',
-    noLogsMessage: 'No hay entradas de registro para exportar en el rango de tiempo seleccionado.',
-    exported: 'Exportado',
-    exportFailed: 'Error al exportar',
-    copied: 'Copiado',
-    copiedToClipboard: ({ count }: { count: number }) =>
-      `${count} ${count === 1 ? 'entrada copiada' : 'entradas copiadas'} al portapapeles`,
-  },
 } as const;
 
 export type TranslationsEs = typeof es;

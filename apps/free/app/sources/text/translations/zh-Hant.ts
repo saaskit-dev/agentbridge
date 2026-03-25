@@ -962,27 +962,4 @@ export const zhHant: TranslationStructure = {
     friendAccepted: ({ name }: { name: string }) => `您現在與 ${name} 成為了好友`,
     friendAcceptedGeneric: '好友請求已接受',
   },
-
-  diagnostics: {
-    title: '診斷日誌',
-    subtitle: '匯出日誌以協助診斷問題',
-    preview: '預覽',
-    export: '匯出',
-    timeRange: '時間範圍',
-    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
-      `${count} 筆記錄${sessions > 0 ? `，${sessions} 個工作階段` : ''}`,
-    share: '分享日誌',
-    shareSubtitle: '開啟系統分享面板以儲存或傳送',
-    copyToClipboard: '複製到剪貼簿',
-    copySubtitle: '將原始日誌資料複製為 JSONL 文字',
-    whatIsIncluded: '包含內容',
-    whatIsIncludedSubtitle: '應用程式診斷日誌 — 不含訊息內容，不含個人資料',
-    privacyNote: '日誌在匯出前會進行匿名化和脫敏處理。訊息內容和敏感資料不會被包含。',
-    noLogs: '無日誌',
-    noLogsMessage: '所選時間範圍內沒有日誌條目可匯出。',
-    exported: '已匯出',
-    exportFailed: '匯出失敗',
-    copied: '已複製',
-    copiedToClipboard: ({ count }: { count: number }) => `${count} 筆記錄已複製到剪貼簿`,
-  },
 } as const;

@@ -1020,32 +1020,6 @@ export const pl: TranslationStructure = {
     friendAccepted: ({ name }: { name: string }) => `Jesteś teraz znajomym z ${name}`,
     friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
   },
-
-  diagnostics: {
-    title: 'Logi diagnostyczne',
-    subtitle: 'Eksportuj logi, aby pomóc zdiagnozować problemy',
-    preview: 'Podgląd',
-    export: 'Eksportuj',
-    timeRange: 'Zakres czasu',
-    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
-      `${count} ${count === 1 ? 'wpis' : 'wpisów'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'sesja' : 'sesji'}` : ''}`,
-    share: 'Udostępnij logi',
-    shareSubtitle: 'Otwórz systemowy panel udostępniania, aby zapisać lub wysłać',
-    copyToClipboard: 'Kopiuj do schowka',
-    copySubtitle: 'Kopiuj dane logów jako tekst JSONL',
-    whatIsIncluded: 'Co jest zawarte',
-    whatIsIncludedSubtitle:
-      'Logi diagnostyczne aplikacji — bez treści wiadomości ani danych osobowych',
-    privacyNote:
-      'Logi są anonimizowane i oczyszczane przed eksportem. Treść wiadomości i wrażliwe dane nigdy nie są uwzględniane.',
-    noLogs: 'Brak logów',
-    noLogsMessage: 'Brak wpisów logów do eksportu dla wybranego zakresu czasu.',
-    exported: 'Wyeksportowano',
-    exportFailed: 'Eksport nieudany',
-    copied: 'Skopiowano',
-    copiedToClipboard: ({ count }: { count: number }) =>
-      `${count} ${count === 1 ? 'wpis skopiowany' : 'wpisów skopiowanych'} do schowka`,
-  },
 } as const;
 
 export type TranslationsPl = typeof pl;

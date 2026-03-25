@@ -992,32 +992,6 @@ export const it: TranslationStructure = {
     friendAccepted: ({ name }: { name: string }) => `Ora sei amico di ${name}`,
     friendAcceptedGeneric: 'Richiesta di amicizia accettata',
   },
-
-  diagnostics: {
-    title: 'Log diagnostici',
-    subtitle: 'Esporta i log per diagnosticare i problemi',
-    preview: 'Anteprima',
-    export: 'Esporta',
-    timeRange: 'Intervallo di tempo',
-    entriesCount: ({ count, sessions }: { count: number; sessions: number }) =>
-      `${count} ${count === 1 ? 'voce' : 'voci'}${sessions > 0 ? `, ${sessions} ${sessions === 1 ? 'sessione' : 'sessioni'}` : ''}`,
-    share: 'Condividi log',
-    shareSubtitle: 'Apri il pannello di condivisione per salvare o inviare',
-    copyToClipboard: 'Copia negli appunti',
-    copySubtitle: 'Copia i dati del log come testo JSONL',
-    whatIsIncluded: 'Cosa è incluso',
-    whatIsIncludedSubtitle:
-      "Log diagnostici dell'app — nessun contenuto di messaggi, nessun dato personale",
-    privacyNote:
-      "I log vengono anonimizzati e sanificati prima dell'esportazione. Il contenuto dei messaggi e i dati sensibili non vengono mai inclusi.",
-    noLogs: 'Nessun log',
-    noLogsMessage: "Non ci sono voci di log da esportare per l'intervallo di tempo selezionato.",
-    exported: 'Esportato',
-    exportFailed: 'Esportazione fallita',
-    copied: 'Copiato',
-    copiedToClipboard: ({ count }: { count: number }) =>
-      `${count} ${count === 1 ? 'voce copiata' : 'voci copiate'} negli appunti`,
-  },
 } as const;
 
 export type TranslationsIt = typeof it;
