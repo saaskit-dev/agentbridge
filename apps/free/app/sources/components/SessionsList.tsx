@@ -304,6 +304,7 @@ export function SessionsList() {
               isFirst={isFirst}
               isLast={isLast}
               isSingle={isSingle}
+              testID={`session-item-${index}`}
             />
           );
       }
@@ -345,12 +346,14 @@ const SessionItem = React.memo(
     isFirst,
     isLast,
     isSingle,
+    testID,
   }: {
     session: Session;
     selected?: boolean;
     isFirst?: boolean;
     isLast?: boolean;
     isSingle?: boolean;
+    testID?: string;
   }) => {
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
@@ -386,6 +389,7 @@ const SessionItem = React.memo(
 
     const itemContent = (
       <Pressable
+        testID={testID}
         style={[
           styles.sessionItem,
           selected && styles.sessionItemSelected,

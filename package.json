@@ -70,6 +70,7 @@
       "hono": ">=4.12.2"
     },
     "onlyBuiltDependencies": [
+      "@more-tech/react-native-libsodium",
       "esbuild",
       "node-pty"
     ]

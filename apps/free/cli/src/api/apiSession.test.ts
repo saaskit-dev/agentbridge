@@ -770,6 +770,10 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
   it('recovery replay only updates lastSeq without routing messages', async () => {
     const client = new ApiSessionClient('fake-token', session);
+    // Simulate crash recovery: agent already has history (lastSeq > 0 from persisted state).
+    // Recovery mode only suppresses routing when lastSeq > 0, because lastSeq === 0
+    // means a brand-new session where the agent has no history and SHOULD see replayed messages.
+    (client as any).lastSeq = 1;
     const routed: unknown[] = [];
     client.on('message', (msg: unknown) => routed.push(msg));
 
@@ -780,7 +784,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
     emitSocketEvent('replay', {
       sessionId: 'test-session-id',
       messages: [
-        { id: 'msg-1', seq: 1, content: { t: 'encrypted', c: encrypted } },
+        { id: 'msg-1', seq: 2, content: { t: 'encrypted', c: encrypted } },
         { id: 'msg-2', seq: 5, content: { t: 'encrypted', c: encrypted } },
       ],
       hasMore: false,

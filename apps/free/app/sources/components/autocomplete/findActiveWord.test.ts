@@ -19,15 +19,15 @@ describe('findActiveWord', () => {
 
     it('should detect : emoji at cursor', () => {
       const content = 'I feel :free';
-      const selection = { start: 13, end: 13 };
+      const selection = { start: 12, end: 12 };
       const result = findActiveWord(content, selection);
       expect(result).toEqual({
         word: ':free',
         activeWord: ':free',
         offset: 7,
-        length: 6,
-        activeLength: 6,
-        endOffset: 13,
+        length: 5,
+        activeLength: 5,
+        endOffset: 12,
       });
     });
 
