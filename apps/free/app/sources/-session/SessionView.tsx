@@ -70,6 +70,7 @@ export const SessionView = React.memo((props: { id: string }) => {
   const realtimeStatus = useRealtimeStatus();
   const isTablet = useIsTablet();
   const devModeEnabledForHeader = useLocalSetting('devModeEnabled') || __DEV__;
+  const showDebugIds = useLocalSetting('showDebugIds');
 
   // Compute header props based on session state
   const headerProps = useMemo(() => {
