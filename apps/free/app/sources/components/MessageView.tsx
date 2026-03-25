@@ -118,7 +118,8 @@ function DevTraceBadge(props: {
   alignSelf?: 'flex-start' | 'flex-end';
 }) {
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
-  if (!devModeEnabled) return null;
+  const showDebugIds = useLocalSetting('showDebugIds');
+  if (!devModeEnabled || !showDebugIds) return null;
   return (
     <View
       style={[

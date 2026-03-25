@@ -151,7 +151,7 @@ export const SessionView = React.memo((props: { id: string }) => {
           <ChatHeaderView
             {...headerProps}
             onBackPress={() => router.back()}
-            devSessionId={devModeEnabledForHeader ? sessionId : null}
+            devSessionId={devModeEnabledForHeader && showDebugIds ? sessionId : null}
           />
           {/* Voice status bar below header - not on tablet (shown in sidebar) */}
           {!isTablet && realtimeStatus !== 'disconnected' && (
