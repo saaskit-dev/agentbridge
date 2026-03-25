@@ -405,7 +405,7 @@ export const SettingsView = React.memo(function SettingsView() {
         <Item
           title={t('common.version')}
           detail={`${appVersion}${buildNumber ? ` (${buildNumber})` : ''}`}
-          subtitle={buildTime ? buildTime.toLocaleString() : undefined}
+          subtitle={[Updates.runtimeVersion && `runtime ${Updates.runtimeVersion}`, buildTime?.toLocaleString()].filter(Boolean).join(' · ') || undefined}
           icon={
             <Ionicons
               name="information-circle-outline"
