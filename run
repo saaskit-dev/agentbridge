@@ -351,19 +351,18 @@ cmd_ota() {
     local lookup_platform="${platform:-ios}"
     info "正在获取 ${lookup_platform} 最新 build 的 runtimeVersion..."
     local build_runtime
-    build_runtime="$(npx eas-cli@latest build:list --channel production --platform "$lookup_platform" --status finished --limit 1 --json --non-interactive 2>/dev/null | node -e "process.stdin.on('data',d=>{const b=JSON.parse(d);b[0]&&process.stdout.write(b[0].runtimeVersion||'')})")"
+    build_runtime="$(npx eas-cli@latest build:list --channel production --platform "$lookup_platform" --status finished --limit 1 --json --non-interactive 2>/dev/null | node -e "let c='';process.stdin.on('data',d=>c+=d);process.stdin.on('end',()=>{const b=JSON.parse(c);b[0]&&process.stdout.write(b[0].runtimeVersion||'')})")"
     if [ -z "$build_runtime" ]; then
         die "无法获取最新 build 的 runtimeVersion，请检查 EAS 登录状态"
     fi
 
     local local_runtime
-    local_runtime="$(npx expo-updates fingerprint:generate --platform "$lookup_platform" 2>/dev/null | node -e "process.stdin.on('data',d=>{const o=JSON.parse(d);process.stdout.write(o.hash||'')})")"
+    local_runtime="$(npx expo-updates fingerprint:generate --platform "$lookup_platform" 2>/dev/null | node -e "let c='';process.stdin.on('data',d=>c+=d);process.stdin.on('end',()=>{const o=JSON.parse(c);process.stdout.write(o.hash||'')})")"
 
-    local rv_flag=""
     if [ -n "$local_runtime" ] && [ "$local_runtime" != "$build_runtime" ]; then
-        warn "本地 fingerprint ($local_runtime) ≠ 最新 build ($build_runtime)"
+        info "${YELLOW}本地 fingerprint ($local_runtime) ≠ 最新 build ($build_runtime)${NC}"
         info "将使用 build 的 runtimeVersion: $build_runtime"
-        rv_flag="--runtime-version $build_runtime"
+        export EXPO_UPDATES_FINGERPRINT_OVERRIDE="$build_runtime"
     else
         info "runtimeVersion: $build_runtime"
     fi
@@ -372,17 +371,17 @@ cmd_ota() {
         ios)
             info "OTA 热更新 → iOS 生产环境"
             confirm "确认推送 OTA 到 iOS 生产环境?"
-            npx eas-cli@latest update --branch production --platform ios $rv_flag --non-interactive --message "$msg"
+            npx eas-cli@latest update --branch production --platform ios --non-interactive --message "$msg"
             ;;
         android)
             info "OTA 热更新 → Android 生产环境"
             confirm "确认推送 OTA 到 Android 生产环境?"
-            npx eas-cli@latest update --branch production --platform android $rv_flag --non-interactive --message "$msg"
+            npx eas-cli@latest update --branch production --platform android --non-interactive --message "$msg"
             ;;
         "")
             info "OTA 热更新 → 全平台生产环境"
             confirm "确认推送 OTA 到全平台生产环境?"
-            npx eas-cli@latest update --branch production --platform all $rv_flag --non-interactive --message "$msg"
+            npx eas-cli@latest update --branch production --platform all --non-interactive --message "$msg"
             ;;
         *)
             die "未知平台: $platform (可用: ios, android)"
