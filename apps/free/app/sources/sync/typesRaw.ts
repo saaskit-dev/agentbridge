@@ -697,6 +697,7 @@ export type NormalizedMessage = (
     }
 ) & {
   id: string;
+  seq?: number; // Server-assigned monotonic sequence number for stable sort
   createdAt: number;
   isSidechain: boolean;
   meta?: MessageMeta;

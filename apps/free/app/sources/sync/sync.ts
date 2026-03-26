@@ -307,7 +307,10 @@ class Sync {
                 try {
                   const raw = JSON.parse(msg.content);
                   const n = normalizeRawMessage(msg.id, msg.created_at, raw);
-                  if (n) normalized.push(n);
+                  if (n) {
+                    if (msg.seq) n.seq = msg.seq;
+                    normalized.push(n);
+                  }
                 } catch {
                   /* skip corrupt cache entries */
                 }
@@ -1958,6 +1961,8 @@ class Sync {
         );
         if (normalized) {
           if (decrypted.traceId) normalized.traceId = decrypted.traceId;
+          const msgSeq = messages[i]?.seq;
+          if (msgSeq) normalized.seq = msgSeq;
           normalizedMessages.push(normalized);
           normalizedOriginalIndices.push(i);
         }
@@ -2112,6 +2117,8 @@ class Sync {
         const n = normalizeRawMessage(decrypted.id, decrypted.createdAt, decrypted.content);
         if (n) {
           if (decrypted.traceId) n.traceId = decrypted.traceId;
+          const msgSeq = ack.messages![i]?.seq;
+          if (msgSeq) n.seq = msgSeq;
           normalizedMessages.push(n);
         }
       }
@@ -2274,9 +2281,12 @@ class Sync {
         const decrypted = await encryption.decryptMessage(updateData.body.message);
         if (decrypted) {
           lastMessage = normalizeRawMessage(decrypted.id, decrypted.createdAt, decrypted.content);
-          // Propagate traceId from server DB (same as fetchMessages path)
+          // Propagate traceId and seq from server DB (same as fetchMessages path)
           if (lastMessage && decrypted.traceId) {
             lastMessage.traceId = decrypted.traceId;
+          }
+          if (lastMessage && updateData.body.message.seq) {
+            lastMessage.seq = updateData.body.message.seq;
           }
 
           // Check for task lifecycle events to update thinking state

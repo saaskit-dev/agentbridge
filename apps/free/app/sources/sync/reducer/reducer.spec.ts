@@ -3113,6 +3113,100 @@ describe('reducer', () => {
       }
     });
 
+    it('should merge text chunks separated by tool calls across batches (batch-loading artifact)', () => {
+      // Simulates: SQLite cache loads batch-1 (text1 + tool), then server delivers batch-2 (text2).
+      // Both text blocks share the same traceId and are within the time window — they should merge.
+      const state = createReducer();
+      const toolInput = { command: 'ls' };
+
+      // Batch 1 (from SQLite cache): text1 + tool call
+      reducer(state, [
+        {
+          id: 'text-1',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-A',
+          content: [{ type: 'text', text: 'Before tool', uuid: 't1', parentUUID: null }],
+        },
+        {
+          id: 'tool-msg',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-A',
+          content: [{ type: 'tool-call', id: 'tc1', name: 'Bash', input: toolInput, uuid: 'u1', parentUUID: null }],
+        },
+        {
+          id: 'tool-result-msg',
+          createdAt: 1200,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-A',
+          content: [{ type: 'tool_result', id: 'tc1', content: 'ok', uuid: 'u2', parentUUID: 'u1' }],
+        },
+      ]);
+
+      // Batch 2 (from server delta): text2 — continuation of the same sentence
+      const result2 = reducer(state, [
+        {
+          id: 'text-2',
+          createdAt: 1300,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-A',
+          content: [{ type: 'text', text: ' after tool', uuid: 't2', parentUUID: null }],
+        },
+      ]);
+
+      // text-1 and text-2 share the same traceId and are within the window → should merge
+      const allMessages = result2.messages;
+      const textMessages = allMessages.filter(m => m.kind === 'agent-text' && !m.isThinking);
+      expect(textMessages).toHaveLength(1);
+      if (textMessages[0].kind === 'agent-text') {
+        expect(textMessages[0].text).toBe('Before tool after tool');
+      }
+    });
+
+    it('should merge text chunks across tool calls in a single batch', () => {
+      // All messages arrive in one batch: text1 → tool → text2 (same traceId).
+      // Phase 1 processes texts before tools, so inline merge should handle this.
+      const state = createReducer();
+
+      const result = reducer(state, [
+        {
+          id: 'text-1',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-A',
+          content: [{ type: 'text', text: 'Hello', uuid: 't1', parentUUID: null }],
+        },
+        {
+          id: 'tool-msg',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-A',
+          content: [{ type: 'tool-call', id: 'tc1', name: 'Bash', input: { cmd: 'ls' }, uuid: 'u1', parentUUID: null }],
+        },
+        {
+          id: 'text-2',
+          createdAt: 1200,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-A',
+          content: [{ type: 'text', text: ' world', uuid: 't2', parentUUID: null }],
+        },
+      ]);
+
+      const textMessages = result.messages.filter(m => m.kind === 'agent-text' && !m.isThinking);
+      expect(textMessages).toHaveLength(1);
+      if (textMessages[0].kind === 'agent-text') {
+        expect(textMessages[0].text).toBe('Hello world');
+      }
+    });
+
     it('should NOT merge text across different traceIds even when separated by thinking', () => {
       const state = createReducer();
 

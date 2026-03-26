@@ -41,6 +41,12 @@ import type { PermissionMode, SessionCapabilities } from './sessionCapabilities'
 
 const logger = new Logger('app/sync/storage');
 
+/** Sort messages newest-first. seq (server monotonic) is the primary key when both have it; createdAt is the fallback. */
+function sortMessagesDesc(a: Message, b: Message): number {
+  if (a.seq !== undefined && b.seq !== undefined) return b.seq - a.seq;
+  return b.createdAt - a.createdAt;
+}
+
 // Callbacks registered by external modules to avoid circular dependencies
 let _applySettingsCallback: ((delta: Partial<Settings>) => void) | null = null;
 let _assumeUsersCallback: ((userIds: string[]) => Promise<void>) | null = null;
@@ -540,9 +546,7 @@ export const storage = create<StorageState>()((set, get) => {
               mergedMessagesMap[message.id] = message;
             });
 
-            const messagesArray = Object.values(mergedMessagesMap).sort(
-              (a, b) => b.createdAt - a.createdAt
-            );
+            const messagesArray = Object.values(mergedMessagesMap).sort(sortMessagesDesc);
 
             updatedSessionMessages[session.id] = {
               messages: messagesArray,
@@ -638,10 +642,8 @@ export const storage = create<StorageState>()((set, get) => {
           mergedMessagesMap[message.id] = message;
         });
 
-        // Convert to array and sort by createdAt
-        const messagesArray = Object.values(mergedMessagesMap).sort(
-          (a, b) => b.createdAt - a.createdAt
-        );
+        // Convert to array and sort by seq (stable) then createdAt (fallback)
+        const messagesArray = Object.values(mergedMessagesMap).sort(sortMessagesDesc);
 
         // Update session with todos and latestUsage
         // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
@@ -717,7 +719,7 @@ export const storage = create<StorageState>()((set, get) => {
               messagesMap[message.id] = message;
             });
 
-            messages = Object.values(messagesMap).sort((a, b) => b.createdAt - a.createdAt);
+            messages = Object.values(messagesMap).sort(sortMessagesDesc);
           }
 
           // Extract latestUsage from reducerState if available and update session

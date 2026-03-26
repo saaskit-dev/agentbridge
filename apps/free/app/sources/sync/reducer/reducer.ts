@@ -123,6 +123,7 @@ const logger = new Logger('app/sync/reducer');
 type ReducerMessage = {
   id: string;
   realID: string | null;
+  seq?: number; // Server-assigned monotonic sequence number for stable sort
   createdAt: number;
   role: 'user' | 'agent';
   text: string | null;
@@ -667,6 +668,7 @@ export function reducer(
       storeRootMessage(state, {
         id: mid,
         realID: msg.id,
+        seq: msg.seq,
         role: 'user',
         createdAt: msg.createdAt,
         text: msg.content.text,
@@ -712,6 +714,7 @@ export function reducer(
           storeRootMessage(state, {
             id: mid,
             realID: msg.id,
+            seq: msg.seq,
             role: 'agent',
             createdAt: msg.createdAt,
             text: chunkText,
@@ -823,6 +826,7 @@ export function reducer(
             storeRootMessage(state, {
               id: mid,
               realID: msg.id,
+              seq: msg.seq,
               role: 'agent',
               createdAt: msg.createdAt,
               text: null,
@@ -1152,6 +1156,7 @@ export function reducer(
       storeRootMessage(state, {
         id: mid,
         realID: msg.id,
+        seq: msg.seq,
         role: 'agent',
         createdAt: msg.createdAt,
         event: msg.content,
@@ -1281,13 +1286,25 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
       continue;
     }
 
-    // Scan forward past thinking roots (same trace) to find the next non-thinking text root
+    // Scan forward past thinking roots AND tool call roots (same trace) to find the next text root.
+    // Tool call roots from the same trace don't interrupt text continuity — they arise as a
+    // batch-loading artifact when SQLite cache (containing earlier messages) and a server
+    // delta (containing a later text chunk) are processed in separate reducer calls, leaving
+    // tool call roots between the two text roots in rootMessageIds.
     let j = i + 1;
     while (j < state.rootMessageIds.length) {
       const candidate = state.messages.get(state.rootMessageIds[j]);
       if (!candidate) break;
       // Skip thinking root messages from compatible trace
       if (candidate.role === 'agent' && candidate.text !== null && candidate.isThinking) {
+        if (!(candidate.traceId && current.traceId && candidate.traceId !== current.traceId)) {
+          j++;
+          continue;
+        }
+        break; // Different trace — turn boundary
+      }
+      // Skip tool call roots from compatible trace
+      if (candidate.role === 'agent' && candidate.tool !== null) {
         if (!(candidate.traceId && current.traceId && candidate.traceId !== current.traceId)) {
           j++;
           continue;
@@ -1366,8 +1383,18 @@ function mergeIntoPreviousRootAgentText(
       return null;
     }
 
-    // Found a non-thinking root: check if it's compatible for merge
-    if (candidate.role !== 'agent' || candidate.text === null || candidate.tool || candidate.event) {
+    // Skip tool call roots from the same trace — they don't interrupt text continuity.
+    // This handles the batch-loading artifact where SQLite cache messages and a server
+    // delta are processed in separate calls, leaving tool roots between text roots.
+    if (candidate.role === 'agent' && candidate.tool !== null) {
+      if (!(candidate.traceId && traceId && candidate.traceId !== traceId)) {
+        continue;
+      }
+      return null; // Different trace — turn boundary
+    }
+
+    // Found a non-thinking, non-tool root: check if it's compatible for merge
+    if (candidate.role !== 'agent' || candidate.text === null || candidate.event) {
       return null;
     }
     if (Boolean(candidate.isThinking) !== isThinking) return null;
@@ -1388,6 +1415,7 @@ function convertReducerMessageToMessage(
   if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
     return {
       id: reducerMsg.id,
+      ...(reducerMsg.seq !== undefined && { seq: reducerMsg.seq }),
       createdAt: reducerMsg.createdAt,
       kind: 'user-text',
       text: reducerMsg.text,
@@ -1398,6 +1426,7 @@ function convertReducerMessageToMessage(
   } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {
     return {
       id: reducerMsg.id,
+      ...(reducerMsg.seq !== undefined && { seq: reducerMsg.seq }),
       ...(reducerMsg.realID ? { sourceId: reducerMsg.realID } : {}),
       createdAt: reducerMsg.createdAt,
       kind: 'agent-text',
@@ -1419,6 +1448,7 @@ function convertReducerMessageToMessage(
 
     return {
       id: reducerMsg.id,
+      ...(reducerMsg.seq !== undefined && { seq: reducerMsg.seq }),
       createdAt: reducerMsg.createdAt,
       kind: 'tool-call',
       tool: { ...reducerMsg.tool },
@@ -1429,6 +1459,7 @@ function convertReducerMessageToMessage(
   } else if (reducerMsg.role === 'agent' && reducerMsg.event !== null) {
     return {
       id: reducerMsg.id,
+      ...(reducerMsg.seq !== undefined && { seq: reducerMsg.seq }),
       createdAt: reducerMsg.createdAt,
       kind: 'agent-event',
       event: reducerMsg.event,
