@@ -108,6 +108,10 @@ export async function startDaemon(): Promise<void> {
     errorMessage?: string
   ) => void;
   let clearShutdownFallback: (() => void) | undefined;
+  // Declared early so they are accessible in the fallback timer and signal handlers below.
+  // Assigned inside the try block once the daemon reaches full startup.
+  let sessionManager: SessionManager | undefined;
+  let ipcServer: IPCServer | undefined;
   const resolvesWhenShutdownRequested = new Promise<{
     source: 'free-app' | 'free-cli' | 'os-signal' | 'exception';
     errorMessage?: string;
@@ -268,9 +272,7 @@ export async function startDaemon(): Promise<void> {
       traceId: getProcessTraceContext()?.traceId,
     });
 
-    // Session registry and IPC server (assigned after setup below)
-    let sessionManager: SessionManager | undefined;
-    let ipcServer: IPCServer | undefined;
+    // Session registry and IPC server — declared above for access in signal handlers/fallback timer
 
     // Spawn a new session via IPC (CLI and direct internal calls).
     const ipcSpawnSession = async (

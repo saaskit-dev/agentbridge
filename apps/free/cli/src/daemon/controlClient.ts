@@ -295,5 +295,23 @@ async function waitForProcessDeath(pid: number, timeout: number): Promise<void> 
       return; // Process is dead
     }
   }
+  // Final check: confirm the process is truly still alive before throwing
+  let processStillAlive = false;
+  try {
+    process.kill(pid, 0);
+    processStillAlive = true;
+  } catch {
+    // Died in the last polling window — treat as success
+    return;
+  }
+  logger.error('[controlClient] waitForProcessDeath: process did not die within timeout', {
+    pid,
+    timeoutMs: timeout,
+    elapsedMs: Date.now() - start,
+    processStillAlive,
+    // Possible causes: process is stuck in uninterruptible sleep (D state), kernel-level
+    // blocking (e.g. NFS mount hang), or SIGTERM/SIGKILL were sent but the OS hasn't
+    // reaped the process yet. A 'D' state process cannot be killed — requires OS reboot.
+  });
   throw new Error('Process did not die within timeout');
 }

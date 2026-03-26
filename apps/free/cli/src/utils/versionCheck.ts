@@ -128,10 +128,28 @@ export async function notifySessionToExit(pid: number, timeoutMs: number = 5000)
     }
 
     // Set up timeout for force kill
+    const sigtermSentAt = Date.now();
     const timeout = setTimeout(() => {
+      // Check if process still exists before SIGKILL to diagnose why SIGTERM was ignored
+      let processStillAlive = false;
+      try {
+        process.kill(pid, 0);
+        processStillAlive = true;
+      } catch {
+        // Process died between the SIGTERM check and now — race condition
+      }
+      logger.warn('[VERSION CHECK] SIGTERM not acknowledged within timeout, sending SIGKILL', {
+        pid,
+        timeoutMs,
+        msSinceSigterm: Date.now() - sigtermSentAt,
+        // If false, process died just before SIGKILL — the kill below will throw and be swallowed
+        processStillAlive,
+        // Possible causes: process is stuck in a blocking syscall, the agent child is not
+        // handling SIGTERM (e.g. running inside a PTY with signal masking), or the process
+        // has a zombie/unkillable state. Check childProcessUtils for child PID info.
+      });
       try {
         process.kill(pid, 'SIGKILL');
-        logger.debug(`[VERSION CHECK] Force killed process ${pid} after timeout`);
       } catch {
         // Process already dead
       }
