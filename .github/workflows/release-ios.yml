@@ -2,11 +2,6 @@ name: Release iOS (App Store)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/free/app/**'
-      - 'packages/core/**'
 
 jobs:
   release:
