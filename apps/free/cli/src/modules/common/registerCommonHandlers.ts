@@ -246,11 +246,11 @@ export function registerCommonHandlers(
     }
 
     try {
-      const buffer = await readFile(data.path);
+      const buffer = await readFile(validation.resolvedPath);
       const content = buffer.toString('base64');
       return { success: true, content };
     } catch (error) {
-      log.debug('Failed to read file', { path: data.path, error: safeStringify(error) });
+      log.debug('Failed to read file', { path: validation.resolvedPath, error: safeStringify(error) });
       return {
         success: false,
         error: safeStringify(error),
@@ -270,11 +270,13 @@ export function registerCommonHandlers(
         return { success: false, error: validation.error };
       }
 
+      const resolvedPath = validation.resolvedPath;
+
       try {
         // If expectedHash is provided (not null), verify existing file
         if (data.expectedHash !== null && data.expectedHash !== undefined) {
           try {
-            const existingBuffer = await readFile(data.path);
+            const existingBuffer = await readFile(resolvedPath);
             const existingHash = createHash('sha256').update(existingBuffer).digest('hex');
 
             if (existingHash !== data.expectedHash) {
@@ -297,7 +299,7 @@ export function registerCommonHandlers(
         } else {
           // expectedHash is null - expecting new file
           try {
-            await stat(data.path);
+            await stat(resolvedPath);
             // File exists but we expected it to be new
             return {
               success: false,
@@ -314,14 +316,14 @@ export function registerCommonHandlers(
 
         // Write the file
         const buffer = Buffer.from(data.content, 'base64');
-        await writeFile(data.path, buffer);
+        await writeFile(resolvedPath, buffer);
 
         // Calculate and return hash of written file
         const hash = createHash('sha256').update(buffer).digest('hex');
 
         return { success: true, hash };
       } catch (error) {
-        log.debug('Failed to write file', { path: data.path, error: safeStringify(error) });
+        log.debug('Failed to write file', { path: resolvedPath, error: safeStringify(error) });
         return {
           success: false,
           error: safeStringify(error),
@@ -343,11 +345,11 @@ export function registerCommonHandlers(
       }
 
       try {
-        const entries = await readdir(data.path, { withFileTypes: true });
+        const entries = await readdir(validation.resolvedPath, { withFileTypes: true });
 
         const directoryEntries: DirectoryEntry[] = await Promise.all(
           entries.map(async entry => {
-            const fullPath = join(data.path, entry.name);
+            const fullPath = join(validation.resolvedPath, entry.name);
             let type: 'file' | 'directory' | 'other' = 'other';
             let size: number | undefined;
             let modified: number | undefined;
@@ -385,7 +387,7 @@ export function registerCommonHandlers(
 
         return { success: true, entries: directoryEntries };
       } catch (error) {
-        log.debug('Failed to list directory', { path: data.path, error: safeStringify(error) });
+        log.debug('Failed to list directory', { path: validation.resolvedPath, error: safeStringify(error) });
         return {
           success: false,
           error: safeStringify(error),
@@ -405,6 +407,8 @@ export function registerCommonHandlers(
       if (!validation.valid) {
         return { success: false, error: validation.error };
       }
+
+      const resolvedRootPath = validation.resolvedPath;
 
       // Helper function to build tree recursively
       async function buildTree(
@@ -471,10 +475,11 @@ export function registerCommonHandlers(
         }
 
         // Get the base name for the root node
-        const baseName = data.path === '/' ? '/' : data.path.split('/').pop() || data.path;
+        const baseName =
+          resolvedRootPath === '/' ? '/' : resolvedRootPath.split('/').pop() || resolvedRootPath;
 
         // Build the tree starting from the requested path
-        const tree = await buildTree(data.path, baseName, 0);
+        const tree = await buildTree(resolvedRootPath, baseName, 0);
 
         if (!tree) {
           return { success: false, error: 'Failed to access the specified path' };
@@ -482,7 +487,10 @@ export function registerCommonHandlers(
 
         return { success: true, tree };
       } catch (error) {
-        log.debug('Failed to get directory tree', { path: data.path, error: safeStringify(error) });
+        log.debug('Failed to get directory tree', {
+          path: resolvedRootPath,
+          error: safeStringify(error),
+        });
         return {
           success: false,
           error: safeStringify(error),
