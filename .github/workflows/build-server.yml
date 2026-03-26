@@ -60,3 +60,13 @@ jobs:
           tags: kilingzhang/free-server:latest
           build-args: |
             BUILD_TIME=${{ github.event.repository.updated_at }}
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /root/free-server
+            ./deploy.sh
