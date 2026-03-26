@@ -11,7 +11,11 @@
 
 ## No Circular Dependencies
 
-Run `npx madge --circular --extensions ts,tsx sources/` to verify. Zero cycles allowed.
+Run `npx madge --circular --extensions ts,tsx ./sources/` to verify. Zero cycles allowed.
+
+> **Note**: always use `./sources/` (with `./` prefix) rather than bare `sources/` in shell commands.
+> Some directories under `sources/` start with `-` (e.g. `-session/`); without `./`, shells and CLI tools
+> may misinterpret the path as a flag argument, causing ENOENT or silently skipping the directory.
 
 - **Types/constants in separate files** — When a file both exports types and imports its consumers (e.g. a registry that imports components and exports `ToolViewProps`), the types MUST live in a dedicated file (e.g. `types.ts`). Consumers import types from that file, not from the registry.
 - **Unidirectional dependencies** — `storage` (state layer) must NOT import from `sync` (business layer). When reverse communication is needed, use the callback registration pattern: `storage.ts` exposes `registerXxxCallback()`, and `sync.ts` registers at init time.
