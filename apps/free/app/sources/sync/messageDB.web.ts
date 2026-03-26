@@ -25,10 +25,15 @@ const logger = new Logger('sync/messageDB.web');
 // Lazily initialized wa-sqlite state
 let sqlite3: any = null;
 let dbHandle: number | null = null;
-let initFailed = false;
+// Retry-with-backoff: tracks when the next init attempt is allowed.
+// 0 = never failed (or succeeded). >0 = failed, retry after this timestamp.
+let initRetryAfter = 0;
+let initAttempt = 0;
+const INIT_RETRY_BACKOFF_MS = [30_000, 60_000, 120_000]; // max 3 retries then give up
 
 async function getDB(): Promise<{ sqlite3: any; db: number } | null> {
-  if (initFailed) return null;
+  if (initRetryAfter === -1) return null; // permanently failed after all retries
+  if (initRetryAfter > 0 && Date.now() < initRetryAfter) return null; // in cooldown
   if (sqlite3 && dbHandle != null) return { sqlite3, db: dbHandle };
 
   try {
@@ -59,13 +64,27 @@ async function getDB(): Promise<{ sqlite3: any; db: number } | null> {
     dbHandle = (await sqlite3.open_v2('messageCache')) as number;
     await exec(SCHEMA_SQL);
 
+    initRetryAfter = 0;
+    initAttempt = 0;
     logger.info('[messageDB] web wa-sqlite initialized');
     return { sqlite3, db: dbHandle };
   } catch (error) {
-    logger.warn('[messageDB] web init failed, falling back to no-cache mode', {
-      error: String(error),
-    });
-    initFailed = true;
+    const backoffMs = INIT_RETRY_BACKOFF_MS[initAttempt] ?? -1;
+    initAttempt++;
+    if (backoffMs === -1) {
+      initRetryAfter = -1; // all retries exhausted, give up permanently
+      logger.error('[messageDB] web init failed after all retries, no-cache mode', {
+        error: String(error),
+        attempts: initAttempt,
+      });
+    } else {
+      initRetryAfter = Date.now() + backoffMs;
+      logger.warn('[messageDB] web init failed, will retry', {
+        error: String(error),
+        attempt: initAttempt,
+        retryInMs: backoffMs,
+      });
+    }
     return null;
   }
 }
@@ -141,6 +160,21 @@ export const messageDB: MessageDB = {
     await exec(
       `INSERT OR REPLACE INTO session_sync (session_id, last_seq, synced_at) VALUES ('${sid}', ${seq}, ${Date.now()})`
     );
+  },
+
+  async upsertMessagesAndSeq(sessionId, messages, seq) {
+    const state = await getDB();
+    if (!state) return;
+    const sid = escapeStr(sessionId);
+    const stmts = messages.map(
+      m =>
+        `INSERT OR REPLACE INTO messages (id, session_id, seq, content, role, created_at, updated_at)
+       VALUES ('${escapeStr(m.id)}', '${sid}', ${m.seq}, '${escapeStr(m.content)}', '${escapeStr(m.role)}', ${m.created_at}, ${m.updated_at})`
+    );
+    stmts.push(
+      `INSERT OR REPLACE INTO session_sync (session_id, last_seq, synced_at) VALUES ('${sid}', ${seq}, ${Date.now()})`
+    );
+    await exec(`BEGIN TRANSACTION; ${stmts.join('; ')}; COMMIT;`);
   },
 
   async deleteSession(sessionId) {

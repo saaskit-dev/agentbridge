@@ -37,6 +37,14 @@ export interface MessageDB {
   /** Update the sync watermark for a session. */
   updateLastSeq(sessionId: string, seq: number): Promise<void>;
 
+  /**
+   * Atomically upsert messages AND update the seq watermark in one transaction.
+   * Prevents last_seq from advancing ahead of the messages written to disk
+   * (which could cause messages to be skipped on the next cold start).
+   * Safe to call with an empty messages array — only updates the seq in that case.
+   */
+  upsertMessagesAndSeq(sessionId: string, messages: CachedMessage[], seq: number): Promise<void>;
+
   /** Delete all cached data for a session. */
   deleteSession(sessionId: string): Promise<void>;
 

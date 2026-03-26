@@ -286,9 +286,10 @@ class Sync {
         const cachedSeq = await messageDB.getLastSeq(sessionId);
         if (cachedSeq > 0) {
           this.sessionLastSeq.set(sessionId, cachedSeq);
-          // Load latest 5000 messages (DESC via beforeSeq, reversed to ASC before reducer)
+          // Load latest 50 messages for fast initial render; older messages are
+          // fetched on demand via loadOlderMessages (triggered by ChatList scroll).
           const cached = await messageDB.getMessages(sessionId, {
-            limit: 5000,
+            limit: 50,
             beforeSeq: cachedSeq + 1,
           });
           if (cached.length > 0) {
@@ -1986,18 +1987,19 @@ class Sync {
           };
         });
         messageDB
-          .upsertMessages(sessionId, cacheEntries)
+          .upsertMessagesAndSeq(sessionId, cacheEntries, maxSeq)
           .catch(e =>
-            logger.debug('[sync] messageDB upsert failed', { sessionId, error: String(e) })
+            logger.debug('[sync] messageDB upsertAndSeq failed', { sessionId, error: String(e) })
+          );
+      } else {
+        messageDB
+          .updateLastSeq(sessionId, maxSeq)
+          .catch(e =>
+            logger.debug('[sync] messageDB updateLastSeq failed', { sessionId, error: String(e) })
           );
       }
 
       this.sessionLastSeq.set(sessionId, maxSeq);
-      messageDB
-        .updateLastSeq(sessionId, maxSeq)
-        .catch(e =>
-          logger.debug('[sync] messageDB updateLastSeq failed', { sessionId, error: String(e) })
-        );
       hasMore = !!ack.hasMore;
       if (hasMore && maxSeq === afterSeq) {
         logger.debug(
@@ -2080,6 +2082,39 @@ class Sync {
 
     storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: true });
     try {
+      // --- SQLite cache-first: serve older messages from local cache when available ---
+      const sqliteCached = await messageDB.getMessages(sessionId, {
+        limit: 50,
+        beforeSeq,
+      });
+      if (sqliteCached.length > 0) {
+        const normalizedFromCache: NormalizedMessage[] = [];
+        for (const msg of sqliteCached) {
+          let content: any;
+          try {
+            content = JSON.parse(msg.content);
+          } catch {
+            continue;
+          }
+          const n = normalizeRawMessage(msg.id, msg.created_at, content);
+          if (n) {
+            n.seq = msg.seq;
+            normalizedFromCache.push(n);
+          }
+        }
+        if (normalizedFromCache.length > 0) {
+          this.enqueueMessages(sessionId, normalizedFromCache);
+        }
+        const minSeq = Math.min(...sqliteCached.map(m => m.seq));
+        this.sessionOldestSeq.set(sessionId, minSeq);
+        storage.getState().setSessionOlderMessagesState(sessionId, {
+          hasOlderMessages: minSeq > 1,
+          isLoadingOlder: false,
+        });
+        return;
+      }
+      // ---------------------------------------------------------------------------
+
       const encryption = this.encryption.getSessionEncryption(sessionId);
       if (!encryption) {
         storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: false });

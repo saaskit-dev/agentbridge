@@ -68,6 +68,23 @@ export const messageDB: MessageDB = {
     );
   },
 
+  async upsertMessagesAndSeq(sessionId, messages, seq) {
+    const d = await getDB();
+    await d.withTransactionAsync(async () => {
+      for (const m of messages) {
+        await d.runAsync(
+          `INSERT OR REPLACE INTO messages (id, session_id, seq, content, role, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [m.id, sessionId, m.seq, m.content, m.role, m.created_at, m.updated_at]
+        );
+      }
+      await d.runAsync(
+        'INSERT OR REPLACE INTO session_sync (session_id, last_seq, synced_at) VALUES (?, ?, ?)',
+        [sessionId, seq, Date.now()]
+      );
+    });
+  },
+
   async deleteSession(sessionId) {
     const d = await getDB();
     await d.runAsync('DELETE FROM messages WHERE session_id = ?', [sessionId]);

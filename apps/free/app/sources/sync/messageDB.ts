@@ -30,5 +30,7 @@ export const messageDB: MessageDB = {
   },
   async upsertMessages() {},
   async updateLastSeq() {},
+  async upsertMessagesAndSeq() {},
   async deleteSession() {},
+  async deleteAll() {},
 };
