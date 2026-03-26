@@ -1,5 +1,7 @@
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
-import { Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 
@@ -16,19 +18,42 @@ export function resultToString(value: unknown): string {
 
 export function ToolError(props: { message: unknown }) {
   const { theme } = useUnistyles();
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const msg = resultToString(props.message);
   const { isToolUseError, errorMessage } = parseToolUseError(msg);
   const displayMessage = isToolUseError && errorMessage ? errorMessage : msg;
 
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  function handlePress() {
+    Clipboard.setStringAsync(displayMessage);
+    setCopied(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 1500);
+  }
+
   return (
-    <View style={[styles.errorContainer, isToolUseError && styles.toolUseErrorContainer]}>
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [
+        styles.errorContainer,
+        isToolUseError && styles.toolUseErrorContainer,
+        pressed && { opacity: 0.7 },
+      ]}
+    >
       {isToolUseError && (
         <Ionicons name="warning" size={16} color={theme.colors.box.warning.text} />
       )}
       <Text style={[styles.errorText, isToolUseError && styles.toolUseErrorText]}>
         {displayMessage}
       </Text>
-    </View>
+      {copied && (
+        <Text style={styles.copiedBadge}>
+          ✓
+        </Text>
+      )}
+    </Pressable>
   );
 }
 
@@ -56,6 +81,15 @@ const styles = StyleSheet.create(theme => ({
     flex: 1,
   },
   toolUseErrorText: {
+    color: theme.colors.box.error.text,
+  },
+  copiedBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    opacity: 0.7,
     color: theme.colors.box.error.text,
   },
 }));

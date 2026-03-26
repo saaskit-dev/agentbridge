@@ -347,13 +347,7 @@ function AgentEventBlock(props: {
     );
   }
   if (props.event.type === 'error') {
-    return (
-      <View style={styles.agentEventContainer}>
-        <Text style={[styles.agentEventText, { color: theme.colors.error }]}>
-          {props.event.message}
-        </Text>
-      </View>
-    );
+    return <AgentErrorBlock message={props.event.message} />;
   }
   if (props.event.type === 'daemon-log') {
     return <DaemonLogBlock event={props.event} />;
@@ -362,6 +356,37 @@ function AgentEventBlock(props: {
     <View style={styles.agentEventContainer}>
       <Text style={styles.agentEventText}>{t('message.unknownEvent')}</Text>
     </View>
+  );
+}
+
+function AgentErrorBlock(props: { message: string }) {
+  const { theme } = useUnistyles();
+  const [copied, setCopied] = React.useState(false);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  function handlePress() {
+    Clipboard.setStringAsync(props.message);
+    setCopied(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [styles.agentEventContainer, pressed && { opacity: 0.7 }]}
+    >
+      <Text style={[styles.agentEventText, { color: theme.colors.warningCritical, flex: 1 }]}>
+        {props.message}
+      </Text>
+      {copied && (
+        <Text style={{ position: 'absolute', top: 4, right: 8, color: theme.colors.warningCritical, opacity: 0.7, fontSize: 13, fontWeight: '600' }}>
+          ✓
+        </Text>
+      )}
+    </Pressable>
   );
 }
 
