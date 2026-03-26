@@ -434,41 +434,67 @@ export function reducer(
             changed.add(existingMessageId);
           }
         } else {
-          if (ENABLE_LOGGING) {
-            logger.debug(`[REDUCER] Creating new message for permission ${permId}`);
+          // Content-based dedup: check if a pending message already exists for the same
+          // tool + arguments. This handles agents (e.g. Cursor) that emit a fresh random ID
+          // for each request_permission call, so the same tool call doesn't appear twice.
+          const contentKey = `${request.tool}:${JSON.stringify(request.arguments)}`;
+          let dedupedMsgId: string | undefined;
+          for (const [existingPermId, existingPerm] of state.permissions) {
+            if (
+              existingPerm.status === 'pending' &&
+              existingPerm.tool === request.tool &&
+              JSON.stringify(existingPerm.arguments) === JSON.stringify(request.arguments)
+            ) {
+              dedupedMsgId = state.toolIdToMessageId.get(existingPermId);
+              break;
+            }
           }
 
-          // Create a new tool message for the permission request
-          const mid = allocateId();
-          const toolCall: ToolCall = {
-            name: request.tool,
-            state: 'running' as const,
-            input: request.arguments,
-            createdAt: request.createdAt || Date.now(),
-            startedAt: null,
-            completedAt: null,
-            description: null,
-            result: undefined,
-            permission: {
-              id: permId,
-              status: 'pending',
-            },
-          };
+          if (dedupedMsgId) {
+            // Reuse existing message — just alias the new permId to the same message
+            if (ENABLE_LOGGING) {
+              logger.debug(
+                `[REDUCER] Dedup: aliasing permission ${permId} to existing message ${dedupedMsgId} (key=${contentKey})`
+              );
+            }
+            state.toolIdToMessageId.set(permId, dedupedMsgId);
+          } else {
+            if (ENABLE_LOGGING) {
+              logger.debug(`[REDUCER] Creating new message for permission ${permId}`);
+            }
 
-          storeRootMessage(state, {
-            id: mid,
-            realID: null,
-            role: 'agent',
-            createdAt: request.createdAt || Date.now(),
-            text: null,
-            tool: toolCall,
-            event: null,
-          });
+            // Create a new tool message for the permission request
+            const mid = allocateId();
+            const toolCall: ToolCall = {
+              name: request.tool,
+              state: 'running' as const,
+              input: request.arguments,
+              createdAt: request.createdAt || Date.now(),
+              startedAt: null,
+              completedAt: null,
+              description: null,
+              result: undefined,
+              permission: {
+                id: permId,
+                status: 'pending',
+              },
+            };
 
-          // Store by permission ID (which will match tool ID)
-          state.toolIdToMessageId.set(permId, mid);
+            storeRootMessage(state, {
+              id: mid,
+              realID: null,
+              role: 'agent',
+              createdAt: request.createdAt || Date.now(),
+              text: null,
+              tool: toolCall,
+              event: null,
+            });
 
-          changed.add(mid);
+            // Store by permission ID (which will match tool ID)
+            state.toolIdToMessageId.set(permId, mid);
+
+            changed.add(mid);
+          }
         }
 
         // Store permission details for quick lookup

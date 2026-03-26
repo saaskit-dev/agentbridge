@@ -3302,4 +3302,99 @@ describe('reducer', () => {
       expect(result2.messages).toHaveLength(0);
     });
   });
+
+  describe('duplicate permission dedup (content-based, Issue-7)', () => {
+    it('should not create a second message when Cursor resends the same permission with a different ID', () => {
+      const state = createReducer();
+
+      // First permission request: permId = 'perm-uuid-1'
+      const agentState1: AgentState = {
+        requests: {
+          'perm-uuid-1': {
+            tool: 'execute',
+            arguments: { command: 'npm test' },
+            createdAt: 1000,
+          },
+        },
+      };
+
+      const result1 = reducer(state, [], agentState1);
+      expect(result1.messages).toHaveLength(1);
+      expect(state.messages.size).toBe(1);
+
+      // Cursor resends the same permission with a NEW random ID (perm-uuid-2)
+      const agentState2: AgentState = {
+        requests: {
+          'perm-uuid-1': {
+            tool: 'execute',
+            arguments: { command: 'npm test' },
+            createdAt: 1000,
+          },
+          'perm-uuid-2': {
+            tool: 'execute',
+            arguments: { command: 'npm test' },
+            createdAt: 1001,
+          },
+        },
+      };
+
+      const result2 = reducer(state, [], agentState2);
+
+      // Must NOT create a second message — both IDs should point to the same message
+      expect(state.messages.size).toBe(1);
+      expect(result2.messages).toHaveLength(0); // no new messages added
+
+      const msgId1 = state.toolIdToMessageId.get('perm-uuid-1');
+      const msgId2 = state.toolIdToMessageId.get('perm-uuid-2');
+      expect(msgId1).toBeDefined();
+      expect(msgId2).toBeDefined();
+      expect(msgId1).toBe(msgId2); // both aliases point to the same message
+    });
+
+    it('should still create separate messages for different tools', () => {
+      const state = createReducer();
+
+      const agentState: AgentState = {
+        requests: {
+          'perm-uuid-a': {
+            tool: 'execute',
+            arguments: { command: 'npm test' },
+            createdAt: 1000,
+          },
+          'perm-uuid-b': {
+            tool: 'edit',
+            arguments: { path: 'foo.ts', content: 'x' },
+            createdAt: 1001,
+          },
+        },
+      };
+
+      const result = reducer(state, [], agentState);
+      expect(result.messages).toHaveLength(2);
+      expect(state.messages.size).toBe(2);
+    });
+
+    it('should still create separate messages for same tool but different arguments', () => {
+      const state = createReducer();
+
+      const agentState: AgentState = {
+        requests: {
+          'perm-uuid-c': {
+            tool: 'execute',
+            arguments: { command: 'npm test' },
+            createdAt: 1000,
+          },
+          'perm-uuid-d': {
+            tool: 'execute',
+            arguments: { command: 'npm build' },
+            createdAt: 1001,
+          },
+        },
+      };
+
+      const result = reducer(state, [], agentState);
+      expect(result.messages).toHaveLength(2);
+      expect(state.messages.size).toBe(2);
+    });
+  });
 });
