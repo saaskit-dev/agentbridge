@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -63,6 +63,21 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
   metadata,
 }) => {
   const { theme } = useUnistyles();
+
+  // 5 分钟后自动拒绝仍处于 pending 状态的权限申请，防止用户离开后永久挂起
+  useEffect(() => {
+    if (permission.status !== 'pending') return;
+    const timer = setTimeout(() => {
+      void sessionDeny(sessionId, permission.id, undefined, undefined, 'denied');
+      logger.info('tool_permission_auto_denied_timeout', {
+        sessionId,
+        permissionId: permission.id,
+        toolName,
+      });
+    }, 5 * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, [permission.id, permission.status, sessionId]);
+
   const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | 'abort' | null>(null);
   const [loadingAllEdits, setLoadingAllEdits] = useState(false);
   const [loadingForSession, setLoadingForSession] = useState(false);

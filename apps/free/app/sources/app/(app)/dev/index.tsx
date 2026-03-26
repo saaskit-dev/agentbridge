@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Platform } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { setLastViewedVersion, getLatestVersion } from '@/changelog';
 import { Item } from '@/components/Item';
@@ -146,7 +146,13 @@ export default function DevScreen() {
         <Item title="SDK Version" detail={Constants.expoConfig?.sdkVersion || 'Unknown'} />
         <Item
           title="Platform"
-          detail={`${Constants.platform?.ios ? 'iOS' : 'Android'} ${Constants.systemVersion || ''}`}
+          detail={
+            Platform.OS === 'ios'
+              ? `iOS ${Constants.systemVersion || ''}`.trim()
+              : Platform.OS === 'android'
+                ? `Android ${Constants.systemVersion || ''}`.trim()
+                : 'Web'
+          }
         />
         <Item title="Anonymous ID" detail={anonymousId} />
       </ItemGroup>

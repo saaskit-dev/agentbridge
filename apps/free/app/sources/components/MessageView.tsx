@@ -18,12 +18,12 @@ import { t } from '@/text';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/MessageView');
 
-export const MessageView = (props: {
+export const MessageView = React.memo(function MessageView(props: {
   message: Message;
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-}) => {
+}) {
   return (
     <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
       <View style={styles.messageContent}>
@@ -36,7 +36,7 @@ export const MessageView = (props: {
       </View>
     </View>
   );
-};
+});
 
 // RenderBlock function that dispatches to the correct component based on message kind
 function RenderBlock(props: {

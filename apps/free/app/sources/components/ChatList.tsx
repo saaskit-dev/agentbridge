@@ -14,7 +14,7 @@ import {
 import { useUnistyles } from 'react-native-unistyles';
 import { ChatFooter } from './ChatFooter';
 import { MessageView } from './MessageView';
-import { useSession, useSessionMessages } from '@/sync/storage';
+import { useSession, useSessionMessages, useMessage } from '@/sync/storage';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { Message } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
@@ -73,7 +73,7 @@ function formatTime(ts: number): string {
 // ---------------------------------------------------------------------------
 
 type ListItem =
-  | { type: 'message'; message: Message }
+  | { type: 'message'; messageId: string }
   | { type: 'date-separator'; label: string; key: string }
   | { type: 'time-separator'; label: string; key: string };
 
@@ -108,7 +108,7 @@ function buildListItems(messages: Message[]): ListItem[] {
       });
     }
 
-    items.push({ type: 'message', message: msg });
+    items.push({ type: 'message', messageId: msg.id });
   }
 
   // Reverse so newest is at index 0 (matches inverted FlatList expectation)
@@ -300,14 +300,10 @@ const TimeSeparator = React.memo((props: { label: string }) => {
 // ---------------------------------------------------------------------------
 
 export const ChatList = React.memo((props: { session: Session; footerNotice?: string | null }) => {
-  const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.session.id);
   return (
     <ChatListInternal
       metadata={props.session.metadata}
       sessionId={props.session.id}
-      messages={messages}
-      hasOlderMessages={hasOlderMessages}
-      isLoadingOlder={isLoadingOlder}
       footerNotice={props.footerNotice}
     />
   );
@@ -333,6 +329,24 @@ const ListFooter = React.memo((props: { sessionId: string; notice?: string | nul
 });
 
 // ---------------------------------------------------------------------------
+// Per-message row — subscribes to a single message, isolated re-render
+// ---------------------------------------------------------------------------
+
+const MessageRow = React.memo(
+  (props: { sessionId: string; messageId: string; metadata: Metadata | null }) => {
+    const message = useMessage(props.sessionId, props.messageId);
+    if (!message) return null;
+    return (
+      <MessageView
+        message={message}
+        metadata={props.metadata}
+        sessionId={props.sessionId}
+      />
+    );
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Main list
 // ---------------------------------------------------------------------------
 
@@ -340,11 +354,9 @@ const ChatListInternal = React.memo(
   (props: {
     metadata: Metadata | null;
     sessionId: string;
-    messages: Message[];
-    hasOlderMessages: boolean;
-    isLoadingOlder: boolean;
     footerNotice?: string | null;
   }) => {
+    const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.sessionId);
     // ----- pull states -----
     const [refreshPull, setRefreshPull] = useState<PullState>('idle');
     const [olderPull, setOlderPull] = useState<PullState>('idle');
@@ -445,27 +457,27 @@ const ChatListInternal = React.memo(
           prev < maxScroll - 50 &&
           y >= maxScroll - 5 &&
           olderRef.current === 'idle' &&
-          !props.isLoadingOlder
+          !isLoadingOlder
         ) {
           triggerLoad('older', () => sync.loadOlderMessages(props.sessionId));
         }
       },
-      [setPull, triggerLoad, props.sessionId, props.isLoadingOlder, updateShowScrollFab, updateUnreadCount]
+      [setPull, triggerLoad, props.sessionId, isLoadingOlder, updateShowScrollFab, updateUnreadCount]
     );
 
     const handleScrollEndDrag = useCallback(() => {
       if (refreshRef.current === 'ready') {
         triggerLoad('refresh', () => sync.refreshMessages(props.sessionId));
       }
-      if (olderRef.current === 'ready' && !props.isLoadingOlder) {
+      if (olderRef.current === 'ready' && !isLoadingOlder) {
         triggerLoad('older', () => sync.loadOlderMessages(props.sessionId));
       }
-    }, [props.sessionId, props.isLoadingOlder, triggerLoad]);
+    }, [props.sessionId, isLoadingOlder, triggerLoad]);
 
     // ----- auto-scroll / unread tracking -----
-    const prevMessageCount = useRef(props.messages.length);
+    const prevMessageCount = useRef(messages.length);
     useEffect(() => {
-      const count = props.messages.length;
+      const count = messages.length;
       const added = count - prevMessageCount.current;
       if (added > 0) {
         if (isAtBottom.current) {
@@ -477,7 +489,7 @@ const ChatListInternal = React.memo(
         }
       }
       prevMessageCount.current = count;
-    }, [props.messages.length, updateUnreadCount]);
+    }, [messages.length, updateUnreadCount]);
 
     const handleScrollToBottom = useCallback(() => {
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -486,11 +498,11 @@ const ChatListInternal = React.memo(
     }, [updateShowScrollFab, updateUnreadCount]);
 
     // ----- build list items with separators -----
-    const listItems = useMemo(() => buildListItems(props.messages), [props.messages]);
+    const listItems = useMemo(() => buildListItems(messages), [messages]);
 
     // ----- render items -----
     const keyExtractor = useCallback((item: ListItem) => {
-      if (item.type === 'message') return item.message.id;
+      if (item.type === 'message') return item.messageId;
       return item.key;
     }, []);
 
@@ -499,8 +511,8 @@ const ChatListInternal = React.memo(
         if (item.type === 'date-separator') return <DateSeparator label={item.label} />;
         if (item.type === 'time-separator') return <TimeSeparator label={item.label} />;
         return (
-          <MessageView
-            message={item.message}
+          <MessageRow
+            messageId={item.messageId}
             metadata={props.metadata}
             sessionId={props.sessionId}
           />
@@ -511,14 +523,14 @@ const ChatListInternal = React.memo(
 
     // onEndReached: load older (fires on both platforms when near visual top)
     const handleEndReached = useCallback(() => {
-      if (!props.hasOlderMessages || props.isLoadingOlder) return;
+      if (!hasOlderMessages || isLoadingOlder) return;
       if (olderRef.current === 'loading') return;
       triggerLoad('older', () => sync.loadOlderMessages(props.sessionId));
-    }, [props.sessionId, props.hasOlderMessages, props.isLoadingOlder, triggerLoad]);
+    }, [props.sessionId, hasOlderMessages, isLoadingOlder, triggerLoad]);
 
     const olderLoader = useMemo(
-      () => <OlderMessagesLoader isLoading={props.isLoadingOlder} />,
-      [props.isLoadingOlder]
+      () => <OlderMessagesLoader isLoading={isLoadingOlder} />,
+      [isLoadingOlder]
     );
 
     const footer = useMemo(
@@ -536,6 +548,7 @@ const ChatListInternal = React.memo(
           initialNumToRender={15}
           maxToRenderPerBatch={10}
           windowSize={7}
+          removeClippedSubviews={true}
           scrollEventThrottle={16}
           onScroll={handleScroll}
           onScrollEndDrag={handleScrollEndDrag}

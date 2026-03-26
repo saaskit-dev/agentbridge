@@ -1403,6 +1403,17 @@ export function useMessage(sessionId: string, messageId: string): Message | null
   );
 }
 
+const emptyIds: string[] = [];
+
+export function useSessionMessageIds(sessionId: string): string[] {
+  return storage(
+    useShallow(state => {
+      const session = state.sessionMessages[sessionId];
+      return session?.messages.map(m => m.id) ?? emptyIds;
+    })
+  );
+}
+
 export function useSessionUsage(sessionId: string) {
   return storage(
     useShallow(state => {
