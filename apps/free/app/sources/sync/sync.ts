@@ -286,9 +286,9 @@ class Sync {
         const cachedSeq = await messageDB.getLastSeq(sessionId);
         if (cachedSeq > 0) {
           this.sessionLastSeq.set(sessionId, cachedSeq);
-          // Load latest 500 messages (DESC via beforeSeq, reversed to ASC before reducer)
+          // Load latest 5000 messages (DESC via beforeSeq, reversed to ASC before reducer)
           const cached = await messageDB.getMessages(sessionId, {
-            limit: 500,
+            limit: 5000,
             beforeSeq: cachedSeq + 1,
           });
           if (cached.length > 0) {
@@ -1919,7 +1919,7 @@ class Sync {
       }>('fetch-messages', {
         sessionId,
         after_seq: afterSeq,
-        limit: 100,
+        limit: 1000,
       });
 
       if (!ack.ok) {
@@ -2089,7 +2089,7 @@ class Sync {
       }>('fetch-messages', {
         sessionId,
         before_seq: beforeSeq,
-        limit: 100,
+        limit: 1000,
       });
 
       if (!ack.ok || !Array.isArray(ack.messages) || ack.messages.length === 0) {

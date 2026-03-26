@@ -602,9 +602,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         return;
       }
       const limit =
-        typeof rawLimit === 'number' && rawLimit >= 1 && rawLimit <= 500
+        typeof rawLimit === 'number' && rawLimit >= 1 && rawLimit <= 1000
           ? Math.floor(rawLimit)
-          : 100;
+          : 1000;
 
       const session = await db.session.findFirst({
         where: { id: sid, accountId: userId },
