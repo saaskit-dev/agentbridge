@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { ActivityIndicator } from 'react-native';
@@ -20,9 +21,26 @@ const logger = new Logger('app/dev/index');
 
 export default function DevScreen() {
   const router = useRouter();
-  const [debugMode, setDebugMode] = useLocalSettingMutable('debugMode');
   const [showDebugIds, setShowDebugIds] = useLocalSettingMutable('showDebugIds');
-  const [verboseLogging, setVerboseLogging] = React.useState(false);
+  const buildTime = Updates.createdAt;
+  const runtimeVersion = Updates.runtimeVersion;
+  const shortRuntime = runtimeVersion
+    ? runtimeVersion.length > 10
+      ? runtimeVersion.slice(0, 7)
+      : runtimeVersion
+    : null;
+  const packageSource = Updates.isEmbeddedLaunch === false ? 'OTA' : 'Built-in';
+  const buildTimeDetail = buildTime
+    ? buildTime.toLocaleString(undefined, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      })
+    : 'Not available';
   const socketStatus = useSocketStatus();
   const anonymousId = sync.encryption?.anonId ?? 'N/A';
   const { theme } = useUnistyles();
@@ -122,6 +140,9 @@ export default function DevScreen() {
       <ItemGroup title="App Information">
         <Item title="Version" detail={Constants.expoConfig?.version || '1.0.0'} />
         <Item title="Build Number" detail={Application.nativeBuildVersion || 'N/A'} />
+        <Item title="Runtime Version" detail={shortRuntime || 'Not available'} />
+        <Item title="Package Source" detail={packageSource} />
+        <Item title="Build Time" detail={buildTimeDetail} />
         <Item title="SDK Version" detail={Constants.expoConfig?.sdkVersion || 'Unknown'} />
         <Item
           title="Platform"
@@ -136,17 +157,6 @@ export default function DevScreen() {
           title="Show Debug IDs"
           subtitle="Show session IDs, agent IDs, and raw JSON in session info"
           rightElement={<Switch value={showDebugIds} onValueChange={setShowDebugIds} />}
-          showChevron={false}
-        />
-        <Item
-          title="Debug Mode"
-          rightElement={<Switch value={debugMode} onValueChange={setDebugMode} />}
-          showChevron={false}
-        />
-        <Item
-          title="Verbose Logging"
-          subtitle="Log all network requests and responses"
-          rightElement={<Switch value={verboseLogging} onValueChange={setVerboseLogging} />}
           showChevron={false}
         />
       </ItemGroup>

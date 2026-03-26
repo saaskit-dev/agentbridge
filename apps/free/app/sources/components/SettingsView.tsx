@@ -1,7 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Application from 'expo-application';
 import Constants from 'expo-constants';
-import * as Updates from 'expo-updates';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
@@ -33,10 +31,9 @@ export const SettingsView = React.memo(function SettingsView() {
   const { theme } = useUnistyles();
   const router = useRouter();
   const appVersion = Constants.expoConfig?.version || '1.0.0';
-  const buildNumber = Application.nativeBuildVersion;
-  const buildTime = Updates.createdAt;
   const auth = useAuth();
   const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
+  const [, setShowDebugIds] = useLocalSettingMutable('showDebugIds');
   const isPro = useEntitlement('pro');
   const experiments = useSetting('experiments');
   const isCustomServer = isUsingCustomServer();
@@ -74,6 +71,9 @@ export const SettingsView = React.memo(function SettingsView() {
       // Toggle dev mode
       const newDevMode = !devModeEnabled;
       setDevModeEnabled(newDevMode);
+      if (!newDevMode) {
+        setShowDebugIds(false);
+      }
       Modal.alert(
         t('modals.developerMode'),
         newDevMode ? t('modals.developerModeEnabled') : t('modals.developerModeDisabled')
@@ -329,7 +329,7 @@ export const SettingsView = React.memo(function SettingsView() {
       </ItemGroup>
 
       {/* Developer */}
-      {(__DEV__ || devModeEnabled) && (
+      {devModeEnabled && (
         <ItemGroup title={t('settings.developer')}>
           <Item
             title={t('settings.developerTools')}
@@ -404,8 +404,7 @@ export const SettingsView = React.memo(function SettingsView() {
         )}
         <Item
           title={t('common.version')}
-          detail={`${appVersion}${buildNumber ? ` (${buildNumber})` : ''}`}
-          subtitle={[Updates.runtimeVersion && `runtime ${Updates.runtimeVersion}`, buildTime?.toLocaleString()].filter(Boolean).join(' · ') || undefined}
+          detail={appVersion}
           icon={
             <Ionicons
               name="information-circle-outline"

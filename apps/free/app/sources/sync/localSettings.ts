@@ -6,7 +6,6 @@ import * as z from 'zod';
 
 export const LocalSettingsSchema = z.object({
   // Developer settings (device-specific)
-  debugMode: z.boolean().describe('Enable debug logging'),
   devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
   showDebugIds: z.boolean().describe('Show diagnostic IDs (session ID, agent ID, etc.) in UI'),
   // Note: analyticsEnabled moved to sync'd Settings for cross-device sync with CLI
@@ -37,9 +36,8 @@ export type LocalSettings = z.infer<typeof LocalSettingsSchema>;
 //
 
 export const localSettingsDefaults: LocalSettings = {
-  debugMode: false,
-  devModeEnabled: false,
-  showDebugIds: true,
+  devModeEnabled: __DEV__,
+  showDebugIds: false,
   commandPaletteEnabled: false,
   themePreference: 'adaptive',
   markdownCopyV2: false,
