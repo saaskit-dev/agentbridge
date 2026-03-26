@@ -1425,6 +1425,10 @@ export function useSessionUsage(sessionId: string) {
   );
 }
 
+export function useSessionActiveToolCallCount(sessionId: string): number {
+  return storage(state => state.sessionMessages[sessionId]?.reducerState?.activeToolCallCount ?? 0);
+}
+
 export function useSettings(): Settings {
   return storage(useShallow(state => state.settings));
 }

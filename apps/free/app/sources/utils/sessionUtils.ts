@@ -1,8 +1,15 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
+import { useSessionActiveToolCallCount } from '@/sync/storage';
 
-export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
+export type SessionState =
+  | 'disconnected'
+  | 'suspended'
+  | 'thinking'
+  | 'tool_running'
+  | 'waiting'
+  | 'permission_required';
 
 export interface SessionStatus {
   state: SessionState;
@@ -19,6 +26,7 @@ export interface SessionStatus {
  * Uses centralized session state from storage.ts
  */
 export function useSessionStatus(session: Session): SessionStatus {
+  const activeToolCallCount = useSessionActiveToolCallCount(session.id);
   const isOnline = session.presence === 'online';
   const hasPermissions =
     session.agentState?.requests && Object.keys(session.agentState.requests).length > 0
@@ -28,6 +36,18 @@ export function useSessionStatus(session: Session): SessionStatus {
   const vibingMessage = React.useMemo(() => {
     return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
   }, [isOnline, hasPermissions, session.thinking]);
+
+  // suspended: daemon went offline while a turn was in progress
+  if (!isOnline && session.thinking) {
+    return {
+      state: 'suspended',
+      isConnected: false,
+      statusText: t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) }),
+      shouldShowStatus: true,
+      statusColor: '#FF9500',
+      statusDotColor: '#FF9500',
+    };
+  }
 
   if (!isOnline) {
     return {
@@ -49,6 +69,19 @@ export function useSessionStatus(session: Session): SessionStatus {
       shouldShowStatus: true,
       statusColor: '#FF9500',
       statusDotColor: '#FF9500',
+      isPulsing: true,
+    };
+  }
+
+  // tool_running: at least one tool call is actively executing
+  if (session.thinking && activeToolCallCount > 0) {
+    return {
+      state: 'tool_running',
+      isConnected: true,
+      statusText: vibingMessage,
+      shouldShowStatus: true,
+      statusColor: '#007AFF',
+      statusDotColor: '#007AFF',
       isPulsing: true,
     };
   }

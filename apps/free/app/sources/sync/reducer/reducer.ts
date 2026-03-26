@@ -156,6 +156,8 @@ export type ReducerState = {
   rootMessageIds: string[];
   sidechains: Map<string, ReducerMessage[]>;
   tracerState: TracerState; // Tracer state for sidechain processing
+  /** Number of tool calls currently in 'running' state. Recomputed at end of each reducer pass. */
+  activeToolCallCount: number;
   latestTodos?: {
     todos: Array<{
       content: string;
@@ -186,6 +188,7 @@ export function createReducer(): ReducerState {
     messageIds: new Map(),
     sidechains: new Map(),
     tracerState: createTracer(),
+    activeToolCallCount: 0,
   };
 }
 
@@ -1202,6 +1205,13 @@ export function reducer(
     logger.debug(JSON.stringify(messages, null, 2));
     logger.debug(`[REDUCER] Changed messages: ${changed.size}`);
   }
+
+  // Recount running tool calls so useSessionStatus can distinguish tool_running from thinking.
+  let runningCount = 0;
+  for (const [, msg] of state.messages) {
+    if (msg.tool?.state === 'running') runningCount++;
+  }
+  state.activeToolCallCount = runningCount;
 
   return {
     messages: newMessages,
