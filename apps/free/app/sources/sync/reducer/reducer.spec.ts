@@ -3304,6 +3304,45 @@ describe('reducer', () => {
   });
 
   describe('duplicate permission dedup (content-based, Issue-7)', () => {
+    it('should not create a second message when Cursor resends the same permission with a different ID and different argument key order', () => {
+      const state = createReducer();
+
+      const agentState1: AgentState = {
+        requests: {
+          'perm-uuid-1': {
+            tool: 'execute',
+            arguments: { command: 'npm test', cwd: '/app' },
+            createdAt: 1000,
+          },
+        },
+      };
+      const result1 = reducer(state, [], agentState1);
+      expect(result1.messages).toHaveLength(1);
+
+      // Same arguments, but key order is reversed (cwd first)
+      const agentState2: AgentState = {
+        requests: {
+          'perm-uuid-1': {
+            tool: 'execute',
+            arguments: { command: 'npm test', cwd: '/app' },
+            createdAt: 1000,
+          },
+          'perm-uuid-2': {
+            tool: 'execute',
+            arguments: { cwd: '/app', command: 'npm test' }, // reversed key order
+            createdAt: 1001,
+          },
+        },
+      };
+      const result2 = reducer(state, [], agentState2);
+
+      expect(state.messages.size).toBe(1);
+      expect(result2.messages).toHaveLength(0);
+      expect(state.toolIdToMessageId.get('perm-uuid-1')).toBe(
+        state.toolIdToMessageId.get('perm-uuid-2')
+      );
+    });
+
     it('should not create a second message when Cursor resends the same permission with a different ID', () => {
       const state = createReducer();
 

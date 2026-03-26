@@ -215,6 +215,20 @@ export type ReducerResult = {
 };
 
 /**
+ * Stable JSON serialization for arbitrary values.
+ * Object keys are sorted recursively so that `{ b: 1, a: 2 }` and `{ a: 2, b: 1 }`
+ * produce the same string. Used for content-based permission dedup.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+  const sorted = Object.keys(value as object)
+    .sort()
+    .map(k => `${JSON.stringify(k)}:${stableStringify((value as any)[k])}`);
+  return '{' + sorted.join(',') + '}';
+}
+
+/**
  * Normalize tool result for permission-only tools.
  * When a permission tool's result is a raw `{ status, decision }` object from the backend,
  * replace it with a human-readable "Approved" string for consistent display across web/app.
@@ -437,13 +451,14 @@ export function reducer(
           // Content-based dedup: check if a pending message already exists for the same
           // tool + arguments. This handles agents (e.g. Cursor) that emit a fresh random ID
           // for each request_permission call, so the same tool call doesn't appear twice.
-          const contentKey = `${request.tool}:${JSON.stringify(request.arguments)}`;
+          // stableStringify ensures key-order differences don't break the comparison.
+          const requestArgKey = stableStringify(request.arguments);
           let dedupedMsgId: string | undefined;
           for (const [existingPermId, existingPerm] of state.permissions) {
             if (
               existingPerm.status === 'pending' &&
               existingPerm.tool === request.tool &&
-              JSON.stringify(existingPerm.arguments) === JSON.stringify(request.arguments)
+              stableStringify(existingPerm.arguments) === requestArgKey
             ) {
               dedupedMsgId = state.toolIdToMessageId.get(existingPermId);
               break;
@@ -454,7 +469,7 @@ export function reducer(
             // Reuse existing message — just alias the new permId to the same message
             if (ENABLE_LOGGING) {
               logger.debug(
-                `[REDUCER] Dedup: aliasing permission ${permId} to existing message ${dedupedMsgId} (key=${contentKey})`
+                `[REDUCER] Dedup: aliasing permission ${permId} to existing message ${dedupedMsgId}`
               );
             }
             state.toolIdToMessageId.set(permId, dedupedMsgId);
