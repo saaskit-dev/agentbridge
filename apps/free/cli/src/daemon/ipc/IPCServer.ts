@@ -251,7 +251,16 @@ export class IPCServer {
         sessionId: requestedId,
       });
       const waitStart = Date.now();
-      await Promise.race([this.recoveryDone, new Promise<void>(r => setTimeout(r, 30_000))]);
+      let recoveryTimedOut = false;
+      await Promise.race([
+        this.recoveryDone,
+        new Promise<void>(r =>
+          setTimeout(() => {
+            recoveryTimedOut = true;
+            r();
+          }, 30_000)
+        ),
+      ]);
       const waitMs = Date.now() - waitStart;
       // Re-resolve: recovery may have added a mapping
       const postRecoveryId = this.sessionIdMap.get(requestedId) ?? requestedId;
@@ -265,10 +274,22 @@ export class IPCServer {
         this.doAttach(socket, postRecoveryId);
         return;
       }
-      logger.info('[IPCServer] attach failed after recovery wait: session not recovered', {
-        sessionId: requestedId,
-        waitMs,
-      });
+      if (recoveryTimedOut) {
+        logger.error('[IPCServer] recovery wait timed out (30s): session not available', {
+          sessionId: requestedId,
+          waitMs,
+          // resolveRecovery still set means endRecovery() was never called — daemon recovery loop likely stalled
+          recoveryGateStillOpen: this.resolveRecovery !== null,
+          activeSessions: this.sessionManager.list().map(s => ({ id: s.sessionId, agent: s.agentType })),
+          activeSessionCount: this.sessionManager.list().length,
+          knownSessionIdMappings: this.sessionIdMap.size,
+        });
+      } else {
+        logger.info('[IPCServer] attach failed after recovery wait: session not recovered', {
+          sessionId: requestedId,
+          waitMs,
+        });
+      }
     }
 
     if (!session) {

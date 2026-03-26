@@ -119,8 +119,21 @@ export async function startDaemon(): Promise<void> {
 
       // Fallback - in case startup malfunctions - we will force exit the process with code 1
       // 15s gives time for graceful shutdown including API calls + telemetry flush
+      const fallbackTimerTriggeredAt = Date.now();
       const fallbackTimer = setTimeout(async () => {
-        logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
+        logger.error('[DAEMON RUN] graceful shutdown timed out (15s), forcing exit', {
+          shutdownSource: source,
+          shutdownErrorMessage: errorMessage ?? null,
+          // How long since shutdown was requested
+          elapsedMs: Date.now() - fallbackTimerTriggeredAt,
+          // If sessionManager was never assigned, daemon never reached full startup
+          activeSessions: sessionManager
+            ? sessionManager.list().map(s => ({ id: s.sessionId, agent: s.agentType }))
+            : 'sessionManager not initialized (daemon crashed before full startup)',
+          activeSessionCount: sessionManager?.list().length ?? 0,
+          ipcServerRunning: ipcServer !== undefined,
+          uptime: process.uptime(),
+        });
 
         // Give time for logs to be flushed
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -146,23 +159,44 @@ export async function startDaemon(): Promise<void> {
   });
 
   process.on('uncaughtException', error => {
-    logger.debug('[DAEMON RUN] FATAL: Uncaught exception', error);
-    logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
+    logger.error('[DAEMON RUN] FATAL: Uncaught exception — will force exit in 5s if cleanup stalls', {
+      errorMessage: error.message,
+      errorName: error.name,
+      stack: error.stack,
+      activeSessions: sessionManager
+        ? sessionManager.list().map(s => ({ id: s.sessionId, agent: s.agentType }))
+        : 'sessionManager not initialized',
+      activeSessionCount: sessionManager?.list().length ?? 0,
+      uptime: process.uptime(),
+    });
     // Set timeout to force exit after cleanup attempt
     setTimeout(() => {
-      logger.debug('[DAEMON RUN] Force exit after uncaught exception');
+      logger.error('[DAEMON RUN] Force exit after uncaught exception (cleanup took >5s)', {
+        errorMessage: error.message,
+      });
       process.exit(1);
     }, 5000);
     requestShutdown('exception', error.message);
   });
   process.on('unhandledRejection', (reason, promise) => {
-    logger.debug('[DAEMON RUN] FATAL: Unhandled promise rejection', reason);
-    logger.debug(`[DAEMON RUN] Rejected promise:`, promise);
     const error = toError(reason);
-    logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
+    logger.error('[DAEMON RUN] FATAL: Unhandled promise rejection — will force exit in 5s if cleanup stalls', {
+      errorMessage: error.message,
+      errorName: error.name,
+      stack: error.stack,
+      // promise.toString() avoids keeping the rejected promise reference alive
+      rejectedPromise: String(promise),
+      activeSessions: sessionManager
+        ? sessionManager.list().map(s => ({ id: s.sessionId, agent: s.agentType }))
+        : 'sessionManager not initialized',
+      activeSessionCount: sessionManager?.list().length ?? 0,
+      uptime: process.uptime(),
+    });
     // Set timeout to force exit after cleanup attempt
     setTimeout(() => {
-      logger.debug('[DAEMON RUN] Force exit after unhandled rejection');
+      logger.error('[DAEMON RUN] Force exit after unhandled rejection (cleanup took >5s)', {
+        errorMessage: error.message,
+      });
       process.exit(1);
     }, 5000);
     requestShutdown('exception', error.message);

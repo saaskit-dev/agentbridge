@@ -12,7 +12,25 @@ function extractWireTrace(data: any): WireTrace | undefined {
   return undefined;
 }
 
+/**
+ * Broadcast daemon-rpc-ready to all user-scoped App sockets for this user.
+ * Only user-scoped connections (App clients) receive this — daemon sockets are
+ * session-scoped or machine-scoped and should not receive it.
+ */
+function broadcastDaemonRpcReady(userId: string, sessionId: string): void {
+  const connections = eventRouter.getConnections(userId);
+  if (!connections) return;
+  for (const conn of connections) {
+    if (conn.connectionType === 'user-scoped') {
+      conn.socket.emit('daemon-rpc-ready', { sessionId });
+    }
+  }
+}
+
 export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
+  // Track which sessionIds have already received daemon-rpc-ready in this socket lifetime
+  const notifiedSessions = new Set<string>();
+
   // RPC register - Register this socket as a listener for an RPC method
   socket.on('rpc-register', async (data: any) => {
     try {
@@ -35,6 +53,19 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
       socket.emit('rpc-registered', { method });
       // log.info(`RPC method registered: ${method} on socket ${socket.id} (user: ${userId})`);
       // log.info(`Active RPC methods for user ${userId}: ${Array.from(rpcListeners.keys()).join(', ')}`);
+
+      // Notify App clients that the daemon RPC is ready for this session — once per session
+      // per socket connection (daemon registers multiple methods; only the first triggers it).
+      // Method name format is "${sessionId}:${methodName}" — extract the sessionId prefix.
+      const colonIdx = method.indexOf(':');
+      if (colonIdx > 0) {
+        const sessionId = method.substring(0, colonIdx);
+        if (!notifiedSessions.has(sessionId)) {
+          notifiedSessions.add(sessionId);
+          broadcastDaemonRpcReady(userId, sessionId);
+          log.debug('[rpcHandler] daemon-rpc-ready broadcasted', { userId, sessionId, method });
+        }
+      }
     } catch (error) {
       log.error('Error in rpc-register', undefined, {
         userId,

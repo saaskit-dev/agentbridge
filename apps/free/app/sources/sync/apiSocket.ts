@@ -3,6 +3,7 @@ import { Encryption } from './encryption/encryption';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { getSessionTrace } from './appTraceStore';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+import { storage } from './storage';
 const logger = new Logger('app/sync/apiSocket');
 
 //
@@ -38,6 +39,14 @@ class ApiSocket {
     (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void
   > = new Set();
   private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
+  private daemonReadyListeners: Map<string, Set<() => void>> = new Map();
+  // Tracks sessions for which daemon-rpc-ready was received before waitForDaemonReady was called.
+  // Cleared when the socket reconnects (daemon re-registers fresh).
+  private daemonReadySessions: Set<string> = new Set();
+  // Diagnostics: last socket disconnect reason and timestamp, plus how long the last connection lasted.
+  private lastDisconnectReason: string | null = null;
+  private lastDisconnectAt: number | null = null;
+  private lastConnectedAt: number | null = null;
 
   getStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
     return this.currentStatus;
@@ -126,7 +135,90 @@ class ApiSocket {
   }
 
   /**
-   * RPC call for sessions - uses session-specific encryption
+   * Wait for the daemon to (re)register its RPC methods for the given session.
+   * Resolves when daemon-rpc-ready is received; rejects if the session goes offline.
+   *
+   * No hard timeout here: when the daemon socket drops, the server immediately
+   * broadcasts an offline ephemeral to the App (socket.ts disconnect handler),
+   * which sets session.status = 'offline' and causes this promise to reject.
+   */
+  private waitForDaemonReady(sessionId: string, method: string): Promise<void> {
+    // Fast path: daemon-rpc-ready already arrived before we started waiting
+    if (this.daemonReadySessions.has(sessionId)) {
+      this.daemonReadySessions.delete(sessionId);
+      logger.debug('[apiSocket] waitForDaemonReady: fast-path hit (event arrived before wait)', {
+        sessionId,
+        method,
+      });
+      return Promise.resolve();
+    }
+    const waitStart = Date.now();
+    const socketWasConnected = this.socket?.connected ?? false;
+    return new Promise((resolve, reject) => {
+      const listeners = this.daemonReadyListeners.get(sessionId) ?? new Set();
+      const onReady = () => {
+        cleanup();
+        logger.info('[apiSocket] waitForDaemonReady: daemon-rpc-ready received', {
+          sessionId,
+          method,
+          waitMs: Date.now() - waitStart,
+        });
+        resolve();
+      };
+      listeners.add(onReady);
+      this.daemonReadyListeners.set(sessionId, listeners);
+
+      // Cancel wait if the session goes offline — captures the specific reason
+      const unsubStatus = storage.subscribe(state => {
+        const session = state.sessions[sessionId];
+        const status = session?.status;
+        if (status === 'offline' || status === 'archived' || status === 'deleted') {
+          cleanup();
+          logger.warn('[apiSocket] waitForDaemonReady: session went offline while waiting', {
+            sessionId,
+            method,
+            sessionStatus: status,
+            waitMs: Date.now() - waitStart,
+            // Was the socket already gone, or did it drop during the wait?
+            socketConnectedAtWaitStart: socketWasConnected,
+            socketConnectedNow: this.socket?.connected,
+            // Last disconnect explains WHY: 'io server disconnect' = server kicked daemon,
+            // 'ping timeout' / 'transport close' = daemon process died or network dropped
+            lastSocketDisconnectReason: this.lastDisconnectReason,
+            lastSocketDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
+          });
+          reject(new Error(`Session ${status}`));
+        }
+      });
+
+      // Also watch for socket-level disconnects during the wait — helps distinguish
+      // "daemon never came back" from "lost connection to server entirely"
+      const onSocketDisconnect = (reason: string) => {
+        logger.warn('[apiSocket] waitForDaemonReady: socket disconnected while waiting for daemon', {
+          sessionId,
+          method,
+          disconnectReason: reason,
+          waitMs: Date.now() - waitStart,
+          socketConnectedAtWaitStart: socketWasConnected,
+        });
+        // Don't reject here — the status subscription will reject when session goes offline.
+        // This log exists purely to add the socket disconnect reason to the trace.
+      };
+      this.socket?.on('disconnect', onSocketDisconnect);
+
+      function cleanup() {
+        listeners.delete(onReady);
+        unsubStatus();
+        // onSocketDisconnect is intentionally not removed — it's informational only
+        // and socket.io cleans up listeners when the socket is destroyed.
+      }
+    });
+  }
+
+  /**
+   * RPC call for sessions - uses session-specific encryption.
+   * On "RPC method not available" (daemon reconnecting), waits for daemon-rpc-ready
+   * event instead of busy-polling, then retries once.
    */
   async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
     const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
@@ -140,47 +232,90 @@ class ApiSocket {
       _trace: getSessionTrace(sessionId),
     };
 
-    let lastError: Error | null = null;
-    const MAX_RETRIES = 5;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      const result = await this.socket!.emitWithAck('rpc-call', request);
-
-      if (result.ok) {
-        const decrypted = (await sessionEncryption.decryptRaw(result.result)) as
-          | R
-          | { error?: string };
-        if (
-          decrypted &&
-          typeof decrypted === 'object' &&
-          'error' in decrypted &&
-          typeof decrypted.error === 'string'
-        ) {
-          throw new Error(decrypted.error);
-        }
-        return decrypted as R;
+    const decryptResult = async (result: { ok: true; result: any }): Promise<R> => {
+      const decrypted = (await sessionEncryption.decryptRaw(result.result)) as R | { error?: string };
+      if (
+        decrypted &&
+        typeof decrypted === 'object' &&
+        'error' in decrypted &&
+        typeof decrypted.error === 'string'
+      ) {
+        throw new Error(decrypted.error);
       }
+      return decrypted as R;
+    };
 
-      const errorMessage =
-        typeof result.error === 'string' && result.error.length > 0
-          ? result.error
-          : 'RPC call failed';
-      lastError = new Error(errorMessage);
-
-      // Freshly created sessions can briefly race session-scoped RPC registration.
-      if (errorMessage === 'RPC method not available' && attempt < MAX_RETRIES - 1) {
-        logger.warn('[apiSocket] sessionRPC target not ready, retrying', {
-          sessionId,
-          method,
-          attempt: attempt + 1,
-        });
-        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
-        continue;
-      }
-
-      throw lastError;
+    let result: any;
+    try {
+      result = await this.socket!.timeout(5000).emitWithAck('rpc-call', request);
+    } catch (err) {
+      logger.error('[apiSocket] sessionRPC: socket ack timeout on first attempt', undefined, {
+        sessionId,
+        method,
+        socketConnected: this.socket?.connected,
+        socketId: this.socket?.id,
+        socketStatus: this.currentStatus,
+        lastDisconnectReason: this.lastDisconnectReason,
+        lastDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
+        connectedDurationMs: this.lastConnectedAt ? Date.now() - this.lastConnectedAt : null,
+        error: String(err),
+      });
+      throw err;
     }
 
-    throw lastError ?? new Error('RPC call failed');
+    if (result.ok) {
+      return decryptResult(result);
+    }
+
+    const errorMessage =
+      typeof result.error === 'string' && result.error.length > 0 ? result.error : 'RPC call failed';
+
+    if (errorMessage === 'RPC method not available') {
+      logger.warn('[apiSocket] sessionRPC target not ready, waiting for daemon-rpc-ready', {
+        sessionId,
+        method,
+        socketConnected: this.socket?.connected,
+        socketStatus: this.currentStatus,
+        lastDisconnectReason: this.lastDisconnectReason,
+        lastDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
+      });
+      // Wait for the daemon to reconnect and re-register (session offline rejects immediately)
+      await this.waitForDaemonReady(sessionId, method);
+
+      // Retry once after daemon is ready
+      let retry: any;
+      try {
+        retry = await this.socket!.timeout(5000).emitWithAck('rpc-call', request);
+      } catch (err) {
+        logger.error('[apiSocket] sessionRPC: socket ack timeout on retry after daemon-rpc-ready', undefined, {
+          sessionId,
+          method,
+          socketConnected: this.socket?.connected,
+          socketId: this.socket?.id,
+          socketStatus: this.currentStatus,
+          lastDisconnectReason: this.lastDisconnectReason,
+          lastDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
+          connectedDurationMs: this.lastConnectedAt ? Date.now() - this.lastConnectedAt : null,
+          error: String(err),
+        });
+        throw err;
+      }
+
+      if (retry.ok) {
+        return decryptResult(retry);
+      }
+      const retryError = typeof retry.error === 'string' && retry.error.length > 0 ? retry.error : 'RPC call failed';
+      logger.error('[apiSocket] sessionRPC: retry after daemon-rpc-ready still failed', undefined, {
+        sessionId,
+        method,
+        error: retryError,
+        socketConnected: this.socket?.connected,
+        socketStatus: this.currentStatus,
+      });
+      throw new Error(retryError);
+    }
+
+    throw new Error(errorMessage);
   }
 
   /**
@@ -290,10 +425,15 @@ class ApiSocket {
 
     // Connection events
     this.socket.on('connect', () => {
+      this.lastConnectedAt = Date.now();
       logger.info('[SyncSocket] Connected', {
         recovered: this.socket?.recovered,
         socketId: this.socket?.id,
+        prevDisconnectReason: this.lastDisconnectReason,
+        prevDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
       });
+      // Daemon re-registers its RPC methods on every connect — stale ready signals are invalid
+      this.daemonReadySessions.clear();
       this.updateStatus('connected');
       if (!this.socket?.recovered) {
         this.reconnectedListeners.forEach(listener => listener());
@@ -301,7 +441,18 @@ class ApiSocket {
     });
 
     this.socket.on('disconnect', reason => {
-      logger.info('[SyncSocket] Disconnected', { reason });
+      const connectedDurationMs = this.lastConnectedAt ? Date.now() - this.lastConnectedAt : null;
+      this.lastDisconnectReason = reason;
+      this.lastDisconnectAt = Date.now();
+      logger.info('[SyncSocket] Disconnected', {
+        reason,
+        connectedDurationMs,
+        // 'io server disconnect' = server kicked us (auth expiry, server restart, etc.)
+        // 'ping timeout'        = network issue or server overloaded
+        // 'transport close'     = TCP/WS connection dropped
+        // 'transport error'     = network error during transport
+        // 'io client disconnect'= client called disconnect() intentionally
+      });
       this.updateStatus('disconnected');
     });
 
@@ -328,6 +479,18 @@ class ApiSocket {
       } else {
         logger.error('[SyncSocket] Error', toError(error));
         this.updateStatus('error');
+      }
+    });
+
+    // Daemon RPC ready notifications
+    this.socket.on('daemon-rpc-ready', ({ sessionId }: { sessionId: string }) => {
+      const listeners = this.daemonReadyListeners.get(sessionId);
+      if (listeners && listeners.size > 0) {
+        listeners.forEach(cb => cb());
+        this.daemonReadyListeners.delete(sessionId);
+      } else {
+        // No one waiting yet — record that ready arrived so waitForDaemonReady can fast-path
+        this.daemonReadySessions.add(sessionId);
       }
     });
 
