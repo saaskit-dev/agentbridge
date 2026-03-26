@@ -80,6 +80,27 @@ describe('AcpBackend idle vs waitForResponseComplete race', () => {
   });
 
   /**
+   * Bug fix: prompt() resolves but idle was never emitted (e.g. all tool calls timed
+   * out and cleared activeToolCalls but did NOT call emitIdleStatus). sendPrompt() must
+   * force-emit idle so waitForResponseComplete() resolves immediately instead of
+   * hanging for the 10-20 min inactivity timeout.
+   */
+  it('force-emits idle when prompt() resolves with no prior idle emission', async () => {
+    const backend = new AcpBackend(makeTestConfig());
+    const internal = asInternal(backend);
+
+    // prompt() resolves without any emitIdleStatus call (simulates tool-call-timeout scenario)
+    internal.connection = {
+      prompt: vi.fn().mockResolvedValue(undefined),
+    };
+    internal.acpSessionId = 'ses_test';
+
+    await backend.sendPrompt('local', 'hello');
+    // waitForResponseComplete must resolve immediately — no manual emitIdleStatus needed
+    await expect(backend.waitForResponseComplete()).resolves.toBeUndefined();
+  });
+
+  /**
    * If prompt fails, the idle-before-wait flag must not leak to the next turn.
    */
   it('clears idle-before-wait flag when sendPrompt throws', async () => {

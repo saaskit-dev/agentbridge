@@ -1377,6 +1377,18 @@ export class AcpBackend implements IAgentBackend {
         }
       );
       logger.info('[AcpBackend] Prompt turn completed');
+
+      // connection.prompt() resolving means the agent turn is definitively complete.
+      // If idle was never emitted (e.g. all tool calls timed out but no new chunks
+      // arrived after the last timeout), force-emit it now so waitForResponseComplete()
+      // does not hang until the 10-20 min activity timeout.
+      if (this.waitingForResponse && !this.idleEmittedBeforeWaitForResponseComplete) {
+        logger.info('[AcpBackend] prompt() resolved with no prior idle — forcing idle emission', {
+          agent: this.transport.agentName,
+          activeToolCalls: this.activeToolCalls.size,
+        });
+        this.emitIdleStatus();
+      }
     } catch (error) {
       logger.error('[ACP] Prompt failed', toError(error), {
         agent: this.transport.agentName,
