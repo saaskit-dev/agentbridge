@@ -136,4 +136,4 @@ CLIClient 收到 agent_output:
 
 ### 遗留代码
 
-- `ui/ink/CodexDisplay.tsx`、`GeminiDisplay.tsx`、`OpenCodeDisplay.tsx` — 无任何导入引用，属于死代码，可安全删除
+- ~~`ui/ink/CodexDisplay.tsx`、`GeminiDisplay.tsx`、`OpenCodeDisplay.tsx`~~ — 已删除（2026-03-26）
