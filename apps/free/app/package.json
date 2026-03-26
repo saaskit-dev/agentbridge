@@ -22,7 +22,7 @@
     "prebuild": "expo prebuild --clean",
     "ota": "npx eas-cli@latest update --branch production --platform all --non-interactive",
     "typecheck": "tsc --noEmit",
-    "postinstall": "patch-package && (setup-skia-web public || true)",
+    "postinstall": "patch-package && (setup-skia-web public || true) && (node -e \"require('fs').copyFileSync(require.resolve('@journeyapps/wa-sqlite/dist/wa-sqlite-async.wasm'), 'public/wa-sqlite-async.wasm')\" || true)",
     "generate-theme": "tsx sources/theme.gen.ts",
     "// ==== Dev/Prod Variants ====": "",
     "ios:production": "cross-env APP_ENV=production expo run:ios",

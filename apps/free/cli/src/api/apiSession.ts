@@ -387,7 +387,7 @@ export class ApiSessionClient extends EventEmitter {
             this.lastSeq = messageSeq;
           } catch (decryptError) {
             logger.error(
-              '[SOCKET] Fast-path decrypt failed, falling back to slow path',
+              '[SOCKET] Fast-path processing failed, falling back to slow path',
               undefined,
               {
                 userId: this.userId,
@@ -566,7 +566,7 @@ export class ApiSessionClient extends EventEmitter {
           const body = await decryptFromWireString(this.encryptionKey, this.encryptionVariant, c);
           this.routeIncomingMessage(body);
         } catch (error) {
-          logger.error('[CLI] Message decrypt failed', undefined, {
+          logger.error('[CLI] Message processing failed', undefined, {
             userId: this.userId,
             sessionId: this.sessionId,
             messageId: message.id,

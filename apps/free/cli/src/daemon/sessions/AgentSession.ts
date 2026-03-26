@@ -247,10 +247,29 @@ export abstract class AgentSession<TMode> {
     // Stop the backend — pipeBackendOutput will set shouldExit=true and close messageQueue,
     // causing messageLoop to exit. startBackendAndLoop sees shouldExit && !pendingExit → restart.
     // Race with a 10s timeout: if the backend is truly stuck, stop() may never resolve.
+    let backendStopTimedOut = false;
     await Promise.race([
       this.backend?.stop() ?? Promise.resolve(),
-      new Promise<void>(r => setTimeout(r, 10_000)),
+      new Promise<void>(r =>
+        setTimeout(() => {
+          backendStopTimedOut = true;
+          r();
+        }, 10_000)
+      ),
     ]);
+    if (backendStopTimedOut) {
+      logger.error('[AgentSession] backend.stop() timed out (10s) during forceRestart', {
+        sessionId: this.session?.sessionId,
+        agentType: this.agentType,
+        backendAgentType: this.backend?.agentType,
+        // exitInfo populated only if backend already exited — undefined here means it is still running
+        backendExitInfo: this.backend?.exitInfo ?? null,
+        sessionState: this._isShuttingDown ? 'shutting_down' : 'running',
+        currentMode: this.currentMode,
+        lastStatus: this.lastStatus,
+        childPid: this._childPid ?? null,
+      });
+    }
   }
 
   get sessionId(): string {
@@ -347,6 +366,13 @@ export abstract class AgentSession<TMode> {
    * If initialize() hasn't completed yet, messages are buffered (up to PRE_INIT_QUEUE_LIMIT).
    */
   sendInput(text: string): void {
+    if (this.messageQueue?.isClosed()) {
+      logger.warn('[AgentSession] sendInput: queue closed, dropping message', {
+        userId: this.userId,
+        sessionId: this.session?.sessionId,
+      });
+      return;
+    }
     if (!this.messageQueue) {
       if (this.preInitQueue.length < this.PRE_INIT_QUEUE_LIMIT) {
         this.preInitQueue.push({ text });
@@ -471,7 +497,7 @@ export abstract class AgentSession<TMode> {
           }
           // Re-register mobile message handler on new session object
           newSession.onUserMessage(msg => {
-            if (!this.messageQueue) return;
+            if (!this.messageQueue || this.messageQueue.isClosed()) return;
             logger.info('[AgentSession] app user message received after session swap', {
               userId: this.userId,
               sessionId: newSession.sessionId,
@@ -526,7 +552,7 @@ export abstract class AgentSession<TMode> {
 
     // Register mobile message handler (Server → WebSocket → ApiSessionClient → here)
     this.session.onUserMessage(msg => {
-      if (!this.messageQueue) return;
+      if (!this.messageQueue || this.messageQueue.isClosed()) return;
       logger.info('[AgentSession] app user message received', {
         userId: this.userId,
         sessionId: this.session.sessionId,
@@ -952,7 +978,27 @@ export abstract class AgentSession<TMode> {
         }));
         this.session.sendSessionDeath();
         // flush has built-in 10s timeout; race adds extra 5s safety net
-        await Promise.race([this.session.flush(), new Promise(r => setTimeout(r, 5000))]);
+        let flushTimedOut = false;
+        await Promise.race([
+          this.session.flush(),
+          new Promise(r =>
+            setTimeout(() => {
+              flushTimedOut = true;
+              r(undefined);
+            }, 5000)
+          ),
+        ]);
+        if (flushTimedOut) {
+          logger.error('[AgentSession] session.flush() safety-net timed out (5s)', {
+            sessionId: this.session.sessionId,
+            // flush() itself has a 10s internal timeout — hitting this 5s fence means
+            // the HTTP outbox drain + internal await never returned, likely a networking issue
+            // or the server is unreachable. Check daemon network connectivity.
+            archiveReason: reason,
+            agentType: this.agentType,
+            lastStatus: this.lastStatus,
+          });
+        }
         await this.session.close();
       }
     }

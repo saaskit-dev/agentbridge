@@ -8,12 +8,17 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import type { CachedMessage, MessageDB } from './messageDBSchema';
 import { SCHEMA_SQL } from './messageDBSchema';
 
-// Metro treats .wasm as an asset (metro.config.js assetExts), so this import
-// resolves to a URL the dev server can actually serve. We then fetch it manually
-// and pass the binary via `wasmBinary` — bypassing wa-sqlite's broken
-// import.meta.url-based locateFile (which points at the JS bundle, not the wasm).
-// @ts-ignore — Metro asset import
-import wasmAssetUrl from '@journeyapps/wa-sqlite/dist/wa-sqlite-async.wasm';
+// wa-sqlite-async.wasm is served as a static asset from the /public directory
+// (copied there by the postinstall script). Metro web serves /public files at
+// the root path, so the file is accessible at /wa-sqlite-async.wasm.
+//
+// We cannot use a Metro asset import (`import x from '*.wasm'`) here because:
+//   - On native: Metro returns a URL string (correct)
+//   - On web (Metro bundler): Metro returns a module object/number, not a URL,
+//     causing `fetch(wasmAssetUrl)` to throw "Invalid base URL"
+//
+// Using a static path avoids this divergence entirely.
+const wasmAssetUrl = '/wa-sqlite-async.wasm';
 
 const logger = new Logger('sync/messageDB.web');
 
