@@ -18,13 +18,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build iOS production → TestFlight
+      - name: Build iOS beta → TestFlight
         working-directory: apps/free/app
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           npx eas-cli@latest build \
-            --profile production \
+            --profile beta \
             --platform ios \
             --auto-submit-with-profile=production \
             --no-wait \
