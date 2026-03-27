@@ -16,6 +16,7 @@
     "beta": {
       "channel": "beta",
       "distribution": "store",
+      "environment": "production",
       "autoIncrement": true,
       "env": {
         "APP_ENV": "production"
