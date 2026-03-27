@@ -3393,11 +3393,12 @@ packages/core/src/telemetry/
 
 ### 与原始设计的偏差
 
-1. **FileSink 文件轮转**：RFC 设计按秒+PID 分文件（`{prefix}-{YYYY-MM-DD}-{HH-MM-SS}-{pid}.jsonl`），实际按小时轮转（`{prefix}-{YYYY-MM-DD}-{HH}.jsonl`），减少文件碎片。额外支持 `bufferFlushMs` 异步 buffer（server 模式）
-2. **RemoteSink 架构**：RFC 设计直接接收 `endpoint` + `authToken`，实际抽象为 `RemoteBackend` 接口 + 多后端实现（ServerRelay / Axiom / NewRelic）。`minLevel` 默认值为 `'debug'`（RFC §22.1 已对齐）
-3. **Exporter 输出**：RFC 描述 `timeline.json`，实际输出 `environment.json`
-4. **额外功能**：`componentLevels`（按组件级别过滤）、`setGlobalContextProvider()`（全局 trace provider）、`setIdGenerator()`（自定义 ID 策略）、`isCollectorReady()`、`cleanupOldLogs()` — RFC 未提，均为实现中发现的实际需求
-5. **Layer 类型**：RFC §3.3 定义封闭 union `'app' | 'server' | 'cli' | 'daemon' | 'agent'`，§17.8 修正为 `string`，实现遵循修正
+1. **spanId / parentSpanId 完全移除**：RFC §3.1 设计了 `TraceContext.spanId`（nanoid(12)）和 `parentSpanId` 用于构建跨层因果链，§4.3 设计了 `Span.child()` 嵌套，§7.1 Wire 协议有 `sid`/`pid` 字段。**实现中全部移除**——TraceContext 仅保留 `traceId`/`sessionId`/`machineId`（额外新增 `userId`/`acpSessionId`），LogEntry 无 span 字段，WireTrace 无 `sid`/`pid`。**决策理由**：§17.6 已识别「102 个文件无一需要嵌套 span」；实际使用中 `traceId` 单层关联已满足全部调试需求，span 层次增加复杂度但无消费方。Span class 保留为计时工具（start → end 测 durationMs），不承担层次追踪职责。若未来需要分布式 tracing（如接入 OpenTelemetry），可在不破坏现有 API 的前提下重新引入
+2. **FileSink 文件轮转**：RFC 设计按秒+PID 分文件（`{prefix}-{YYYY-MM-DD}-{HH-MM-SS}-{pid}.jsonl`），实际按小时轮转（`{prefix}-{YYYY-MM-DD}-{HH}.jsonl`），减少文件碎片。额外支持 `bufferFlushMs` 异步 buffer（server 模式）
+3. **RemoteSink 架构**：RFC 设计直接接收 `endpoint` + `authToken`，实际抽象为 `RemoteBackend` 接口 + 多后端实现（ServerRelay / Axiom / NewRelic）。`minLevel` 默认值为 `'debug'`（RFC §22.1 已对齐）
+4. **Exporter 输出**：RFC 描述 `timeline.json`（事件摘要），**已放弃不实现**。实际输出 `logs.jsonl` + `environment.json`，已满足调试需求；日志分析现通过自动化工具完成，无需人工查看事件摘要
+5. **额外功能**：`componentLevels`（按组件级别过滤）、`setGlobalContextProvider()`（全局 trace provider）、`setIdGenerator()`（自定义 ID 策略）、`isCollectorReady()`、`cleanupOldLogs()` — RFC 未提，均为实现中发现的实际需求
+6. **Layer 类型**：RFC §3.3 定义封闭 union `'app' | 'server' | 'cli' | 'daemon' | 'agent'`，§17.8 修正为 `string`，实现遵循修正
 
 ### 全栈迁移
 

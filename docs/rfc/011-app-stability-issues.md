@@ -188,18 +188,22 @@ Daemon 端（`BasePermissionHandler.ts`）：
 
 #### Issue-8：文件查看器 ENOENT — 路径含 `-session`（中危）✅ 已修复
 
-**现象**：Claude Code 文件查看器打开 `sources/-session/SessionView.tsx` 时报 ENOENT。
+**现象**：Claude Code 文件查看器打开 `sources/-session/SessionView.tsx` 时报 ENOENT；`madge sources/` 命令将 `-session` 解析为 flag 参数。
 
-**根因**：
-- 目录名以 `-` 开头，部分 CLI 工具将 `-session` 解析为 flag 前缀
+**根因**（两个独立问题）：
+1. Shell 工具问题：`madge sources/-session/...` 将 `-session` 当作 flag 参数
+2. 文件查看器 ENOENT 根因：`registerCommonHandlers.ts` 中 `readFile`/`writeFile` 等 handler 使用原始 `data.path`（相对路径）调用 FS API，Node.js 相对于 daemon 进程 CWD 解析而非项目目录，导致 ENOENT
 
-**实际实现**（commits `f4adab9`、`2e664b5`）：
-1. `sources/-session/` → `sources/_session/`（`git mv`），更新所有 import 路径（`@/-session/` → `@/_session/`）
-2. `2e664b5` 额外修复文件查看器使用 `validatePath()` 返回的绝对路径，彻底规避路径解析问题
+**实际实现**（commits `537fbc9`、`2e664b5`）：
 
-**与 RFC 方向的差异**：与 RFC 方向完全一致
+> 注：`f4adab9` 曾将 `sources/-session/` 改名为 `sources/_session/`，但随后 `21c3d05` revert 了改名（改名是 breaking change，需联动修改所有 import 路径和 Expo Router 路由，且根因不在目录名本身）。
 
-**验收标准**：✅ 文件查看器和 glob 工具均可正常访问 `_session` 目录
+1. `537fbc9` — CLAUDE.md 中 madge 命令从 `sources/` 改为 `./sources/`，加 `./` 前缀规避 shell 将 `-` 开头目录名解析为 flag
+2. `2e664b5` — `pathSecurity.ts` 的 `PathValidationResult` 新增 `resolvedPath` 字段，`registerCommonHandlers.ts` 中所有 handler 改用 `validation.resolvedPath`（绝对路径）调用 FS API，彻底修复 ENOENT
+
+**目录名保持 `-session` 不变**，问题在工具侧修复而非改名。
+
+**验收标准**：✅ 文件查看器可正常访问 `-session` 目录下的文件；shell 工具使用 `./` 前缀正常工作
 
 ---
 
@@ -237,7 +241,7 @@ Daemon 端（`BasePermissionHandler.ts`）：
 | P2 | Issue-5 全量加载 | `f12b9c5` | 2026-03-26 |
 | P2 | Issue-4 work 状态 | `6aab9c9` | 2026-03-26 |
 | P2 | Issue-7 Cursor ACP 重复 | `533a78e`, `de6d52a` | 2026-03-26 |
-| P3 | Issue-8 ENOENT 路径 | `f4adab9`, `2e664b5` | 2026-03-26 |
+| P3 | Issue-8 ENOENT 路径 | `537fbc9`, `2e664b5` | 2026-03-26 |
 
 ---
 
