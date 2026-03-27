@@ -380,6 +380,15 @@ class ApiSocket {
     return await this.socket.emitWithAck(event, trace ? { ...data, _trace: trace } : data);
   }
 
+  async emitWithAckTimeout<T = any>(event: string, data: any, timeoutMs: number): Promise<T> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
+    }
+    const sessionId = data?.sessionId ?? data?.sid;
+    const trace = sessionId ? getSessionTrace(sessionId) : undefined;
+    return await this.socket.timeout(timeoutMs).emitWithAck(event, trace ? { ...data, _trace: trace } : data);
+  }
+
   //
   // HTTP Requests
   //

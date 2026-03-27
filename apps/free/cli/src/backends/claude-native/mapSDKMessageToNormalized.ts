@@ -78,11 +78,15 @@ export function mapSDKMessageToNormalized(
 
   if (message.type === 'assistant') {
     const msg = message as SDKAssistantMessage;
+    // All content blocks from a single API turn share one traceId so the
+    // reducer can identify turn boundaries and avoid merging text across turns.
+    const turnTraceId = createId();
     for (const block of msg.message.content) {
       if (block.type === 'text' && typeof block.text === 'string') {
         results.push({
           ...base(),
           id: createId(),
+          traceId: turnTraceId,
           role: 'agent',
           content: [{ type: 'text', text: block.text, uuid: createId(), parentUUID: null }],
         });
@@ -90,6 +94,7 @@ export function mapSDKMessageToNormalized(
         results.push({
           ...base(),
           id: createId(),
+          traceId: turnTraceId,
           role: 'agent',
           content: [
             {
@@ -106,6 +111,7 @@ export function mapSDKMessageToNormalized(
         results.push({
           ...base(),
           id: createId(),
+          traceId: turnTraceId,
           role: 'agent',
           content: [
             {
@@ -128,6 +134,7 @@ export function mapSDKMessageToNormalized(
     const msg = message as SDKUserMessage;
     const content = msg.message.content;
     if (Array.isArray(content)) {
+      const turnTraceId = createId();
       for (const block of content) {
         if (block.type === 'tool_result') {
           const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : '';
@@ -136,6 +143,7 @@ export function mapSDKMessageToNormalized(
           results.push({
             ...base(),
             id: createId(),
+            traceId: turnTraceId,
             role: 'agent',
             content: [
               {

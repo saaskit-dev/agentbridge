@@ -199,6 +199,23 @@ export function telemetryRoutes(app: Fastify) {
         telemetryRelay.ingest(entries, metadata);
       }
 
+      // Mirror client logs to server Logger so they appear in local JSONL files (dev debugging)
+      for (const entry of entries) {
+        const level = entry.level === 'warn' ? 'info' : entry.level;
+        if (level === 'error') {
+          logger.error(`[client:${metadata.layer}] ${entry.message}`, entry.error ? new Error(entry.error.message) : undefined, {
+            clientComponent: entry.component,
+            ...entry.data,
+          });
+        } else if (level === 'info' || level === 'debug') {
+          logger.info(`[client:${metadata.layer}] ${entry.message}`, {
+            clientComponent: entry.component,
+            clientLevel: entry.level,
+            ...entry.data,
+          });
+        }
+      }
+
       return { accepted: entries.length };
     }
   );

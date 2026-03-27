@@ -110,6 +110,9 @@ interface AgentInputProps {
   isSendDisabled?: boolean;
   isSending?: boolean;
   minHeight?: number;
+  onPickImages?: () => void;
+  pendingAttachments?: Array<{ localUri: string; uploading: boolean; error?: string }>;
+  onRemoveAttachment?: (index: number) => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -345,6 +348,8 @@ export const AgentInput = React.memo(
     const screenWidth = useWindowDimensions().width;
 
     const hasText = props.value.trim().length > 0;
+    const hasReadyAttachments = (props.pendingAttachments ?? []).some(a => !a.uploading && !a.error);
+    const canSend = hasText || hasReadyAttachments;
 
     // Check if this is a Codex, Gemini, or OpenCode session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
@@ -1399,6 +1404,80 @@ export const AgentInput = React.memo(
               />
             </View>
 
+            {/* Attachment preview strip */}
+            {props.pendingAttachments && props.pendingAttachments.length > 0 && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  paddingHorizontal: 8,
+                  paddingVertical: 6,
+                  gap: 8,
+                  flexWrap: 'wrap',
+                }}
+              >
+                {props.pendingAttachments.map((att, idx) => (
+                  <View
+                    key={`${att.localUri}-${idx}`}
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                      backgroundColor: theme.colors.input.background,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: att.localUri }}
+                      style={{ width: 56, height: 56 }}
+                      contentFit="cover"
+                    />
+                    {att.uploading && (
+                      <View
+                        style={{
+                          ...StyleSheet.absoluteFillObject,
+                          backgroundColor: 'rgba(0,0,0,0.4)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <ActivityIndicator size="small" color="#fff" />
+                      </View>
+                    )}
+                    {att.error && (
+                      <View
+                        style={{
+                          ...StyleSheet.absoluteFillObject,
+                          backgroundColor: 'rgba(255,59,48,0.5)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Ionicons name="alert-circle" size={20} color="#fff" />
+                      </View>
+                    )}
+                    {!att.uploading && (
+                      <Pressable
+                        onPress={() => props.onRemoveAttachment?.(idx)}
+                        style={{
+                          position: 'absolute',
+                          top: 2,
+                          right: 2,
+                          width: 18,
+                          height: 18,
+                          borderRadius: 9,
+                          backgroundColor: 'rgba(0,0,0,0.6)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Ionicons name="close" size={12} color="#fff" />
+                      </Pressable>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* Action buttons below input */}
             <View style={styles.actionButtonsContainer}>
               <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
@@ -1411,6 +1490,33 @@ export const AgentInput = React.memo(
                   }}
                 >
                   <View style={styles.actionButtonsLeft}>
+                    {/* Image picker button */}
+                    {props.onPickImages && (
+                      <Pressable
+                        onPress={() => {
+                          hapticsLight();
+                          props.onPickImages?.();
+                        }}
+                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                        style={p => ({
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          borderRadius: Platform.select({ default: 16, android: 20 }),
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                          justifyContent: 'center',
+                          height: 32,
+                          opacity: p.pressed ? 0.7 : 1,
+                        })}
+                      >
+                        <Ionicons
+                          name="image-outline"
+                          size={18}
+                          color={theme.colors.button.secondary.tint}
+                        />
+                      </Pressable>
+                    )}
+
                     {/* Settings button */}
                     {(showLocalPermissionModeControls || hasDiscoveredCapabilities) && (
                       <Pressable
@@ -1520,7 +1626,7 @@ export const AgentInput = React.memo(
                   <View
                     style={[
                       styles.sendButton,
-                      hasText || props.isSending || (props.onMicPress && !props.isMicActive)
+                      canSend || props.isSending || (props.onMicPress && !props.isMicActive)
                         ? styles.sendButtonActive
                         : styles.sendButtonInactive,
                     ]}
@@ -1536,19 +1642,19 @@ export const AgentInput = React.memo(
                       hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                       onPress={() => {
                         hapticsLight();
-                        if (hasText) {
+                        if (canSend) {
                           props.onSend();
                         } else {
                           props.onMicPress?.();
                         }
                       }}
                       disabled={
-                        props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)
+                        props.isSendDisabled || props.isSending || (!canSend && !props.onMicPress)
                       }
                     >
                       {props.isSending ? (
                         <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
-                      ) : hasText ? (
+                      ) : canSend ? (
                         <Octicons
                           name="arrow-up"
                           size={16}

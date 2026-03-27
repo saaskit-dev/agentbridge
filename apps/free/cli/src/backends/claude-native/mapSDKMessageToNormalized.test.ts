@@ -49,6 +49,49 @@ describe('mapSDKMessageToNormalized', () => {
     ).toBe('ToolSearch');
   });
 
+  it('assigns same traceId to all blocks from one assistant message', () => {
+    const message: SDKAssistantMessage = {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'hmm...' },
+          { type: 'text', text: '结论' },
+          { type: 'tool_use', id: 'tool-x', name: 'Bash', input: {} },
+        ],
+      },
+    };
+
+    const result = mapSDKMessageToNormalized(message, createSDKMapperState());
+
+    expect(result).toHaveLength(3);
+    const traceIds = result.map(m => m.traceId);
+    // All blocks share the same traceId
+    expect(traceIds[0]).toBeDefined();
+    expect(traceIds[0]).toBe(traceIds[1]);
+    expect(traceIds[1]).toBe(traceIds[2]);
+  });
+
+  it('assigns different traceIds to different assistant messages', () => {
+    const state = createSDKMapperState();
+
+    const msg1: SDKAssistantMessage = {
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'turn 1' }] },
+    };
+    const msg2: SDKAssistantMessage = {
+      type: 'assistant',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'turn 2' }] },
+    };
+
+    const r1 = mapSDKMessageToNormalized(msg1, state);
+    const r2 = mapSDKMessageToNormalized(msg2, state);
+
+    expect(r1[0]?.traceId).toBeDefined();
+    expect(r2[0]?.traceId).toBeDefined();
+    expect(r1[0]?.traceId).not.toBe(r2[0]?.traceId);
+  });
+
   it('maps user tool_result blocks to tool-result content', () => {
     const message: SDKUserMessage = {
       type: 'user',

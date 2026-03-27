@@ -29,6 +29,7 @@ export type UserTextMessage = {
   createdAt: number;
   text: string;
   displayText?: string; // Optional text to display in UI instead of actual text
+  attachments?: Array<{ id: string; mimeType: string; thumbhash?: string; filename?: string }>;
   meta?: MessageMeta;
   traceId?: string;
 };

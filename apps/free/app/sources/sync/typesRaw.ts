@@ -609,6 +609,16 @@ const rawRecordSchema = z.preprocess(
         z.object({
           type: z.literal('text'),
           text: z.string(),
+          attachments: z
+            .array(
+              z.object({
+                id: z.string(),
+                mimeType: z.string(),
+                thumbhash: z.string().optional(),
+                filename: z.string().optional(),
+              })
+            )
+            .optional(),
         }),
         // Session envelope content (from CLI)
         z.object({
@@ -685,6 +695,7 @@ export type NormalizedMessage = (
       content: {
         type: 'text';
         text: string;
+        attachments?: Array<{ id: string; mimeType: string; thumbhash?: string; filename?: string }>;
       };
     }
   | {
@@ -764,12 +775,17 @@ export function normalizeRawMessage(
       return null;
     }
     // Handle standard text content
+    const textContent = raw.content as { type: 'text'; text: string; attachments?: Array<{ id: string; mimeType: string; thumbhash?: string; filename?: string }> };
     return {
       id,
 
       createdAt,
       role: 'user',
-      content: raw.content as { type: 'text'; text: string },
+      content: {
+        type: 'text' as const,
+        text: textContent.text,
+        ...(textContent.attachments?.length && { attachments: textContent.attachments }),
+      },
       isSidechain: false,
       meta: raw.meta,
       traceId: raw.traceId,

@@ -563,7 +563,7 @@ class Sync {
     sessionId: string,
     text: string,
     displayText?: string,
-    opts?: { skipPresenceCheck?: boolean }
+    opts?: { skipPresenceCheck?: boolean; attachments?: import('./attachmentUpload').AttachmentRef[] }
   ): Promise<{ ok: true } | { ok: false; reason: 'server_disconnected' | 'daemon_offline' }> {
     // Pre-check: server socket must be connected
     if (apiSocket.getStatus() !== 'connected') {
@@ -654,11 +654,13 @@ class Sync {
     const fallbackModel: string | null = null;
 
     // Create user message content with metadata
+    const attachments = opts?.attachments;
     const content: RawRecord = {
       role: 'user',
       content: {
         type: 'text',
         text,
+        ...(attachments?.length && { attachments }),
       },
       traceId: trace.tid, // Propagate traceId so DevTraceBadge can display it
       meta: {

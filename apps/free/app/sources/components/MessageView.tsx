@@ -1,18 +1,30 @@
 import * as Clipboard from 'expo-clipboard';
+import { Image } from 'expo-image';
 import * as React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Pressable, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+  Pressable,
+  Platform,
+  Modal as RNModal,
+  useWindowDimensions,
+} from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from './layout';
 import { MarkdownView } from './markdown/MarkdownView';
 import { Option } from './markdown/MarkdownView';
 import { StreamingAgentText } from './StreamingText';
+
 import { ToolView } from './tools/ToolView';
-import { useLocalSetting, useSetting } from '@/sync/storage';
+import { useLocalSetting, useSetting, useSession } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/sync/typesMessage';
 import { AgentEvent } from '@/sync/typesRaw';
 import { apiSocket } from '@/sync/apiSocket';
+import { getAttachmentLocalUri } from '@/sync/attachmentUpload';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
@@ -133,6 +145,90 @@ function DevTraceBadge(props: {
   );
 }
 
+// --- Attachment thumbnails & fullscreen preview ---
+
+type AttachmentInfo = { id: string; mimeType: string; thumbhash?: string; filename?: string };
+
+const THUMB_SIZE_SINGLE = 180;
+const THUMB_SIZE_MULTI = 72;
+const THUMB_RADIUS = 6;
+
+function AttachmentThumbnails({
+  attachments,
+  onPress,
+}: {
+  attachments: AttachmentInfo[];
+  onPress: (uri: string) => void;
+}) {
+  const count = attachments.length;
+  const size = count === 1 ? THUMB_SIZE_SINGLE : THUMB_SIZE_MULTI;
+
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8, marginBottom: 4 }}>
+      {attachments.map(att => {
+        const localUri = getAttachmentLocalUri(att.id);
+        return (
+          <Pressable
+            key={att.id}
+            onPress={() => localUri && onPress(localUri)}
+            style={{ width: size, height: size, borderRadius: THUMB_RADIUS, overflow: 'hidden', backgroundColor: '#e8e8e8' }}
+          >
+            {localUri ? (
+              <Image source={{ uri: localUri }} style={{ width: size, height: size }} contentFit="cover" />
+            ) : att.thumbhash ? (
+              <Image style={{ width: size, height: size }} placeholder={{ thumbhash: att.thumbhash }} contentFit="cover" />
+            ) : (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 10, color: '#aaa' }}>IMG</Text>
+              </View>
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function ImagePreviewModal({ uri, onClose }: { uri: string; onClose: () => void }) {
+  const { width, height } = useWindowDimensions();
+
+  return (
+    <RNModal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable
+        onPress={onClose}
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.9)',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Image
+          source={{ uri }}
+          style={{ width: width * 0.95, height: height * 0.8 }}
+          contentFit="contain"
+        />
+        <Pressable
+          onPress={onClose}
+          style={{
+            position: 'absolute',
+            top: 54,
+            right: 20,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: 'rgba(255,255,255,0.2)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>✕</Text>
+        </Pressable>
+      </Pressable>
+    </RNModal>
+  );
+}
+
 function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
   const handleOptionPress = React.useCallback(
     (option: Option) => {
@@ -150,24 +246,98 @@ function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
     [props.sessionId]
   );
 
+  const attachments = props.message.attachments;
+  const [previewUri, setPreviewUri] = React.useState<string | null>(null);
+
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
-        <MarkdownView
-          markdown={props.message.displayText || props.message.text}
-          onOptionPress={handleOptionPress}
-        />
-        {/* {__DEV__ && (
-          <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
-        )} */}
+        {attachments && attachments.length > 0 && (
+          <AttachmentThumbnails attachments={attachments} onPress={setPreviewUri} />
+        )}
+        {props.message.text ? (
+          <MarkdownView
+            markdown={props.message.displayText || props.message.text}
+            onOptionPress={handleOptionPress}
+          />
+        ) : null}
       </View>
       <DevTraceBadge traceId={props.message.traceId} id={props.message.id} alignSelf="flex-end" />
+      {previewUri && (
+        <ImagePreviewModal uri={previewUri} onClose={() => setPreviewUri(null)} />
+      )}
+    </View>
+  );
+}
+
+function ThinkingBlock(props: { message: AgentTextMessage; sessionId: string }) {
+  const { theme } = useUnistyles();
+  const isSessionThinking = useSession(props.sessionId)?.thinking ?? false;
+
+  // Track whether the user has manually toggled this block.
+  // Once manually toggled, auto-expand/collapse is disabled.
+  const manualRef = React.useRef(false);
+  const [isCollapsed, setIsCollapsed] = React.useState(true);
+
+  React.useEffect(() => {
+    if (manualRef.current) return;
+    // Auto-expand when session starts thinking, auto-collapse when it stops
+    setIsCollapsed(!isSessionThinking);
+  }, [isSessionThinking]);
+
+  // Strip the "*Thinking...*\n\n" prefix added by the reducer for display
+  const contentText = props.message.text.replace(/^\*Thinking\.\.\.\*\n\n/, '');
+  const messageId = props.message.sourceId ?? props.message.id;
+
+  return (
+    <View
+      style={[
+        styles.toolContainer,
+        {
+          backgroundColor: theme.colors.tool.cardBackground,
+          borderRadius: theme.borderRadius.lg,
+          marginVertical: 4,
+          overflow: 'hidden',
+        },
+      ]}
+    >
+      <Pressable
+        onPress={() => {
+          manualRef.current = true;
+          setIsCollapsed(c => !c);
+        }}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingVertical: 8,
+          paddingHorizontal: 12,
+          backgroundColor: theme.colors.tool.headerBackground,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ fontSize: 13 }}>💭</Text>
+          <Text style={{ color: theme.colors.agentEventText, fontSize: 13, fontStyle: 'italic' }}>
+            Thinking
+          </Text>
+        </View>
+        <Text style={{ color: theme.colors.agentEventText, fontSize: 11 }}>
+          {isCollapsed ? '▶' : '▼'}
+        </Text>
+      </Pressable>
+      {!isCollapsed && (
+        <View style={{ padding: 12, opacity: 0.8 }}>
+          <StreamingAgentText
+            sessionId={props.sessionId}
+            message={{ id: messageId, text: contentText }}
+          />
+        </View>
+      )}
     </View>
   );
 }
 
 function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string }) {
-  const experiments = useSetting('experiments');
   const handleOptionPress = React.useCallback(
     (option: Option) => {
       void sync.sendMessage(props.sessionId, option.title).then(result => {
@@ -184,9 +354,8 @@ function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string })
     [props.sessionId]
   );
 
-  // Hide thinking messages unless experiments is enabled
-  if (props.message.isThinking && !experiments) {
-    return null;
+  if (props.message.isThinking) {
+    return <ThinkingBlock message={props.message} sessionId={props.sessionId} />;
   }
 
   return (
@@ -196,7 +365,6 @@ function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string })
         message={{
           id: props.message.sourceId ?? props.message.id,
           text: props.message.text,
-          isThinking: props.message.isThinking,
         }}
         onOptionPress={handleOptionPress}
       />

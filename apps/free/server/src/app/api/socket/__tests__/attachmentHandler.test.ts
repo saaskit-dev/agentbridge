@@ -8,7 +8,7 @@
  *   - Successful relay to Daemon
  *   - Error paths (daemon returns ok:false, timeout/disconnect)
  *   - ArrayBuffer → Buffer conversion
- *   - Non-session-scoped / daemon connections are ignored
+ *   - Daemon connections are ignored; user-scoped and session-scoped are allowed
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -124,13 +124,13 @@ describe('attachmentHandler — connection filtering', () => {
     expect(socket.on).not.toHaveBeenCalled();
   });
 
-  it('does nothing for user-scoped connections', () => {
+  it('registers handler for user-scoped connections (App client)', () => {
     const socket = makeSocket();
     const connection: ClientConnection = { connectionType: 'user-scoped', socket: {} as any, userId: 'user-1' };
 
     attachmentHandler('user-1', socket as any, connection);
 
-    expect(socket.on).not.toHaveBeenCalled();
+    expect(socket.on).toHaveBeenCalledWith('upload-attachment', expect.any(Function));
   });
 
   it('registers upload-attachment handler for non-daemon session-scoped connections', () => {

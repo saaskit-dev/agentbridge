@@ -55,6 +55,8 @@ import {
 } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadAttachment, type AttachmentRef } from '@/sync/attachmentUpload';
 const logger = new Logger('app/session/SessionView');
 
 export const SessionView = React.memo((props: { id: string }) => {
@@ -425,6 +427,67 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   // Use draft hook for auto-saving message drafts
   const { clearDraft } = useDraft(sessionId, message, setMessage);
 
+  // --- Image attachment state ---
+  const [pendingAttachments, setPendingAttachments] = React.useState<
+    Array<{ localUri: string; uploading: boolean; error?: string; ref?: AttachmentRef }>
+  >([]);
+  const isUploading = pendingAttachments.some(a => a.uploading);
+
+  const handlePickImages = React.useCallback(async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 1,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+
+    // Add placeholders
+    const newEntries = result.assets.map(asset => ({
+      localUri: asset.uri,
+      uploading: true,
+      asset,
+    }));
+    setPendingAttachments(prev => [
+      ...prev,
+      ...newEntries.map(({ localUri }) => ({ localUri, uploading: true })),
+    ]);
+
+    // Serial upload to avoid OOM
+    for (let i = 0; i < result.assets.length; i++) {
+      const asset = result.assets[i];
+      try {
+        const uploadResult = await uploadAttachment(asset, sessionId);
+        setPendingAttachments(prev =>
+          prev.map(a =>
+            a.localUri === asset.uri
+              ? { localUri: uploadResult.localUri, uploading: false, ref: uploadResult.attachmentRef }
+              : a
+          )
+        );
+      } catch (err) {
+        logger.error('Attachment upload failed', toError(err), { sessionId });
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        setPendingAttachments(prev =>
+          prev.map(a =>
+            a.localUri === asset.uri
+              ? { ...a, uploading: false, error: errorMsg }
+              : a
+          )
+        );
+        Modal.alert(t('common.error'), `Image upload failed: ${errorMsg}`);
+      }
+    }
+  }, [sessionId]);
+
+  const handleRemoveAttachment = React.useCallback((index: number) => {
+    setPendingAttachments(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // Clear attachments on session change
+  React.useEffect(() => {
+    setPendingAttachments([]);
+  }, [sessionId]);
+
   // Handle dismissing CLI version warning
   const handleDismissCliWarning = React.useCallback(() => {
     if (machineId && cliVersion) {
@@ -640,7 +703,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
           isPulsing: sessionStatus.isPulsing,
         }}
         onSend={() => {
-          if (message.trim()) {
+          const hasAttachments = pendingAttachments.some(a => a.ref && !a.error);
+          if (message.trim() || hasAttachments) {
             const trimmedMessage = message.trim();
             const command = resolveCommandInput(sessionId, trimmedMessage);
             if (command?.commandId && trimmedMessage === `/${command.command}`) {
@@ -661,23 +725,36 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
                 });
               return;
             }
-            void sync.sendMessage(sessionId, trimmedMessage).then(result => {
-              if (!result.ok) {
-                Modal.alert(
-                  t('common.error'),
-                  result.reason === 'server_disconnected'
-                    ? t('session.sendBlockedServerDisconnected')
-                    : t('session.sendBlockedDaemonOffline')
-                );
-                return;
-              }
-              // Only clear input on successful send
-              setMessage('');
-              clearDraft();
-              setFooterNotice(null);
-            });
+            // Collect successfully uploaded attachment refs
+            const attachmentRefs = pendingAttachments
+              .filter(a => a.ref && !a.error)
+              .map(a => a.ref!);
+            void sync
+              .sendMessage(sessionId, trimmedMessage, undefined, {
+                ...(attachmentRefs.length > 0 && { attachments: attachmentRefs }),
+              })
+              .then(result => {
+                if (!result.ok) {
+                  Modal.alert(
+                    t('common.error'),
+                    result.reason === 'server_disconnected'
+                      ? t('session.sendBlockedServerDisconnected')
+                      : t('session.sendBlockedDaemonOffline')
+                  );
+                  return;
+                }
+                // Only clear input on successful send
+                setMessage('');
+                clearDraft();
+                setFooterNotice(null);
+                setPendingAttachments([]);
+              });
           }
         }}
+        onPickImages={handlePickImages}
+        pendingAttachments={pendingAttachments}
+        onRemoveAttachment={handleRemoveAttachment}
+        isSendDisabled={isUploading}
         onMicPress={micButtonState.onMicPress}
         isMicActive={micButtonState.isMicActive}
         onAbort={() => sessionAbort(sessionId)}

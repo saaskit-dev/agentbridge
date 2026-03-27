@@ -132,6 +132,7 @@ type ReducerMessage = {
   tool: ToolCall | null;
   meta?: MessageMeta;
   traceId?: string;
+  attachments?: Array<{ id: string; mimeType: string; thumbhash?: string; filename?: string }>;
 };
 
 type StoredPermission = {
@@ -720,6 +721,7 @@ export function reducer(
         event: null,
         meta: msg.meta,
         traceId: msg.traceId,
+        ...(msg.content.attachments?.length && { attachments: msg.content.attachments }),
       });
 
       state.processedIds.set(msg.id, mid);
@@ -1337,24 +1339,22 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
       continue;
     }
 
-    // Scan forward past thinking roots AND tool call roots (same trace) to find the next text root.
-    // Tool call roots from the same trace don't interrupt text continuity — they arise as a
-    // batch-loading artifact when SQLite cache (containing earlier messages) and a server
-    // delta (containing a later text chunk) are processed in separate reducer calls, leaving
-    // tool call roots between the two text roots in rootMessageIds.
+    // Scan forward past thinking roots and tool call roots to find the next text root.
+    // Thinking roots: only skip when same non-null traceId (different turns must not merge).
+    // Tool call roots: skip when traces are compatible (preserves streaming text consolidation).
     let j = i + 1;
     while (j < state.rootMessageIds.length) {
       const candidate = state.messages.get(state.rootMessageIds[j]);
       if (!candidate) break;
-      // Skip thinking root messages from compatible trace
+      // Thinking root messages: only skip when same non-null traceId (same turn)
       if (candidate.role === 'agent' && candidate.text !== null && candidate.isThinking) {
-        if (!(candidate.traceId && current.traceId && candidate.traceId !== current.traceId)) {
+        if (candidate.traceId && current.traceId && candidate.traceId === current.traceId) {
           j++;
-          continue;
+          continue; // Same turn — skip past this thinking block
         }
-        break; // Different trace — turn boundary
+        break; // Different turn or unknown — treat as boundary
       }
-      // Skip tool call roots from compatible trace
+      // Tool call roots: skip when traces are compatible (both null or same value)
       if (candidate.role === 'agent' && candidate.tool !== null) {
         if (!(candidate.traceId && current.traceId && candidate.traceId !== current.traceId)) {
           j++;
@@ -1423,20 +1423,18 @@ function mergeIntoPreviousRootAgentText(
     const candidate = state.messages.get(rootId);
     if (!candidate) break;
 
-    // Skip thinking root messages from the same trace — they don't interrupt
-    // text continuity within a single agent turn.
+    // Thinking root messages: only skip when same non-null traceId (same turn).
+    // Without traceId (ACP backends), a thinking root between two text chunks
+    // means different turns — do not skip.
     if (candidate.role === 'agent' && candidate.text !== null && candidate.isThinking && !isThinking) {
-      // Only skip if traceIds are compatible (same trace or unknown)
-      if (!(candidate.traceId && traceId && candidate.traceId !== traceId)) {
-        continue;
+      if (candidate.traceId && traceId && candidate.traceId === traceId) {
+        continue; // Same turn — skip past this thinking block
       }
-      // Different trace — this is a turn boundary, stop looking
-      return null;
+      return null; // Different turn or unknown — treat as boundary
     }
 
-    // Skip tool call roots from the same trace — they don't interrupt text continuity.
-    // This handles the batch-loading artifact where SQLite cache messages and a server
-    // delta are processed in separate calls, leaving tool roots between text roots.
+    // Tool call roots: skip when traces are compatible (both null or same value).
+    // This preserves streaming text consolidation across tool calls.
     if (candidate.role === 'agent' && candidate.tool !== null) {
       if (!(candidate.traceId && traceId && candidate.traceId !== traceId)) {
         continue;
@@ -1471,6 +1469,7 @@ function convertReducerMessageToMessage(
       kind: 'user-text',
       text: reducerMsg.text,
       ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
+      ...(reducerMsg.attachments?.length && { attachments: reducerMsg.attachments }),
       meta: reducerMsg.meta,
       ...(reducerMsg.traceId && { traceId: reducerMsg.traceId }),
     };
