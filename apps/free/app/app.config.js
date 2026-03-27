@@ -34,7 +34,7 @@ const configs = {
     name: 'Free',
     bundleId: 'app.saaskit.freecode',
     serverUrl: PRODUCTION_SERVER_URL,
-    googleServicesFile: process.env.GOOGLE_SERVICES_PLIST,
+    googleServicesFile: './firebase/GoogleService-Info.production.plist',
   },
 };
 
