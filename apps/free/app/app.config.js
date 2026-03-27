@@ -34,8 +34,7 @@ const configs = {
     name: 'Free',
     bundleId: 'app.saaskit.freecode',
     serverUrl: PRODUCTION_SERVER_URL,
-    googleServicesFile:
-      process.env.GOOGLE_SERVICES_PLIST || './firebase/GoogleService-Info.production.plist',
+    googleServicesFile: process.env.GOOGLE_SERVICES_PLIST,
   },
 };
 
@@ -66,6 +65,8 @@ export default {
       },
       infoPlist: {
         LSApplicationCategoryType: 'public.app-category.developer-tools',
+        NSPhotoLibraryUsageDescription:
+          'Allow $(PRODUCT_NAME) to attach images to your messages.',
         NSMicrophoneUsageDescription:
           'Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.',
         NSLocalNetworkUsageDescription:
