@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { AgentContentView } from '@/components/AgentContentView';
@@ -56,7 +56,14 @@ import {
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadAttachment, type AttachmentRef } from '@/sync/attachmentUpload';
+import {
+  uploadAttachment,
+  uploadClipboardImage,
+  getClipboardImage,
+  hasClipboardImage,
+  type AttachmentRef,
+} from '@/sync/attachmentUpload';
+import { subscribePasteImage, type PastedImage } from '@/utils/pasteImageBridge';
 const logger = new Logger('app/session/SessionView');
 
 export const SessionView = React.memo((props: { id: string }) => {
@@ -433,7 +440,51 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   >([]);
   const isUploading = pendingAttachments.some(a => a.uploading);
 
-  const handlePickImages = React.useCallback(async () => {
+  // Handle image paste from clipboard (web paste event or native clipboard)
+  const handlePasteImage = React.useCallback(
+    async (images: PastedImage[]) => {
+      if (images.length === 0) return;
+
+      // Add placeholders
+      setPendingAttachments(prev => [
+        ...prev,
+        ...images.map(img => ({ localUri: img.uri, uploading: true })),
+      ]);
+
+      // Serial upload to avoid OOM
+      for (const image of images) {
+        try {
+          const result = await uploadClipboardImage(image, sessionId);
+          // Revoke the blob URL now that the upload pipeline has read it
+          if (Platform.OS === 'web' && image.uri.startsWith('blob:')) {
+            URL.revokeObjectURL(image.uri);
+          }
+          setPendingAttachments(prev =>
+            prev.map(a =>
+              a.localUri === image.uri
+                ? { localUri: result.localUri, uploading: false, ref: result.attachmentRef }
+                : a
+            )
+          );
+        } catch (err) {
+          logger.error('Clipboard image upload failed', toError(err), { sessionId });
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          setPendingAttachments(prev =>
+            prev.map(a =>
+              a.localUri === image.uri ? { ...a, uploading: false, error: errorMsg } : a
+            )
+          );
+          Modal.alert(t('common.error'), `Image upload failed: ${errorMsg}`);
+        }
+      }
+    },
+    [sessionId]
+  );
+
+  // Subscribe to global paste-image bridge (registered in _layout.tsx)
+  React.useEffect(() => subscribePasteImage(handlePasteImage), [handlePasteImage]);
+
+  const pickFromLibrary = React.useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
@@ -442,19 +493,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     if (result.canceled || result.assets.length === 0) return;
 
     // Add placeholders
-    const newEntries = result.assets.map(asset => ({
-      localUri: asset.uri,
-      uploading: true,
-      asset,
-    }));
     setPendingAttachments(prev => [
       ...prev,
-      ...newEntries.map(({ localUri }) => ({ localUri, uploading: true })),
+      ...result.assets.map(asset => ({ localUri: asset.uri, uploading: true })),
     ]);
 
     // Serial upload to avoid OOM
-    for (let i = 0; i < result.assets.length; i++) {
-      const asset = result.assets[i];
+    for (const asset of result.assets) {
       try {
         const uploadResult = await uploadAttachment(asset, sessionId);
         setPendingAttachments(prev =>
@@ -478,6 +523,47 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       }
     }
   }, [sessionId]);
+
+  const pasteFromClipboard = React.useCallback(async () => {
+    const clipImg = await getClipboardImage();
+    if (!clipImg) return;
+    await handlePasteImage([clipImg]);
+  }, [handlePasteImage]);
+
+  const handlePickImages = React.useCallback(async () => {
+    // On web, paste is handled by the paste event listener — just open library
+    if (Platform.OS === 'web') {
+      await pickFromLibrary();
+      return;
+    }
+
+    // On native, check if clipboard has an image and offer both options
+    const hasClip = await hasClipboardImage();
+    if (!hasClip) {
+      await pickFromLibrary();
+      return;
+    }
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [t('common.cancel'), t('session.pasteFromClipboard'), t('session.chooseFromLibrary')],
+          cancelButtonIndex: 0,
+        },
+        buttonIndex => {
+          if (buttonIndex === 1) void pasteFromClipboard();
+          else if (buttonIndex === 2) void pickFromLibrary();
+        }
+      );
+    } else {
+      // Android: use Modal.alert with buttons
+      Modal.alert(t('session.addImage'), undefined, [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('session.pasteFromClipboard'), onPress: () => void pasteFromClipboard() },
+        { text: t('session.chooseFromLibrary'), onPress: () => void pickFromLibrary() },
+      ]);
+    }
+  }, [pickFromLibrary, pasteFromClipboard]);
 
   const handleRemoveAttachment = React.useCallback((index: number) => {
     setPendingAttachments(prev => prev.filter((_, i) => i !== index));

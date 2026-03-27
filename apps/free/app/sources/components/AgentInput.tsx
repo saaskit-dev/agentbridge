@@ -18,6 +18,7 @@ import { applySuggestion } from './autocomplete/applySuggestion';
 import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
 import { useActiveWord } from './autocomplete/useActiveWord';
 import { AgentFlavorIcon } from './AgentFlavorIcon';
+import { ImagePreviewModal } from './ImagePreviewModal';
 import { FloatingOverlay } from './FloatingOverlay';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { hapticsLight, hapticsError } from './haptics';
@@ -350,6 +351,7 @@ export const AgentInput = React.memo(
     const hasText = props.value.trim().length > 0;
     const hasReadyAttachments = (props.pendingAttachments ?? []).some(a => !a.uploading && !a.error);
     const canSend = hasText || hasReadyAttachments;
+    const [previewUri, setPreviewUri] = React.useState<string | null>(null);
 
     // Check if this is a Codex, Gemini, or OpenCode session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
@@ -1416,8 +1418,9 @@ export const AgentInput = React.memo(
                 }}
               >
                 {props.pendingAttachments.map((att, idx) => (
-                  <View
+                  <Pressable
                     key={`${att.localUri}-${idx}`}
+                    onPress={() => !att.uploading && setPreviewUri(att.localUri)}
                     style={{
                       width: 56,
                       height: 56,
@@ -1473,9 +1476,12 @@ export const AgentInput = React.memo(
                         <Ionicons name="close" size={12} color="#fff" />
                       </Pressable>
                     )}
-                  </View>
+                  </Pressable>
                 ))}
               </View>
+            )}
+            {previewUri && (
+              <ImagePreviewModal uri={previewUri} onClose={() => setPreviewUri(null)} />
             )}
 
             {/* Action buttons below input */}

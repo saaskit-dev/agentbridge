@@ -46,7 +46,7 @@ import {
   uploadClipboardImage,
   type AttachmentRef,
 } from '@/sync/attachmentUpload';
-import type { PastedImage } from '@/components/MultiTextInput';
+import { subscribePasteImage, type PastedImage } from '@/utils/pasteImageBridge';
 const logger = new Logger('app/new');
 
 // Simple temporary state for passing selections back from picker screens
@@ -398,6 +398,9 @@ function NewSessionWizard() {
       ...images.map(img => ({ localUri: img.uri, uploading: false, pastedImage: img })),
     ]);
   }, []);
+
+  // Subscribe to global paste-image bridge (registered in _layout.tsx)
+  React.useEffect(() => subscribePasteImage(handlePasteImage), [handlePasteImage]);
 
   const handlePickImages = React.useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -888,7 +891,6 @@ function NewSessionWizard() {
               isSending={isCreating}
               placeholder={t('newSession.inputPlaceholder')}
               onPickImages={handlePickImages}
-              onPasteImage={handlePasteImage}
               pendingAttachments={pendingAttachments}
               onRemoveAttachment={handleRemoveAttachment}
               autocompletePrefixes={[]}

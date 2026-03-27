@@ -27,6 +27,7 @@ import { SidebarNavigator } from '@/components/SidebarNavigator';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import sodium from '@/encryption/libsodium.lib';
+import { initPasteImageBridge } from '@/utils/pasteImageBridge';
 import { ModalProvider } from '@/modal';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { initKVStores } from '@/sync/cachedKVStore';
@@ -188,6 +189,7 @@ export default function RootLayout() {
     null
   );
   React.useEffect(() => {
+    initPasteImageBridge();
     (async () => {
       try {
         await initKVStores();

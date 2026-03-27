@@ -479,6 +479,9 @@ export const ru: TranslationStructure = {
     sendFailed: 'Ошибка отправки. Нажмите для повтора.',
     sendBlockedServerDisconnected: 'Сервер отключён, невозможно отправить сообщение',
     sendBlockedDaemonOffline: 'Сессия офлайн, невозможно отправить сообщение',
+    addImage: 'Добавить изображение',
+    pasteFromClipboard: 'Вставить из буфера обмена',
+    chooseFromLibrary: 'Выбрать из библиотеки',
   },
 
   commandPalette: {

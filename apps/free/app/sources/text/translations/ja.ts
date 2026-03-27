@@ -367,6 +367,9 @@ export const ja: TranslationStructure = {
     sendFailed: '送信に失敗しました。タップしてリトライ',
     sendBlockedServerDisconnected: 'サーバーが切断されました。メッセージを送信できません',
     sendBlockedDaemonOffline: 'セッションがオフラインです。メッセージを送信できません',
+    addImage: '画像を追加',
+    pasteFromClipboard: 'クリップボードから貼り付け',
+    chooseFromLibrary: 'ライブラリから選択',
   },
 
   commandPalette: {

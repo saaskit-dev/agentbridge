@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { File, Paths } from 'expo-file-system';
 import type { ImagePickerAsset } from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import { apiSocket } from './apiSocket';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
@@ -253,4 +254,121 @@ export async function uploadAttachment(
       : `Upload failed: ${msg}`
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Clipboard image helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if the system clipboard currently holds an image.
+ * On iOS 16+, `hasImageAsync` may return false due to pasteboard privacy
+ * even when an image IS present. We always return true on native so the
+ * ActionSheet is shown — the actual read in `getClipboardImage` will
+ * trigger the system paste prompt and gracefully return null if empty.
+ */
+export async function hasClipboardImage(): Promise<boolean> {
+  if (Platform.OS !== 'web') {
+    // Always offer the option on native — getClipboardImage handles the
+    // actual permission prompt and returns null if nothing is there.
+    return true;
+  }
+  try {
+    return await Clipboard.hasImageAsync();
+  } catch {
+    return false;
+  }
+}
+
+export interface ClipboardImageInput {
+  uri: string;
+  mimeType: string;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Upload an image obtained from the clipboard (web paste event or native
+ * Clipboard.getImageAsync).  Accepts either a blob: URL (web) or a
+ * data:image/…;base64,… URI (native).
+ */
+export async function uploadClipboardImage(
+  image: ClipboardImageInput,
+  sessionId: string
+): Promise<UploadResult> {
+  logger.info('[uploadClipboardImage] start', {
+    sessionId,
+    mimeType: image.mimeType,
+    width: image.width,
+    height: image.height,
+  });
+
+  const ts = Date.now();
+  const ext = image.mimeType === 'image/png' ? 'png' : 'jpg';
+  let fileUri = image.uri;
+
+  // On native, data-URIs must be persisted to a temp file first so that
+  // compressImage / readFileBytes (which use expo-file-system File) can
+  // access them.
+  if (Platform.OS !== 'web' && image.uri.startsWith('data:')) {
+    const base64 = image.uri.split(',')[1];
+    if (!base64) throw new Error('Invalid clipboard data URI');
+    const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const dest = new File(Paths.cache, `clipboard_${ts}.${ext}`);
+    if (dest.exists) dest.delete();
+    dest.create();
+    dest.write(bytes);
+    fileUri = dest.uri;
+    logger.info('[uploadClipboardImage] saved data-URI to file', {
+      sessionId,
+      destUri: dest.uri.slice(-40),
+      byteLength: bytes.length,
+    });
+  }
+
+  // Build an ImagePickerAsset-compatible object and delegate
+  const asset: ImagePickerAsset = {
+    uri: fileUri,
+    mimeType: image.mimeType,
+    width: image.width ?? 0,
+    height: image.height ?? 0,
+    fileName: `clipboard_${ts}.${ext}`,
+    assetId: null,
+    type: 'image',
+  };
+
+  return uploadAttachment(asset, sessionId);
+}
+
+/**
+ * Read the clipboard image on native via expo-clipboard.
+ * Returns a ClipboardImageInput or null if no image is available.
+ *
+ * On iOS 16+, `hasImageAsync()` can return false due to clipboard privacy
+ * restrictions, so we also attempt `getImageAsync()` directly as a fallback.
+ */
+export async function getClipboardImage(): Promise<ClipboardImageInput | null> {
+  // Try direct read first — on iOS 16+ the "has" check may lie due to
+  // pasteboard privacy, but getImageAsync triggers the system paste
+  // permission prompt and works.
+  try {
+    const result = await Clipboard.getImageAsync({ format: 'png' });
+    if (result?.data) {
+      logger.info('[getClipboardImage] got image via direct read', {
+        width: result.size.width,
+        height: result.size.height,
+      });
+      return {
+        uri: result.data,
+        mimeType: 'image/png',
+        width: result.size.width,
+        height: result.size.height,
+      };
+    }
+  } catch (err) {
+    logger.debug('[getClipboardImage] direct read failed, no image in clipboard', {
+      error: String(err),
+    });
+  }
+  return null;
 }

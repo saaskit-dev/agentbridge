@@ -383,6 +383,9 @@ export const pl: TranslationStructure = {
     sendFailed: 'Wysyłanie nie powiodło się. Dotknij, aby ponowić.',
     sendBlockedServerDisconnected: 'Serwer rozłączony, nie można wysłać wiadomości',
     sendBlockedDaemonOffline: 'Sesja offline, nie można wysłać wiadomości',
+    addImage: 'Dodaj zdjęcie',
+    pasteFromClipboard: 'Wklej ze schowka',
+    chooseFromLibrary: 'Wybierz z biblioteki',
   },
 
   commandPalette: {

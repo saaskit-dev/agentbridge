@@ -358,6 +358,9 @@ export const zhHans: TranslationStructure = {
     sendFailed: '发送失败，点击重试',
     sendBlockedServerDisconnected: '服务器已断开，无法发送消息',
     sendBlockedDaemonOffline: '会话离线，无法发送消息',
+    addImage: '添加图片',
+    pasteFromClipboard: '从剪贴板粘贴',
+    chooseFromLibrary: '从相册选择',
   },
 
   commandPalette: {

@@ -379,6 +379,9 @@ export const en: TranslationStructure = {
     sendFailed: 'Send failed. Tap to retry.',
     sendBlockedServerDisconnected: 'Server disconnected, cannot send message',
     sendBlockedDaemonOffline: 'Session offline, cannot send message',
+    addImage: 'Add Image',
+    pasteFromClipboard: 'Paste from Clipboard',
+    chooseFromLibrary: 'Choose from Library',
   },
 
   commandPalette: {

@@ -369,6 +369,9 @@ export const pt: TranslationStructure = {
     sendFailed: 'Falha no envio. Toque para tentar novamente.',
     sendBlockedServerDisconnected: 'Servidor desconectado, não é possível enviar mensagem',
     sendBlockedDaemonOffline: 'Sessão offline, não é possível enviar mensagem',
+    addImage: 'Adicionar imagem',
+    pasteFromClipboard: 'Colar da área de transferência',
+    chooseFromLibrary: 'Escolher da biblioteca',
   },
 
   commandPalette: {

@@ -368,6 +368,9 @@ export const ca: TranslationStructure = {
     sendFailed: 'Error en enviar. Toca per reintentar.',
     sendBlockedServerDisconnected: 'Servidor desconnectat, no es pot enviar el missatge',
     sendBlockedDaemonOffline: 'Sessió fora de línia, no es pot enviar el missatge',
+    addImage: 'Afegir imatge',
+    pasteFromClipboard: 'Enganxar del porta-retalls',
+    chooseFromLibrary: 'Triar de la biblioteca',
   },
 
   commandPalette: {

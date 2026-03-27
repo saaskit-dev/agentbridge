@@ -358,6 +358,9 @@ export const zhHant: TranslationStructure = {
     sendFailed: '傳送失敗，點擊重試',
     sendBlockedServerDisconnected: '伺服器已斷開，無法傳送訊息',
     sendBlockedDaemonOffline: '工作階段離線，無法傳送訊息',
+    addImage: '加入圖片',
+    pasteFromClipboard: '從剪貼簿貼上',
+    chooseFromLibrary: '從相簿選擇',
   },
 
   commandPalette: {
