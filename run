@@ -237,13 +237,10 @@ cmd_release() {
             confirm "在 EAS 云端构建 Beta 版 ($platform)?"
             cd "$APP_DIR"
             if [ "$platform" = "all" ]; then
-                eas build --profile beta --platform all
+                eas build --profile beta --platform all --auto-submit-with-profile=production
             else
-                eas build --profile beta --platform "$platform"
+                eas build --profile beta --platform "$platform" --auto-submit-with-profile=production
             fi
-            echo ""
-            echo -e "${GREEN}构建完成后提交到 TestFlight / 内测轨道:${NC}"
-            echo "  eas submit --profile production --platform $platform"
             ;;
         ios)
             info "构建生产版 iOS → App Store"
