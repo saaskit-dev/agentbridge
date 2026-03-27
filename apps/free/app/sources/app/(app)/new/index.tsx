@@ -548,10 +548,13 @@ function NewSessionWizard() {
     supportedAgentTypes,
   ]);
 
-  // Visible agent types (filtered by experiments setting)
+  // Visible agent types (filtered by experiments setting + CLI availability)
   const visibleAgentTypes = React.useMemo(
-    () => supportedAgentTypes.filter(a => experimentsEnabled || !isExperimentalAgent(a)),
-    [supportedAgentTypes, experimentsEnabled]
+    () =>
+      supportedAgentTypes.filter(
+        a => (experimentsEnabled || !isExperimentalAgent(a)) && isAgentAvailable(a)
+      ),
+    [supportedAgentTypes, experimentsEnabled, isAgentAvailable]
   );
 
   const selectedMachine = React.useMemo(() => {
@@ -904,7 +907,7 @@ function NewSessionWizard() {
               onModelModeChange={setModelMode}
               capabilities={displayCapabilitiesWithDraftMode}
               onAgentModeChange={setDraftAgentMode}
-              connectionStatus={connectionStatus}
+              connectionStatus={undefined}
               machineName={
                 selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host
               }
