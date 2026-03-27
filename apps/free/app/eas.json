@@ -18,7 +18,7 @@
       "distribution": "store",
       "autoIncrement": true,
       "env": {
-        "APP_ENV": "production"
+        "APP_ENV": "development"
       }
     },
     "production": {
