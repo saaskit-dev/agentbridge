@@ -1,5 +1,5 @@
-import { MMKV } from 'react-native-mmkv';
 import { kvGet, kvMutate } from './apiKv';
+import { messageDB } from './messageDB';
 import {
   AgentType,
   getCachedCapabilitySnapshot,
@@ -11,8 +11,6 @@ import { TokenStorage } from '@/auth/tokenStorage';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/sessionCapabilitiesCache');
-const mmkv = new MMKV();
-const LOCAL_KEY_PREFIX = 'session-capabilities-cache-v2';
 const REMOTE_KEY_PREFIX = 'caps';
 const persistChains = new Map<string, Promise<void>>();
 
@@ -22,10 +20,6 @@ type CachedCapabilitiesEnvelope = {
   updatedAt: number;
   kvVersion?: number;
 };
-
-function getLocalCacheKey(machineId: string, agentType: AgentType) {
-  return `${LOCAL_KEY_PREFIX}:${machineId}:${agentType}`;
-}
 
 function getRemoteCacheKey(machineId: string, agentType: AgentType) {
   return `${REMOTE_KEY_PREFIX}:${machineId}:${agentType}`;
@@ -58,26 +52,52 @@ function parseEnvelope(raw: string | null | undefined): CachedCapabilitiesEnvelo
   }
 }
 
-function saveLocalEnvelope(
+async function saveLocalEnvelope(
   machineId: string,
   agentType: AgentType,
   envelope: CachedCapabilitiesEnvelope
 ) {
-  mmkv.set(getLocalCacheKey(machineId, agentType), JSON.stringify(envelope));
+  await messageDB.upsertCapabilities({
+    machine_id: machineId,
+    agent_type: agentType,
+    capabilities: JSON.stringify(envelope.capabilities),
+    updated_at: envelope.updatedAt,
+    kv_version: envelope.kvVersion ?? null,
+  });
 }
 
-function loadLocalEnvelope(
+async function loadLocalEnvelope(
   machineId: string,
   agentType: AgentType
-): CachedCapabilitiesEnvelope | null {
-  return parseEnvelope(mmkv.getString(getLocalCacheKey(machineId, agentType)));
+): Promise<CachedCapabilitiesEnvelope | null> {
+  const row = await messageDB.getCapabilities(machineId, agentType);
+  if (!row) return null;
+  try {
+    const capabilities = getCachedCapabilitySnapshot(
+      SessionCapabilitiesSchema.parse(JSON.parse(row.capabilities)),
+      agentType
+    );
+    return {
+      agentType,
+      capabilities,
+      updatedAt: row.updated_at,
+      kvVersion: row.kv_version ?? undefined,
+    };
+  } catch (error) {
+    logger.error('Failed to parse capabilities from SQLite', toError(error));
+    return null;
+  }
 }
 
-export function loadCachedCapabilities(machineId: string | null | undefined, agentType: AgentType) {
+export async function loadCachedCapabilities(
+  machineId: string | null | undefined,
+  agentType: AgentType
+): Promise<SessionCapabilities | null> {
   if (!machineId) {
     return null;
   }
-  return loadLocalEnvelope(machineId, agentType)?.capabilities ?? null;
+  const envelope = await loadLocalEnvelope(machineId, agentType);
+  return envelope?.capabilities ?? null;
 }
 
 async function fetchRemoteEnvelope(
@@ -160,8 +180,6 @@ async function saveRemoteEnvelope(
   ]);
 
   if (!retry.success) {
-    // Return the latest remote version we know about so the caller can update
-    // local storage, preventing repeated conflicts on subsequent calls.
     const latestRemoteVersion = retry.errors[0]?.version;
     const err = new Error(
       `Failed to persist capabilities cache after retry: remote version ${latestRemoteVersion ?? 'unknown'}`
@@ -184,7 +202,7 @@ export async function hydrateCachedCapabilities(
     return null;
   }
 
-  const local = loadLocalEnvelope(machineId, agentType);
+  const local = await loadLocalEnvelope(machineId, agentType);
   const credentials = await TokenStorage.getCredentials();
   if (!credentials) {
     return local?.capabilities ?? null;
@@ -193,7 +211,7 @@ export async function hydrateCachedCapabilities(
   try {
     const remote = await fetchRemoteEnvelope(machineId, agentType, credentials);
     if (remote) {
-      saveLocalEnvelope(machineId, agentType, remote);
+      await saveLocalEnvelope(machineId, agentType, remote);
       return remote.capabilities;
     }
   } catch (error) {
@@ -220,7 +238,7 @@ export async function persistCachedCapabilities(params: {
     .catch(() => {})
     .then(async () => {
       const snapshot = getCachedCapabilitySnapshot(capabilities, agentType);
-      const local = loadLocalEnvelope(machineId, agentType);
+      const local = await loadLocalEnvelope(machineId, agentType);
 
       // Skip remote write if capabilities haven't changed
       const localJson = local ? JSON.stringify(local.capabilities) : null;
@@ -235,7 +253,7 @@ export async function persistCachedCapabilities(params: {
         updatedAt,
         kvVersion: local?.kvVersion,
       };
-      saveLocalEnvelope(machineId, agentType, nextEnvelope);
+      await saveLocalEnvelope(machineId, agentType, nextEnvelope);
 
       const auth = credentials ?? (await TokenStorage.getCredentials());
       if (!auth) {
@@ -244,7 +262,7 @@ export async function persistCachedCapabilities(params: {
 
       try {
         const savedEnvelope = await saveRemoteEnvelope(auth, machineId, agentType, nextEnvelope);
-        saveLocalEnvelope(machineId, agentType, savedEnvelope);
+        await saveLocalEnvelope(machineId, agentType, savedEnvelope);
       } catch (error) {
         logger.error('Failed to persist capabilities cache', toError(error), {
           machineId,
@@ -254,9 +272,9 @@ export async function persistCachedCapabilities(params: {
         // the next call doesn't start from a stale version and fight again.
         const latestRemoteVersion = (error as { latestRemoteVersion?: number }).latestRemoteVersion;
         if (typeof latestRemoteVersion === 'number') {
-          const stale = loadLocalEnvelope(machineId, agentType);
+          const stale = await loadLocalEnvelope(machineId, agentType);
           if (stale) {
-            saveLocalEnvelope(machineId, agentType, { ...stale, kvVersion: latestRemoteVersion });
+            await saveLocalEnvelope(machineId, agentType, { ...stale, kvVersion: latestRemoteVersion });
           }
         }
       }

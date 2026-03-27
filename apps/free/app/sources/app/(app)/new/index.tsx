@@ -35,10 +35,18 @@ import {
   getLatestCapabilitiesForAgent,
   PermissionMode,
   resolveDraftCapabilities,
+  SessionCapabilities,
   usesDiscoveredCapabilitiesOnly,
 } from '@/sync/sessionCapabilities';
 import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  uploadAttachment,
+  uploadClipboardImage,
+  type AttachmentRef,
+} from '@/sync/attachmentUpload';
+import type { PastedImage } from '@/components/MultiTextInput';
 const logger = new Logger('app/new');
 
 // Simple temporary state for passing selections back from picker screens
@@ -221,25 +229,38 @@ function NewSessionWizard() {
     }
     return null;
   });
-  const [cachedCapabilities, setCachedCapabilities] = React.useState(() =>
-    loadCachedCapabilities(selectedMachineId, agentType)
+  const [cachedCapabilities, setCachedCapabilities] = React.useState<SessionCapabilities | null>(
+    null
   );
+  const [cacheHydrated, setCacheHydrated] = React.useState(false);
 
   // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below.
   React.useEffect(() => {
-    setCachedCapabilities(loadCachedCapabilities(selectedMachineId, agentType));
-
     let cancelled = false;
-    void hydrateCachedCapabilities(selectedMachineId, agentType).then(capabilities => {
-      if (!cancelled && capabilities) {
-        setCachedCapabilities(capabilities);
-      }
-    });
+    setCacheHydrated(false);
+
+    // Load from local SQLite first (fast), then hydrate from remote KV (may be newer).
+    // Sequential: local provides instant UI, remote overwrites only if it has data.
+    void (async () => {
+      const local = await loadCachedCapabilities(selectedMachineId, agentType);
+      if (cancelled) return;
+      if (local) setCachedCapabilities(local);
+
+      const remote = await hydrateCachedCapabilities(selectedMachineId, agentType);
+      if (cancelled) return;
+      if (remote) setCachedCapabilities(remote);
+
+      setCacheHydrated(true);
+    })();
 
     return () => {
       cancelled = true;
     };
   }, [selectedMachineId, agentType]);
+
+  // Capabilities are "loaded" when BOTH the cache has been hydrated AND session data is available.
+  // Sessions carry capabilities too — we must wait for them before concluding "no capabilities found".
+  const capabilitiesLoaded = cacheHydrated && sessions !== null;
 
   const draftCapabilities = React.useMemo(() => {
     const latestCapabilities = getLatestCapabilitiesForAgent(
@@ -301,12 +322,13 @@ function NewSessionWizard() {
   );
   const shouldShowCapabilityDiscoveryNotice = React.useMemo(
     () =>
+      capabilitiesLoaded &&
       usesDiscoveredCapabilitiesOnly(agentType) &&
       !displayCapabilities.models &&
       !displayCapabilities.modes &&
       !(displayCapabilities.configOptions?.length ?? 0) &&
       !(displayCapabilities.commands?.length ?? 0),
-    [agentType, displayCapabilities]
+    [agentType, capabilitiesLoaded, displayCapabilities]
   );
   const displayCapabilitiesWithDraftMode = React.useMemo(() => {
     if (!draftAgentMode || !displayCapabilities.modes) {
@@ -361,6 +383,56 @@ function NewSessionWizard() {
     return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
   });
   const [isCreating, setIsCreating] = React.useState(false);
+
+  // --- Image attachment state (pending before session is created) ---
+  const [pendingAttachments, setPendingAttachments] = React.useState<
+    Array<{ localUri: string; uploading: boolean; error?: string; ref?: AttachmentRef; pastedImage?: PastedImage; asset?: ImagePicker.ImagePickerAsset }>
+  >([]);
+  const isUploading = pendingAttachments.some(a => a.uploading);
+
+  const handlePasteImage = React.useCallback((images: PastedImage[]) => {
+    if (images.length === 0) return;
+    // Store locally — upload happens after session creation
+    setPendingAttachments(prev => [
+      ...prev,
+      ...images.map(img => ({ localUri: img.uri, uploading: false, pastedImage: img })),
+    ]);
+  }, []);
+
+  const handlePickImages = React.useCallback(async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 1,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    setPendingAttachments(prev => [
+      ...prev,
+      ...result.assets.map(asset => ({ localUri: asset.uri, uploading: false, asset })),
+    ]);
+  }, []);
+
+  const handleRemoveAttachment = React.useCallback((index: number) => {
+    setPendingAttachments(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // When machines arrive after initial mount (e.g. direct URL navigation before sync completes),
+  // auto-select the first machine if none is selected yet.
+  React.useEffect(() => {
+    if (selectedMachineId !== null || machines.length === 0) return;
+    let machineId: string | null = null;
+    if (recentMachinePaths.length > 0) {
+      for (const recent of recentMachinePaths) {
+        if (machines.find(m => m.id === recent.machineId)) {
+          machineId = recent.machineId;
+          break;
+        }
+      }
+    }
+    if (!machineId) machineId = machines[0].id;
+    setSelectedMachineId(machineId);
+    setSelectedPath(getRecentPathForMachine(machineId, recentMachinePaths));
+  }, [machines, selectedMachineId, recentMachinePaths]);
 
   // Handle machineId route param from picker screens (main's navigation pattern)
   React.useEffect(() => {
@@ -529,8 +601,16 @@ function NewSessionWizard() {
 
   // Validation
   const canCreate = React.useMemo(() => {
-    return selectedMachineId !== null && selectedPath.trim() !== '';
-  }, [selectedMachineId, selectedPath]);
+    if (selectedMachineId === null || selectedPath.trim() === '') {
+      return false;
+    }
+    // For ACP agents, block send until capabilities have been loaded from cache/remote.
+    // Only truly first-time users (no cache, no sessions) will see the discovery notice.
+    if (usesDiscoveredCapabilitiesOnly(agentType) && !capabilitiesLoaded) {
+      return false;
+    }
+    return true;
+  }, [selectedMachineId, selectedPath, agentType, capabilitiesLoaded]);
 
   // Permission modes are now unified across all agents - no reset needed on agent type change
 
@@ -658,11 +738,28 @@ function NewSessionWizard() {
           }
         }
 
-        // Send initial message if provided.
+        // Upload pending attachments now that we have a sessionId
+        const attachmentRefs: AttachmentRef[] = [];
+        for (const att of pendingAttachments) {
+          try {
+            if (att.pastedImage) {
+              const uploaded = await uploadClipboardImage(att.pastedImage, result.sessionId);
+              attachmentRefs.push(uploaded.attachmentRef);
+            } else if (att.asset) {
+              const uploaded = await uploadAttachment(att.asset, result.sessionId);
+              attachmentRefs.push(uploaded.attachmentRef);
+            }
+          } catch (err) {
+            logger.error('Failed to upload attachment during session creation', toError(err));
+          }
+        }
+
+        // Send initial message if provided (or if there are attachments).
         // skipPresenceCheck: daemon was just spawned, keepAlive hasn't arrived yet.
-        if (sessionPrompt.trim()) {
+        if (sessionPrompt.trim() || attachmentRefs.length > 0) {
           await sync.sendMessage(result.sessionId, sessionPrompt, undefined, {
             skipPresenceCheck: true,
+            ...(attachmentRefs.length > 0 && { attachments: attachmentRefs }),
           });
         }
 
@@ -787,9 +884,13 @@ function NewSessionWizard() {
               value={sessionPrompt}
               onChangeText={setSessionPrompt}
               onSend={handleCreateSession}
-              isSendDisabled={!canCreate}
+              isSendDisabled={!canCreate || isUploading}
               isSending={isCreating}
               placeholder={t('newSession.inputPlaceholder')}
+              onPickImages={handlePickImages}
+              onPasteImage={handlePasteImage}
+              pendingAttachments={pendingAttachments}
+              onRemoveAttachment={handleRemoveAttachment}
               autocompletePrefixes={[]}
               autocompleteSuggestions={async () => []}
               agentType={agentType}

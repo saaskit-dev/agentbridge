@@ -26,6 +26,7 @@ import { config } from '@/config';
 import {
   Logger,
   continueTrace,
+  safeStringify,
   toError,
   type TraceContext,
 } from '@saaskit-dev/agentbridge/telemetry';
@@ -137,11 +138,7 @@ class Sync {
   private lastRecalculationTime = 0;
 
   constructor() {
-    // Initialize local SQLite message cache (RFC-010 §7)
-    messageDB
-      .init()
-      .catch((e: unknown) => logger.warn('[sync] messageDB init failed', { error: String(e) }));
-
+    // messageDB.init() is handled by initKVStores() in _layout.tsx before sync starts.
     this.sessionsSync = new InvalidateSync(this.fetchSessions);
     this.settingsSync = new InvalidateSync(this.syncSettings);
     this.profileSync = new InvalidateSync(this.fetchProfile);
@@ -335,7 +332,7 @@ class Sync {
       } catch (error) {
         logger.debug('[sync] SQLite cache read failed, will fetch from server', {
           sessionId,
-          error: String(error),
+          error: safeStringify(error),
         });
       }
     }
@@ -363,7 +360,7 @@ class Sync {
   }
 
   private outboxPersistTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Debounced persist of pendingOutbox to MMKV (50ms). Call cancelOutboxPersist() to flush immediately. */
+  /** Debounced persist of pendingOutbox (50ms). Call cancelOutboxPersist() to flush immediately. */
   private persistOutbox() {
     if (this.outboxPersistTimer) return;
     this.outboxPersistTimer = setTimeout(() => {
@@ -1789,7 +1786,7 @@ class Sync {
       // Apply to storage (storage handles the transformation)
       storage.getState().applyPurchases(customerInfo);
     } catch (error) {
-      logger.warn('Failed to sync purchases', { error: String(error) });
+      logger.warn('Failed to sync purchases', { error: safeStringify(error) });
       // Don't throw - purchases are optional
     }
   };
@@ -2186,7 +2183,7 @@ class Sync {
     } catch (error) {
       logger.error('[sync] loadOlderMessages failed', undefined, {
         sessionId,
-        error: String(error),
+        error: safeStringify(error),
       });
       storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: false });
     }
@@ -2238,7 +2235,7 @@ class Sync {
       await registerPushToken(this.credentials, tokenData.data);
       logger.debug('Push token registered successfully');
     } catch (error) {
-      logger.debug('Failed to register push token: ' + JSON.stringify(error));
+      logger.debug('Failed to register push token', { error: safeStringify(error) });
     }
   };
 

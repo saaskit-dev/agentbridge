@@ -29,6 +29,7 @@ import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIn
 import sodium from '@/encryption/libsodium.lib';
 import { ModalProvider } from '@/modal';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
+import { initKVStores } from '@/sync/cachedKVStore';
 import { syncRestore } from '@/sync/sync';
 import { loadSettings } from '@/sync/persistence';
 // import * as SystemUI from 'expo-system-ui';
@@ -189,6 +190,7 @@ export default function RootLayout() {
   React.useEffect(() => {
     (async () => {
       try {
+        await initKVStores();
         await loadFonts();
         await sodium.ready;
         let credentials = await TokenStorage.getCredentials();

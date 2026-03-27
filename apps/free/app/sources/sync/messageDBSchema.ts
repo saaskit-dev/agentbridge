@@ -16,6 +16,14 @@ export interface CachedMessage {
   updated_at: number;
 }
 
+export interface CachedCapabilitiesRow {
+  machine_id: string;
+  agent_type: string;
+  capabilities: string;
+  updated_at: number;
+  kv_version: number | null;
+}
+
 export interface MessageDB {
   init(): Promise<void>;
 
@@ -50,6 +58,24 @@ export interface MessageDB {
 
   /** Delete all cached data for every session. */
   deleteAll(): Promise<void>;
+
+  /** Read cached capabilities for a machine+agent pair. */
+  getCapabilities(machineId: string, agentType: string): Promise<CachedCapabilitiesRow | null>;
+
+  /** Upsert cached capabilities for a machine+agent pair. */
+  upsertCapabilities(row: CachedCapabilitiesRow): Promise<void>;
+
+  /** Load all KV pairs for a namespace. */
+  kvGetAll(namespace: string): Promise<Array<{ key: string; value: string }>>;
+
+  /** Upsert a single KV pair. */
+  kvSet(namespace: string, key: string, value: string): Promise<void>;
+
+  /** Delete a single KV pair. */
+  kvDelete(namespace: string, key: string): Promise<void>;
+
+  /** Delete all KV pairs in a namespace. */
+  kvDeleteAll(namespace: string): Promise<void>;
 }
 
 export const SCHEMA_SQL = `
@@ -70,5 +96,21 @@ CREATE TABLE IF NOT EXISTS session_sync (
   session_id TEXT PRIMARY KEY,
   last_seq   INTEGER NOT NULL DEFAULT 0,
   synced_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS capabilities_cache (
+  machine_id   TEXT NOT NULL,
+  agent_type   TEXT NOT NULL,
+  capabilities TEXT NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  kv_version   INTEGER,
+  PRIMARY KEY (machine_id, agent_type)
+);
+
+CREATE TABLE IF NOT EXISTS kv_store (
+  namespace TEXT NOT NULL DEFAULT 'main',
+  key       TEXT NOT NULL,
+  value     TEXT NOT NULL,
+  PRIMARY KEY (namespace, key)
 );
 `;

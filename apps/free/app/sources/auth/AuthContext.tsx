@@ -49,7 +49,7 @@ export function AuthProvider({
   const logout = async () => {
     // Disable RemoteSink telemetry on logout
     setAnalyticsEnabled(false);
-    clearPersistence();
+    await clearPersistence();
     await TokenStorage.removeCredentials();
 
     // Update React state to ensure UI consistency

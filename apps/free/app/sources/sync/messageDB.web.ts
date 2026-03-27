@@ -4,8 +4,8 @@
  * Uses IndexedDB as the backing store — no OPFS, no SharedArrayBuffer,
  * no COOP/COEP headers required. Multi-tab safe (exclusive locking, writes queue).
  */
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
-import type { CachedMessage, MessageDB } from './messageDBSchema';
+import { Logger, safeStringify } from '@saaskit-dev/agentbridge/telemetry';
+import type { CachedCapabilitiesRow, CachedMessage, MessageDB } from './messageDBSchema';
 import { SCHEMA_SQL } from './messageDBSchema';
 
 // wa-sqlite-async.wasm is served as a static asset from the /public directory
@@ -74,13 +74,13 @@ async function getDB(): Promise<{ sqlite3: any; db: number } | null> {
     if (backoffMs === -1) {
       initRetryAfter = -1; // all retries exhausted, give up permanently
       logger.error('[messageDB] web init failed after all retries, no-cache mode', {
-        error: String(error),
+        error: safeStringify(error),
         attempts: initAttempt,
       });
     } else {
       initRetryAfter = Date.now() + backoffMs;
       logger.warn('[messageDB] web init failed, will retry', {
-        error: String(error),
+        error: safeStringify(error),
         attempt: initAttempt,
         retryInMs: backoffMs,
       });
@@ -189,6 +189,54 @@ export const messageDB: MessageDB = {
   async deleteAll() {
     const state = await getDB();
     if (!state) return;
-    await exec('DELETE FROM messages; DELETE FROM session_sync');
+    await exec("DELETE FROM messages; DELETE FROM session_sync; DELETE FROM capabilities_cache; DELETE FROM kv_store WHERE namespace = 'main'");
+  },
+
+  async getCapabilities(machineId, agentType) {
+    const state = await getDB();
+    if (!state) return null;
+    const rows = await query<CachedCapabilitiesRow>(
+      `SELECT * FROM capabilities_cache WHERE machine_id = '${escapeStr(machineId)}' AND agent_type = '${escapeStr(agentType)}'`
+    );
+    return rows[0] ?? null;
+  },
+
+  async upsertCapabilities(row) {
+    const state = await getDB();
+    if (!state) return;
+    await exec(
+      `INSERT OR REPLACE INTO capabilities_cache (machine_id, agent_type, capabilities, updated_at, kv_version)
+       VALUES ('${escapeStr(row.machine_id)}', '${escapeStr(row.agent_type)}', '${escapeStr(row.capabilities)}', ${row.updated_at}, ${row.kv_version ?? 'NULL'})`
+    );
+  },
+
+  async kvGetAll(namespace) {
+    const state = await getDB();
+    if (!state) return [];
+    return query<{ key: string; value: string }>(
+      `SELECT key, value FROM kv_store WHERE namespace = '${escapeStr(namespace)}'`
+    );
+  },
+
+  async kvSet(namespace, key, value) {
+    const state = await getDB();
+    if (!state) return;
+    await exec(
+      `INSERT OR REPLACE INTO kv_store (namespace, key, value) VALUES ('${escapeStr(namespace)}', '${escapeStr(key)}', '${escapeStr(value)}')`
+    );
+  },
+
+  async kvDelete(namespace, key) {
+    const state = await getDB();
+    if (!state) return;
+    await exec(
+      `DELETE FROM kv_store WHERE namespace = '${escapeStr(namespace)}' AND key = '${escapeStr(key)}'`
+    );
+  },
+
+  async kvDeleteAll(namespace) {
+    const state = await getDB();
+    if (!state) return;
+    await exec(`DELETE FROM kv_store WHERE namespace = '${escapeStr(namespace)}'`);
   },
 };

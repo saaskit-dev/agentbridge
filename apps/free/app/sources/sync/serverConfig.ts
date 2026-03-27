@@ -1,8 +1,5 @@
 import Constants from 'expo-constants';
-import { MMKV } from 'react-native-mmkv';
-
-// Separate MMKV instance for server config that persists across logouts
-const serverConfigStorage = new MMKV({ id: 'server-config' });
+import { serverConfigStore } from './cachedKVStore';
 
 const SERVER_KEY = 'custom-server-url';
 const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
@@ -14,19 +11,19 @@ const DEFAULT_SERVER_URL: string = __DEV__
   : PRODUCTION_SERVER_URL;
 
 export function getServerUrl(): string {
-  return serverConfigStorage.getString(SERVER_KEY) || DEFAULT_SERVER_URL;
+  return serverConfigStore.getString(SERVER_KEY) || DEFAULT_SERVER_URL;
 }
 
 export function setServerUrl(url: string | null): void {
   if (url && url.trim()) {
-    serverConfigStorage.set(SERVER_KEY, url.trim());
+    serverConfigStore.set(SERVER_KEY, url.trim());
   } else {
-    serverConfigStorage.delete(SERVER_KEY);
+    serverConfigStore.delete(SERVER_KEY);
   }
 }
 
 export function isUsingCustomServer(): boolean {
-  return serverConfigStorage.getString(SERVER_KEY) !== undefined;
+  return serverConfigStore.getString(SERVER_KEY) !== undefined;
 }
 
 export function getServerInfo(): { hostname: string; port?: number; isCustom: boolean } {

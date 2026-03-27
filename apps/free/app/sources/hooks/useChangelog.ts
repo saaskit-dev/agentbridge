@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { getLastViewedVersion, setLastViewedVersion, getLatestVersion } from '@/changelog';
 
 export function useChangelog() {
-  // MMKV reads are synchronous - no need for useEffect
+  // KV reads are synchronous (in-memory cache) - no need for useEffect
   const latestVersion = getLatestVersion();
 
   const [hasUnread, setHasUnread] = useState(() => {

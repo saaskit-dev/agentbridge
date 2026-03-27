@@ -1,5 +1,6 @@
-import { MMKV } from 'react-native-mmkv';
+import { kvStore } from './cachedKVStore';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
+import { messageDB } from './messageDB';
 import { Profile, profileDefaults, profileParse } from './profile';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { coerceAgentType, type AppAgentFlavor } from './agentFlavor';
@@ -9,7 +10,6 @@ import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/persistence');
 
-const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 
 export type NewSessionAgentType = AppAgentFlavor;
@@ -26,7 +26,7 @@ export interface NewSessionDraft {
 }
 
 export function loadSettings(): { settings: Settings; version: number | null } {
-  const settings = mmkv.getString('settings');
+  const settings = kvStore.getString('settings');
   if (settings) {
     try {
       const parsed = JSON.parse(settings);
@@ -40,11 +40,11 @@ export function loadSettings(): { settings: Settings; version: number | null } {
 }
 
 export function saveSettings(settings: Settings, version: number) {
-  mmkv.set('settings', JSON.stringify({ settings, version }));
+  kvStore.set('settings', JSON.stringify({ settings, version }));
 }
 
 export function loadPendingSettings(): Partial<Settings> {
-  const pending = mmkv.getString('pending-settings');
+  const pending = kvStore.getString('pending-settings');
   if (pending) {
     try {
       const parsed = JSON.parse(pending);
@@ -58,11 +58,11 @@ export function loadPendingSettings(): Partial<Settings> {
 }
 
 export function savePendingSettings(settings: Partial<Settings>) {
-  mmkv.set('pending-settings', JSON.stringify(settings));
+  kvStore.set('pending-settings', JSON.stringify(settings));
 }
 
 export function loadLocalSettings(): LocalSettings {
-  const localSettings = mmkv.getString('local-settings');
+  const localSettings = kvStore.getString('local-settings');
   if (localSettings) {
     try {
       const parsed = JSON.parse(localSettings);
@@ -76,11 +76,11 @@ export function loadLocalSettings(): LocalSettings {
 }
 
 export function saveLocalSettings(settings: LocalSettings) {
-  mmkv.set('local-settings', JSON.stringify(settings));
+  kvStore.set('local-settings', JSON.stringify(settings));
 }
 
 export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
-  const localSettings = mmkv.getString('local-settings');
+  const localSettings = kvStore.getString('local-settings');
   if (localSettings) {
     try {
       const parsed = JSON.parse(localSettings);
@@ -95,7 +95,7 @@ export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
 }
 
 export function loadPurchases(): Purchases {
-  const purchases = mmkv.getString('purchases');
+  const purchases = kvStore.getString('purchases');
   if (purchases) {
     try {
       const parsed = JSON.parse(purchases);
@@ -109,11 +109,11 @@ export function loadPurchases(): Purchases {
 }
 
 export function savePurchases(purchases: Purchases) {
-  mmkv.set('purchases', JSON.stringify(purchases));
+  kvStore.set('purchases', JSON.stringify(purchases));
 }
 
 export function loadSessionDrafts(): Record<string, string> {
-  const drafts = mmkv.getString('session-drafts');
+  const drafts = kvStore.getString('session-drafts');
   if (drafts) {
     try {
       return JSON.parse(drafts);
@@ -126,11 +126,11 @@ export function loadSessionDrafts(): Record<string, string> {
 }
 
 export function saveSessionDrafts(drafts: Record<string, string>) {
-  mmkv.set('session-drafts', JSON.stringify(drafts));
+  kvStore.set('session-drafts', JSON.stringify(drafts));
 }
 
 export function loadNewSessionDraft(): NewSessionDraft | null {
-  const raw = mmkv.getString(NEW_SESSION_DRAFT_KEY);
+  const raw = kvStore.getString(NEW_SESSION_DRAFT_KEY);
   if (!raw) {
     return null;
   }
@@ -169,15 +169,15 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
 }
 
 export function saveNewSessionDraft(draft: NewSessionDraft) {
-  mmkv.set(NEW_SESSION_DRAFT_KEY, JSON.stringify(draft));
+  kvStore.set(NEW_SESSION_DRAFT_KEY, JSON.stringify(draft));
 }
 
 export function clearNewSessionDraft() {
-  mmkv.delete(NEW_SESSION_DRAFT_KEY);
+  kvStore.delete(NEW_SESSION_DRAFT_KEY);
 }
 
 export function loadSessionPermissionModes(): Record<string, PermissionMode> {
-  const modes = mmkv.getString('session-permission-modes');
+  const modes = kvStore.getString('session-permission-modes');
   if (modes) {
     try {
       return JSON.parse(modes);
@@ -190,11 +190,11 @@ export function loadSessionPermissionModes(): Record<string, PermissionMode> {
 }
 
 export function saveSessionPermissionModes(modes: Record<string, PermissionMode>) {
-  mmkv.set('session-permission-modes', JSON.stringify(modes));
+  kvStore.set('session-permission-modes', JSON.stringify(modes));
 }
 
 export function loadSessionDesiredAgentModes(): Record<string, string> {
-  const modes = mmkv.getString('session-desired-agent-modes');
+  const modes = kvStore.getString('session-desired-agent-modes');
   if (modes) {
     try {
       return JSON.parse(modes);
@@ -207,11 +207,11 @@ export function loadSessionDesiredAgentModes(): Record<string, string> {
 }
 
 export function saveSessionDesiredAgentModes(modes: Record<string, string>) {
-  mmkv.set('session-desired-agent-modes', JSON.stringify(modes));
+  kvStore.set('session-desired-agent-modes', JSON.stringify(modes));
 }
 
 export function loadSessionModelModes(): Record<string, string> {
-  const modes = mmkv.getString('session-model-modes');
+  const modes = kvStore.getString('session-model-modes');
   if (modes) {
     try {
       return JSON.parse(modes);
@@ -224,11 +224,11 @@ export function loadSessionModelModes(): Record<string, string> {
 }
 
 export function saveSessionModelModes(modes: Record<string, string>) {
-  mmkv.set('session-model-modes', JSON.stringify(modes));
+  kvStore.set('session-model-modes', JSON.stringify(modes));
 }
 
 export function loadSessionDesiredConfigOptions(): Record<string, Record<string, string>> {
-  const options = mmkv.getString('session-desired-config-options');
+  const options = kvStore.getString('session-desired-config-options');
   if (options) {
     try {
       return JSON.parse(options);
@@ -241,11 +241,11 @@ export function loadSessionDesiredConfigOptions(): Record<string, Record<string,
 }
 
 export function saveSessionDesiredConfigOptions(options: Record<string, Record<string, string>>) {
-  mmkv.set('session-desired-config-options', JSON.stringify(options));
+  kvStore.set('session-desired-config-options', JSON.stringify(options));
 }
 
 export function loadProfile(): Profile {
-  const profile = mmkv.getString('profile');
+  const profile = kvStore.getString('profile');
   if (profile) {
     try {
       const parsed = JSON.parse(profile);
@@ -259,21 +259,21 @@ export function loadProfile(): Profile {
 }
 
 export function saveProfile(profile: Profile) {
-  mmkv.set('profile', JSON.stringify(profile));
+  kvStore.set('profile', JSON.stringify(profile));
 }
 
 // Simple temporary text storage for passing large strings between screens
 export function storeTempText(content: string): string {
   const id = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  mmkv.set(`temp_text_${id}`, content);
+  kvStore.set(`temp_text_${id}`, content);
   return id;
 }
 
 export function retrieveTempText(id: string): string | null {
-  const content = mmkv.getString(`temp_text_${id}`);
+  const content = kvStore.getString(`temp_text_${id}`);
   if (content) {
     // Auto-delete after retrieval
-    mmkv.delete(`temp_text_${id}`);
+    kvStore.delete(`temp_text_${id}`);
     return content;
   }
   return null;
@@ -290,7 +290,7 @@ type PersistedOutboxMessage = {
 const OUTBOX_KEY = 'pending-outbox-v1';
 
 export function loadPendingOutbox(): Record<string, PersistedOutboxMessage[]> {
-  const raw = mmkv.getString(OUTBOX_KEY);
+  const raw = kvStore.getString(OUTBOX_KEY);
   if (raw) {
     try {
       return JSON.parse(raw);
@@ -303,13 +303,14 @@ export function loadPendingOutbox(): Record<string, PersistedOutboxMessage[]> {
 }
 
 export function savePendingOutbox(outbox: Record<string, PersistedOutboxMessage[]>) {
-  mmkv.set(OUTBOX_KEY, JSON.stringify(outbox));
+  kvStore.set(OUTBOX_KEY, JSON.stringify(outbox));
 }
 
 export function clearPendingOutbox() {
-  mmkv.delete(OUTBOX_KEY);
+  kvStore.delete(OUTBOX_KEY);
 }
 
-export function clearPersistence() {
-  mmkv.clearAll();
+export async function clearPersistence() {
+  kvStore.clearAll();
+  await messageDB.deleteAll();
 }

@@ -1,15 +1,13 @@
 import * as StoreReview from 'expo-store-review';
 import { Platform } from 'react-native';
-import { MMKV } from 'react-native-mmkv';
 import { AsyncLock } from './lock';
 import { Modal } from '@/modal';
+import { kvStore } from '@/sync/cachedKVStore';
 import { storage as syncStorage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/utils/requestReview');
-
-const localStorage = new MMKV();
 
 const LOCAL_KEYS = {
   STORE_REVIEW_LAST_SHOWN: 'review_store_last_shown',
@@ -40,7 +38,7 @@ export function requestReview() {
       // Check if we should show store review directly (user already answered and liked the app)
       if (settings.reviewPromptAnswered && settings.reviewPromptLikedApp) {
         // Check if enough time has passed since last store review
-        const lastShownStr = localStorage.getString(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN);
+        const lastShownStr = kvStore.getString(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN);
         if (lastShownStr) {
           const lastShown = new Date(lastShownStr);
           const now = new Date();
@@ -53,7 +51,7 @@ export function requestReview() {
         }
 
         await StoreReview.requestReview();
-        localStorage.set(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN, new Date().toISOString());
+        kvStore.set(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN, new Date().toISOString());
         return;
       }
 
@@ -64,7 +62,7 @@ export function requestReview() {
       }
 
       // Check if user previously declined and if it's been 30 days (local check)
-      const declinedAtStr = localStorage.getString(LOCAL_KEYS.DECLINED_AT);
+      const declinedAtStr = kvStore.getString(LOCAL_KEYS.DECLINED_AT);
       if (declinedAtStr) {
         const declinedAt = new Date(declinedAtStr);
         const now = new Date();
@@ -90,7 +88,7 @@ export function requestReview() {
 
       if (!likesApp) {
         // User doesn't like the app, store the timestamp locally
-        localStorage.set(LOCAL_KEYS.DECLINED_AT, new Date().toISOString());
+        kvStore.set(LOCAL_KEYS.DECLINED_AT, new Date().toISOString());
         return;
       }
 
@@ -98,7 +96,7 @@ export function requestReview() {
       await StoreReview.requestReview();
 
       // Mark when we last showed the store review
-      localStorage.set(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN, new Date().toISOString());
+      kvStore.set(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN, new Date().toISOString());
     } catch (error) {
       logger.error('Error requesting review:', toError(error));
     }
@@ -107,8 +105,8 @@ export function requestReview() {
 
 // Optional: Reset review state for testing
 export function resetReviewState(): void {
-  localStorage.delete(LOCAL_KEYS.DECLINED_AT);
-  localStorage.delete(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN);
+  kvStore.delete(LOCAL_KEYS.DECLINED_AT);
+  kvStore.delete(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN);
 
   // Reset sync settings
   sync.applySettings({

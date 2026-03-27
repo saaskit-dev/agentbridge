@@ -33,4 +33,14 @@ export const messageDB: MessageDB = {
   async upsertMessagesAndSeq() {},
   async deleteSession() {},
   async deleteAll() {},
+  async getCapabilities() {
+    return null;
+  },
+  async upsertCapabilities() {},
+  async kvGetAll() {
+    return [];
+  },
+  async kvSet() {},
+  async kvDelete() {},
+  async kvDeleteAll() {},
 };

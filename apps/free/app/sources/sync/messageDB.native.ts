@@ -3,7 +3,7 @@
  */
 import * as SQLite from 'expo-sqlite';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
-import type { CachedMessage, MessageDB } from './messageDBSchema';
+import type { CachedCapabilitiesRow, CachedMessage, MessageDB } from './messageDBSchema';
 import { SCHEMA_SQL } from './messageDBSchema';
 
 const logger = new Logger('sync/messageDB.native');
@@ -95,5 +95,51 @@ export const messageDB: MessageDB = {
     const d = await getDB();
     await d.runAsync('DELETE FROM messages');
     await d.runAsync('DELETE FROM session_sync');
+    await d.runAsync('DELETE FROM capabilities_cache');
+    await d.runAsync("DELETE FROM kv_store WHERE namespace = 'main'");
+  },
+
+  async getCapabilities(machineId, agentType) {
+    const d = await getDB();
+    const row = await d.getFirstAsync<CachedCapabilitiesRow>(
+      'SELECT * FROM capabilities_cache WHERE machine_id = ? AND agent_type = ?',
+      [machineId, agentType]
+    );
+    return row ?? null;
+  },
+
+  async upsertCapabilities(row) {
+    const d = await getDB();
+    await d.runAsync(
+      `INSERT OR REPLACE INTO capabilities_cache (machine_id, agent_type, capabilities, updated_at, kv_version)
+       VALUES (?, ?, ?, ?, ?)`,
+      [row.machine_id, row.agent_type, row.capabilities, row.updated_at, row.kv_version]
+    );
+  },
+
+  async kvGetAll(namespace) {
+    const d = await getDB();
+    return d.getAllAsync<{ key: string; value: string }>(
+      'SELECT key, value FROM kv_store WHERE namespace = ?',
+      [namespace]
+    );
+  },
+
+  async kvSet(namespace, key, value) {
+    const d = await getDB();
+    await d.runAsync(
+      'INSERT OR REPLACE INTO kv_store (namespace, key, value) VALUES (?, ?, ?)',
+      [namespace, key, value]
+    );
+  },
+
+  async kvDelete(namespace, key) {
+    const d = await getDB();
+    await d.runAsync('DELETE FROM kv_store WHERE namespace = ? AND key = ?', [namespace, key]);
+  },
+
+  async kvDeleteAll(namespace) {
+    const d = await getDB();
+    await d.runAsync('DELETE FROM kv_store WHERE namespace = ?', [namespace]);
   },
 };
