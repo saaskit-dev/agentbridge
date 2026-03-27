@@ -38,7 +38,7 @@ import { claudeCliPath } from '@/claude/claudeLocal';
 import type { EnhancedMode } from '@/claude/sessionTypes';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { PermissionHandler } from '@/claude/utils/permissionHandler';
-import type { AgentBackend, AgentStartOpts, BackendExitInfo } from '@/daemon/sessions/AgentBackend';
+import type { AgentBackend, AgentStartOpts, BackendExitInfo, LocalAttachment } from '@/daemon/sessions/AgentBackend';
 import type { NormalizedMessage } from '@/daemon/sessions/types';
 import { createNormalizedEvent } from '@/daemon/sessions/types';
 import {
@@ -375,7 +375,12 @@ export class ClaudeNativeBackend implements AgentBackend {
   // Message sending
   // ---------------------------------------------------------------------------
 
-  async sendMessage(text: string, permissionMode?: PermissionMode): Promise<void> {
+  async sendMessage(text: string, permissionMode?: PermissionMode, attachments?: LocalAttachment[]): Promise<void> {
+    if (attachments?.length) {
+      logger.warn('[ClaudeNativeBackend] image attachments not supported in native mode, sending text only', {
+        count: attachments.length,
+      });
+    }
     // Emit working status when actually starting to process a user message
     this.output.push(createNormalizedEvent({ type: 'status', state: 'working' }));
 

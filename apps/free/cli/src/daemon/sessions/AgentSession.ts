@@ -24,14 +24,15 @@
  *               daemon spawns each session via spawnSession()
  */
 
+import fs from 'node:fs/promises';
 import os from 'node:os';
+import path, { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
 import packageJson from '../../../package.json';
 import type { Credentials } from '@/persistence';
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
-import type { AgentState, Metadata, UserMessage, PermissionMode } from '@/api/types';
+import type { AgentState, AttachmentRef, Metadata, UserMessage, PermissionMode } from '@/api/types';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
@@ -45,13 +46,21 @@ import { safeStringify, toError } from '@saaskit-dev/agentbridge';
 import { getProcessTraceContext } from '@/telemetry';
 import { hashObject } from '@/utils/deterministicJson';
 import { getChildPids } from '@/utils/childProcessUtils';
-import type { AgentBackend, AgentStartOpts } from './AgentBackend';
+import type { AgentBackend, AgentStartOpts, LocalAttachment } from './AgentBackend';
 import type { NormalizedMessage, AgentType, SessionSummary, SessionInitiator } from './types';
 import { createNormalizedEvent } from './types';
 import type { IPCServerMessage } from '@/daemon/ipc/protocol';
 import type { SessionCapabilities } from './capabilities';
 import { persistSession, eraseSession } from './sessionPersistence';
 import type { PersistedSession } from './sessionPersistence';
+
+/** Allowed image MIME types and their file extensions. */
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
 
 const logger = new Logger('daemon/sessions/AgentSession');
 
@@ -149,7 +158,15 @@ export abstract class AgentSession<TMode> {
 
   /** Messages arriving before initialize() completes are buffered here. */
   private readonly PRE_INIT_QUEUE_LIMIT = 32;
-  private preInitQueue: Array<{ text: string }> = [];
+  private preInitQueue: Array<{ text: string; attachmentRefs: AttachmentRef[] }> = [];
+  /**
+   * Parallel attachment queue — one entry per messageQueue entry, always in sync.
+   * Each entry is the list of LocalAttachments for the corresponding message turn.
+   * An empty array means "no attachments for this turn".
+   */
+  private pendingAttachments: LocalAttachment[][] = [];
+  /** Local directory where received attachment files are stored. */
+  private readonly attachmentsDir = path.join(configuration.freeHomeDir, 'attachments');
   /** Forwards daemon error-level logs to the App as daemon-log events. */
   private devErrorSink: DaemonLogSink | null = null;
 
@@ -375,7 +392,10 @@ export abstract class AgentSession<TMode> {
     }
     if (!this.messageQueue) {
       if (this.preInitQueue.length < this.PRE_INIT_QUEUE_LIMIT) {
-        this.preInitQueue.push({ text });
+        // sendInput is the CLI/IPC path — no file uploads, so attachmentRefs is
+        // intentionally empty. App messages with attachments arrive via onUserMessage,
+        // which is only registered after initialize() completes and never buffers here.
+        this.preInitQueue.push({ text, attachmentRefs: [] });
       } else {
         logger.debug('[AgentSession] preInitQueue full, dropping message', {
           userId: this.userId,
@@ -385,7 +405,53 @@ export abstract class AgentSession<TMode> {
       }
       return;
     }
+    this.pendingAttachments.push([]);
     this.messageQueue.push(text, this.defaultMode());
+  }
+
+  /**
+   * Handles a single file-transfer event from the Server.
+   * Validates the payload, writes the file, and calls ack.
+   * Extracted for testability — registered as a callback in initialize().
+   */
+  async handleFileTransfer(
+    payload: { id: string; data: Buffer; mimeType: string; filename?: string },
+    ack: (result: { ok: boolean }) => void,
+    sessionId: string
+  ): Promise<void> {
+    const ext = MIME_TO_EXT[payload.mimeType];
+    if (!ext || !/^[a-f0-9]{32}$/.test(payload.id)) {
+      logger.warn('[AgentSession] file-transfer rejected: invalid mimeType or id', {
+        mimeType: payload.mimeType,
+        id: payload.id,
+        sessionId,
+      });
+      ack({ ok: false });
+      return;
+    }
+    try {
+      await this.receiveAttachment(payload.id, payload.data, ext);
+      ack({ ok: true });
+    } catch (err) {
+      logger.error('[AgentSession] file-transfer write failed', toError(err), {
+        id: payload.id,
+        sessionId,
+      });
+      ack({ ok: false });
+    }
+  }
+
+  /**
+   * Write a received attachment to disk (atomic: tmp → rename).
+   * Called from handleFileTransfer.
+   */
+  private async receiveAttachment(id: string, data: Buffer, ext: string): Promise<void> {
+    await fs.mkdir(this.attachmentsDir, { recursive: true, mode: 0o700 });
+    const filePath = path.join(this.attachmentsDir, `${id}.${ext}`);
+    const tmpPath = `${filePath}.tmp`;
+    await fs.writeFile(tmpPath, data, { mode: 0o600 });
+    await fs.rename(tmpPath, filePath);
+    logger.debug('[AgentSession] attachment written', { id, ext, bytes: data.length });
   }
 
   /** IPCServer abort message path. */
@@ -506,18 +572,29 @@ export abstract class AgentSession<TMode> {
               preview: msg.content.text.slice(0, 120),
               permissionMode: msg.meta?.permissionMode,
               model: msg.meta?.model,
+              attachmentCount: msg.content.attachments?.length ?? 0,
               traceId: getProcessTraceContext()?.traceId,
             });
             this.onAppMessageQueued(msg.content.text);
-            this.messageQueue.push(msg.content.text, this.extractMode(msg));
+            const attachments = (msg.content.attachments ?? []).flatMap(({ id, mimeType }) => {
+              const ext = MIME_TO_EXT[mimeType];
+              return ext ? [{ localPath: path.join(this.attachmentsDir, `${id}.${ext}`), mimeType }] : [];
+            });
+            this.pendingAttachments.push(attachments);
+            this.messageQueue.pushIsolateAndClear(msg.content.text, this.extractMode(msg));
             logger.info('[AgentSession] app user message pushed to queue after session swap', {
               userId: this.userId,
               sessionId: newSession.sessionId,
               agentType: this.agentType,
               textLen: msg.content.text.length,
+              attachmentCount: attachments.length,
               traceId: getProcessTraceContext()?.traceId,
             });
           });
+          // Re-register file-transfer handler on new session socket
+          newSession.onFileTransfer((payload, ack) =>
+            this.handleFileTransfer(payload, ack, newSession.sessionId)
+          );
           this.backend?.onSessionChange?.(newSession);
           this.registerSessionRpcHandlers();
           registerKillSessionHandler(this.session.rpcHandlerManager, async () => {
@@ -561,22 +638,39 @@ export abstract class AgentSession<TMode> {
         preview: msg.content.text.slice(0, 120),
         permissionMode: msg.meta?.permissionMode,
         model: msg.meta?.model,
+        attachmentCount: msg.content.attachments?.length ?? 0,
         traceId: getProcessTraceContext()?.traceId,
       });
       this.onAppMessageQueued(msg.content.text);
-      this.messageQueue.push(msg.content.text, this.extractMode(msg));
+      const attachments = (msg.content.attachments ?? []).map(({ id, mimeType }) => ({
+        localPath: path.join(this.attachmentsDir, `${id}.${MIME_TO_EXT[mimeType] ?? 'jpg'}`),
+        mimeType,
+      }));
+      this.pendingAttachments.push(attachments);
+      this.messageQueue.pushIsolateAndClear(msg.content.text, this.extractMode(msg));
       logger.info('[AgentSession] app user message pushed to queue', {
         userId: this.userId,
         sessionId: this.session.sessionId,
         agentType: this.agentType,
         textLen: msg.content.text.length,
+        attachmentCount: attachments.length,
         traceId: getProcessTraceContext()?.traceId,
       });
     });
 
+    // Register file-transfer handler (Server forwards App's uploaded attachment here)
+    this.session.onFileTransfer((payload, ack) =>
+      this.handleFileTransfer(payload, ack, this.session.sessionId)
+    );
+
     // Replay any messages that arrived before initialize() completed
-    for (const { text } of this.preInitQueue) {
-      this.messageQueue.push(text, this.defaultMode());
+    for (const { text, attachmentRefs } of this.preInitQueue) {
+      const attachments = attachmentRefs.flatMap(({ id, mimeType }) => {
+        const ext = MIME_TO_EXT[mimeType];
+        return ext ? [{ localPath: path.join(this.attachmentsDir, `${id}.${ext}`), mimeType }] : [];
+      });
+      this.pendingAttachments.push(attachments);
+      this.messageQueue.pushIsolateAndClear(text, this.defaultMode());
     }
     const preInitReplayed = this.preInitQueue.length;
     this.preInitQueue = [];
@@ -711,9 +805,11 @@ export abstract class AgentSession<TMode> {
           );
           this.shouldExit = false;
           this.backendRestartCount = 0;
+          this.pendingAttachments = [];
           this.messageQueue = new MessageQueue2<TMode>(this.createModeHasher());
           const item = await this.messageQueue.waitForMessagesAndGetAsString();
           if (!item || this.pendingExit || this._isShuttingDown) break;
+          this.pendingAttachments.push([]);
           this.messageQueue.push(item.message, item.mode);
           // continue → retry startBackendAndLoop
         }
@@ -809,10 +905,12 @@ export abstract class AgentSession<TMode> {
           // Wait for user to send a new message (or kill/archive to arrive)
           this.shouldExit = false;
           this.backendRestartCount = 0;
+          this.pendingAttachments = [];
           this.messageQueue = new MessageQueue2<TMode>(this.createModeHasher());
           const item = await this.messageQueue.waitForMessagesAndGetAsString();
           if (!item || this.pendingExit || this._isShuttingDown) break;
           // User sent a message — push it back so the new messageLoop picks it up
+          this.pendingAttachments.push([]);
           this.messageQueue.push(item.message, item.mode);
           continue;
         }
@@ -852,6 +950,7 @@ export abstract class AgentSession<TMode> {
         }
         // Re-open message queue and reset exit flag before restarting
         this.shouldExit = false;
+        this.pendingAttachments = [];
         this.messageQueue = new MessageQueue2<TMode>(this.createModeHasher());
         continue;
       }
@@ -885,18 +984,22 @@ export abstract class AgentSession<TMode> {
       // Re-check after await: backend may have died while we were blocked on the queue
       if (this.shouldExit) break;
       if (this.pendingExit && this.lastStatus === 'idle') break;
+      // Pop the matching attachment set (always 1:1 with pushIsolateAndClear)
+      const attachments = this.pendingAttachments.shift() ?? [];
       logger.debug('[AgentSession] turn dequeued, sending to backend', {
         userId: this.userId,
         sessionId: this.session.sessionId,
         traceId: getProcessTraceContext()?.traceId,
         preview: item.message.slice(0, 100),
+        attachmentCount: attachments.length,
       });
       this.resetStreamingText();
       try {
         this.onModeChange(item.mode);
         await this.backend.sendMessage(
           item.message,
-          (item.mode as { permissionMode?: PermissionMode }).permissionMode
+          (item.mode as { permissionMode?: PermissionMode }).permissionMode,
+          attachments.length > 0 ? attachments : undefined
         );
         this.completeStreamingText();
       } catch (err) {

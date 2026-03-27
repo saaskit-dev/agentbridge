@@ -134,6 +134,9 @@ export class ApiSessionClient extends EventEmitter {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
   private pendingMessages: UserMessage[] = [];
   private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
+  private fileTransferCallback:
+    | ((payload: { id: string; data: Buffer; mimeType: string; filename?: string }, ack: (result: { ok: boolean }) => void) => void)
+    | null = null;
   readonly rpcHandlerManager: RpcHandlerManager;
   private agentStateLock = new AsyncLock();
   private metadataLock = new AsyncLock();
@@ -187,6 +190,7 @@ export class ApiSessionClient extends EventEmitter {
       token: this.token,
       clientType: 'session-scoped' as const,
       sessionId: this.sessionId,
+      isDaemon: true,
     };
     Object.defineProperty(authData, 'lastSeq', {
       get: () => this.lastSeq,
@@ -436,6 +440,16 @@ export class ApiSessionClient extends EventEmitter {
       }
     });
 
+    // File transfer from Server (forwarded from App upload)
+    this.socket.on('file-transfer', (payload: { id: string; data: Buffer; mimeType: string; filename?: string }, ack: (result: { ok: boolean }) => void) => {
+      if (this.fileTransferCallback) {
+        this.fileTransferCallback(payload, ack);
+      } else {
+        // No handler registered yet — reject so the Server can report the error
+        ack({ ok: false });
+      }
+    });
+
     // DEATH
     this.socket.on('error', error => {
       logger.debug('[API] Socket error:', error);
@@ -472,6 +486,18 @@ export class ApiSessionClient extends EventEmitter {
       });
       callback(msg);
     }
+  }
+
+  onFileTransfer(
+    callback: (
+      payload: { id: string; data: Buffer; mimeType: string; filename?: string },
+      ack: (result: { ok: boolean }) => void
+    ) => void
+  ): void {
+    this.fileTransferCallback = callback;
+    logger.info('[apiSession] onFileTransfer callback registered', {
+      sessionId: this.sessionId,
+    });
   }
 
   private routeIncomingMessage(message: unknown) {

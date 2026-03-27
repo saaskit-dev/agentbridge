@@ -135,6 +135,10 @@ export interface ServerToClientEvents {
   replay: (data: { sessionId: string; messages: any[]; hasMore: boolean }) => void;
   auth: (data: { success: boolean; user: string }) => void;
   error: (data: { message: string }) => void;
+  'file-transfer': (
+    payload: { id: string; sessionId: string; data: Buffer; mimeType: string; filename?: string },
+    ack: (result: { ok: boolean }) => void
+  ) => void;
 }
 
 /**
@@ -385,11 +389,21 @@ export const CreateSessionResponseSchema = z.object({
 
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>;
 
+export const AttachmentRefSchema = z.object({
+  id: z.string(),
+  mimeType: z.string(),
+  thumbhash: z.string().optional(),
+  filename: z.string().optional(),
+});
+
+export type AttachmentRef = z.infer<typeof AttachmentRefSchema>;
+
 export const UserMessageSchema = z.object({
   role: z.literal('user'),
   content: z.object({
     type: z.literal('text'),
     text: z.string(),
+    attachments: z.array(AttachmentRefSchema).optional(),
   }),
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional(),

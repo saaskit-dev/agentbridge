@@ -137,6 +137,8 @@ export type NormalizedMessage = (
   usage?: UsageData;
   /** RFC §19.3: cross-layer trace correlation (App → Server → Daemon → Agent) */
   traceId?: string;
+  /** RFC-010 §3.3: monotonically increasing sequence number for replay dedup */
+  seq?: number;
 };
 
 // ---------------------------------------------------------------------------

@@ -1980,7 +1980,7 @@ class Sync {
             id: n.id,
             session_id: sessionId,
             seq: messages[origIdx]?.seq ?? 0,
-            content: JSON.stringify(decryptedMessages[origIdx]?.content),
+            content: JSON.stringify(decryptedMessages[origIdx]?.content ?? null),
             role: n.role ?? 'agent',
             created_at: n.createdAt ?? Date.now(),
             updated_at: Date.now(),
@@ -2240,10 +2240,103 @@ class Sync {
     }
   };
 
+  /**
+   * RFC-010 §3.3: Returns { sessionId: lastSeq } for all sessions with known
+   * watermarks. The server uses this on reconnection to replay missed messages.
+   */
+  private getActiveSessionLastSeqs = (): Record<string, number> => {
+    const seqs: Record<string, number> = {};
+    for (const [sessionId, seq] of this.sessionLastSeq) {
+      if (seq > 0) seqs[sessionId] = seq;
+    }
+    return seqs;
+  };
+
+  /**
+   * RFC-010 §3.3: Handle 'replay' events from server after reconnection.
+   * Messages are in the same format as fetch-messages responses (encrypted).
+   */
+  private handleReplay = async (data: unknown) => {
+    try {
+      const { sessionId, messages, hasMore } = data as {
+        sessionId: string;
+        messages: ApiMessage[];
+        hasMore: boolean;
+      };
+      if (!sessionId || !Array.isArray(messages) || messages.length === 0) return;
+
+      const encryption = this.encryption.getSessionEncryption(sessionId);
+      if (!encryption) {
+        logger.debug('[sync] replay: no encryption for session, deferring to fetchMessages', { sessionId });
+        this.getMessagesSync(sessionId).invalidate();
+        return;
+      }
+
+      const decryptedMessages = await encryption.decryptMessages(messages);
+      const normalizedMessages: NormalizedMessage[] = [];
+      const normalizedOriginalIndices: number[] = [];
+      for (let i = 0; i < decryptedMessages.length; i++) {
+        const decrypted = decryptedMessages[i];
+        if (!decrypted) continue;
+        const normalized = normalizeRawMessage(decrypted.id, decrypted.createdAt, decrypted.content);
+        if (normalized) {
+          if (decrypted.traceId) normalized.traceId = decrypted.traceId;
+          const msgSeq = messages[i]?.seq;
+          if (msgSeq) normalized.seq = msgSeq;
+          normalizedMessages.push(normalized);
+          normalizedOriginalIndices.push(i);
+        }
+      }
+
+      if (normalizedMessages.length > 0) {
+        this.enqueueMessages(sessionId, normalizedMessages);
+
+        let maxSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+        const cacheEntries = normalizedMessages.map((n, idx) => {
+          const origIdx = normalizedOriginalIndices[idx];
+          const seq = messages[origIdx]?.seq ?? 0;
+          if (seq > maxSeq) maxSeq = seq;
+          return {
+            id: n.id,
+            session_id: sessionId,
+            seq,
+            content: JSON.stringify(decryptedMessages[origIdx]?.content ?? null),
+            role: n.role ?? 'agent',
+            created_at: n.createdAt ?? Date.now(),
+            updated_at: Date.now(),
+          };
+        });
+        messageDB
+          .upsertMessagesAndSeq(sessionId, cacheEntries, maxSeq)
+          .catch(e => logger.debug('[sync] replay messageDB upsert failed', { sessionId, error: String(e) }));
+
+        this.sessionLastSeq.set(sessionId, maxSeq);
+      }
+
+      // If server indicated more messages remain, fall back to paginated fetch
+      if (hasMore) {
+        this.getMessagesSync(sessionId).invalidate();
+      }
+
+      logger.info('[sync] replay: processed missed messages', {
+        sessionId,
+        count: normalizedMessages.length,
+        hasMore,
+      });
+    } catch (e) {
+      logger.error('[sync] replay handler failed', toError(e));
+    }
+  };
+
   private subscribeToUpdates = () => {
     // Subscribe to message updates
     apiSocket.onMessage('update', this.handleUpdate.bind(this));
     apiSocket.onMessage('ephemeral', this.handleEphemeralUpdate.bind(this));
+    // RFC-010 §3.3: Handle replayed messages after reconnection
+    apiSocket.onMessage('replay', this.handleReplay);
+
+    // RFC-010 §3.3: Provide lastSeqs to apiSocket for reconnection handshake
+    apiSocket.setLastSeqsProvider(this.getActiveSessionLastSeqs);
 
     // Subscribe to connection state changes
     apiSocket.onReconnected(() => {

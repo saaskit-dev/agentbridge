@@ -54,6 +54,7 @@ import {
   readAllPersistedSessions,
   eraseSession as erasePersistedSession,
 } from './sessions/sessionPersistence';
+import { cleanStaleAttachments } from './sessions/cleanAttachments';
 
 // Register all agent session types at module load time
 AgentSessionFactory.register('claude-native', ClaudeNativeSession);
@@ -447,6 +448,12 @@ export async function startDaemon(): Promise<void> {
 
     // Create session manager and IPC server, wire up eviction callback
     sessionManager = new SessionManager(sessionId => ipcServer?.evictHistory(sessionId));
+
+    // One-time cleanup of stale attachment files from previous runs
+    const attachmentsDir = `${configuration.freeHomeDir}/attachments`;
+    cleanStaleAttachments(attachmentsDir).catch(err =>
+      logger.warn('[DAEMON RUN] cleanStaleAttachments failed', { error: String(err) })
+    );
 
     // Tracks whether a version/hash-change restart is in progress.
     // Shared between heartbeat and orphan callback to suppress spawning headless CLI

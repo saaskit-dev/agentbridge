@@ -178,7 +178,9 @@ describe('ClaudeBackend', () => {
 
     expect(mockStartSession).toHaveBeenCalledWith();
     expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'claude-opus');
-    expect(mockSendPrompt).toHaveBeenCalledWith('acp-session-1', expect.stringContaining('hello'));
+    expect(mockSendPrompt).toHaveBeenCalledWith('acp-session-1', expect.arrayContaining([
+      expect.objectContaining({ type: 'text', text: expect.stringContaining('hello') }),
+    ]));
     expect(mockSetSessionModel.mock.invocationCallOrder[0]).toBeLessThan(
       mockSendPrompt.mock.invocationCallOrder[0]
     );
@@ -621,7 +623,7 @@ describe('ClaudeBackend', () => {
     await backend.sendMessage('hello');
     await backend.runCommand?.('/compact');
 
-    expect(mockSendPrompt).toHaveBeenLastCalledWith('acp-session-1', '/compact');
+    expect(mockSendPrompt).toHaveBeenLastCalledWith('acp-session-1', [{ type: 'text', text: '/compact' }]);
   });
 
   it('maps agent messages onto output', async () => {

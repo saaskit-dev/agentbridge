@@ -91,7 +91,9 @@ describe('CodexBackend', () => {
 
     expect(mockStartSession).toHaveBeenCalledWith();
     expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'gpt-5-codex-medium');
-    expect(mockSendPrompt).toHaveBeenCalledWith('acp-session-1', expect.stringContaining('hello'));
+    expect(mockSendPrompt).toHaveBeenCalledWith('acp-session-1', expect.arrayContaining([
+      expect.objectContaining({ type: 'text', text: expect.stringContaining('hello') }),
+    ]));
     expect(mockSetSessionModel.mock.invocationCallOrder[0]).toBeLessThan(
       mockSendPrompt.mock.invocationCallOrder[0]
     );
@@ -143,6 +145,6 @@ describe('CodexBackend', () => {
     await backend.sendMessage('hello');
     await backend.runCommand?.('/plan');
 
-    expect(mockSendPrompt).toHaveBeenLastCalledWith('acp-session-1', '/plan');
+    expect(mockSendPrompt).toHaveBeenLastCalledWith('acp-session-1', [{ type: 'text', text: '/plan' }]);
   });
 });

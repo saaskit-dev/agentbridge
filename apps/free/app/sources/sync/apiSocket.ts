@@ -47,9 +47,19 @@ class ApiSocket {
   private lastDisconnectReason: string | null = null;
   private lastDisconnectAt: number | null = null;
   private lastConnectedAt: number | null = null;
+  // RFC-010 §3.3: Provider for active session lastSeqs (injected by Sync to avoid circular dep)
+  private lastSeqsProvider: (() => Record<string, number>) | null = null;
 
   getStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
     return this.currentStatus;
+  }
+
+  /**
+   * RFC-010 §3.3: Register a provider that returns { sessionId: lastSeq } for
+   * active sessions. Called by Sync at init time to avoid circular dependency.
+   */
+  setLastSeqsProvider(provider: () => Record<string, number>) {
+    this.lastSeqsProvider = provider;
   }
 
   //
@@ -74,11 +84,13 @@ class ApiSocket {
     this.updateStatus('connecting');
     logger.debug('[SyncSocket] connecting to', { endpoint: this.config.endpoint });
 
+    const lastSeqs = this.lastSeqsProvider?.() ?? {};
     this.socket = io(this.config.endpoint, {
       path: '/v1/updates',
       auth: {
         token: this.config.token,
         clientType: 'user-scoped' as const,
+        ...(Object.keys(lastSeqs).length > 0 ? { lastSeqs } : {}),
       },
       transports: ['websocket'],
       reconnection: true,
@@ -432,6 +444,16 @@ class ApiSocket {
         prevDisconnectReason: this.lastDisconnectReason,
         prevDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
       });
+      // RFC-010 §3.3: Update lastSeqs for next reconnection attempt so the
+      // server replays only messages missed since the most recent seq we know.
+      if (this.socket && this.lastSeqsProvider) {
+        const freshSeqs = this.lastSeqsProvider();
+        if (Object.keys(freshSeqs).length > 0) {
+          (this.socket.auth as Record<string, unknown>).lastSeqs = freshSeqs;
+        } else {
+          delete (this.socket.auth as Record<string, unknown>).lastSeqs;
+        }
+      }
       // Daemon re-registers its RPC methods on every connect — stale ready signals are invalid
       this.daemonReadySessions.clear();
       this.updateStatus('connected');

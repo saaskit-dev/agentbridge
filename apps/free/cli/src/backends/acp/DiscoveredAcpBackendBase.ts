@@ -1,11 +1,13 @@
+import { basename } from 'node:path';
 import type { SessionConfigOption } from '@agentclientprotocol/sdk';
+import type { PromptContentBlock } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify } from '@saaskit-dev/agentbridge';
 import { setAcpSessionId } from '@/telemetry';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
-import type { AgentBackend, AgentStartOpts, BackendExitInfo } from '@/daemon/sessions/AgentBackend';
+import type { AgentBackend, AgentStartOpts, BackendExitInfo, LocalAttachment } from '@/daemon/sessions/AgentBackend';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
 import type { AgentType, NormalizedMessage } from '@/daemon/sessions/types';
 import type { CapabilityAwareAcpBackend } from '@/backends/acp/types';
@@ -60,8 +62,22 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     return opts.model ?? null;
   }
 
-  protected buildPrompt(text: string): string {
-    return this.isFirstMessage ? `${text}\n\n${CHANGE_TITLE_INSTRUCTION}` : text;
+  protected buildPrompt(text: string, attachments?: LocalAttachment[]): PromptContentBlock[] {
+    const blocks: PromptContentBlock[] = [];
+
+    // Image attachments first (most models process images before text)
+    for (const att of attachments ?? []) {
+      blocks.push({
+        type: 'resource_link',
+        uri: `file://${att.localPath}`,
+        mimeType: att.mimeType,
+        name: basename(att.localPath),
+      });
+    }
+
+    const finalText = this.isFirstMessage ? `${text}\n\n${CHANGE_TITLE_INSTRUCTION}` : text;
+    blocks.push({ type: 'text', text: finalText });
+    return blocks;
   }
 
   protected buildFreeMcpServers(opts: AgentStartOpts) {
@@ -172,7 +188,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     });
   }
 
-  async sendMessage(text: string, permissionMode?: PermissionMode): Promise<void> {
+  async sendMessage(text: string, permissionMode?: PermissionMode, attachments?: LocalAttachment[]): Promise<void> {
     this.currentPermissionMode = permissionMode ?? this.currentPermissionMode;
     this.permissionHandler?.setPermissionMode(this.currentPermissionMode);
     if (!this.acpBackend) {
@@ -180,7 +196,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       return;
     }
 
-    const prompt = this.buildPrompt(text);
+    const prompt = this.buildPrompt(text, attachments);
     this.isFirstMessage = false;
 
     this.logger.info(`[${this.agentType}] sending message with permission context`, {
@@ -210,6 +226,8 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
 
     this.logger.debug(`[${this.agentType}] sending prompt`, {
       preview: text.slice(0, 100),
+      attachmentCount: attachments?.length ?? 0,
+      blockCount: prompt.length,
     });
     try {
       await this.acpBackend.sendPrompt(this.acpSessionId, prompt);
@@ -434,7 +452,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.logger.debug(`[${this.agentType}] running command`, {
       commandId,
     });
-    await this.acpBackend.sendPrompt(this.acpSessionId, commandId);
+    await this.acpBackend.sendPrompt(this.acpSessionId, [{ type: 'text', text: commandId }]);
     await this.acpBackend.waitForResponseComplete?.();
   }
 

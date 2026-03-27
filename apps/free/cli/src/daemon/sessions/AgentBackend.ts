@@ -64,6 +64,13 @@ export interface AgentStartOpts {
   onSessionIdResolved?: (sessionId: string) => void;
 }
 
+/** A local file (image) already written to disk by the Daemon, ready to pass to the agent. */
+export interface LocalAttachment {
+  /** Absolute path on the Daemon's filesystem */
+  localPath: string;
+  mimeType: string;
+}
+
 export interface AgentBackend {
   readonly agentType: AgentType;
 
@@ -74,7 +81,7 @@ export interface AgentBackend {
   readonly exitInfo?: BackendExitInfo;
 
   start(opts: AgentStartOpts): Promise<void>;
-  sendMessage(text: string, permissionMode?: PermissionMode): Promise<void>;
+  sendMessage(text: string, permissionMode?: PermissionMode, attachments?: LocalAttachment[]): Promise<void>;
   abort(): Promise<void>;
   stop(): Promise<void>;
 

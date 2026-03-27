@@ -13,6 +13,8 @@ export interface SessionScopedConnection {
   socket: Socket;
   userId: string;
   sessionId: string;
+  /** True when this socket belongs to the Daemon (not the App). Used for file-transfer routing. */
+  isDaemon?: boolean;
 }
 
 export interface UserScopedConnection {
@@ -311,6 +313,25 @@ class EventRouter {
     if (!connections) return undefined;
     for (const conn of connections) {
       if (conn.socket.id === socketId) return conn;
+    }
+    return undefined;
+  }
+
+  /**
+   * Find the Daemon's session-scoped socket for a given session.
+   * Used by attachmentHandler to forward file-transfer events to the Daemon.
+   */
+  findDaemonSession(userId: string, sessionId: string): SessionScopedConnection | undefined {
+    const connections = this.userConnections.get(userId);
+    if (!connections) return undefined;
+    for (const conn of connections) {
+      if (
+        conn.connectionType === 'session-scoped' &&
+        conn.sessionId === sessionId &&
+        conn.isDaemon
+      ) {
+        return conn;
+      }
     }
     return undefined;
   }

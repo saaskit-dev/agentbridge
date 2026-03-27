@@ -14,6 +14,8 @@ import { artifactUpdateHandler } from './socket/artifactUpdateHandler';
 import { accessKeyHandler } from './socket/accessKeyHandler';
 import { streamingHandler } from './socket/streamingHandler';
 import { usageHandler } from './socket/usageHandler';
+import { attachmentHandler } from './socket/attachmentHandler';
+import { replayMissedMessages } from './socket/replayHandler';
 import { Fastify } from './types';
 import { auth } from '@/app/auth/auth';
 import {
@@ -56,6 +58,8 @@ export async function startSocket(app: Fastify) {
     upgradeTimeout: 10000,
     connectTimeout: 20000,
     serveClient: false, // Don't serve the client files
+    // Required for binary image uploads from the App (up to 8 MB post-compression + protocol overhead)
+    maxHttpBufferSize: 10 * 1024 * 1024,
   });
 
   // Enable PostgreSQL adapter for multi-instance support (only when using external PostgreSQL)
@@ -85,6 +89,7 @@ export async function startSocket(app: Fastify) {
       | undefined;
     const sessionId = socket.handshake.auth.sessionId as string | undefined;
     const machineId = socket.handshake.auth.machineId as string | undefined;
+    const isDaemon = socket.handshake.auth.isDaemon === true;
 
     if (!token) {
       log.debug(`No token provided`);
@@ -136,6 +141,7 @@ export async function startSocket(app: Fastify) {
         socket,
         userId,
         sessionId,
+        isDaemon,
       };
     } else if (metadata.clientType === 'machine-scoped' && machineId) {
       connection = {
@@ -294,6 +300,7 @@ export async function startSocket(app: Fastify) {
     artifactUpdateHandler(userId, socket);
     accessKeyHandler(userId, socket);
     streamingHandler(userId, socket, connection);
+    attachmentHandler(userId, socket, connection);
 
     // Replay missed messages after reconnection (RFC-010 §3.3)
     replayMissedMessages(userId, socket, connection).catch(error => {
@@ -325,73 +332,3 @@ export async function startSocket(app: Fastify) {
   });
 }
 
-const REPLAY_LIMIT = 100;
-
-/**
- * RFC-010 §3.3: Replay missed messages after reconnection.
- *
- * session-scoped connections send `lastSeq` (single session).
- * user-scoped connections send `lastSeqs` (map of sessionId → lastSeq).
- */
-async function replayMissedMessages(userId: string, socket: Socket, connection: ClientConnection) {
-  if (connection.connectionType === 'session-scoped') {
-    const lastSeq = socket.handshake.auth.lastSeq as number | undefined;
-    if (lastSeq == null || typeof lastSeq !== 'number' || lastSeq < 0) return;
-    const sid = connection.sessionId;
-    await replayForSession(userId, socket, sid, lastSeq);
-  } else if (connection.connectionType === 'user-scoped') {
-    const lastSeqs = socket.handshake.auth.lastSeqs as Record<string, number> | undefined;
-    if (!lastSeqs || typeof lastSeqs !== 'object') return;
-    for (const [sid, lastSeq] of Object.entries(lastSeqs)) {
-      if (typeof lastSeq !== 'number' || lastSeq < 0) continue;
-      await replayForSession(userId, socket, sid, lastSeq);
-    }
-  }
-  // machine-scoped connections don't receive session messages — no replay needed
-}
-
-async function replayForSession(
-  userId: string,
-  socket: Socket,
-  sessionId: string,
-  lastSeq: number
-) {
-  // Verify session ownership
-  const session = await db.session.findFirst({
-    where: { id: sessionId, accountId: userId },
-    select: { id: true },
-  });
-  if (!session) return;
-
-  const messages = await db.sessionMessage.findMany({
-    where: { sessionId, seq: { gt: lastSeq } },
-    orderBy: { seq: 'asc' },
-    take: REPLAY_LIMIT + 1,
-    select: { id: true, seq: true, content: true, traceId: true, createdAt: true, updatedAt: true },
-  });
-
-  if (messages.length === 0) return;
-
-  const hasMore = messages.length > REPLAY_LIMIT;
-  const page = hasMore ? messages.slice(0, REPLAY_LIMIT) : messages;
-
-  socket.emit('replay', {
-    sessionId,
-    messages: page.map(m => ({
-      id: m.id,
-      seq: m.seq,
-      content: m.content,
-      ...(m.traceId ? { traceId: m.traceId } : {}),
-      createdAt: m.createdAt.getTime(),
-      updatedAt: m.updatedAt.getTime(),
-    })),
-    hasMore,
-  });
-  log.info('[replay] sent missed messages', {
-    userId,
-    sessionId,
-    lastSeq,
-    count: page.length,
-    hasMore,
-  });
-}
