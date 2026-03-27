@@ -54,7 +54,7 @@ describe('AcpBackend idle vs waitForResponseComplete race', () => {
     };
     internal.acpSessionId = 'ses_test';
 
-    await backend.sendPrompt('local', 'hello');
+    await backend.sendPrompt('local', [{ type: 'text', text: 'hello' }]);
     await expect(backend.waitForResponseComplete()).resolves.toBeUndefined();
   });
 
@@ -71,7 +71,7 @@ describe('AcpBackend idle vs waitForResponseComplete race', () => {
     };
     internal.acpSessionId = 'ses_test';
 
-    await backend.sendPrompt('local', 'hello');
+    await backend.sendPrompt('local', [{ type: 'text', text: 'hello' }]);
 
     const wait = backend.waitForResponseComplete();
     await Promise.resolve();
@@ -95,7 +95,7 @@ describe('AcpBackend idle vs waitForResponseComplete race', () => {
     };
     internal.acpSessionId = 'ses_test';
 
-    await backend.sendPrompt('local', 'hello');
+    await backend.sendPrompt('local', [{ type: 'text', text: 'hello' }]);
     // waitForResponseComplete must resolve immediately — no manual emitIdleStatus needed
     await expect(backend.waitForResponseComplete()).resolves.toBeUndefined();
   });
@@ -112,13 +112,13 @@ describe('AcpBackend idle vs waitForResponseComplete race', () => {
     };
     internal.acpSessionId = 'ses_test';
 
-    await expect(backend.sendPrompt('local', 'hello')).rejects.toThrow('boom');
+    await expect(backend.sendPrompt('local', [{ type: 'text', text: 'hello' }])).rejects.toThrow('boom');
 
     internal.connection = {
       prompt: vi.fn().mockResolvedValue(undefined),
     };
 
-    await backend.sendPrompt('local', 'again');
+    await backend.sendPrompt('local', [{ type: 'text', text: 'again' }]);
     const wait = backend.waitForResponseComplete();
     await Promise.resolve();
     internal.emitIdleStatus();

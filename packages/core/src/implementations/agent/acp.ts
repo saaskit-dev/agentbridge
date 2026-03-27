@@ -17,6 +17,7 @@ import type {
   AgentMessageHandler,
   SessionId,
   StartSessionResult,
+  PromptContentBlock,
 } from '../../interfaces/agent';
 import type { ITransportHandler, StderrContext, ToolNameContext } from '../../interfaces/transport';
 import type { AcpAgentConfig, AcpPermissionHandler } from '../../types/agent';
@@ -90,10 +91,11 @@ interface SetSessionConfigOptionResponse {
 
 interface PromptRequest {
   sessionId: string;
-  prompt: Array<{ type: string; text: string }>;
+  prompt: Array<{ type: string; [key: string]: unknown }>;
 }
 
-type ContentBlock = { type: string; text: string };
+/** ContentBlock union matching the ACP protocol schema. */
+type ContentBlock = PromptContentBlock;
 
 interface Client {
   sessionUpdate: (params: SessionNotification) => Promise<void>;
@@ -1078,7 +1080,7 @@ export class AcpBackend implements IAgentBackend {
 
       // Send initial prompt if provided
       if (initialPrompt) {
-        this.sendPrompt(sessionId, initialPrompt).catch(error => {
+        this.sendPrompt(sessionId, [{ type: 'text', text: initialPrompt }]).catch(error => {
           logger.error('[ACP] Initial prompt send failed', undefined, {
             agent: this.transport.agentName,
             error: safeStringify(error),
@@ -1313,9 +1315,13 @@ export class AcpBackend implements IAgentBackend {
   private responseCompleteTimeout: ReturnType<typeof setTimeout> | null = null;
   private responseCompleteRejecter: ((error: Error) => void) | null = null;
 
-  async sendPrompt(_sessionId: SessionId, prompt: string): Promise<void> {
+  async sendPrompt(_sessionId: SessionId, prompt: ContentBlock[]): Promise<void> {
     // Check if prompt contains change_title instruction (via optional callback)
-    const promptHasChangeTitle = this.hasChangeTitleInstruction?.(prompt) ?? false;
+    const textContent = prompt
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map(b => b.text)
+      .join('');
+    const promptHasChangeTitle = this.hasChangeTitleInstruction?.(textContent) ?? false;
 
     // Reset tool call counter and set flag
     this.toolCallCountSincePrompt = 0;
@@ -1341,17 +1347,12 @@ export class AcpBackend implements IAgentBackend {
 
     try {
       logger.info(
-        `[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`
+        `[AcpBackend] Sending prompt (${prompt.length} blocks, text: ${textContent.substring(0, 100)}...)`
       );
-
-      const contentBlock: ContentBlock = {
-        type: 'text',
-        text: prompt,
-      };
 
       const promptRequest: PromptRequest = {
         sessionId: this.acpSessionId,
-        prompt: [contentBlock],
+        prompt,
       };
 
       this.logAcpRequest('prompt', promptRequest, {

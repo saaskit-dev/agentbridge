@@ -95,6 +95,7 @@ export type {
   StartSessionResult,
   AgentMessageHandler,
   AgentBackendFactory,
+  PromptContentBlock,
 } from './interfaces';
 export {
   registerAgentFactory,

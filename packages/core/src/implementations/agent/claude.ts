@@ -11,6 +11,7 @@ import type {
   AgentMessageHandler,
   StartSessionResult,
   SessionId,
+  PromptContentBlock,
 } from '../../interfaces/agent';
 import { registerAgentFactory } from '../../interfaces/agent';
 import type { IProcessManager, IProcess } from '../../interfaces/process';
@@ -61,7 +62,7 @@ class ClaudeBackend implements IAgentBackend {
 
     // Send initial prompt if provided
     if (initialPrompt) {
-      await this.sendPrompt(sessionId, initialPrompt);
+      await this.sendPrompt(sessionId, [{ type: 'text', text: initialPrompt }]);
     }
 
     this.emitMessage({
@@ -72,13 +73,17 @@ class ClaudeBackend implements IAgentBackend {
     return { sessionId };
   }
 
-  async sendPrompt(_sessionId: SessionId, prompt: string): Promise<void> {
+  async sendPrompt(_sessionId: SessionId, prompt: PromptContentBlock[]): Promise<void> {
     if (!this.process || !this.running) {
       throw new Error('Session not started');
     }
 
-    // Send prompt to Claude via stdin
-    this.process.stdin.write(prompt + '\n');
+    // Extract text from content blocks and send via stdin
+    const text = prompt
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map(b => b.text)
+      .join('\n');
+    this.process.stdin.write(text + '\n');
   }
 
   async cancel(_sessionId: SessionId): Promise<void> {

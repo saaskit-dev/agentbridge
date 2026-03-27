@@ -13,6 +13,15 @@ import type {
 } from '../types/agent';
 import type { ToolCallId, AgentMessage } from '../types/messages';
 
+/**
+ * A content block in an ACP prompt.
+ * Structurally compatible with ContentBlock from @agentclientprotocol/sdk.
+ * Defined locally to avoid cross-package type identity issues.
+ */
+export type PromptContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'resource_link'; uri: string; name?: string; mimeType?: string | null; [key: string]: unknown };
+
 // Re-export types
 export type { AgentId, AgentTransport, McpServerConfig, AgentBackendConfig, AcpAgentConfig };
 export type { ToolCallId, AgentMessage };
@@ -42,8 +51,9 @@ export interface IAgentBackend {
 
   /**
    * Send a prompt to an existing session.
+   * Accepts a list of content blocks (text + optional resource_link for image attachments).
    */
-  sendPrompt(sessionId: SessionId, prompt: string): Promise<void>;
+  sendPrompt(sessionId: SessionId, prompt: PromptContentBlock[]): Promise<void>;
 
   /**
    * Cancel the current operation in a session.

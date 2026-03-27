@@ -12,12 +12,24 @@ export interface MessageMeta {
   disallowedTools?: string[] | null;
 }
 
+/** Reference to an image attachment stored on the daemon's local disk */
+export interface AttachmentRef {
+  /** cuid — used to locate the file on the Daemon */
+  id: string;
+  mimeType: string;
+  /** Base64-encoded thumbhash for placeholder rendering in history */
+  thumbhash?: string;
+  filename?: string;
+}
+
 /** User message content */
 export interface UserMessage {
   role: 'user';
   content: {
     type: 'text';
     text: string;
+    /** Optional image attachments; omitted for text-only messages (backward compatible) */
+    attachments?: AttachmentRef[];
   };
   localKey?: string;
   meta?: MessageMeta;

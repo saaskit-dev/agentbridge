@@ -42,6 +42,7 @@ export type {
   StartSessionResult,
   AgentMessageHandler,
   AgentBackendFactory,
+  PromptContentBlock,
 } from './agent';
 export type {
   AgentId,
