@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { configuration } from '@/configuration';
 import type { Session, UpdateSessionBody } from '@/api/types';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
-import { readCredentials } from '@/persistence';
+import { readCredentials, type Credentials } from '@/persistence';
 import {
   ensureLocalServerAndCredentials,
   stopSpawnedProcess,
@@ -200,5 +200,119 @@ describe('CLI <-> Server roundtrip integration', { timeout: 45_000 }, () => {
     session.metadata = decryptedMetadata ?? session.metadata;
     session.agentState = decryptedAgentState ?? session.agentState;
     session.capabilities = decryptedCapabilities;
+  });
+
+  it('messages sent to session A do not appear in session B', async () => {
+    // 1. Create two fresh sessions (A and B)
+    const sessionA = await appClient.createSession({ id: randomUUID() });
+    const sessionB = await appClient.createSession({ id: randomUUID() });
+
+    // 2. Create CLI clients for each session
+    const cliA = await FakeCliSessionClient.create(
+      { token } as Credentials,
+      sessionA
+    );
+    const cliB = await FakeCliSessionClient.create(
+      { token } as Credentials,
+      sessionB
+    );
+
+    try {
+      // 3. Send a message to session A
+      const textA = `isolation-A-${randomUUID()}`;
+      appClient.drainUpdates();
+
+      cliA.sendNormalizedMessage({
+        id: `agent-${randomUUID()}`,
+        createdAt: Date.now(),
+        isSidechain: false,
+        role: 'agent',
+        content: [
+          {
+            type: 'text',
+            text: textA,
+            uuid: randomUUID(),
+            parentUUID: null,
+          },
+        ],
+      });
+      await cliA.flush();
+
+      // 4. Wait for the broadcast confirming session A received the message
+      await appClient.waitForUpdate(
+        event =>
+          event.body?.t === 'new-message' &&
+          event.body.sid === sessionA.id &&
+          !!event.body.message?.content?.c,
+        10_000,
+        'session A agent message broadcast'
+      );
+
+      // 5. Fetch messages for session B — should be empty
+      const sessionBMessages1 = await appClient.fetchMessages(sessionB);
+      expect(sessionBMessages1.messages).toHaveLength(0);
+
+      // 6. Send a message to session B
+      const textB = `isolation-B-${randomUUID()}`;
+      appClient.drainUpdates();
+
+      cliB.sendNormalizedMessage({
+        id: `agent-${randomUUID()}`,
+        createdAt: Date.now(),
+        isSidechain: false,
+        role: 'agent',
+        content: [
+          {
+            type: 'text',
+            text: textB,
+            uuid: randomUUID(),
+            parentUUID: null,
+          },
+        ],
+      });
+      await cliB.flush();
+
+      await appClient.waitForUpdate(
+        event =>
+          event.body?.t === 'new-message' &&
+          event.body.sid === sessionB.id &&
+          !!event.body.message?.content?.c,
+        10_000,
+        'session B agent message broadcast'
+      );
+
+      // 7. Fetch messages for session A — should only have the first message
+      const sessionAMessages = await appClient.fetchMessages(sessionA);
+      expect(sessionAMessages.messages).toHaveLength(1);
+      const decryptedA = (await appClient.decryptSessionMessage(
+        sessionA,
+        sessionAMessages.messages[0]
+      )) as any;
+      expect(decryptedA?.content?.[0]?.text).toBe(textA);
+
+      // 8. Fetch messages for session B — should only have the second message
+      const sessionBMessages2 = await appClient.fetchMessages(sessionB);
+      expect(sessionBMessages2.messages).toHaveLength(1);
+      const decryptedB = (await appClient.decryptSessionMessage(
+        sessionB,
+        sessionBMessages2.messages[0]
+      )) as any;
+      expect(decryptedB?.content?.[0]?.text).toBe(textB);
+    } finally {
+      // Clean up the two extra sessions and clients
+      await cliA.close();
+      await cliB.close();
+
+      for (const s of [sessionA, sessionB]) {
+        try {
+          await fetch(`${configuration.serverUrl}/v1/sessions/${s.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        } catch {
+          // ignore cleanup failures
+        }
+      }
+    }
   });
 });
