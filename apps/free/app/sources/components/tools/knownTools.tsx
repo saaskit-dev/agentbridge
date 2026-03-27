@@ -308,6 +308,7 @@ export const knownTools = {
       return t('tools.names.editFile');
     },
     icon: ICON_EDIT,
+    minimal: true,
     isMutable: true,
     input: z
       .object({
@@ -373,6 +374,7 @@ export const knownTools = {
       return t('tools.names.writeFile');
     },
     icon: ICON_EDIT,
+    minimal: true,
     isMutable: true,
     input: z
       .object({

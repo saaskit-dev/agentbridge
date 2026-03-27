@@ -56,7 +56,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
   let description: string | null = null;
   let status: string | null = null;
   let minimal = false;
-  let icon = <Ionicons name="construct-outline" size={18} color={theme.colors.textSecondary} />;
+  let icon = <Ionicons name="construct-outline" size={16} color={theme.colors.textSecondary} />;
   let noStatus = false;
   let hideDefaultError = false;
 
@@ -82,7 +82,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
   // Special handling for MCP tools
   if (tool.name.startsWith('mcp__')) {
     icon = (
-      <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.tool.subtitle} />
+      <Ionicons name="extension-puzzle-outline" size={16} color={theme.colors.tool.subtitle} />
     );
     minimal = true;
   }
@@ -108,14 +108,14 @@ export const ToolView = React.memo<ToolViewProps>(props => {
   ) {
     const parsedCmd = tool.input.parsed_cmd[0];
     if (parsedCmd.type === 'read') {
-      icon = <Octicons name="eye" size={18} color={theme.colors.tool.title} />;
+      icon = <Octicons name="eye" size={16} color={theme.colors.tool.title} />;
     } else if (parsedCmd.type === 'write') {
-      icon = <Octicons name="file-diff" size={18} color={theme.colors.tool.title} />;
+      icon = <Octicons name="file-diff" size={16} color={theme.colors.tool.title} />;
     } else {
-      icon = <Octicons name="terminal" size={18} color={theme.colors.tool.title} />;
+      icon = <Octicons name="terminal" size={16} color={theme.colors.tool.title} />;
     }
   } else if (knownTool && typeof knownTool.icon === 'function') {
-    icon = knownTool.icon(18, theme.colors.tool.title);
+    icon = knownTool.icon(16, theme.colors.tool.title);
   }
 
   if (knownTool && typeof knownTool.noStatus === 'boolean') {
@@ -150,17 +150,17 @@ export const ToolView = React.memo<ToolViewProps>(props => {
     (tool.permission.status === 'denied' || tool.permission.status === 'canceled')
   ) {
     statusIcon = (
-      <Ionicons name="remove-circle-outline" size={20} color={theme.colors.textSecondary} />
+      <Ionicons name="remove-circle-outline" size={16} color={theme.colors.textSecondary} />
     );
   } else if (
     tool.permission &&
     tool.permission.status === 'approved' &&
     tool.state !== 'running'
   ) {
-    statusIcon = <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />;
+    statusIcon = <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />;
   } else if (isToolUseError) {
     statusIcon = (
-      <Ionicons name="remove-circle-outline" size={20} color={theme.colors.textSecondary} />
+      <Ionicons name="remove-circle-outline" size={16} color={theme.colors.textSecondary} />
     );
     hideDefaultError = true;
     minimal = true;
@@ -179,12 +179,12 @@ export const ToolView = React.memo<ToolViewProps>(props => {
         break;
       case 'completed':
         // if (!noStatus) {
-        //     statusIcon = <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />;
+        //     statusIcon = <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />;
         // }
         break;
       case 'error':
         statusIcon = (
-          <Ionicons name="alert-circle-outline" size={20} color={theme.colors.tool.error} />
+          <Ionicons name="alert-circle-outline" size={16} color={theme.colors.tool.error} />
         );
         break;
     }
@@ -278,17 +278,19 @@ export const ToolView = React.memo<ToolViewProps>(props => {
           );
         }
 
-        // Fall back to default view
+        // Fall back to default view - only render if there's actual content
+        const hasInput = !!tool.input;
+        const hasOutput = tool.state === 'completed' && !!tool.result;
+        if (!hasInput && !hasOutput) return null;
+
         return (
           <View style={styles.content}>
-            {/* Default content when no custom view available */}
-            {tool.input && (
+            {hasInput && (
               <ToolSectionView title={t('toolView.input')}>
                 <CodeView code={JSON.stringify(tool.input, null, 2)} />
               </ToolSectionView>
             )}
-
-            {tool.state === 'completed' && tool.result && (
+            {hasOutput && (
               <ToolSectionView title={t('toolView.output')}>
                 <CodeView
                   code={
@@ -364,7 +366,8 @@ const styles = StyleSheet.create(theme => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     backgroundColor: theme.colors.tool.headerBackground,
   },
   headerLeft: {
@@ -374,8 +377,8 @@ const styles = StyleSheet.create(theme => ({
     flex: 1,
   },
   iconContainer: {
-    width: 24,
-    height: 24,
+    width: 20,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 0.92,
@@ -387,26 +390,26 @@ const styles = StyleSheet.create(theme => ({
     marginLeft: 8,
   },
   elapsedText: {
-    fontSize: 13,
+    fontSize: 12,
     color: theme.colors.tool.muted,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
   },
   toolName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: theme.colors.tool.title,
   },
   status: {
     fontWeight: '400',
     opacity: 0.6,
-    fontSize: 14,
+    fontSize: 13,
     color: theme.colors.tool.muted,
   },
   toolDescription: {
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     color: theme.colors.tool.subtitle,
-    marginTop: 3,
+    marginTop: 2,
   },
   content: {
     paddingHorizontal: 12,
