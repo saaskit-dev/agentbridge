@@ -13,7 +13,7 @@ const config = getDefaultConfig(__dirname, {
 config.projectRoot = projectRoot;
 
 // Watch workspace packages so Metro can resolve @saaskit-dev/agentbridge
-config.watchFolders = [workspaceRoot];
+config.watchFolders = [...(config.watchFolders || []), workspaceRoot];
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),

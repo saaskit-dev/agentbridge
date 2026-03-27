@@ -1,4 +1,4 @@
-const { withXcodeProject } = require('@expo/config-plugins');
+const { withXcodeProject } = require('expo/config-plugins');
 
 /**
  * 在 prebuild 后自动写入 DEVELOPMENT_TEAM + CODE_SIGN_STYLE = Automatic，

@@ -1,4 +1,4 @@
-const { withEntitlementsPlist } = require('@expo/config-plugins');
+const { withEntitlementsPlist } = require('expo/config-plugins');
 
 /**
  * 根据 APP_ENV 环境变量自动配置 iOS Push Notification entitlements

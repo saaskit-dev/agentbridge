@@ -1,4 +1,4 @@
-const { withInfoPlist, withGradleProperties } = require('@expo/config-plugins');
+const { withInfoPlist, withGradleProperties } = require('expo/config-plugins');
 
 /**
  * 自动同步版本号到原生项目
