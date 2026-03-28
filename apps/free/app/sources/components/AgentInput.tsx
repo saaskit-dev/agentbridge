@@ -530,6 +530,7 @@ export const AgentInput = React.memo(
       if (props.isSettingsBusy) {
         return;
       }
+      inputRef.current?.blur();
       hapticsLight();
       setShowSettings(prev => !prev);
     }, [props.isSettingsBusy]);
@@ -548,6 +549,7 @@ export const AgentInput = React.memo(
     const handleAbortPress = React.useCallback(async () => {
       if (!props.onAbort) return;
 
+      inputRef.current?.blur();
       hapticsError();
       setIsAborting(true);
       const startTime = Date.now();
@@ -1500,6 +1502,7 @@ export const AgentInput = React.memo(
                     {props.onPickImages && (
                       <Pressable
                         onPress={() => {
+                          inputRef.current?.blur();
                           hapticsLight();
                           props.onPickImages?.();
                         }}
@@ -1552,6 +1555,7 @@ export const AgentInput = React.memo(
                     {props.agentType && (props.onAgentChange || props.onAgentClick) && (
                       <Pressable
                         onPress={() => {
+                          inputRef.current?.blur();
                           hapticsLight();
                           if (props.availableAgentTypes && props.onAgentChange) {
                             setShowAgentPicker(prev => !prev);
@@ -1624,7 +1628,10 @@ export const AgentInput = React.memo(
                     {/* Git Status Badge */}
                     <GitStatusButton
                       sessionId={props.sessionId}
-                      onPress={props.onFileViewerPress}
+                      onPress={() => {
+                        inputRef.current?.blur();
+                        props.onFileViewerPress?.();
+                      }}
                     />
                   </View>
 

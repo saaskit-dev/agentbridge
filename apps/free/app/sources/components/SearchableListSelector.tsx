@@ -43,6 +43,7 @@ export interface SelectorConfig<T> {
   searchPlaceholder: string;
   recentSectionTitle: string;
   favoritesSectionTitle: string;
+  allSectionTitle: string;
   noItemsMessage: string;
 
   // Optional features
@@ -103,12 +104,8 @@ const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
 const STATUS_DOT_TEXT_GAP = 4; // Gap between StatusDot and text (used throughout app for status indicators)
 const ITEM_SPACING_GAP = 4; // Gap between elements and spacing between items (compact)
 const COMPACT_ITEM_PADDING = 4; // Vertical padding for compact lists
-// Border radius constants (consistent rounding)
 const INPUT_BORDER_RADIUS = 10; // Input field and containers
 const BUTTON_BORDER_RADIUS = 8; // Buttons and actionable elements
-// ITEM_BORDER_RADIUS must match ItemGroup's contentContainer borderRadius to prevent clipping
-// ItemGroup uses Platform.select({ ios: 10, default: 16 })
-const ITEM_BORDER_RADIUS = Platform.select({ ios: 10, default: 16 }); // Match ItemGroup container radius
 
 const stylesheet = StyleSheet.create(theme => ({
   inputContainer: {
@@ -116,13 +113,14 @@ const stylesheet = StyleSheet.create(theme => ({
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 16,
+    paddingTop: 12,
     paddingBottom: 8,
   },
   inputWrapper: {
     flex: 1,
     backgroundColor: theme.colors.input.background,
     borderRadius: INPUT_BORDER_RADIUS,
-    borderWidth: 0.5,
+    borderWidth: 1,
     borderColor: theme.colors.divider,
   },
   inputInner: {
@@ -150,29 +148,24 @@ const stylesheet = StyleSheet.create(theme => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+    paddingTop: 6,
+    paddingBottom: 6,
   },
   sectionHeaderText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: theme.colors.text,
-    ...Typography.default(),
+    fontSize: Platform.select({ ios: 13, default: 14 }),
+    color: theme.colors.groupped.sectionTitle,
+    textTransform: 'uppercase',
+    fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+    letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+    ...Typography.default('regular'),
   },
-  selectedItemStyle: {
-    borderWidth: 2,
-    borderColor: theme.colors.button.primary.tint,
-    borderRadius: ITEM_BORDER_RADIUS,
-  },
+  selectedItemStyle: {},
   compactItemStyle: {
     paddingVertical: COMPACT_ITEM_PADDING,
     minHeight: 0, // Override Item's default minHeight (44-56px) for compact mode
   },
-  itemBackground: {
-    backgroundColor: theme.colors.input.background,
-    borderRadius: ITEM_BORDER_RADIUS,
-    marginBottom: ITEM_SPACING_GAP,
-  },
+  itemBackground: {},
   showMoreTitle: {
     textAlign: 'center',
     color: theme.colors.button.primary.tint,
@@ -248,7 +241,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
   const [showAllRecent, setShowAllRecent] = React.useState(false);
 
   // Internal uncontrolled state (used when not controlled from parent)
-  const [internalShowRecentSection, setInternalShowRecentSection] = React.useState(false);
+  const [internalShowRecentSection, setInternalShowRecentSection] = React.useState(true);
   const [internalShowFavoritesSection, setInternalShowFavoritesSection] = React.useState(false);
   const [internalShowAllItemsSection, setInternalShowAllItemsSection] = React.useState(true);
 
@@ -546,13 +539,13 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
             <Text style={styles.sectionHeaderText}>{config.recentSectionTitle}</Text>
             <Ionicons
               name={showRecentSection ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={theme.colors.text}
+              size={16}
+              color={theme.colors.groupped.sectionTitle}
             />
           </Pressable>
 
           {showRecentSection && (
-            <ItemGroup title="">
+            <ItemGroup title=" " headerStyle={{ padding: 0, height: 0 }} titleStyle={{ height: 0 }}>
               {itemsToShow.map((item, index, arr) => {
                 const itemId = config.getItemId(item);
                 const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -596,13 +589,13 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
             <Text style={styles.sectionHeaderText}>{config.favoritesSectionTitle}</Text>
             <Ionicons
               name={showFavoritesSection ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={theme.colors.text}
+              size={16}
+              color={theme.colors.groupped.sectionTitle}
             />
           </Pressable>
 
           {showFavoritesSection && (
-            <ItemGroup title="">
+            <ItemGroup title=" " headerStyle={{ padding: 0, height: 0 }} titleStyle={{ height: 0 }}>
               {filteredFavoriteItems.map((item, index) => {
                 const itemId = config.getItemId(item);
                 const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -668,22 +661,20 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         </>
       )}
 
-      {/* All Items Section - always shown when items provided */}
-      {items.length > 0 && (
+      {/* All Items Section - hidden when all items are already in recent */}
+      {items.length > 0 && !(showRecent && recentItems.length >= items.length && items.every(item => recentItems.some(r => config.getItemId(r) === config.getItemId(item)))) && (
         <>
           <Pressable style={styles.sectionHeader} onPress={toggleAllItemsSection}>
-            <Text style={styles.sectionHeaderText}>
-              {config.recentSectionTitle.replace('Recent ', 'All ')}
-            </Text>
+            <Text style={styles.sectionHeaderText}>{config.allSectionTitle}</Text>
             <Ionicons
               name={showAllItemsSection ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={theme.colors.text}
+              size={16}
+              color={theme.colors.groupped.sectionTitle}
             />
           </Pressable>
 
           {showAllItemsSection && (
-            <ItemGroup title="">
+            <ItemGroup title=" " headerStyle={{ padding: 0, height: 0 }} titleStyle={{ height: 0 }}>
               {items.map((item, index) => {
                 const itemId = config.getItemId(item);
                 const selectedId = selectedItem ? config.getItemId(selectedItem) : null;

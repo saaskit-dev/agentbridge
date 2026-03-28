@@ -154,6 +154,7 @@ export default function MachinePickerScreen() {
             searchPlaceholder: t('machinePicker.searchPlaceholder'),
             recentSectionTitle: t('machinePicker.recentSection'),
             favoritesSectionTitle: t('machinePicker.favoritesSection'),
+            allSectionTitle: t('machinePicker.allSection'),
             noItemsMessage: t('machinePicker.noMachinesAvailable'),
             showFavorites: false, // Simpler modal experience - no favorites in modal
             showRecent: true,
