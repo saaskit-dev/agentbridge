@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { SessionConfigOption } from '@agentclientprotocol/sdk';
 import type { PromptContentBlock } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
@@ -52,6 +53,20 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   private startCwd: string = '';
   private startMcpServerUrl: string = '';
   private onSessionIdResolved: ((id: string) => void) | null = null;
+
+  /**
+   * Per-turn trace ID for ACP backends.
+   *
+   * ACP backends (Codex, Gemini, OpenCode, etc.) don't natively produce traceIds.
+   * Without traceId, the App reducer cannot distinguish turn boundaries and merges
+   * text from different turns into a single block, breaking the interleaving of
+   * text and tool-call cards.
+   *
+   * A new traceId is generated at the start of each sendMessage() call (= one turn).
+   * All NormalizedMessages emitted during that turn share the same traceId, allowing
+   * the reducer to correctly separate text blocks across turns.
+   */
+  private currentTurnTraceId: string = randomUUID();
 
   constructor(protected readonly logger: Logger) {}
 
@@ -125,6 +140,10 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       }
       const normalized = this.mapRawMessage(msg);
       if (normalized) {
+        // Inject per-turn traceId so the App reducer can distinguish turn boundaries.
+        if (!normalized.traceId) {
+          normalized.traceId = this.currentTurnTraceId;
+        }
         this.output.push(normalized);
       }
 
@@ -189,6 +208,10 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   }
 
   async sendMessage(text: string, permissionMode?: PermissionMode, attachments?: LocalAttachment[]): Promise<void> {
+    // New turn → new traceId. All messages emitted during this turn share this ID,
+    // enabling the App reducer to correctly separate text blocks across turns.
+    this.currentTurnTraceId = randomUUID();
+
     this.currentPermissionMode = permissionMode ?? this.currentPermissionMode;
     this.permissionHandler?.setPermissionMode(this.currentPermissionMode);
     if (!this.acpBackend) {
@@ -203,6 +226,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       permissionMode: this.currentPermissionMode,
       permissionHandlerAttached: this.permissionHandler != null,
       isFirstAcpPrompt: this.acpSessionId == null,
+      turnTraceId: this.currentTurnTraceId,
     });
 
     if (!this.acpSessionId) {

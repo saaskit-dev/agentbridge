@@ -80,6 +80,18 @@ type ListItem =
 function buildListItems(messages: Message[]): ListItem[] {
   // Messages are sorted newest-first. In the inverted FlatList, data[0] = visual bottom.
   // We iterate from oldest (end) to newest (start) to insert separators correctly.
+
+  // Diagnostic: dump message order as received by ChatList (K=thinking, X=text, T=tool, U=user)
+  if (messages.length > 20) {
+    const preview = messages.slice(0, 40).map(m => {
+      if (m.kind === 'tool-call') return `T:${m.seq ?? '-'}`;
+      if (m.kind === 'user-text') return `U:${m.seq ?? '-'}`;
+      if (m.kind === 'agent-text') return `${m.isThinking ? 'K' : 'X'}:${m.seq ?? '-'}`;
+      return `E:${m.seq ?? '-'}`;
+    }).join(' ');
+    console.log(`[ChatList] msgs(${messages.length}) desc: ${preview}`);
+  }
+
   const items: ListItem[] = [];
 
   for (let i = messages.length - 1; i >= 0; i--) {

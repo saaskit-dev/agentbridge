@@ -726,6 +726,12 @@ export function reducer(
   //
   // Phase 1: Process non-sidechain user messages and text messages
   //
+  // Tool-call boundary tracking: during batch loads, Phase 2 (which creates
+  // tool-call roots) hasn't run yet. Without this flag, Phase 1 would merge
+  // text from before and after tool calls into one block. The flag prevents
+  // merging across tool-call boundaries even when no tool-call roots exist yet.
+  //
+  let toolCallSeenSinceLastText = false;
 
   for (const msg of nonSidechainMessages) {
     if (msg.role === 'user') {
@@ -754,6 +760,7 @@ export function reducer(
       state.messageIds.set(msg.id, mid);
 
       changed.add(mid);
+      toolCallSeenSinceLastText = false;
     } else if (msg.role === 'agent') {
       // Check if we've seen this agent message before
       if (state.messageIds.has(msg.id)) {
@@ -768,18 +775,39 @@ export function reducer(
         processUsageData(state, msg.usage, msg.createdAt);
       }
 
+      // Track tool-call/tool-result positions so text doesn't merge across them.
+      // Both tool-call and tool-result are boundaries: tool-result handles the case
+      // where tool-call was emitted in a previous reducer call or is missing entirely
+      // (e.g. Claude ACP adapter emitting tool_call_update completions without a
+      // preceding tool_call start event).
+      for (const c of msg.content) {
+        if (c.type === 'tool-call' || c.type === 'tool-result') {
+          toolCallSeenSinceLastText = true;
+        }
+      }
+
       // Process text and thinking content (tool calls handled in Phase 2)
       for (const c of msg.content) {
         if (c.type === 'text' || c.type === 'thinking') {
           const isThinking = c.type === 'thinking';
           const chunkText = isThinking ? c.thinking : c.text;
 
-          if (msg.content.length === 1) {
+          if (msg.content.length === 1 && !toolCallSeenSinceLastText) {
             const mergedIntoId = mergeIntoPreviousRootAgentText(state, msg.createdAt, chunkText, isThinking, msg.traceId);
             if (mergedIntoId) {
+              // Diagnostic: log merges near tool boundaries
+              if (messages.length > 50 && msg.seq !== undefined && msg.seq >= 100 && msg.seq <= 200) {
+                const target = state.messages.get(mergedIntoId);
+                logger.info(`[REDUCER] P1 MERGE seq=${msg.seq} ${isThinking?'K':'X'} into root seq=${target?.seq} ${target?.isThinking?'K':'X'}[${target?.text?.length}]`);
+              }
               changed.add(mergedIntoId);
               continue;
             }
+          }
+
+          // Diagnostic: log root creation near tool boundaries
+          if (messages.length > 50 && msg.seq !== undefined && msg.seq >= 100 && msg.seq <= 200) {
+            logger.info(`[REDUCER] P1 NEW ROOT seq=${msg.seq} ${isThinking?'K':'X'} flag=${toolCallSeenSinceLastText} contentLen=${msg.content.length}`);
           }
 
           const mid = allocateId();
@@ -797,6 +825,7 @@ export function reducer(
             traceId: msg.traceId,
           });
           changed.add(mid);
+          toolCallSeenSinceLastText = false;
         }
       }
     }
@@ -944,6 +973,35 @@ export function reducer(
         }
       }
     }
+  }
+
+  //
+  // Phase 2.5: Re-sort rootMessageIds by seq/createdAt.
+  //
+  // Phase 1 inserts text roots, then Phase 2 inserts tool-call roots. This means
+  // rootMessageIds follows Phase-processing order, not the original message sequence.
+  // Re-sorting ensures tool-call roots appear between text roots at the correct position,
+  // which is critical for Phase 5.5 (merge consecutive agent-texts) to correctly treat
+  // tool-call roots as merge boundaries.
+  //
+  state.rootMessageIds.sort((a, b) => {
+    const ma = state.messages.get(a);
+    const mb = state.messages.get(b);
+    if (!ma || !mb) return 0;
+    // Prefer seq (server monotonic) for stable ordering; fall back to createdAt
+    if (ma.seq !== undefined && mb.seq !== undefined) return ma.seq - mb.seq;
+    return ma.createdAt - mb.createdAt;
+  });
+
+  // Diagnostic: dump Phase 2.5 sort result for debugging interleaving issues
+  if (messages.length > 50) {
+    const sortDiag = state.rootMessageIds.slice(0, 30).map(id => {
+      const m = state.messages.get(id);
+      if (!m) return '?';
+      const kind = m.tool ? 'T' : m.text !== null ? 'X' : m.event ? 'E' : '?';
+      return `${kind}:${m.seq ?? '-'}`;
+    });
+    logger.info(`[REDUCER] Phase2.5 roots(${state.rootMessageIds.length}): ${sortDiag.join(' ')}`);
   }
 
   //
@@ -1259,13 +1317,27 @@ export function reducer(
   // Phase 5.5: Post-processing merge of consecutive agent-text messages
   //
   // Streaming text chunks from the ACP backend arrive as separate NormalizedMessages.
-  // When they land in different reducer calls, Phase 2 may insert tool-call root messages
-  // between Phase 1 text messages, preventing the inline merge in Phase 1. This pass
-  // scans rootMessageIds for consecutive agent-text blocks that should be one message
+  // When they land in different reducer calls, consecutive text chunks that belong to
+  // the same text segment may end up as separate root messages. This pass scans
+  // rootMessageIds for adjacent agent-text blocks that should be one message
   // (same isThinking, compatible traceId, within the streaming window) and merges them.
+  // Tool-call roots are merge boundaries — text never merges across tool calls.
   //
 
   mergeConsecutiveAgentTexts(state, changed);
+
+  // Diagnostic: dump post-Phase 5.5 state with text length to spot over-merging
+  if (messages.length > 50) {
+    const postDiag = state.rootMessageIds.map(id => {
+      const m = state.messages.get(id);
+      if (!m) return '?';
+      if (m.tool) return `T:${m.seq ?? '-'}`;
+      if (m.text !== null) return `${m.isThinking ? 'K' : 'X'}:${m.seq ?? '-'}[${m.text.length}]`;
+      if (m.event) return `E:${m.seq ?? '-'}`;
+      return `?:${m.seq ?? '-'}`;
+    });
+    logger.info(`[REDUCER] Phase5.5 ALL roots(${postDiag.length}): ${postDiag.join(' ')}`);
+  }
 
   //
   // Collect changed messages (only root-level messages)
@@ -1357,6 +1429,7 @@ function getLastRootMessage(state: ReducerState): ReducerMessage | null {
  * - same isThinking flag
  * - compatible traceId (both undefined, or same value)
  * - second message's createdAt is within STREAM_CHUNK_WINDOW_MS of the first
+ * - no tool-call root between them (tool calls are always merge boundaries)
  *
  * When merged, the second message's text is appended to the first and the second
  * is removed from rootMessageIds (and state.messages).
@@ -1380,28 +1453,19 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
       continue;
     }
 
-    // Scan forward past thinking roots and tool call roots to find the next text root.
-    // Thinking roots: only skip when same non-null traceId (different turns must not merge).
-    // Tool call roots: skip when traces are compatible (preserves streaming text consolidation).
+    // Scan forward to find the next non-thinking text root.
+    // Thinking roots and tool-call roots are always merge boundaries.
     let j = i + 1;
     while (j < state.rootMessageIds.length) {
       const candidate = state.messages.get(state.rootMessageIds[j]);
       if (!candidate) break;
-      // Thinking root messages: only skip when same non-null traceId (same turn)
+      // Thinking root messages are always merge boundaries.
       if (candidate.role === 'agent' && candidate.text !== null && candidate.isThinking) {
-        if (candidate.traceId && current.traceId && candidate.traceId === current.traceId) {
-          j++;
-          continue; // Same turn — skip past this thinking block
-        }
-        break; // Different turn or unknown — treat as boundary
+        break;
       }
-      // Tool call roots: skip when traces are compatible (both null or same value)
+      // Tool call roots are always merge boundaries — don't merge text across tool calls.
       if (candidate.role === 'agent' && candidate.tool !== null) {
-        if (!(candidate.traceId && current.traceId && candidate.traceId !== current.traceId)) {
-          j++;
-          continue;
-        }
-        break; // Different trace — turn boundary
+        break;
       }
       break;
     }
@@ -1464,23 +1528,17 @@ function mergeIntoPreviousRootAgentText(
     const candidate = state.messages.get(rootId);
     if (!candidate) break;
 
-    // Thinking root messages: only skip when same non-null traceId (same turn).
-    // Without traceId (ACP backends), a thinking root between two text chunks
-    // means different turns — do not skip.
+    // Thinking root messages are always merge boundaries.
+    // Text must not merge across thinking blocks — they represent distinct content segments.
     if (candidate.role === 'agent' && candidate.text !== null && candidate.isThinking && !isThinking) {
-      if (candidate.traceId && traceId && candidate.traceId === traceId) {
-        continue; // Same turn — skip past this thinking block
-      }
-      return null; // Different turn or unknown — treat as boundary
+      return null;
     }
 
-    // Tool call roots: skip when traces are compatible (both null or same value).
-    // This preserves streaming text consolidation across tool calls.
+    // Tool call roots are always merge boundaries.
+    // Text after a tool call must be a separate block so tool cards render
+    // interleaved with text, not stacked at the bottom.
     if (candidate.role === 'agent' && candidate.tool !== null) {
-      if (!(candidate.traceId && traceId && candidate.traceId !== traceId)) {
-        continue;
-      }
-      return null; // Different trace — turn boundary
+      return null;
     }
 
     // Found a non-thinking, non-tool root: check if it's compatible for merge

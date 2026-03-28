@@ -3126,10 +3126,9 @@ describe('reducer', () => {
   });
 
   describe('text merge across interleaved thinking', () => {
-    it('should merge text chunks separated by thinking chunks (Phase 1 inline)', () => {
+    it('should NOT merge text chunks across thinking blocks (Phase 1 inline)', () => {
       const state = createReducer();
 
-      // First text chunk
       reducer(state, [
         {
           id: 'text-1',
@@ -3141,7 +3140,6 @@ describe('reducer', () => {
         },
       ]);
 
-      // Thinking chunk interleaved
       reducer(state, [
         {
           id: 'think-1',
@@ -3153,7 +3151,6 @@ describe('reducer', () => {
         },
       ]);
 
-      // Second text chunk — should merge into text-1 despite thinking in between
       const result = reducer(state, [
         {
           id: 'text-2',
@@ -3165,17 +3162,17 @@ describe('reducer', () => {
         },
       ]);
 
-      // Should find the merged text message (text-1 absorbed text-2)
+      // Thinking blocks are merge boundaries — text before and after thinking are separate
       const textMessages = result.messages.filter(
         m => m.kind === 'agent-text' && !m.isThinking
       );
       expect(textMessages).toHaveLength(1);
       if (textMessages[0].kind === 'agent-text') {
-        expect(textMessages[0].text).toBe('Hello World');
+        expect(textMessages[0].text).toBe('World');
       }
     });
 
-    it('should merge text chunks separated by thinking in a single batch (Phase 5.5)', () => {
+    it('should NOT merge text chunks across thinking in a single batch (Phase 5.5)', () => {
       const state = createReducer();
 
       const result = reducer(state, [
@@ -3205,18 +3202,18 @@ describe('reducer', () => {
         },
       ]);
 
+      // Thinking blocks are merge boundaries
       const textMessages = result.messages.filter(
         m => m.kind === 'agent-text' && !m.isThinking
       );
-      expect(textMessages).toHaveLength(1);
-      if (textMessages[0].kind === 'agent-text') {
-        expect(textMessages[0].text).toBe('Part A Part B');
-      }
+      expect(textMessages).toHaveLength(2);
+      expect(textMessages[0].kind === 'agent-text' && textMessages[0].text).toBe('Part A ');
+      expect(textMessages[1].kind === 'agent-text' && textMessages[1].text).toBe('Part B');
     });
 
-    it('should merge text chunks separated by tool calls across batches (batch-loading artifact)', () => {
+    it('should NOT merge text across tool calls in multi-batch loading', () => {
       // Simulates: SQLite cache loads batch-1 (text1 + tool), then server delivers batch-2 (text2).
-      // Both text blocks share the same traceId and are within the time window — they should merge.
+      // Tool-call roots are always merge boundaries — text after tool must be separate.
       const state = createReducer();
       const toolInput = { command: 'ls' };
 
@@ -3248,7 +3245,7 @@ describe('reducer', () => {
         },
       ]);
 
-      // Batch 2 (from server delta): text2 — continuation of the same sentence
+      // Batch 2 (from server delta): text2
       const result2 = reducer(state, [
         {
           id: 'text-2',
@@ -3260,18 +3257,18 @@ describe('reducer', () => {
         },
       ]);
 
-      // text-1 and text-2 share the same traceId and are within the window → should merge
+      // Tool-call roots are merge boundaries — text before and after tool are separate blocks
       const allMessages = result2.messages;
       const textMessages = allMessages.filter(m => m.kind === 'agent-text' && !m.isThinking);
       expect(textMessages).toHaveLength(1);
       if (textMessages[0].kind === 'agent-text') {
-        expect(textMessages[0].text).toBe('Before tool after tool');
+        expect(textMessages[0].text).toBe(' after tool');
       }
     });
 
-    it('should merge text chunks across tool calls in a single batch', () => {
-      // All messages arrive in one batch: text1 → tool → text2 (same traceId).
-      // Phase 1 processes texts before tools, so inline merge should handle this.
+    it('should NOT merge text across tool calls in a single batch', () => {
+      // All messages arrive in one batch: text1 → tool → text2.
+      // Tool calls are merge boundaries — text before and after tool must be separate.
       const state = createReducer();
 
       const result = reducer(state, [
@@ -3302,10 +3299,62 @@ describe('reducer', () => {
       ]);
 
       const textMessages = result.messages.filter(m => m.kind === 'agent-text' && !m.isThinking);
-      expect(textMessages).toHaveLength(1);
-      if (textMessages[0].kind === 'agent-text') {
-        expect(textMessages[0].text).toBe('Hello world');
-      }
+      expect(textMessages).toHaveLength(2);
+      expect(textMessages[0].kind === 'agent-text' && textMessages[0].text).toBe('Hello');
+      expect(textMessages[1].kind === 'agent-text' && textMessages[1].text).toBe(' world');
+    });
+
+    it('should interleave text and tool cards correctly in batch load (OpenCode pattern)', () => {
+      // Simulates OpenCode: text deltas → tool-call → tool-result → text deltas → tool-call → ...
+      // All in one batch (batch load after refresh). No traceId (old daemon).
+      const state = createReducer();
+      let seq = 1;
+
+      const messages: NormalizedMessage[] = [
+        // User message
+        { id: 'user-1', seq: seq++, createdAt: 1000, role: 'user', isSidechain: false, content: { type: 'text', text: 'hello' } },
+        // Turn 1: text deltas
+        { id: 'td-1', seq: seq++, createdAt: 1100, role: 'agent', isSidechain: false, content: [{ type: 'text', text: 'Part 1 ', uuid: 'u1', parentUUID: null }] },
+        { id: 'td-2', seq: seq++, createdAt: 1101, role: 'agent', isSidechain: false, content: [{ type: 'text', text: 'of response.', uuid: 'u2', parentUUID: null }] },
+        // Tool call 1
+        { id: 'tc-1', seq: seq++, createdAt: 1200, role: 'agent', isSidechain: false, content: [{ type: 'tool-call', id: 'call_1', name: 'Grep', input: {}, description: null, uuid: 'u3', parentUUID: null }] },
+        // Tool result 1
+        { id: 'tr-1', seq: seq++, createdAt: 1300, role: 'agent', isSidechain: false, content: [{ type: 'tool-result', tool_use_id: 'call_1', content: 'found stuff', is_error: false, uuid: 'u4', parentUUID: null }] },
+        // Text after tool 1
+        { id: 'td-3', seq: seq++, createdAt: 1400, role: 'agent', isSidechain: false, content: [{ type: 'text', text: 'After first tool.', uuid: 'u5', parentUUID: null }] },
+        // Tool call 2
+        { id: 'tc-2', seq: seq++, createdAt: 1500, role: 'agent', isSidechain: false, content: [{ type: 'tool-call', id: 'call_2', name: 'Read', input: {}, description: null, uuid: 'u6', parentUUID: null }] },
+        // Tool result 2
+        { id: 'tr-2', seq: seq++, createdAt: 1600, role: 'agent', isSidechain: false, content: [{ type: 'tool-result', tool_use_id: 'call_2', content: 'file contents', is_error: false, uuid: 'u7', parentUUID: null }] },
+        // Final text
+        { id: 'td-4', seq: seq++, createdAt: 1700, role: 'agent', isSidechain: false, content: [{ type: 'text', text: 'Final thoughts.', uuid: 'u8', parentUUID: null }] },
+      ];
+
+      const result = reducer(state, messages as any);
+
+      // Expected order (sorted by seq): user → text1 → tool1 → text2 → tool2 → text3
+      const ordered = result.messages;
+      const kinds = ordered.map(m => m.kind);
+
+      // Reducer returns messages in arbitrary order (changed-set insertion order).
+      // The storage layer sorts by seq for final display. Verify content separation is correct.
+      const texts = ordered.filter(m => m.kind === 'agent-text').sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+      const tools = ordered.filter(m => m.kind === 'tool-call').sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+
+      // 3 separate text blocks (not merged across tool calls)
+      expect(texts).toHaveLength(3);
+      expect(texts[0].kind === 'agent-text' && texts[0].text).toBe('Part 1 of response.');
+      expect(texts[1].kind === 'agent-text' && texts[1].text).toBe('After first tool.');
+      expect(texts[2].kind === 'agent-text' && texts[2].text).toBe('Final thoughts.');
+
+      // 2 tool cards
+      expect(tools).toHaveLength(2);
+
+      // Verify seq ordering: text1 < tool1 < text2 < tool2 < text3
+      expect(texts[0].seq).toBeLessThan(tools[0].seq!);
+      expect(tools[0].seq).toBeLessThan(texts[1].seq!);
+      expect(texts[1].seq).toBeLessThan(tools[1].seq!);
+      expect(tools[1].seq).toBeLessThan(texts[2].seq!);
     });
 
     it('should NOT merge text across different traceIds even when separated by thinking', () => {
