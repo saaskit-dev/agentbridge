@@ -689,6 +689,27 @@ export async function sessionDelete(
   }
 }
 
+/**
+ * List directory contents on a machine (no session required)
+ */
+export async function machineListDirectory(
+  machineId: string,
+  path: string
+): Promise<SessionListDirectoryResponse> {
+  try {
+    const result = await apiSocket.machineRPC<
+      SessionListDirectoryResponse,
+      { path: string }
+    >(machineId, 'listDirectory', { path });
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: safeStringify(error),
+    };
+  }
+}
+
 // Export types for external use
 export type {
   SessionBashRequest,

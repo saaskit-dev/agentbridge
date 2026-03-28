@@ -1,14 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import React, { useState, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { layout } from '@/components/layout';
 import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
 import { Typography } from '@/constants/Typography';
+import { machineListDirectory } from '@/sync/ops';
+import type { DirectoryEntry } from '@/sync/ops';
 import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { t } from '@/text';
 
@@ -56,6 +58,41 @@ const stylesheet = StyleSheet.create(theme => ({
     borderWidth: 0.5,
     borderColor: theme.colors.divider,
   },
+  breadcrumbContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    flexWrap: 'wrap',
+    gap: 2,
+  },
+  breadcrumbText: {
+    fontSize: 13,
+    color: theme.colors.tint,
+    ...Typography.default(),
+  },
+  breadcrumbSeparator: {
+    fontSize: 13,
+    color: theme.colors.textTertiary,
+    marginHorizontal: 2,
+    ...Typography.default(),
+  },
+  breadcrumbCurrent: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    ...Typography.default(),
+  },
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    padding: 16,
+    ...Typography.default(),
+  },
 }));
 
 export default function PathPickerScreen() {
@@ -70,20 +107,23 @@ export default function PathPickerScreen() {
   const recentMachinePaths = useSetting('recentMachinePaths');
 
   const [customPath, setCustomPath] = useState(params.selectedPath || '');
+  const [browsePath, setBrowsePath] = useState<string | null>(null);
+  const [entries, setEntries] = useState<DirectoryEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [browseError, setBrowseError] = useState<string | null>(null);
 
   // Get the selected machine
   const machine = useMemo(() => {
     return machines.find(m => m.id === params.machineId);
   }, [machines, params.machineId]);
 
-  // Get recent paths for this machine - prioritize from settings, then fall back to sessions
+  // Get recent paths for this machine
   const recentPaths = useMemo(() => {
     if (!params.machineId) return [];
 
     const paths: string[] = [];
     const pathSet = new Set<string>();
 
-    // First, add paths from recentMachinePaths (these are the most recent)
     recentMachinePaths.forEach(entry => {
       if (entry.machineId === params.machineId && !pathSet.has(entry.path)) {
         paths.push(entry.path);
@@ -91,12 +131,11 @@ export default function PathPickerScreen() {
       }
     });
 
-    // Then add paths from sessions if we need more
     if (sessions) {
       const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
 
       sessions.forEach(item => {
-        if (typeof item === 'string') return; // Skip section headers
+        if (typeof item === 'string') return;
 
         const session = item as any;
         if (session.metadata?.machineId === params.machineId && session.metadata?.path) {
@@ -111,7 +150,6 @@ export default function PathPickerScreen() {
         }
       });
 
-      // Sort session paths by most recent first and add them
       pathsWithTimestamps
         .sort((a, b) => b.timestamp - a.timestamp)
         .forEach(item => paths.push(item.path));
@@ -120,9 +158,87 @@ export default function PathPickerScreen() {
     return paths;
   }, [sessions, params.machineId, recentMachinePaths]);
 
+  // Load directory contents
+  const loadDirectory = useCallback(
+    async (path: string) => {
+      if (!params.machineId) return;
+      setLoading(true);
+      setBrowseError(null);
+      try {
+        const result = await machineListDirectory(params.machineId, path);
+        if (result.success && result.entries) {
+          // Sort: directories first, then alphabetical
+          const sorted = [...result.entries].sort((a, b) => {
+            if (a.type === 'directory' && b.type !== 'directory') return -1;
+            if (a.type !== 'directory' && b.type === 'directory') return 1;
+            return a.name.localeCompare(b.name);
+          });
+          setEntries(sorted);
+          setBrowsePath(path);
+          setCustomPath(path);
+        } else {
+          setBrowseError(result.error || t('pathPicker.browseError'));
+        }
+      } catch {
+        setBrowseError(t('pathPicker.browseError'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [params.machineId]
+  );
+
+  // Navigate into a subdirectory
+  const handleEntryPress = useCallback(
+    (entry: DirectoryEntry) => {
+      if (entry.type !== 'directory' || !browsePath) return;
+      const newPath = browsePath === '/' ? `/${entry.name}` : `${browsePath}/${entry.name}`;
+      loadDirectory(newPath);
+    },
+    [browsePath, loadDirectory]
+  );
+
+  // Navigate to parent directory
+  const handleGoUp = useCallback(() => {
+    if (!browsePath || browsePath === '/') return;
+    const parent = browsePath.substring(0, browsePath.lastIndexOf('/')) || '/';
+    loadDirectory(parent);
+  }, [browsePath, loadDirectory]);
+
+  // Start browsing from a path
+  const handleStartBrowse = useCallback(
+    (path: string) => {
+      setCustomPath(path);
+      loadDirectory(path);
+    },
+    [loadDirectory]
+  );
+
+  // Auto-browse when the screen opens with a selectedPath
+  useEffect(() => {
+    if (params.selectedPath && params.machineId) {
+      loadDirectory(params.selectedPath);
+    } else if (params.machineId && machine?.metadata?.homeDir) {
+      loadDirectory(machine.metadata.homeDir);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Breadcrumb segments
+  const breadcrumbs = useMemo(() => {
+    if (!browsePath) return [];
+    const parts = browsePath.split('/').filter(Boolean);
+    const segments: Array<{ label: string; path: string }> = [{ label: '/', path: '/' }];
+    let accumulated = '';
+    for (const part of parts) {
+      accumulated += '/' + part;
+      segments.push({ label: part, path: accumulated });
+    }
+    return segments;
+  }, [browsePath]);
+
   const handleSelectPath = React.useCallback(() => {
     const pathToUse = customPath.trim() || machine?.metadata?.homeDir || '/home';
-    // Pass path back via navigation params (main's pattern, received by new/index.tsx)
     const state = navigation.getState();
     const previousRoute = state?.routes?.[state.index - 1];
     if (state && state.index > 0 && previousRoute) {
@@ -133,6 +249,11 @@ export default function PathPickerScreen() {
     }
     router.back();
   }, [customPath, router, machine, navigation]);
+
+  const directoryEntries = useMemo(
+    () => entries.filter(e => e.type === 'directory'),
+    [entries]
+  );
 
   if (!machine) {
     return (
@@ -205,14 +326,84 @@ export default function PathPickerScreen() {
                     maxHeight={76}
                     paddingTop={8}
                     paddingBottom={8}
-                    // onSubmitEditing={handleSelectPath}
-                    // blurOnSubmit={true}
-                    // returnKeyType="done"
                   />
                 </View>
               </View>
             </ItemGroup>
 
+            {/* Breadcrumb navigation */}
+            {browsePath && breadcrumbs.length > 0 && (
+              <View style={styles.breadcrumbContainer}>
+                {breadcrumbs.map((seg, i) => {
+                  const isLast = i === breadcrumbs.length - 1;
+                  return (
+                    <React.Fragment key={seg.path}>
+                      {i > 0 && <Text style={styles.breadcrumbSeparator}>/</Text>}
+                      {isLast ? (
+                        <Text style={styles.breadcrumbCurrent}>{seg.label}</Text>
+                      ) : (
+                        <Pressable onPress={() => loadDirectory(seg.path)}>
+                          <Text style={styles.breadcrumbText}>{seg.label}</Text>
+                        </Pressable>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Directory browser */}
+            {browsePath !== null && (
+              <ItemGroup title={t('pathPicker.browse')}>
+                {loading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={theme.colors.tint} />
+                  </View>
+                ) : browseError ? (
+                  <Text style={styles.errorText}>{browseError}</Text>
+                ) : (
+                  <>
+                    {/* Go up (..) */}
+                    {browsePath !== '/' && (
+                      <Item
+                        title=".."
+                        leftElement={
+                          <Ionicons
+                            name="return-up-back-outline"
+                            size={18}
+                            color={theme.colors.textSecondary}
+                          />
+                        }
+                        onPress={handleGoUp}
+                        showChevron={false}
+                        showDivider={directoryEntries.length > 0}
+                      />
+                    )}
+                    {directoryEntries.map((entry, index) => (
+                      <Item
+                        key={entry.name}
+                        title={entry.name}
+                        leftElement={
+                          <Ionicons
+                            name="folder-outline"
+                            size={18}
+                            color={theme.colors.tint}
+                          />
+                        }
+                        onPress={() => handleEntryPress(entry)}
+                        showChevron
+                        showDivider={index < directoryEntries.length - 1}
+                      />
+                    ))}
+                    {directoryEntries.length === 0 && browsePath !== '/' && (
+                      <Text style={styles.errorText}>{t('pathPicker.emptyDirectory')}</Text>
+                    )}
+                  </>
+                )}
+              </ItemGroup>
+            )}
+
+            {/* Recent paths */}
             {recentPaths.length > 0 && (
               <ItemGroup title={t('pathPicker.recentPaths')}>
                 {recentPaths.map((path, index) => {
@@ -230,10 +421,7 @@ export default function PathPickerScreen() {
                           color={theme.colors.textSecondary}
                         />
                       }
-                      onPress={() => {
-                        setCustomPath(path);
-                        setTimeout(() => inputRef.current?.focus(), 50);
-                      }}
+                      onPress={() => handleStartBrowse(path)}
                       selected={isSelected}
                       showChevron={false}
                       pressableStyle={
@@ -270,10 +458,7 @@ export default function PathPickerScreen() {
                             color={theme.colors.textSecondary}
                           />
                         }
-                        onPress={() => {
-                          setCustomPath(path);
-                          setTimeout(() => inputRef.current?.focus(), 50);
-                        }}
+                        onPress={() => handleStartBrowse(path)}
                         selected={isSelected}
                         showChevron={false}
                         pressableStyle={
