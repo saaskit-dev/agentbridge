@@ -5,6 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { getSessionTrace } from './appTraceStore';
+import { deleteSessionAttachments } from './attachmentUpload';
 import type { MachineMetadata } from './storageTypes';
 import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
@@ -686,6 +687,15 @@ export async function sessionDelete(
   sessionId: string
 ): Promise<{ success: boolean; message?: string }> {
   logger.info('[ops] sessionDelete', { sessionId });
+
+  // Clean up locally cached attachment files before the server record is gone.
+  // Non-fatal: a failure here should not block the server-side deletion.
+  try {
+    await deleteSessionAttachments(sessionId);
+  } catch (err) {
+    logger.error('[ops] sessionDelete: failed to clean attachment files', toError(err), { sessionId });
+  }
+
   try {
     const response = await apiSocket.request(`/v1/sessions/${sessionId}`, {
       method: 'DELETE',

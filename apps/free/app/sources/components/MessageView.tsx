@@ -22,7 +22,7 @@ import { sync } from '@/sync/sync';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/sync/typesMessage';
 import { AgentEvent } from '@/sync/typesRaw';
 import { apiSocket } from '@/sync/apiSocket';
-import { getAttachmentLocalUri } from '@/sync/attachmentUpload';
+import { getAttachmentLocalUri, loadAttachmentUri } from '@/sync/attachmentUpload';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
@@ -163,27 +163,53 @@ function AttachmentThumbnails({
 
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8, marginBottom: 4 }}>
-      {attachments.map(att => {
-        const localUri = getAttachmentLocalUri(att.id);
-        return (
-          <Pressable
-            key={att.id}
-            onPress={() => localUri && onPress(localUri)}
-            style={{ width: size, height: size, borderRadius: THUMB_RADIUS, overflow: 'hidden', backgroundColor: '#e8e8e8' }}
-          >
-            {localUri ? (
-              <Image source={{ uri: localUri }} style={{ width: size, height: size }} contentFit="cover" />
-            ) : att.thumbhash ? (
-              <Image style={{ width: size, height: size }} placeholder={{ thumbhash: att.thumbhash }} contentFit="cover" />
-            ) : (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 10, color: '#aaa' }}>IMG</Text>
-              </View>
-            )}
-          </Pressable>
-        );
-      })}
+      {attachments.map(att => (
+        <AttachmentThumb key={att.id} att={att} size={size} onPress={onPress} />
+      ))}
     </View>
+  );
+}
+
+/**
+ * Single attachment thumbnail with async URI loading.
+ * On native the sync filesystem check resolves instantly (no flash).
+ * On web, IndexedDB blobs are loaded asynchronously via useEffect.
+ */
+function AttachmentThumb({
+  att,
+  size,
+  onPress,
+}: {
+  att: AttachmentInfo;
+  size: number;
+  onPress: (uri: string) => void;
+}) {
+  const [uri, setUri] = React.useState(() => getAttachmentLocalUri(att.id, att.mimeType));
+
+  React.useEffect(() => {
+    if (uri) return;
+    let cancelled = false;
+    loadAttachmentUri(att.id, att.mimeType).then(loaded => {
+      if (loaded && !cancelled) setUri(loaded);
+    });
+    return () => { cancelled = true; };
+  }, [att.id, att.mimeType, uri]);
+
+  return (
+    <Pressable
+      onPress={() => uri && onPress(uri)}
+      style={{ width: size, height: size, borderRadius: THUMB_RADIUS, overflow: 'hidden', backgroundColor: '#e8e8e8' }}
+    >
+      {uri ? (
+        <Image source={{ uri }} style={{ width: size, height: size }} contentFit="cover" />
+      ) : att.thumbhash ? (
+        <Image style={{ width: size, height: size }} placeholder={{ thumbhash: att.thumbhash }} contentFit="cover" />
+      ) : (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 10, color: '#aaa' }}>IMG</Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 

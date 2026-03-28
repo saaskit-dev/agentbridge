@@ -1,9 +1,10 @@
 import { Platform } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { File, Paths } from 'expo-file-system';
+import { File, Directory, Paths } from 'expo-file-system';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { apiSocket } from './apiSocket';
+import { messageDB } from './messageDB';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 export interface AttachmentRef {
@@ -89,15 +90,207 @@ export interface UploadResult {
   localUri: string;
 }
 
+// ---------------------------------------------------------------------------
+// Persistent attachment file storage
+// ---------------------------------------------------------------------------
+
 /**
- * In-memory cache: attachmentId → localUri.
- * Used to render images in the current session (before they become history).
- * Cleared on app restart — historical messages fall back to thumbhash placeholders.
+ * Lazy-initialized persistent directory for attachment files (native only).
+ * Survives app restarts; only cleaned up when the owning session is deleted.
+ */
+let _attachmentDir: Directory | null = null;
+
+function getAttachmentDir(): Directory {
+  if (!_attachmentDir) {
+    _attachmentDir = new Directory(Paths.document, 'attachments');
+  }
+  if (!_attachmentDir.exists) {
+    _attachmentDir.create();
+  }
+  return _attachmentDir;
+}
+
+/** Derive file extension from MIME type. */
+function extFromMime(mimeType: string): string {
+  return mimeType === 'image/png' ? 'png' : 'jpg';
+}
+
+/** Build a File reference for a given attachment ID and MIME type. */
+function attachmentFile(id: string, mimeType: string): File {
+  return new File(getAttachmentDir(), `${id}.${extFromMime(mimeType)}`);
+}
+
+// ---------------------------------------------------------------------------
+// Web-only: IndexedDB blob store for attachment images
+// ---------------------------------------------------------------------------
+
+const WEB_IDB_NAME = 'free-attachment-blobs';
+const WEB_IDB_STORE = 'blobs';
+let _webDB: IDBDatabase | null = null;
+
+/** Open (or create) the IndexedDB for attachment blobs. Cached after first call. */
+function getWebBlobDB(): Promise<IDBDatabase> {
+  if (_webDB) return Promise.resolve(_webDB);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(WEB_IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(WEB_IDB_STORE);
+    req.onsuccess = () => { _webDB = req.result; resolve(req.result); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/** Store image bytes in IndexedDB and return a blob URL for immediate use. */
+async function storeWebBlob(id: string, data: ArrayBuffer, mimeType: string): Promise<string> {
+  const db = await getWebBlobDB();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(WEB_IDB_STORE, 'readwrite');
+    tx.objectStore(WEB_IDB_STORE).put({ data, mimeType }, id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  return URL.createObjectURL(new Blob([data], { type: mimeType }));
+}
+
+/** Load image bytes from IndexedDB and return a blob URL, or null if absent. */
+async function loadWebBlob(id: string): Promise<string | null> {
+  const db = await getWebBlobDB();
+  const record = await new Promise<{ data: ArrayBuffer; mimeType: string } | undefined>(
+    (resolve, reject) => {
+      const tx = db.transaction(WEB_IDB_STORE, 'readonly');
+      const req = tx.objectStore(WEB_IDB_STORE).get(id);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }
+  );
+  if (!record) return null;
+  return URL.createObjectURL(new Blob([record.data], { type: record.mimeType }));
+}
+
+/** Delete a list of blobs from IndexedDB. */
+async function deleteWebBlobs(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await getWebBlobDB();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(WEB_IDB_STORE, 'readwrite');
+    const store = tx.objectStore(WEB_IDB_STORE);
+    for (const id of ids) store.delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Cross-platform attachment URI cache
+// ---------------------------------------------------------------------------
+
+/**
+ * Write-through cache: attachmentId → local URI (file:// on native, blob: on web).
+ * Populated on upload and on first disk/IDB hit after restart.
  */
 const localUriCache = new Map<string, string>();
 
-export function getAttachmentLocalUri(attachmentId: string): string | undefined {
-  return localUriCache.get(attachmentId);
+/**
+ * Synchronous lookup — returns a URI from the in-memory cache or from the
+ * native filesystem. Web blobs require async loading via `loadAttachmentUri`.
+ */
+export function getAttachmentLocalUri(attachmentId: string, mimeType: string): string | undefined {
+  const cached = localUriCache.get(attachmentId);
+  if (cached) return cached;
+
+  if (Platform.OS === 'web') return undefined;
+
+  const file = attachmentFile(attachmentId, mimeType);
+  if (file.exists) {
+    localUriCache.set(attachmentId, file.uri);
+    return file.uri;
+  }
+
+  return undefined;
+}
+
+/**
+ * Async loader — tries the sync path first, then falls back to IndexedDB on web.
+ * Warms the in-memory cache so subsequent sync lookups succeed.
+ */
+export async function loadAttachmentUri(
+  attachmentId: string,
+  mimeType: string
+): Promise<string | undefined> {
+  const sync = getAttachmentLocalUri(attachmentId, mimeType);
+  if (sync) return sync;
+
+  if (Platform.OS === 'web') {
+    try {
+      const blobUrl = await loadWebBlob(attachmentId);
+      if (blobUrl) {
+        localUriCache.set(attachmentId, blobUrl);
+        return blobUrl;
+      }
+    } catch (err) {
+      logger.error('[loadAttachmentUri] IDB load failed', err, { attachmentId });
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Persist the compressed image so it survives app/page restarts.
+ * - Native: copies file to Paths.document/attachments/{id}.{ext}
+ * - Web: stores raw bytes in IndexedDB
+ *
+ * Also records the session→attachment mapping for later cleanup.
+ */
+async function persistAttachmentFile(
+  compressedUri: string,
+  attachmentId: string,
+  mimeType: string,
+  sessionId: string,
+  bytes?: ArrayBuffer
+): Promise<string> {
+  if (Platform.OS === 'web') {
+    if (bytes) {
+      const blobUrl = await storeWebBlob(attachmentId, bytes, mimeType);
+      localUriCache.set(attachmentId, blobUrl);
+      await messageDB.kvSet(`session-attachments:${sessionId}`, attachmentId, mimeType);
+      return blobUrl;
+    }
+    localUriCache.set(attachmentId, compressedUri);
+    return compressedUri;
+  }
+  const dest = attachmentFile(attachmentId, mimeType);
+  if (!dest.exists) {
+    const src = new File(compressedUri);
+    src.copy(dest);
+  }
+  await messageDB.kvSet(`session-attachments:${sessionId}`, attachmentId, mimeType);
+  return dest.uri;
+}
+
+/**
+ * Delete all locally stored attachment files that belong to a session.
+ * Called when the session is permanently deleted so disk space is reclaimed.
+ */
+export async function deleteSessionAttachments(sessionId: string): Promise<void> {
+  const entries = await messageDB.kvGetAll(`session-attachments:${sessionId}`);
+  const ids = entries.map(e => e.key);
+
+  if (Platform.OS === 'web') {
+    try { await deleteWebBlobs(ids); } catch { /* non-critical on web */ }
+  } else {
+    for (const { key: id, value: mimeType } of entries) {
+      try {
+        const file = attachmentFile(id, mimeType);
+        if (file.exists) file.delete();
+      } catch (err) {
+        logger.error('[deleteSessionAttachments] failed to delete file', err, { id });
+      }
+    }
+  }
+
+  for (const id of ids) localUriCache.delete(id);
+  await messageDB.kvDeleteAll(`session-attachments:${sessionId}`);
+  logger.debug('[deleteSessionAttachments] done', { sessionId, count: entries.length });
 }
 
 /**
@@ -230,7 +423,15 @@ export async function uploadAttachment(
       throw new Error(ack.error ?? 'Upload failed (server returned ok:false)');
     }
 
-    localUriCache.set(ack.attachmentId, compressedUri);
+    // Persist to a deterministic path so the file survives app/page restarts.
+    const persistedUri = await persistAttachmentFile(
+      compressedUri,
+      ack.attachmentId,
+      mimeType,
+      sessionId,
+      bytes
+    );
+    localUriCache.set(ack.attachmentId, persistedUri);
 
     return {
       attachmentRef: {
@@ -238,7 +439,7 @@ export async function uploadAttachment(
         mimeType,
         filename: asset.fileName ?? undefined,
       },
-      localUri: compressedUri,
+      localUri: persistedUri,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
