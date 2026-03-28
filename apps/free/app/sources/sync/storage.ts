@@ -178,6 +178,7 @@ interface StorageState {
   applyProfile: (profile: Profile) => void;
   applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
   applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
+  clearAllSessionMessages: () => void;
   isMutableToolCall: (sessionId: string, callId: string) => boolean;
   setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
   setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => void;
@@ -855,6 +856,11 @@ export const storage = create<StorageState>()((set, get) => {
       set(state => ({
         ...state,
         nativeUpdateStatus: status,
+      })),
+    clearAllSessionMessages: () =>
+      set(state => ({
+        ...state,
+        sessionMessages: {},
       })),
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') =>
       set(state => ({

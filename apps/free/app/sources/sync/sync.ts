@@ -2190,13 +2190,38 @@ class Sync {
   }
 
   /**
-   * Clear the local SQLite message cache and reset seq tracking so
-   * the next onSessionVisible() re-fetches everything from the server.
+   * Clear the local SQLite message cache, in-memory seq tracking, Zustand
+   * store messages, and messagesSync instances so the next onSessionVisible()
+   * re-fetches everything from the server.
    */
   async clearMessageCache(): Promise<void> {
     await messageDB.deleteAll();
     this.sessionLastSeq.clear();
     this.sessionOldestSeq.clear();
+
+    // Flush any pending message batch timers
+    for (const timer of this.sessionBatchTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.sessionMessageQueue.clear();
+    this.sessionBatchTimers.clear();
+
+    // Stop in-flight fetches, then drop instances so fresh ones are created
+    for (const sync of this.messagesSync.values()) {
+      sync.stop();
+    }
+    this.messagesSync.clear();
+
+    // Stop in-flight sends and clear pending outbox
+    for (const sync of this.sendSync.values()) {
+      sync.stop();
+    }
+    this.sendSync.clear();
+    this.pendingOutbox.clear();
+
+    // Clear in-memory Zustand store so UI doesn't show stale messages
+    storage.getState().clearAllSessionMessages();
+
     logger.info('[sync] message cache cleared');
   }
 
