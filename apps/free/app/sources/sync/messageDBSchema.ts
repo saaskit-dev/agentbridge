@@ -11,6 +11,10 @@ export interface CachedMessage {
   session_id: string;
   seq: number;
   content: string;
+  /** DB-level traceId stored alongside content so pagination from SQLite uses the
+   *  same traceId as the server fetch path — preventing reducer merge failures
+   *  at page boundaries. NULL for messages cached before this column was added. */
+  trace_id: string | null;
   role: string;
   created_at: number;
   updated_at: number;
@@ -114,3 +118,13 @@ CREATE TABLE IF NOT EXISTS kv_store (
   PRIMARY KEY (namespace, key)
 );
 `;
+
+/**
+ * Incremental migrations applied after SCHEMA_SQL on every open.
+ * Each statement is idempotent — safe to re-run on an up-to-date DB
+ * (ALTER TABLE ADD COLUMN fails silently when the column already exists).
+ */
+export const MIGRATION_SQL_STATEMENTS: string[] = [
+  // v2: add trace_id column for consistent traceId across SQLite and server-fetch paths
+  'ALTER TABLE messages ADD COLUMN trace_id TEXT',
+];

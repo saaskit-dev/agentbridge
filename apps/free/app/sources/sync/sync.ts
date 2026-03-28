@@ -307,6 +307,7 @@ class Sync {
                   const n = normalizeRawMessage(msg.id, msg.created_at, raw);
                   if (n) {
                     if (msg.seq) n.seq = msg.seq;
+                    if (!n.traceId && msg.trace_id) n.traceId = msg.trace_id;
                     normalized.push(n);
                   }
                 } catch {
@@ -1960,7 +1961,7 @@ class Sync {
           decrypted.content
         );
         if (normalized) {
-          if (decrypted.traceId) normalized.traceId = decrypted.traceId;
+          if (!normalized.traceId && decrypted.traceId) normalized.traceId = decrypted.traceId;
           const msgSeq = messages[i]?.seq;
           if (msgSeq) normalized.seq = msgSeq;
           normalizedMessages.push(normalized);
@@ -1980,6 +1981,7 @@ class Sync {
             session_id: sessionId,
             seq: messages[origIdx]?.seq ?? 0,
             content: JSON.stringify(decryptedMessages[origIdx]?.content ?? null),
+            trace_id: n.traceId ?? decryptedMessages[origIdx]?.traceId ?? null,
             role: n.role ?? 'agent',
             created_at: n.createdAt ?? Date.now(),
             updated_at: Date.now(),
@@ -2098,6 +2100,7 @@ class Sync {
           const n = normalizeRawMessage(msg.id, msg.created_at, content);
           if (n) {
             n.seq = msg.seq;
+            if (!n.traceId && msg.trace_id) n.traceId = msg.trace_id;
             normalizedFromCache.push(n);
           }
         }
@@ -2150,7 +2153,7 @@ class Sync {
         if (!decrypted) continue;
         const n = normalizeRawMessage(decrypted.id, decrypted.createdAt, decrypted.content);
         if (n) {
-          if (decrypted.traceId) n.traceId = decrypted.traceId;
+          if (!n.traceId && decrypted.traceId) n.traceId = decrypted.traceId;
           const msgSeq = ack.messages![i]?.seq;
           if (msgSeq) n.seq = msgSeq;
           normalizedMessages.push(n);
@@ -2165,6 +2168,7 @@ class Sync {
           session_id: sessionId,
           seq: ack.messages![i]?.seq ?? 0,
           content: JSON.stringify(decryptedMessages[i]?.content),
+          trace_id: n.traceId ?? decryptedMessages[i]?.traceId ?? null,
           role: n.role ?? 'agent',
           created_at: n.createdAt ?? Date.now(),
           updated_at: Date.now(),
@@ -2304,7 +2308,7 @@ class Sync {
         if (!decrypted) continue;
         const normalized = normalizeRawMessage(decrypted.id, decrypted.createdAt, decrypted.content);
         if (normalized) {
-          if (decrypted.traceId) normalized.traceId = decrypted.traceId;
+          if (!normalized.traceId && decrypted.traceId) normalized.traceId = decrypted.traceId;
           const msgSeq = messages[i]?.seq;
           if (msgSeq) normalized.seq = msgSeq;
           normalizedMessages.push(normalized);
@@ -2325,6 +2329,7 @@ class Sync {
             session_id: sessionId,
             seq,
             content: JSON.stringify(decryptedMessages[origIdx]?.content ?? null),
+            trace_id: n.traceId ?? decryptedMessages[origIdx]?.traceId ?? null,
             role: n.role ?? 'agent',
             created_at: n.createdAt ?? Date.now(),
             updated_at: Date.now(),
@@ -2433,8 +2438,11 @@ class Sync {
         const decrypted = await encryption.decryptMessage(updateData.body.message);
         if (decrypted) {
           lastMessage = normalizeRawMessage(decrypted.id, decrypted.createdAt, decrypted.content);
-          // Propagate traceId and seq from server DB (same as fetchMessages path)
-          if (lastMessage && decrypted.traceId) {
+          // Propagate traceId from server DB only when the normalized message
+          // doesn't already carry an embedded per-turn traceId. The embedded
+          // traceId is stable within a turn, while the DB traceId can change
+          // due to setCurrentTurnTrace races when new user messages arrive.
+          if (lastMessage && !lastMessage.traceId && decrypted.traceId) {
             lastMessage.traceId = decrypted.traceId;
           }
           if (lastMessage && updateData.body.message.seq) {
@@ -2529,6 +2537,34 @@ class Sync {
             logger.debug('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
             this.enqueueMessages(updateData.body.sid, [lastMessage]);
             this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
+
+            // Cache fast-path message to SQLite so restarts don't create gaps.
+            // Gaps cause toolCallSeenSinceLastText state loss → thinking blocks
+            // fail to merge on reload.
+            messageDB
+              .upsertMessagesAndSeq(
+                updateData.body.sid,
+                [
+                  {
+                    id: lastMessage.id,
+                    session_id: updateData.body.sid,
+                    seq: incomingSeq,
+                    content: JSON.stringify(decrypted.content),
+                    trace_id: lastMessage.traceId ?? decrypted.traceId ?? null,
+                    role: lastMessage.role ?? 'agent',
+                    created_at: lastMessage.createdAt ?? Date.now(),
+                    updated_at: Date.now(),
+                  },
+                ],
+                incomingSeq
+              )
+              .catch(e =>
+                logger.debug('[sync] fast-path cache failed', {
+                  sessionId: updateData.body.sid,
+                  error: String(e),
+                })
+              );
+
             let hasMutableTool = false;
             if (
               lastMessage.role === 'agent' &&

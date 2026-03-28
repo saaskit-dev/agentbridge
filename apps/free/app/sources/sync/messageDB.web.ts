@@ -6,7 +6,7 @@
  */
 import { Logger, safeStringify } from '@saaskit-dev/agentbridge/telemetry';
 import type { CachedCapabilitiesRow, CachedMessage, MessageDB } from './messageDBSchema';
-import { SCHEMA_SQL } from './messageDBSchema';
+import { MIGRATION_SQL_STATEMENTS, SCHEMA_SQL } from './messageDBSchema';
 
 // wa-sqlite-async.wasm is served as a static asset from the /public directory
 // (copied there by the postinstall script). Metro web serves /public files at
@@ -63,6 +63,15 @@ async function getDB(): Promise<{ sqlite3: any; db: number } | null> {
 
     dbHandle = (await sqlite3.open_v2('messageCache')) as number;
     await exec(SCHEMA_SQL);
+    // Run incremental migrations. ALTER TABLE ADD COLUMN throws "duplicate column name"
+    // if already applied — that error is expected and safe to ignore.
+    for (const stmt of MIGRATION_SQL_STATEMENTS) {
+      try {
+        await exec(stmt);
+      } catch {
+        // Column likely already exists; not an error
+      }
+    }
 
     initRetryAfter = 0;
     initAttempt = 0;
@@ -145,11 +154,11 @@ export const messageDB: MessageDB = {
     const state = await getDB();
     if (!state) return;
     const sid = escapeStr(sessionId);
-    const statements = messages.map(
-      m =>
-        `INSERT OR REPLACE INTO messages (id, session_id, seq, content, role, created_at, updated_at)
-       VALUES ('${escapeStr(m.id)}', '${sid}', ${m.seq}, '${escapeStr(m.content)}', '${escapeStr(m.role)}', ${m.created_at}, ${m.updated_at})`
-    );
+    const statements = messages.map(m => {
+      const traceIdVal = m.trace_id ? `'${escapeStr(m.trace_id)}'` : 'NULL';
+      return `INSERT OR REPLACE INTO messages (id, session_id, seq, content, trace_id, role, created_at, updated_at)
+       VALUES ('${escapeStr(m.id)}', '${sid}', ${m.seq}, '${escapeStr(m.content)}', ${traceIdVal}, '${escapeStr(m.role)}', ${m.created_at}, ${m.updated_at})`;
+    });
     await exec(`BEGIN TRANSACTION; ${statements.join('; ')}; COMMIT;`);
   },
 
@@ -166,11 +175,11 @@ export const messageDB: MessageDB = {
     const state = await getDB();
     if (!state) return;
     const sid = escapeStr(sessionId);
-    const stmts = messages.map(
-      m =>
-        `INSERT OR REPLACE INTO messages (id, session_id, seq, content, role, created_at, updated_at)
-       VALUES ('${escapeStr(m.id)}', '${sid}', ${m.seq}, '${escapeStr(m.content)}', '${escapeStr(m.role)}', ${m.created_at}, ${m.updated_at})`
-    );
+    const stmts = messages.map(m => {
+      const traceIdVal = m.trace_id ? `'${escapeStr(m.trace_id)}'` : 'NULL';
+      return `INSERT OR REPLACE INTO messages (id, session_id, seq, content, trace_id, role, created_at, updated_at)
+       VALUES ('${escapeStr(m.id)}', '${sid}', ${m.seq}, '${escapeStr(m.content)}', ${traceIdVal}, '${escapeStr(m.role)}', ${m.created_at}, ${m.updated_at})`;
+    });
     stmts.push(
       `INSERT OR REPLACE INTO session_sync (session_id, last_seq, synced_at) VALUES ('${sid}', ${seq}, ${Date.now()})`
     );

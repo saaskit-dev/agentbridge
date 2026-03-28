@@ -4,7 +4,7 @@
 import * as SQLite from 'expo-sqlite';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import type { CachedCapabilitiesRow, CachedMessage, MessageDB } from './messageDBSchema';
-import { SCHEMA_SQL } from './messageDBSchema';
+import { MIGRATION_SQL_STATEMENTS, SCHEMA_SQL } from './messageDBSchema';
 
 const logger = new Logger('sync/messageDB.native');
 
@@ -14,6 +14,15 @@ async function getDB(): Promise<SQLite.SQLiteDatabase> {
   if (db) return db;
   db = await SQLite.openDatabaseAsync('messageCache.db');
   await db.execAsync(SCHEMA_SQL);
+  // Run incremental migrations. ALTER TABLE ADD COLUMN throws "duplicate column name"
+  // if already applied — that error is expected and safe to ignore.
+  for (const stmt of MIGRATION_SQL_STATEMENTS) {
+    try {
+      await db.execAsync(stmt);
+    } catch {
+      // Column likely already exists; not an error
+    }
+  }
   logger.info('[messageDB] native SQLite initialized');
   return db;
 }
@@ -52,9 +61,9 @@ export const messageDB: MessageDB = {
     await d.withTransactionAsync(async () => {
       for (const m of messages) {
         await d.runAsync(
-          `INSERT OR REPLACE INTO messages (id, session_id, seq, content, role, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [m.id, sessionId, m.seq, m.content, m.role, m.created_at, m.updated_at]
+          `INSERT OR REPLACE INTO messages (id, session_id, seq, content, trace_id, role, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [m.id, sessionId, m.seq, m.content, m.trace_id, m.role, m.created_at, m.updated_at]
         );
       }
     });
@@ -73,9 +82,9 @@ export const messageDB: MessageDB = {
     await d.withTransactionAsync(async () => {
       for (const m of messages) {
         await d.runAsync(
-          `INSERT OR REPLACE INTO messages (id, session_id, seq, content, role, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [m.id, sessionId, m.seq, m.content, m.role, m.created_at, m.updated_at]
+          `INSERT OR REPLACE INTO messages (id, session_id, seq, content, trace_id, role, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [m.id, sessionId, m.seq, m.content, m.trace_id, m.role, m.created_at, m.updated_at]
         );
       }
       await d.runAsync(
