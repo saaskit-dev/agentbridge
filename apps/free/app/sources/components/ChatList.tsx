@@ -8,7 +8,9 @@ import {
   NativeSyntheticEvent,
   Platform,
   Pressable,
+  ScrollView,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
@@ -34,6 +36,10 @@ const MIN_LOADING_MS = 300;
 const AT_BOTTOM_THRESHOLD = 80;
 /** Minimum time gap (ms) between consecutive messages to show a timestamp separator. */
 const TIME_GAP_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+type UserNavItem = { listIndex: number; seq: number; preview: string; time: string };
+const FAB_SIZE = 40;
+const FAB_GAP = 12;
 
 // ---------------------------------------------------------------------------
 // Date / time helpers
@@ -195,25 +201,24 @@ const PullPill = React.memo(
 );
 
 // ---------------------------------------------------------------------------
-// Scroll-to-bottom FAB with unread badge
+// Shared FAB system — all floating buttons use ChatFab + ChatFabStack
 // ---------------------------------------------------------------------------
 
-const ScrollToBottomFab = React.memo(
-  (props: { visible: boolean; unreadCount: number; onPress: () => void }) => {
+/** Unified floating action button. All FABs share this size/shadow/shape. */
+const ChatFab = React.memo(
+  (props: {
+    onPress: () => void;
+    accessibilityLabel?: string;
+    children: React.ReactNode;
+  }) => {
     const { theme } = useUnistyles();
-    if (!props.visible) return null;
-
     return (
       <Pressable
         onPress={props.onPress}
-        style={{
-          position: 'absolute',
-          bottom: 16,
-          right: 16,
-          zIndex: 20,
-          width: 40,
-          height: 40,
-          borderRadius: 20,
+        style={({ pressed }) => ({
+          width: FAB_SIZE,
+          height: FAB_SIZE,
+          borderRadius: FAB_SIZE / 2,
           backgroundColor: theme.colors.surface,
           alignItems: 'center',
           justifyContent: 'center',
@@ -222,38 +227,291 @@ const ScrollToBottomFab = React.memo(
           shadowRadius: 8,
           shadowOffset: { width: 0, height: 2 },
           elevation: 6,
-        }}
-        accessibilityLabel={t('chatList.scrollToBottom')}
+          opacity: pressed ? 0.7 : 1,
+        })}
+        accessibilityLabel={props.accessibilityLabel}
       >
-        <Ionicons name="chevron-down" size={22} color={theme.colors.text} />
-        {props.unreadCount > 0 && (
+        {props.children}
+      </Pressable>
+    );
+  }
+);
+
+/** Stacks FABs vertically from the bottom-right corner (first child = bottom). */
+const ChatFabStack = React.memo((props: { children: React.ReactNode }) => (
+  <View
+    pointerEvents="box-none"
+    style={{
+      position: 'absolute',
+      bottom: 16,
+      right: 16,
+      zIndex: 20,
+      flexDirection: 'column-reverse',
+      alignItems: 'center',
+      gap: FAB_GAP,
+    }}
+  >
+    {props.children}
+  </View>
+));
+
+/** Unread message count badge for the scroll-to-bottom FAB. */
+const UnreadBadge = React.memo((props: { count: number }) => {
+  const { theme } = useUnistyles();
+  if (props.count <= 0) return null;
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        minWidth: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: theme.colors.button.primary.background,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 4,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: '700',
+          color: '#fff',
+          ...Typography.default('semiBold'),
+        }}
+      >
+        {props.count > 99 ? '99+' : props.count}
+      </Text>
+    </View>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// User-message navigation panel (command-palette style)
+// ---------------------------------------------------------------------------
+
+/** Centered overlay card listing user messages — styled after CommandPalette. */
+const UserMessageNavPanel = React.memo(
+  (props: {
+    items: UserNavItem[];
+    onJumpTo: (index: number) => void;
+    onClose: () => void;
+  }) => {
+    const { theme } = useUnistyles();
+    const { items, onJumpTo, onClose } = props;
+    const [query, setQuery] = useState('');
+    const hasSearch = items.length > 8;
+    const borderColor = theme.dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const subtleBackground = theme.dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+    const pressedBackground = theme.dark ? 'rgba(255,255,255,0.08)' : '#F0F7FF';
+
+    const filtered = useMemo(() => {
+      if (!query.trim()) return items;
+      const lowerQ = query.trim().toLowerCase();
+      return items.filter((it) => it.preview.toLowerCase().includes(lowerQ));
+    }, [items, query]);
+
+    return (
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 25,
+          justifyContent: 'flex-start',
+          alignItems: 'center',
+          paddingTop: Platform.OS === 'web' ? ('20%' as any) : 120,
+          paddingHorizontal: 20,
+        }}
+      >
+        {/* Backdrop */}
+        <Pressable
+          onPress={onClose}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 15, 15, 0.5)',
+          }}
+        />
+
+        {/* Card */}
+        <View
+          style={{
+            zIndex: 1,
+            width: '100%',
+            maxWidth: 480,
+            maxHeight: Platform.OS === 'web' ? ('50vh' as any) : 400,
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            overflow: 'hidden',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 20 },
+            shadowOpacity: 0.25,
+            shadowRadius: 40,
+            elevation: 20,
+            borderWidth: 1,
+            borderColor: theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+          }}
+        >
+          {/* Header — search input only appears when > 8 messages */}
           <View
             style={{
-              position: 'absolute',
-              top: -4,
-              right: -4,
-              minWidth: 18,
-              height: 18,
-              borderRadius: 9,
-              backgroundColor: theme.colors.button.primary.background,
+              flexDirection: 'row',
               alignItems: 'center',
-              justifyContent: 'center',
-              paddingHorizontal: 4,
+              paddingLeft: 16,
+              paddingRight: 14,
+              paddingVertical: 4,
+              borderBottomWidth: 1,
+              borderBottomColor: borderColor,
+              gap: 8,
             }}
           >
-            <Text
-              style={{
-                fontSize: 10,
-                fontWeight: '700',
-                color: '#fff',
-                ...Typography.default('semiBold'),
-              }}
-            >
-              {props.unreadCount > 99 ? '99+' : props.unreadCount}
-            </Text>
+            <Ionicons
+              name={hasSearch ? 'search' : 'chatbubbles-outline'}
+              size={16}
+              color={theme.colors.textSecondary}
+            />
+            {hasSearch ? (
+              <TextInput
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  fontSize: 15,
+                  color: theme.colors.text,
+                  letterSpacing: -0.2,
+                  ...Typography.default(),
+                }}
+                value={query}
+                onChangeText={setQuery}
+                placeholder={`Search ${items.length} messages…`}
+                placeholderTextColor={theme.colors.textSecondary}
+                autoFocus
+                autoCorrect={false}
+                autoCapitalize="none"
+                returnKeyType="done"
+              />
+            ) : (
+              <Text
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  fontSize: 14,
+                  color: theme.colors.textSecondary,
+                  ...Typography.default(),
+                }}
+              >
+                {`${items.length} messages`}
+              </Text>
+            )}
+            {query.length > 0 && (
+              <Text
+                style={{ fontSize: 12, color: theme.colors.textSecondary, ...Typography.default() }}
+              >
+                {filtered.length}/{items.length}
+              </Text>
+            )}
+            <Pressable onPress={query ? () => setQuery('') : onClose} hitSlop={8}>
+              <Ionicons
+                name={query ? 'close-circle' : 'close'}
+                size={query ? 18 : 20}
+                color={theme.colors.textSecondary}
+              />
+            </Pressable>
           </View>
-        )}
-      </Pressable>
+
+          {/* Message list */}
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingVertical: 4 }}
+          >
+            {filtered.length === 0 ? (
+              <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: theme.colors.textSecondary,
+                    ...Typography.default(),
+                  }}
+                >
+                  No matching messages
+                </Text>
+              </View>
+            ) : (
+              filtered.map((item, i) => (
+                <Pressable
+                  key={`unav-${item.listIndex}`}
+                  onPress={() => onJumpTo(item.listIndex)}
+                  style={({ pressed }) => ({
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    marginHorizontal: 8,
+                    borderRadius: 8,
+                    backgroundColor: pressed ? pressedBackground : 'transparent',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    borderBottomWidth: i < filtered.length - 1 ? 0.5 : 0,
+                    borderBottomColor: borderColor,
+                  })}
+                >
+                  <View
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      backgroundColor: subtleBackground,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '600',
+                        color: theme.colors.textSecondary,
+                        ...Typography.default('semiBold'),
+                      }}
+                    >
+                      {item.seq}
+                    </Text>
+                  </View>
+
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontSize: 14,
+                        color: theme.colors.text,
+                        lineHeight: 20,
+                        letterSpacing: -0.2,
+                        ...Typography.default(),
+                      }}
+                    >
+                      {item.preview}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: theme.colors.textSecondary,
+                        ...Typography.default(),
+                      }}
+                    >
+                      {item.time}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
     );
   }
 );
@@ -410,6 +668,8 @@ const ChatListInternal = React.memo(
     const isAtBottom = useRef(true);
     const [showScrollFab, setShowScrollFab] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [navOpen, setNavOpen] = useState(false);
+    const { theme } = useUnistyles();
     const showScrollFabRef = useRef(false);
     const unreadCountRef = useRef(0);
 
@@ -509,8 +769,56 @@ const ChatListInternal = React.memo(
       updateUnreadCount(0);
     }, [updateShowScrollFab, updateUnreadCount]);
 
+    /** Jump to a specific list item index (used by edge-nav dots). */
+    const handleJumpToUserMessage = useCallback((listIndex: number) => {
+      flatListRef.current?.scrollToIndex({
+        index: listIndex,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    }, []);
+
+    /** Fallback when scrollToIndex targets an unmeasured item. */
+    const handleScrollToIndexFailed = useCallback(
+      (info: { index: number; highestMeasuredFrameIndex: number; averageItemLength: number }) => {
+        flatListRef.current?.scrollToOffset({
+          offset: info.averageItemLength * info.index,
+          animated: false,
+        });
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index: info.index,
+            animated: true,
+            viewPosition: 0.5,
+          });
+        }, 200);
+      },
+      []
+    );
+
     // ----- build list items with separators -----
     const listItems = useMemo(() => buildListItems(messages), [messages]);
+
+    // ----- user message nav items (chronological: oldest first) -----
+    const userNavItems = useMemo(() => {
+      const infoById = new Map<string, { text: string; createdAt: number }>();
+      for (const m of messages) {
+        if (m.kind === 'user-text') {
+          infoById.set(m.id, { text: m.displayText || m.text, createdAt: m.createdAt });
+        }
+      }
+      const items: UserNavItem[] = [];
+      let seq = 1;
+      for (let i = listItems.length - 1; i >= 0; i--) {
+        const item = listItems[i];
+        if (item.type === 'message' && infoById.has(item.messageId)) {
+          const { text, createdAt } = infoById.get(item.messageId)!;
+          const preview = text.split('\n').slice(0, 2).join(' ').trim() || '…';
+          items.push({ listIndex: i, seq: seq++, preview, time: formatTime(createdAt) });
+        }
+      }
+      return items;
+    }, [messages, listItems]);
 
     // ----- render items -----
     const keyExtractor = useCallback((item: ListItem) => {
@@ -566,6 +874,7 @@ const ChatListInternal = React.memo(
           onScrollEndDrag={handleScrollEndDrag}
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.5}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
           maintainVisibleContentPosition={{
             minIndexForVisible: 0,
             autoscrollToTopThreshold: 10,
@@ -577,11 +886,30 @@ const ChatListInternal = React.memo(
           ListFooterComponent={olderLoader}
         />
 
-        <ScrollToBottomFab
-          visible={showScrollFab}
-          unreadCount={unreadCount}
-          onPress={handleScrollToBottom}
-        />
+        <ChatFabStack>
+          {showScrollFab && (
+            <ChatFab onPress={handleScrollToBottom} accessibilityLabel={t('chatList.scrollToBottom')}>
+              <Ionicons name="chevron-down" size={22} color={theme.colors.text} />
+              <UnreadBadge count={unreadCount} />
+            </ChatFab>
+          )}
+          {showScrollFab && userNavItems.length > 0 && (
+            <ChatFab onPress={() => setNavOpen(true)} accessibilityLabel="Message navigation">
+              <Ionicons name="list-outline" size={18} color={theme.colors.text} />
+            </ChatFab>
+          )}
+        </ChatFabStack>
+
+        {navOpen && (
+          <UserMessageNavPanel
+            items={userNavItems}
+            onJumpTo={(index) => {
+              handleJumpToUserMessage(index);
+              setNavOpen(false);
+            }}
+            onClose={() => setNavOpen(false)}
+          />
+        )}
 
         <PullPill
           state={refreshPull}
