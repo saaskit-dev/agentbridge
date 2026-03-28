@@ -59,6 +59,34 @@ export function safeStringify(value: unknown): string {
 }
 
 /**
+ * Extract a human-friendly error/detail message from unknown values.
+ *
+ * Prefers common structured fields like `error`, `message`, `stderr`, `details`,
+ * then falls back to `safeStringify`.
+ */
+export function extractErrorMessage(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value instanceof Error) return value.message || value.name || 'Error';
+
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+
+    if (typeof record.error === 'string') return record.error;
+    if (record.error instanceof Error) return record.error.message || record.error.name || 'Error';
+
+    if (typeof record.message === 'string') return record.message;
+    if (typeof record.stderr === 'string' && record.stderr.trim()) return record.stderr;
+    if (typeof record.details === 'string' && record.details.trim()) return record.details;
+    if (typeof record.reason === 'string' && record.reason.trim()) return record.reason;
+    if (typeof record.status === 'string' && record.status.trim()) return record.status;
+
+    return safeStringify(value);
+  }
+
+  return String(value);
+}
+
+/**
  * Coerce an unknown caught value into an Error instance.
  *
  * Drop-in replacement for the common pattern:

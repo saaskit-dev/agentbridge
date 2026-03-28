@@ -30,6 +30,8 @@ export interface SessionUpdate {
     | string
     | unknown;
   locations?: unknown[];
+  rawInput?: unknown;
+  rawOutput?: unknown;
   messageChunk?: { textDelta?: string };
   plan?: unknown;
   thinking?: unknown;
@@ -117,29 +119,22 @@ export function parseArgsFromContent(content: unknown): Record<string, unknown> 
   return {};
 }
 
+import { extractErrorMessage } from '../../utils/stringify.js';
+
 /**
  * Extract error detail from content
  */
 export function extractErrorDetail(content: unknown): string | undefined {
   if (!content) return undefined;
-  if (typeof content === 'string') return content;
-  if (typeof content === 'object' && content !== null && !Array.isArray(content)) {
-    const obj = content as Record<string, unknown>;
-    if (obj.error) {
-      const error = obj.error;
-      if (typeof error === 'string') return error;
-      if (error && typeof error === 'object' && 'message' in error) {
-        const errObj = error as { message?: unknown };
-        if (typeof errObj.message === 'string') return errObj.message;
-      }
-      return JSON.stringify(error);
-    }
-    if (typeof obj.message === 'string') return obj.message;
-    const status = typeof obj.status === 'string' ? obj.status : undefined;
-    const reason = typeof obj.reason === 'string' ? obj.reason : undefined;
-    return status || reason || JSON.stringify(obj).substring(0, 500);
-  }
-  return undefined;
+  return extractErrorMessage(content).substring(0, 500);
+}
+
+export function resolveToolInput(update: SessionUpdate): unknown {
+  return update.content ?? update.rawInput;
+}
+
+export function resolveToolOutput(update: SessionUpdate): unknown {
+  return update.content ?? update.rawOutput;
 }
 
 // ============================================================================
@@ -225,7 +220,7 @@ export function startToolCall(
   // Reset response complete timeout (tool call started = active)
   ctx.resetResponseCompleteTimeout();
   ctx.emit({ type: 'status', status: 'running' });
-  const args = parseArgsFromContent(update.content);
+  const args = parseArgsFromContent(resolveToolInput(update));
   if (update.locations && Array.isArray(update.locations)) args.locations = update.locations;
 
   // Use realToolName instead of toolKindStr for better identification
@@ -273,7 +268,8 @@ export function failToolCall(
   status: 'failed' | 'cancelled',
   toolKind: string | unknown,
   content: unknown,
-  ctx: HandlerContext
+  ctx: HandlerContext,
+  fallbackContent?: unknown
 ): void {
   const toolKindStr = typeof toolKind === 'string' ? toolKind : 'unknown';
   const startTime = ctx.toolCallStartTimes.get(toolCallId);
@@ -299,7 +295,7 @@ export function failToolCall(
     ctx.toolCallTimeouts.delete(toolCallId);
   }
 
-  const errorDetail = extractErrorDetail(content);
+  const errorDetail = extractErrorDetail(content) ?? extractErrorDetail(fallbackContent);
 
   // Get the real tool name from the map
   const realToolName = ctx.toolCallIdToNameMap.get(toolCallId) ?? toolKindStr;
@@ -334,9 +330,9 @@ export function handleToolCallUpdate(update: SessionUpdate, ctx: HandlerContext)
       startToolCall(toolCallId, toolKind, update, ctx);
     }
   } else if (status === 'completed') {
-    completeToolCall(toolCallId, toolKind, update.content, ctx);
+    completeToolCall(toolCallId, toolKind, resolveToolOutput(update), ctx);
   } else if (status === 'failed' || status === 'cancelled') {
-    failToolCall(toolCallId, status, toolKind, update.content, ctx);
+    failToolCall(toolCallId, status, toolKind, update.content, ctx, update.rawOutput);
   }
   return { handled: true, toolCallCountSincePrompt };
 }

@@ -43,7 +43,7 @@ export { PushableAsyncIterable, createPushableAsyncIterable } from './pushableAs
 export { expandEnvVars, expandEnvironmentVariables, getUndefinedVars } from './expandEnvVars';
 
 // Stringify utilities
-export { safeStringify, toError } from './stringify';
+export { safeStringify, extractErrorMessage, toError } from './stringify';
 
 // System utilities
 export {

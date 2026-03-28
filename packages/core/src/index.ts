@@ -272,7 +272,7 @@ export {
 } from './utils';
 
 // Utils - Stringify
-export { safeStringify, toError } from './utils';
+export { safeStringify, extractErrorMessage, toError } from './utils';
 
 // Utils - Environment Variables
 export { expandEnvVars, expandEnvironmentVariables, getUndefinedVars } from './utils';

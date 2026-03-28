@@ -173,7 +173,7 @@ export { SessionEncryption, MachineEncryption, EncryptionCache } from './encrypt
 export type { DecryptedMessage } from './encryption';
 
 // Utils — platform-agnostic only (NO caffeinate, fileAtomic, tmux, crypto/hmac, deterministicJson)
-export { safeStringify, toError } from './utils/stringify';
+export { safeStringify, extractErrorMessage, toError } from './utils/stringify';
 export {
   encodeBase64,
   encodeBase64Url,

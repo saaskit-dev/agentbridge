@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { safeStringify, toError } from '../stringify';
+import { extractErrorMessage, safeStringify, toError } from '../stringify';
 
 describe('safeStringify', () => {
   it('returns "null" for null', () => {
@@ -125,5 +125,35 @@ describe('toError', () => {
     const e = new TypeError('bad');
     expect(toError(e)).toBe(e);
     expect(toError(e)).toBeInstanceOf(TypeError);
+  });
+});
+
+describe('extractErrorMessage', () => {
+  it('returns string values unchanged', () => {
+    expect(extractErrorMessage('plain error')).toBe('plain error');
+  });
+
+  it('prefers object error field', () => {
+    expect(extractErrorMessage({ error: 'File has not been read yet' })).toBe(
+      'File has not been read yet'
+    );
+  });
+
+  it('supports nested Error instances', () => {
+    expect(extractErrorMessage({ error: new Error('boom') })).toBe('boom');
+  });
+
+  it('falls back to message for structured errors', () => {
+    expect(extractErrorMessage({ message: 'Permission denied', code: 'EACCES' })).toBe(
+      'Permission denied'
+    );
+  });
+
+  it('prefers stderr when present', () => {
+    expect(extractErrorMessage({ stderr: 'command failed', exitCode: 1 })).toBe('command failed');
+  });
+
+  it('stringifies unknown objects safely', () => {
+    expect(extractErrorMessage({ foo: 'bar' })).toBe('{"foo":"bar"}');
   });
 });
