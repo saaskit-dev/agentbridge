@@ -44,6 +44,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   protected isFirstMessage = true;
   protected capabilitiesSnapshot: SessionCapabilities = {};
   protected publishedCapabilitiesSnapshot: SessionCapabilities = {};
+  private lastPublishedCapabilitiesJson: string | null = null;
   protected appliedModeSelection: string | null = null;
   protected appliedModelSelection: string | null = null;
   protected desiredConfigSelections = new Map<string, string>();
@@ -481,6 +482,17 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   }
 
   protected publishCapabilities(capabilities: SessionCapabilities): void {
+    this.capabilitiesSnapshot = capabilities;
+
+    // Deduplicate: skip publishing when the snapshot hasn't changed.
+    // The ACP protocol fires sessionUpdate events frequently (per-message, per-chunk),
+    // but most carry identical capability data.
+    const serialized = JSON.stringify(capabilities);
+    if (serialized === this.lastPublishedCapabilitiesJson) {
+      return;
+    }
+    this.lastPublishedCapabilitiesJson = serialized;
+
     this.logger.info(`[${this.agentType}] publishing capabilities`, {
       requestedInitialModel: this.initialModel,
       requestedInitialMode: this.initialMode,
@@ -489,7 +501,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       discoveredModelCurrent: capabilities.models?.current ?? null,
       discoveredModeCurrent: capabilities.modes?.current ?? null,
     });
-    this.capabilitiesSnapshot = capabilities;
     this.publishedCapabilitiesSnapshot = capabilities;
     this.capabilities.push(capabilities);
   }

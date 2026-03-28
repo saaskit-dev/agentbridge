@@ -338,6 +338,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       return;
     }
 
+    // When desiredModelSelection is a generic placeholder like 'default', the backend has
+    // already resolved it to a real model. Silently adopt the backend's choice without
+    // showing a "model list changed" notice — this is not a user-initiated change.
+    const isGenericPlaceholder = desiredModelSelection === 'default';
+
     const fallbackModelId = getDefaultDiscoveredModelId(session.capabilities);
     if (!fallbackModelId) {
       return;
@@ -357,7 +362,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       storage.getState().updateSessionModelMode(sessionId, fallbackModelId);
     }
     sync.applySettings({ lastUsedModelMode: fallbackModelId });
-    setFooterNotice(`Model list changed. Switched to the default model '${fallbackModelId}'.`);
+    if (!isGenericPlaceholder) {
+      setFooterNotice(`Model list changed. Switched to the default model '${fallbackModelId}'.`);
+    }
   }, [desiredModelSelection, modelConfigOption, session.capabilities, sessionId]);
 
   // Track whether the initial requested mode has been confirmed by the backend.
