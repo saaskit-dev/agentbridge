@@ -124,7 +124,9 @@ export function kvRoutes(app: Fastify) {
     }
   );
 
-  // PUT /v1/kv - Atomic batch mutation
+  // POST /v1/kv - Atomic batch mutation
+  // Version mismatches are part of normal optimistic concurrency flow for KV
+  // callers, so they return HTTP 200 with success:false instead of HTTP 409.
   app.post(
     '/v1/kv',
     {
@@ -143,26 +145,28 @@ export function kvRoutes(app: Fastify) {
             .max(100),
         }),
         response: {
-          200: z.object({
-            success: z.literal(true),
-            results: z.array(
-              z.object({
-                key: z.string(),
-                version: z.number(),
-              })
-            ),
-          }),
-          409: z.object({
-            success: z.literal(false),
-            errors: z.array(
-              z.object({
-                key: z.string(),
-                error: z.literal('version-mismatch'),
-                version: z.number(),
-                value: z.string().nullable(),
-              })
-            ),
-          }),
+          200: z.union([
+            z.object({
+              success: z.literal(true),
+              results: z.array(
+                z.object({
+                  key: z.string(),
+                  version: z.number(),
+                })
+              ),
+            }),
+            z.object({
+              success: z.literal(false),
+              errors: z.array(
+                z.object({
+                  key: z.string(),
+                  error: z.literal('version-mismatch'),
+                  version: z.number(),
+                  value: z.string().nullable(),
+                })
+              ),
+            }),
+          ]),
           500: z.object({
             error: z.literal('Failed to mutate values'),
           }),
@@ -177,7 +181,7 @@ export function kvRoutes(app: Fastify) {
         const result = await kvMutate({ uid: userId }, mutations);
 
         if (!result.success) {
-          return reply.code(409).send({
+          return reply.send({
             success: false as const,
             errors: result.errors!,
           });

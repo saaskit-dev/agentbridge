@@ -198,7 +198,9 @@ export async function kvBulkGet(
 /**
  * Atomically mutate multiple key-value pairs
  * Supports create, update, and delete operations
- * Uses optimistic concurrency control with version numbers
+ * Uses optimistic concurrency control with version numbers.
+ * Version mismatches are returned as success:false in the JSON payload so
+ * callers can reconcile without surfacing an HTTP error in the client.
  */
 export async function kvMutate(
   credentials: AuthCredentials,
@@ -229,8 +231,12 @@ export async function kvMutate(
       }),
     });
 
-    if (response.status === 409) {
-      const data = (await response.json()) as KvMutateErrorResponse;
+    if (!response.ok) {
+      throw new Error(`Failed to mutate KV values: ${response.status}`);
+    }
+
+    const data = (await response.json()) as KvMutateResponse;
+    if (data.success === false) {
       return {
         ...data,
         errors: data.errors.map(error => ({
@@ -240,11 +246,6 @@ export async function kvMutate(
       };
     }
 
-    if (!response.ok) {
-      throw new Error(`Failed to mutate KV values: ${response.status}`);
-    }
-
-    const data = (await response.json()) as KvMutateSuccessResponse;
     return data;
   });
 }

@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { Encryption } from './encryption/encryption';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { getSessionTrace } from './appTraceStore';
-import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, safeStringify, toError } from '@saaskit-dev/agentbridge/telemetry';
 import { storage } from './storage';
 const logger = new Logger('app/sync/apiSocket');
 
@@ -489,12 +489,17 @@ class ApiSocket {
 
     // Error events
     this.socket.on('connect_error', error => {
-      logger.warn('[SyncSocket] Connection error', { error: String(error) });
+      logger.warn('[SyncSocket] Connection error', { error: safeStringify(error) });
       this.updateStatus('error');
     });
 
     this.socket.on('error', (error: any) => {
-      const message = typeof error === 'object' ? error?.message ?? String(error) : String(error);
+      const message =
+        typeof error === 'object' && error !== null && 'message' in error
+          ? typeof error.message === 'string'
+            ? error.message
+            : safeStringify(error)
+          : safeStringify(error);
       const isAuthError =
         message.includes('authentication') ||
         message.includes('token') ||
