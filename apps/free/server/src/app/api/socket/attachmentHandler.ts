@@ -32,6 +32,80 @@ export function attachmentHandler(
   // The sessionId comes from the payload, so user-scoped connections work fine.
   if (connection.isDaemon) return;
 
+  // -----------------------------------------------------------------------
+  // Download: App requests attachment binary from Daemon
+  // -----------------------------------------------------------------------
+  socket.on(
+    'download-attachment',
+    async (
+      payload: {
+        sessionId: string;
+        attachmentId: string;
+        mimeType: string;
+      },
+      ack: (result: { ok: boolean; data?: Buffer; mimeType?: string; error?: string }) => void
+    ) => {
+      const { sessionId, attachmentId, mimeType } = payload;
+
+      if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+        ack({ ok: false, error: 'unsupported_mime_type' });
+        return;
+      }
+
+      if (!/^[a-f0-9]{32}$/.test(attachmentId)) {
+        ack({ ok: false, error: 'invalid_attachment_id' });
+        return;
+      }
+
+      const session = await db.session.findFirst({
+        where: { id: sessionId, accountId: userId },
+        select: { id: true },
+      });
+      if (!session) {
+        log.warn('[attachmentHandler] download: session not found or not owned', { userId, sessionId });
+        ack({ ok: false, error: 'session_not_found' });
+        return;
+      }
+
+      const daemonConn = eventRouter.findDaemonSession(userId, sessionId);
+      if (!daemonConn) {
+        log.debug('[attachmentHandler] download: daemon not connected', { userId, sessionId });
+        ack({ ok: false, error: 'daemon_offline' });
+        return;
+      }
+
+      log.info('[attachmentHandler] forwarding fetch-attachment to daemon', {
+        userId,
+        sessionId,
+        attachmentId,
+        mimeType,
+      });
+
+      try {
+        const result = await daemonConn.socket
+          .timeout(30_000)
+          .emitWithAck('fetch-attachment', { id: attachmentId, mimeType });
+
+        if (result?.ok && result.data) {
+          ack({ ok: true, data: result.data, mimeType: result.mimeType ?? mimeType });
+        } else {
+          ack({ ok: false, error: result?.error ?? 'daemon_error' });
+        }
+      } catch (err) {
+        log.debug('[attachmentHandler] fetch-attachment failed (timeout or disconnect)', {
+          userId,
+          sessionId,
+          attachmentId,
+          error: String(err),
+        });
+        ack({ ok: false, error: 'daemon_offline' });
+      }
+    }
+  );
+
+  // -----------------------------------------------------------------------
+  // Upload: App sends attachment binary to Daemon
+  // -----------------------------------------------------------------------
   socket.on(
     'upload-attachment',
     async (

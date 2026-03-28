@@ -137,6 +137,9 @@ export class ApiSessionClient extends EventEmitter {
   private fileTransferCallback:
     | ((payload: { id: string; data: Buffer; mimeType: string; filename?: string }, ack: (result: { ok: boolean }) => void) => void)
     | null = null;
+  private fetchAttachmentCallback:
+    | ((payload: { id: string; mimeType: string }, ack: (result: { ok: boolean; data?: Buffer; mimeType?: string; error?: string }) => void) => void)
+    | null = null;
   readonly rpcHandlerManager: RpcHandlerManager;
   private agentStateLock = new AsyncLock();
   private metadataLock = new AsyncLock();
@@ -450,6 +453,15 @@ export class ApiSessionClient extends EventEmitter {
       }
     });
 
+    // Attachment download from Server (forwarded from App request)
+    this.socket.on('fetch-attachment', (payload: { id: string; mimeType: string }, ack: (result: { ok: boolean; data?: Buffer; mimeType?: string; error?: string }) => void) => {
+      if (this.fetchAttachmentCallback) {
+        this.fetchAttachmentCallback(payload, ack);
+      } else {
+        ack({ ok: false, error: 'no_handler' });
+      }
+    });
+
     // DEATH
     this.socket.on('error', error => {
       logger.debug('[API] Socket error:', error);
@@ -496,6 +508,18 @@ export class ApiSessionClient extends EventEmitter {
   ): void {
     this.fileTransferCallback = callback;
     logger.info('[apiSession] onFileTransfer callback registered', {
+      sessionId: this.sessionId,
+    });
+  }
+
+  onFetchAttachment(
+    callback: (
+      payload: { id: string; mimeType: string },
+      ack: (result: { ok: boolean; data?: Buffer; mimeType?: string; error?: string }) => void
+    ) => void
+  ): void {
+    this.fetchAttachmentCallback = callback;
+    logger.info('[apiSession] onFetchAttachment callback registered', {
       sessionId: this.sessionId,
     });
   }

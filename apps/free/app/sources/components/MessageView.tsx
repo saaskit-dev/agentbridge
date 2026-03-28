@@ -154,9 +154,11 @@ const THUMB_RADIUS = 6;
 function AttachmentThumbnails({
   attachments,
   onPress,
+  sessionId,
 }: {
   attachments: AttachmentInfo[];
   onPress: (uri: string) => void;
+  sessionId: string;
 }) {
   const count = attachments.length;
   const size = count === 1 ? THUMB_SIZE_SINGLE : THUMB_SIZE_MULTI;
@@ -164,7 +166,7 @@ function AttachmentThumbnails({
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8, marginBottom: 4 }}>
       {attachments.map(att => (
-        <AttachmentThumb key={att.id} att={att} size={size} onPress={onPress} />
+        <AttachmentThumb key={att.id} att={att} size={size} onPress={onPress} sessionId={sessionId} />
       ))}
     </View>
   );
@@ -179,21 +181,23 @@ function AttachmentThumb({
   att,
   size,
   onPress,
+  sessionId,
 }: {
   att: AttachmentInfo;
   size: number;
   onPress: (uri: string) => void;
+  sessionId: string;
 }) {
   const [uri, setUri] = React.useState(() => getAttachmentLocalUri(att.id, att.mimeType));
 
   React.useEffect(() => {
     if (uri) return;
     let cancelled = false;
-    loadAttachmentUri(att.id, att.mimeType).then(loaded => {
+    loadAttachmentUri(att.id, att.mimeType, sessionId).then(loaded => {
       if (loaded && !cancelled) setUri(loaded);
     });
     return () => { cancelled = true; };
-  }, [att.id, att.mimeType, uri]);
+  }, [att.id, att.mimeType, sessionId, uri]);
 
   return (
     <Pressable
@@ -240,7 +244,7 @@ function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
         {attachments && attachments.length > 0 && (
-          <AttachmentThumbnails attachments={attachments} onPress={setPreviewUri} />
+          <AttachmentThumbnails attachments={attachments} onPress={setPreviewUri} sessionId={props.sessionId} />
         )}
         {props.message.text ? (
           <MarkdownView

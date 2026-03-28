@@ -18,6 +18,7 @@ const fsMock = vi.hoisted(() => ({
   mkdir: vi.fn<() => Promise<void>>(),
   writeFile: vi.fn<() => Promise<void>>(),
   rename: vi.fn<() => Promise<void>>(),
+  readFile: vi.fn<() => Promise<Buffer>>(),
 }));
 
 vi.mock('node:fs/promises', () => ({ default: fsMock }));
@@ -75,11 +76,11 @@ vi.mock('@/utils/MessageQueue2', async importOriginal => {
   return importOriginal();
 });
 
-import { AgentSession, type AgentSessionOpts } from './AgentSession';
-import type { AgentBackend } from './AgentBackend';
+import { AgentSession, type AgentSessionOpts } from '../AgentSession';
+import type { AgentBackend } from '../AgentBackend';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { Credentials } from '@/persistence';
-import type { AgentType, NormalizedMessage } from './types';
+import type { AgentType, NormalizedMessage } from '../types';
 import type { IPCServerMessage } from '@/daemon/ipc/protocol';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 
@@ -388,4 +389,90 @@ describe('AgentSession file-transfer handler wiring', () => {
 
     expect(ack).toHaveBeenCalledWith({ ok: true });
   });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — handleFetchAttachment
+// ---------------------------------------------------------------------------
+
+describe('AgentSession.handleFetchAttachment()', () => {
+  const VALID_ID = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns file data for a valid request', async () => {
+    const fileData = Buffer.from('image-bytes');
+    fsMock.readFile.mockResolvedValue(fileData);
+
+    const session = new TestSession(makeOpts());
+    const ack = vi.fn();
+
+    await session.handleFetchAttachment({ id: VALID_ID, mimeType: 'image/jpeg' }, ack, 'sess-1');
+
+    const dir = session.getAttachmentsDir();
+    expect(fsMock.readFile).toHaveBeenCalledWith(`${dir}/${VALID_ID}.jpg`);
+    expect(ack).toHaveBeenCalledWith({ ok: true, data: fileData, mimeType: 'image/jpeg' });
+  });
+
+  it('returns not_found when file does not exist', async () => {
+    const err = new Error('ENOENT') as NodeJS.ErrnoException;
+    err.code = 'ENOENT';
+    fsMock.readFile.mockRejectedValue(err);
+
+    const session = new TestSession(makeOpts());
+    const ack = vi.fn();
+
+    await session.handleFetchAttachment({ id: VALID_ID, mimeType: 'image/png' }, ack, 'sess-1');
+
+    expect(ack).toHaveBeenCalledWith({ ok: false, error: 'not_found' });
+  });
+
+  it('returns read_error on unexpected IO failure', async () => {
+    fsMock.readFile.mockRejectedValue(new Error('disk error'));
+
+    const session = new TestSession(makeOpts());
+    const ack = vi.fn();
+
+    await session.handleFetchAttachment({ id: VALID_ID, mimeType: 'image/jpeg' }, ack, 'sess-1');
+
+    expect(ack).toHaveBeenCalledWith({ ok: false, error: 'read_error' });
+  });
+
+  it('rejects unsupported MIME type', async () => {
+    const session = new TestSession(makeOpts());
+    const ack = vi.fn();
+
+    await session.handleFetchAttachment({ id: VALID_ID, mimeType: 'image/tiff' }, ack, 'sess-1');
+
+    expect(ack).toHaveBeenCalledWith({ ok: false, error: 'invalid_request' });
+    expect(fsMock.readFile).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'abc',
+    'g'.repeat(32),
+    '',
+    '../escape' + 'a'.repeat(24),
+  ])('rejects invalid id format: %s', async id => {
+    const session = new TestSession(makeOpts());
+    const ack = vi.fn();
+
+    await session.handleFetchAttachment({ id, mimeType: 'image/jpeg' }, ack, 'sess-1');
+
+    expect(ack).toHaveBeenCalledWith({ ok: false, error: 'invalid_request' });
+    expect(fsMock.readFile).not.toHaveBeenCalled();
+  });
+
+  it.each(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])(
+    'reads correct extension for MIME type %s',
+    async mimeType => {
+      fsMock.readFile.mockResolvedValue(Buffer.from('data'));
+      const session = new TestSession(makeOpts());
+      const ack = vi.fn();
+
+      await session.handleFetchAttachment({ id: VALID_ID, mimeType }, ack, 'sess-1');
+
+      expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+    }
+  );
 });

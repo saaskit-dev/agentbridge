@@ -62,17 +62,31 @@ type UploadPayload = {
 
 type AckResult = { ok: boolean; attachmentId?: string; error?: string };
 
+type DownloadPayload = {
+  sessionId: string;
+  attachmentId: string;
+  mimeType: string;
+};
+
+type DownloadAckResult = { ok: boolean; data?: Buffer; mimeType?: string; error?: string };
+
 /** Create a fake socket that captures event handlers */
 function makeSocket() {
-  const handlers: Record<string, (payload: UploadPayload, ack: (r: AckResult) => void) => void> = {};
+  const handlers: Record<string, (...args: unknown[]) => void> = {};
   return {
     on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
-      handlers[event] = handler as (payload: UploadPayload, ack: (r: AckResult) => void) => void;
+      handlers[event] = handler;
     }),
     /** Trigger the upload-attachment event and return the ack result */
     triggerUpload: async (payload: UploadPayload): Promise<AckResult> => {
       return new Promise(resolve => {
-        handlers['upload-attachment']?.(payload, resolve);
+        (handlers['upload-attachment'] as any)?.(payload, resolve);
+      });
+    },
+    /** Trigger the download-attachment event and return the ack result */
+    triggerDownload: async (payload: DownloadPayload): Promise<DownloadAckResult> => {
+      return new Promise(resolve => {
+        (handlers['download-attachment'] as any)?.(payload, resolve);
       });
     },
   };
@@ -133,11 +147,12 @@ describe('attachmentHandler — connection filtering', () => {
     expect(socket.on).toHaveBeenCalledWith('upload-attachment', expect.any(Function));
   });
 
-  it('registers upload-attachment handler for non-daemon session-scoped connections', () => {
+  it('registers upload-attachment and download-attachment handlers for non-daemon session-scoped connections', () => {
     const socket = makeSocket();
     attachmentHandler('user-1', socket as any, makeSessionScopedConnection());
 
     expect(socket.on).toHaveBeenCalledWith('upload-attachment', expect.any(Function));
+    expect(socket.on).toHaveBeenCalledWith('download-attachment', expect.any(Function));
   });
 });
 
@@ -275,5 +290,118 @@ describe('attachmentHandler — daemon relay', () => {
     const forwarded = _timeoutSocket.emitWithAck.mock.calls[0][1] as { data: Buffer };
     expect(Buffer.isBuffer(forwarded.data)).toBe(true);
     expect(Array.from(forwarded.data)).toEqual([1, 2, 3, 4]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — download-attachment
+// ---------------------------------------------------------------------------
+
+const VALID_DOWNLOAD: DownloadPayload = {
+  sessionId: 'sess-123',
+  attachmentId: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
+  mimeType: 'image/jpeg',
+};
+
+describe('attachmentHandler — download MIME validation', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('rejects unsupported MIME type', async () => {
+    const socket = makeSocket();
+    attachmentHandler('user-1', socket as any, makeSessionScopedConnection());
+
+    const result = await socket.triggerDownload({ ...VALID_DOWNLOAD, mimeType: 'image/tiff' });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('unsupported_mime_type');
+  });
+
+  it('rejects invalid attachment id', async () => {
+    const socket = makeSocket();
+    attachmentHandler('user-1', socket as any, makeSessionScopedConnection());
+
+    const result = await socket.triggerDownload({ ...VALID_DOWNLOAD, attachmentId: 'bad-id' });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('invalid_attachment_id');
+  });
+});
+
+describe('attachmentHandler — download session ownership', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns session_not_found when session does not belong to user', async () => {
+    const socket = makeSocket();
+    attachmentHandler('user-1', socket as any, makeSessionScopedConnection());
+    mocks.dbFindFirst.mockResolvedValue(null);
+
+    const result = await socket.triggerDownload(VALID_DOWNLOAD);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('session_not_found');
+  });
+});
+
+describe('attachmentHandler — download daemon relay', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns daemon_offline when daemon is not connected', async () => {
+    const socket = makeSocket();
+    attachmentHandler('user-1', socket as any, makeSessionScopedConnection());
+    mocks.dbFindFirst.mockResolvedValue({ id: 'sess-123' });
+    mocks.findDaemonSession.mockReturnValue(null);
+
+    const result = await socket.triggerDownload(VALID_DOWNLOAD);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('daemon_offline');
+  });
+
+  it('forwards fetch-attachment to daemon and relays data back', async () => {
+    const socket = makeSocket();
+    attachmentHandler('user-1', socket as any, makeSessionScopedConnection());
+
+    mocks.dbFindFirst.mockResolvedValue({ id: 'sess-123' });
+    const fileData = Buffer.from('image-bytes');
+    const daemonResult = { ok: true, data: fileData, mimeType: 'image/jpeg' };
+    const { socket: daemonSocket, _timeoutSocket } = makeDaemonSocket(daemonResult as any);
+    mocks.findDaemonSession.mockReturnValue({ socket: daemonSocket });
+
+    const result = await socket.triggerDownload(VALID_DOWNLOAD);
+
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual(fileData);
+    expect(_timeoutSocket.emitWithAck).toHaveBeenCalledWith(
+      'fetch-attachment',
+      { id: VALID_DOWNLOAD.attachmentId, mimeType: 'image/jpeg' }
+    );
+  });
+
+  it('returns daemon_error when daemon replies with ok:false', async () => {
+    const socket = makeSocket();
+    attachmentHandler('user-1', socket as any, makeSessionScopedConnection());
+
+    mocks.dbFindFirst.mockResolvedValue({ id: 'sess-123' });
+    const { socket: daemonSocket } = makeDaemonSocket({ ok: false } as any);
+    mocks.findDaemonSession.mockReturnValue({ socket: daemonSocket });
+
+    const result = await socket.triggerDownload(VALID_DOWNLOAD);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('daemon_error');
+  });
+
+  it('returns daemon_offline on timeout', async () => {
+    const socket = makeSocket();
+    attachmentHandler('user-1', socket as any, makeSessionScopedConnection());
+
+    mocks.dbFindFirst.mockResolvedValue({ id: 'sess-123' });
+    const { socket: daemonSocket } = makeDaemonSocket(new Error('timed out'));
+    mocks.findDaemonSession.mockReturnValue({ socket: daemonSocket });
+
+    const result = await socket.triggerDownload(VALID_DOWNLOAD);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('daemon_offline');
   });
 });

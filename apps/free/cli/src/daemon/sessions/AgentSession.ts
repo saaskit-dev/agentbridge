@@ -442,6 +442,42 @@ export abstract class AgentSession<TMode> {
   }
 
   /**
+   * Handles a fetch-attachment request from the Server (App wants to download an attachment).
+   * Reads the file from disk and returns it via ack.
+   */
+  async handleFetchAttachment(
+    payload: { id: string; mimeType: string },
+    ack: (result: { ok: boolean; data?: Buffer; mimeType?: string; error?: string }) => void,
+    sessionId: string
+  ): Promise<void> {
+    const ext = MIME_TO_EXT[payload.mimeType];
+    if (!ext || !/^[a-f0-9]{32}$/.test(payload.id)) {
+      logger.warn('[AgentSession] fetch-attachment rejected: invalid mimeType or id', {
+        mimeType: payload.mimeType,
+        id: payload.id,
+        sessionId,
+      });
+      ack({ ok: false, error: 'invalid_request' });
+      return;
+    }
+    const filePath = path.join(this.attachmentsDir, `${payload.id}.${ext}`);
+    try {
+      const data = await fs.readFile(filePath);
+      ack({ ok: true, data, mimeType: payload.mimeType });
+      logger.debug('[AgentSession] attachment sent', { id: payload.id, ext, bytes: data.length, sessionId });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') {
+        ack({ ok: false, error: 'not_found' });
+        logger.debug('[AgentSession] fetch-attachment: file not found', { id: payload.id, sessionId });
+      } else {
+        logger.error('[AgentSession] fetch-attachment read failed', toError(err), { id: payload.id, sessionId });
+        ack({ ok: false, error: 'read_error' });
+      }
+    }
+  }
+
+  /**
    * Write a received attachment to disk (atomic: tmp → rename).
    * Called from handleFileTransfer.
    */
@@ -602,6 +638,10 @@ export abstract class AgentSession<TMode> {
           newSession.onFileTransfer((payload, ack) =>
             this.handleFileTransfer(payload, ack, newSession.sessionId)
           );
+          // Re-register fetch-attachment handler on new session socket
+          newSession.onFetchAttachment((payload, ack) =>
+            this.handleFetchAttachment(payload, ack, newSession.sessionId)
+          );
           this.backend?.onSessionChange?.(newSession);
           this.registerSessionRpcHandlers();
           registerKillSessionHandler(this.session.rpcHandlerManager, async () => {
@@ -668,6 +708,10 @@ export abstract class AgentSession<TMode> {
     // Register file-transfer handler (Server forwards App's uploaded attachment here)
     this.session.onFileTransfer((payload, ack) =>
       this.handleFileTransfer(payload, ack, this.session.sessionId)
+    );
+    // Register fetch-attachment handler (Server forwards App's download request here)
+    this.session.onFetchAttachment((payload, ack) =>
+      this.handleFetchAttachment(payload, ack, this.session.sessionId)
     );
 
     // Replay any messages that arrived before initialize() completed

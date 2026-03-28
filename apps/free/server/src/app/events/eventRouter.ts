@@ -585,6 +585,7 @@ export function buildNewMessageUpdate(
     id: string;
     seq: number;
     content: any;
+    traceId?: string | null;
     createdAt: Date;
     updatedAt: Date;
   },
@@ -605,6 +606,12 @@ export function buildNewMessageUpdate(
         content: message.content,
         createdAt: message.createdAt.getTime(),
         updatedAt: message.updatedAt.getTime(),
+        // Propagate DB traceId so the real-time new-message path and the
+        // fetch-messages path both deliver the same traceId to the App.
+        // Without this, real-time chunks had no traceId while fetched chunks
+        // had the DB traceId, causing the App reducer to see inconsistent
+        // traceIds within the same AI turn and refuse to merge text blocks.
+        ...(message.traceId ? { traceId: message.traceId } : {}),
       },
     },
     createdAt: Date.now(),

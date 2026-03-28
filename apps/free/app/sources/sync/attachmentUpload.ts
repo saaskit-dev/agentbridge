@@ -209,12 +209,14 @@ export function getAttachmentLocalUri(attachmentId: string, mimeType: string): s
 }
 
 /**
- * Async loader — tries the sync path first, then falls back to IndexedDB on web.
+ * Async loader — tries the sync path first, then falls back to IndexedDB on web,
+ * then falls back to downloading from the daemon via server relay.
  * Warms the in-memory cache so subsequent sync lookups succeed.
  */
 export async function loadAttachmentUri(
   attachmentId: string,
-  mimeType: string
+  mimeType: string,
+  sessionId?: string
 ): Promise<string | undefined> {
   const sync = getAttachmentLocalUri(attachmentId, mimeType);
   if (sync) return sync;
@@ -231,7 +233,86 @@ export async function loadAttachmentUri(
     }
   }
 
+  // Last resort: download from daemon via server
+  if (sessionId) {
+    return downloadAttachment(sessionId, attachmentId, mimeType);
+  }
+
   return undefined;
+}
+
+/** Track in-flight downloads to avoid duplicate requests for the same attachment. */
+const downloadInflight = new Map<string, Promise<string | undefined>>();
+/** Negative cache: failed attachment IDs are suppressed for 60 seconds to avoid request storms. */
+const downloadFailed = new Map<string, number>();
+const DOWNLOAD_RETRY_COOLDOWN_MS = 60_000;
+
+/**
+ * Download an attachment from the daemon via server relay.
+ * Persists locally so future loads hit the fast path.
+ */
+async function downloadAttachment(
+  sessionId: string,
+  attachmentId: string,
+  mimeType: string
+): Promise<string | undefined> {
+  const existing = downloadInflight.get(attachmentId);
+  if (existing) return existing;
+
+  // Negative cache: skip if recently failed
+  const failedAt = downloadFailed.get(attachmentId);
+  if (failedAt && Date.now() - failedAt < DOWNLOAD_RETRY_COOLDOWN_MS) return undefined;
+
+  const promise = (async () => {
+    try {
+      const ack = await apiSocket.emitWithAckTimeout<{
+        ok: boolean;
+        data?: ArrayBuffer;
+        mimeType?: string;
+        error?: string;
+      }>(
+        'download-attachment',
+        { sessionId, attachmentId, mimeType },
+        30_000
+      );
+
+      if (!ack.ok || !ack.data) {
+        logger.debug('[downloadAttachment] server returned not-ok', {
+          attachmentId,
+          error: ack.error,
+        });
+        downloadFailed.set(attachmentId, Date.now());
+        return undefined;
+      }
+
+      // Socket.IO may return a Buffer (Node polyfill) on native — normalize to ArrayBuffer
+      const bytes = ack.data instanceof ArrayBuffer ? ack.data : new Uint8Array(ack.data).buffer;
+      const persistedUri = await persistAttachmentFile(
+        '', // compressedUri not used when bytes are provided
+        attachmentId,
+        ack.mimeType ?? mimeType,
+        sessionId,
+        bytes
+      );
+      localUriCache.set(attachmentId, persistedUri);
+      downloadFailed.delete(attachmentId);
+      logger.info('[downloadAttachment] attachment downloaded and persisted', {
+        attachmentId,
+        sessionId,
+        bytes: bytes.byteLength,
+      });
+      return persistedUri;
+    } catch (err) {
+      logger.debug('[downloadAttachment] failed', err, { attachmentId, sessionId });
+      downloadFailed.set(attachmentId, Date.now());
+      return undefined;
+    } finally {
+      downloadInflight.delete(attachmentId);
+    }
+  })();
+
+  downloadInflight.set(attachmentId, promise);
+  return promise;
 }
 
 /**
@@ -260,8 +341,17 @@ async function persistAttachmentFile(
   }
   const dest = attachmentFile(attachmentId, mimeType);
   if (!dest.exists) {
-    const src = new File(compressedUri);
-    src.copy(dest);
+    if (bytes) {
+      // Download path: atomic write via tmp → move (mirrors daemon-side pattern)
+      const tmp = new File(getAttachmentDir(), `${attachmentId}.tmp`);
+      if (tmp.exists) tmp.delete();
+      tmp.create();
+      tmp.write(new Uint8Array(bytes));
+      tmp.move(dest);
+    } else {
+      const src = new File(compressedUri);
+      src.copy(dest);
+    }
   }
   await messageDB.kvSet(`session-attachments:${sessionId}`, attachmentId, mimeType);
   return dest.uri;

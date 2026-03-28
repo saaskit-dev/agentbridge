@@ -139,6 +139,10 @@ export interface ServerToClientEvents {
     payload: { id: string; sessionId: string; data: Buffer; mimeType: string; filename?: string },
     ack: (result: { ok: boolean }) => void
   ) => void;
+  'fetch-attachment': (
+    payload: { id: string; mimeType: string },
+    ack: (result: { ok: boolean; data?: Buffer; mimeType?: string; error?: string }) => void
+  ) => void;
 }
 
 /**
