@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
-import { useSessionActiveToolCallCount } from '@/sync/storage';
+import { useSessionActiveToolCallCount, useMachine } from '@/sync/storage';
 
 export type SessionState =
   | 'disconnected'
@@ -9,7 +9,8 @@ export type SessionState =
   | 'thinking'
   | 'tool_running'
   | 'waiting'
-  | 'permission_required';
+  | 'permission_required'
+  | 'recovery_failed';
 
 export interface SessionStatus {
   state: SessionState;
@@ -27,15 +28,36 @@ export interface SessionStatus {
  */
 export function useSessionStatus(session: Session): SessionStatus {
   const activeToolCallCount = useSessionActiveToolCallCount(session.id);
+  const machine = useMachine(session.metadata?.machineId ?? '');
   const isOnline = session.presence === 'online';
   const hasPermissions =
     session.agentState?.requests && Object.keys(session.agentState.requests).length > 0
       ? true
       : false;
 
+  const isRecoveryFailed = React.useMemo(() => {
+    const failures = machine?.daemonState?.failedRecoveries as
+      | Array<{ sessionId: string }>
+      | undefined;
+    if (!failures) return false;
+    return failures.some(f => f.sessionId === session.id);
+  }, [machine?.daemonState?.failedRecoveries, session.id]);
+
   const vibingMessage = React.useMemo(() => {
     return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
   }, [isOnline, hasPermissions, session.thinking]);
+
+  // recovery_failed: daemon tried to recover this session but failed
+  if (isRecoveryFailed) {
+    return {
+      state: 'recovery_failed',
+      isConnected: false,
+      statusText: t('status.recoveryFailed'),
+      shouldShowStatus: true,
+      statusColor: '#FF3B30',
+      statusDotColor: '#FF3B30',
+    };
+  }
 
   // suspended: daemon went offline while a turn was in progress
   if (!isOnline && session.thinking) {

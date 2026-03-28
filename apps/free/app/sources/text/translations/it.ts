@@ -89,6 +89,7 @@ export const it: TranslationStructure = {
     offline: 'offline',
     lastSeen: ({ time }: { time: string }) => `visto l'ultima volta ${time}`,
     permissionRequired: 'permesso richiesto',
+    recoveryFailed: 'recupero fallito',
     activeNow: 'Attivo ora',
     unknown: 'sconosciuto',
     machinesOnline: ({ count }: { count: number }) =>
@@ -427,6 +428,7 @@ export const it: TranslationStructure = {
     viewMachineSubtitle: 'Visualizza dettagli e sessioni della macchina',
     killSessionSubtitle: 'Termina immediatamente la sessione',
     archiveSessionSubtitle: 'Archivia questa sessione e fermala',
+    recoveryFailedArchiveSubtitle: 'Questa sessione non è riuscita a recuperarsi dopo un crash',
     metadata: 'Metadati',
     host: 'Host',
     path: 'Percorso',

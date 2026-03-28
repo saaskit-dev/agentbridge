@@ -92,6 +92,7 @@ export const ja: TranslationStructure = {
     offline: 'オフライン',
     lastSeen: ({ time }: { time: string }) => `最終アクセス: ${time}`,
     permissionRequired: '権限が必要です',
+    recoveryFailed: 'リカバリ失敗',
     activeNow: 'アクティブ',
     unknown: '不明',
     machinesOnline: ({ count }: { count: number }) =>
@@ -425,6 +426,7 @@ export const ja: TranslationStructure = {
     viewMachineSubtitle: 'マシンの詳細とセッションを表示',
     killSessionSubtitle: 'セッションを即座に終了',
     archiveSessionSubtitle: 'このセッションをアーカイブして停止',
+    recoveryFailedArchiveSubtitle: 'クラッシュ後にセッションのリカバリに失敗しました',
     metadata: 'メタデータ',
     host: 'ホスト',
     path: 'パス',

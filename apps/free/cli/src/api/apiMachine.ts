@@ -361,6 +361,7 @@ export class ApiMachineClient {
         pid: process.pid,
         httpPort: this.machine.daemonState?.httpPort,
         startedAt: Date.now(),
+        failedRecoveries: undefined, // Clear from previous daemon instance
       })).catch(err => {
         logger.warn('[API MACHINE] Failed to update daemon state on connect', {
           error: err instanceof Error ? err.message : String(err),

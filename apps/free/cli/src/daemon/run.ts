@@ -593,6 +593,7 @@ export async function startDaemon(): Promise<void> {
       });
       if (hasRecoverable) ipcServer!.beginRecovery();
       let recoveredCount = 0;
+      const failedRecoveries: { sessionId: string; error: string; failedAt: number }[] = [];
       for (const data of persisted) {
         if (data.daemonInstanceId === daemonInstanceId) continue; // ours, skip
 
@@ -648,9 +649,15 @@ export async function startDaemon(): Promise<void> {
 
           recoveredCount++;
         } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
           logger.error('[DAEMON] Session recovery failed, retaining snapshot for retry', toError(err), {
             sessionId: data.sessionId,
             agentType: data.agentType,
+          });
+          failedRecoveries.push({
+            sessionId: data.sessionId,
+            error: errorMessage,
+            failedAt: Date.now(),
           });
         }
       }
@@ -658,7 +665,21 @@ export async function startDaemon(): Promise<void> {
       if (recoveredCount > 0) {
         logger.info('[DAEMON] Session recovery complete', {
           recovered: recoveredCount,
+          failed: failedRecoveries.length,
           total: persisted.length,
+        });
+      }
+
+      // Notify app about recovery failures via DaemonState
+      if (failedRecoveries.length > 0) {
+        apiMachine.updateDaemonState(state => ({
+          ...(state ?? { status: 'running' }),
+          failedRecoveries,
+        })).catch(err => {
+          logger.warn('[DAEMON] Failed to report recovery failures to server', {
+            error: err instanceof Error ? err.message : String(err),
+            failedCount: failedRecoveries.length,
+          });
         });
       }
     }

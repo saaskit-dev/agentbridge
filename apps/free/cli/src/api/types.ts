@@ -323,6 +323,15 @@ export const DaemonStateSchema = z.object({
       z.string(), // Forward compatibility
     ])
     .optional(),
+  failedRecoveries: z
+    .array(
+      z.object({
+        sessionId: z.string(),
+        error: z.string(),
+        failedAt: z.number(),
+      })
+    )
+    .optional(),
 });
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>;

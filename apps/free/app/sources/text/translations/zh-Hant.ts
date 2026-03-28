@@ -91,6 +91,7 @@ export const zhHant: TranslationStructure = {
     offline: '離線',
     lastSeen: ({ time }: { time: string }) => `最後活躍時間 ${time}`,
     permissionRequired: '需要權限',
+    recoveryFailed: '恢復失敗',
     activeNow: '目前活躍',
     unknown: '未知',
     machinesOnline: ({ count }: { count: number }) =>
@@ -416,6 +417,7 @@ export const zhHant: TranslationStructure = {
     viewMachineSubtitle: '查看裝置詳情和工作階段',
     killSessionSubtitle: '立即終止工作階段',
     archiveSessionSubtitle: '封存此工作階段並停止它',
+    recoveryFailedArchiveSubtitle: '此工作階段在當機後恢復失敗',
     metadata: '中繼資料',
     host: '主機',
     path: '路徑',

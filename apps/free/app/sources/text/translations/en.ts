@@ -104,6 +104,7 @@ export const en: TranslationStructure = {
     offline: 'offline',
     lastSeen: ({ time }: { time: string }) => `last seen ${time}`,
     permissionRequired: 'permission required',
+    recoveryFailed: 'recovery failed',
     activeNow: 'Active now',
     unknown: 'unknown',
     machinesOnline: ({ count }: { count: number }) =>
@@ -437,6 +438,7 @@ export const en: TranslationStructure = {
     viewMachineSubtitle: 'View machine details and sessions',
     killSessionSubtitle: 'Immediately terminate the session',
     archiveSessionSubtitle: 'Archive this session and stop it',
+    recoveryFailedArchiveSubtitle: 'This session failed to recover after a crash',
     metadata: 'Metadata',
     host: 'Host',
     path: 'Path',

@@ -16,7 +16,7 @@ import { layout } from '@/components/layout';
 import { Typography } from '@/constants/Typography';
 import { useFreeAction } from '@/hooks/useFreeAction';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete, sessionRestart } from '@/sync/ops';
+import { sessionKill, sessionDelete, sessionRestart, sessionArchiveViaServer } from '@/sync/ops';
 import { useSession, useIsDataReady } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
@@ -190,6 +190,27 @@ function SessionInfoContent({ session }: { session: Session }) {
       },
     ]);
   }, [performArchive]);
+
+  // Archive recovery-failed sessions via server HTTP (no daemon RPC available)
+  const [, performArchiveViaServer] = useFreeAction(async () => {
+    const result = await sessionArchiveViaServer(session.id);
+    if (!result.success) {
+      throw new FreeError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+    }
+    router.back();
+    router.back();
+  });
+
+  const handleArchiveRecoveryFailed = useCallback(() => {
+    Modal.alert(t('sessionInfo.archiveSession'), t('sessionInfo.archiveSessionConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('sessionInfo.archiveSession'),
+        style: 'destructive',
+        onPress: performArchiveViaServer,
+      },
+    ]);
+  }, [performArchiveViaServer]);
 
   // Use FreeAction for force restart
   const [restartingSession, performRestart] = useFreeAction(async () => {
@@ -400,12 +421,20 @@ function SessionInfoContent({ session }: { session: Session }) {
               disabled={restartingSession}
             />
           )}
-          {sessionStatus.isConnected && (
+          {(sessionStatus.isConnected || sessionStatus.state === 'recovery_failed') && (
             <Item
               title={t('sessionInfo.archiveSession')}
-              subtitle={t('sessionInfo.archiveSessionSubtitle')}
+              subtitle={
+                sessionStatus.state === 'recovery_failed'
+                  ? t('sessionInfo.recoveryFailedArchiveSubtitle')
+                  : t('sessionInfo.archiveSessionSubtitle')
+              }
               icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
-              onPress={handleArchiveSession}
+              onPress={
+                sessionStatus.state === 'recovery_failed'
+                  ? handleArchiveRecoveryFailed
+                  : handleArchiveSession
+              }
             />
           )}
           {session.status === 'archived' && (

@@ -394,6 +394,7 @@ export const ru: TranslationStructure = {
     viewMachineSubtitle: 'Посмотреть детали машины и сессии',
     killSessionSubtitle: 'Немедленно завершить сессию',
     archiveSessionSubtitle: 'Архивировать эту сессию и остановить её',
+    recoveryFailedArchiveSubtitle: 'Не удалось восстановить сессию после сбоя',
     metadata: 'Метаданные',
     host: 'Хост',
     path: 'Путь',
@@ -462,6 +463,7 @@ export const ru: TranslationStructure = {
     offline: 'offline',
     lastSeen: ({ time }: { time: string }) => `в сети ${time}`,
     permissionRequired: 'требуется разрешение',
+    recoveryFailed: 'восстановление не удалось',
     activeNow: 'Активен сейчас',
     unknown: 'неизвестно',
     machinesOnline: ({ count }: { count: number }) =>

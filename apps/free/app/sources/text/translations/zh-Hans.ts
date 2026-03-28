@@ -91,6 +91,7 @@ export const zhHans: TranslationStructure = {
     offline: '离线',
     lastSeen: ({ time }: { time: string }) => `最后活跃时间 ${time}`,
     permissionRequired: '需要权限',
+    recoveryFailed: '恢复失败',
     activeNow: '当前活跃',
     unknown: '未知',
     machinesOnline: ({ count }: { count: number }) =>
@@ -416,6 +417,7 @@ export const zhHans: TranslationStructure = {
     viewMachineSubtitle: '查看设备详情和会话',
     killSessionSubtitle: '立即终止会话',
     archiveSessionSubtitle: '归档此会话并停止它',
+    recoveryFailedArchiveSubtitle: '此会话在崩溃后恢复失败',
     metadata: '元数据',
     host: '主机',
     path: '路径',

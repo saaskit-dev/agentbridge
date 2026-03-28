@@ -610,6 +610,28 @@ export async function sessionRipgrep(
 }
 
 /**
+ * Archive a session directly via server HTTP API.
+ * Used when daemon RPC is unavailable (e.g. recovery failed sessions).
+ */
+export async function sessionArchiveViaServer(
+  sessionId: string
+): Promise<{ success: boolean; message?: string }> {
+  logger.info('[ops] sessionArchiveViaServer', { sessionId });
+  try {
+    const response = await apiSocket.request(`/v1/sessions/${sessionId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      return { success: false, message: `Server returned ${response.status}: ${text}` };
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, message: safeStringify(error) };
+  }
+}
+
+/**
  * Kill the session process immediately
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
