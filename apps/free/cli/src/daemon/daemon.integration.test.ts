@@ -463,7 +463,7 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
   });
 
   it(
-    'should clean up invalid persisted sessions that fail recovery',
+    'should retain persisted session snapshot when recovery fails',
     { timeout: 30_000 },
     async () => {
       // 1. Manually write a persisted session with invalid data (bad sessionId)
@@ -499,11 +499,16 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
       const newState = await readDaemonState();
       daemonPid = newState!.pid;
 
-      // 3. Recovery attempt should fail (invalid data) and file should be cleaned up
+      // 3. Recovery attempt should fail (invalid data) but snapshot is retained
+      //    for retry — only expired by age (24h TTL), not by failure.
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       const remainingFiles = readdirSync(daemonSessionsDir).filter(f => f.includes('bad-session'));
-      expect(remainingFiles).toHaveLength(0);
+      expect(remainingFiles).toHaveLength(1);
+
+      // Clean up the test file
+      const { unlinkSync } = require('fs');
+      unlinkSync(join(daemonSessionsDir, 'bad-session-test.json'));
     }
   );
 });

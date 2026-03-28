@@ -648,11 +648,10 @@ export async function startDaemon(): Promise<void> {
 
           recoveredCount++;
         } catch (err) {
-          logger.error('[DAEMON] Session recovery failed', toError(err), {
+          logger.error('[DAEMON] Session recovery failed, retaining snapshot for retry', toError(err), {
             sessionId: data.sessionId,
             agentType: data.agentType,
           });
-          await erasePersistedSession(data.sessionId);
         }
       }
       if (hasRecoverable) ipcServer!.endRecovery();
@@ -986,3 +985,4 @@ export async function startDaemon(): Promise<void> {
     process.exit(1);
   }
 }
+
