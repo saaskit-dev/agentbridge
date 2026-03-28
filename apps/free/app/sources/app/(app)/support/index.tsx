@@ -10,34 +10,46 @@ import { Modal } from '@/modal';
 import { Text } from '@/components/StyledText';
 import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { config } from '@/config';
+import { t } from '@/text';
 
-const TIERS = [
-  {
-    id: 'coffee_monthly',
-    name: '咖啡伙伴',
-    price: '¥12',
-    period: '/月',
-    description: '一杯咖啡，让开发更有动力',
-    features: ['应用内无赞助标识', '优先获得新功能体验'],
-  },
-  {
-    id: 'builder_monthly',
-    name: '共建者',
-    price: '¥38',
-    period: '/月',
-    description: '与我们一起塑造未来的编程方式',
-    features: ['所有咖啡伙伴权益', '专属 Discord 频道', '每月一对一答疑'],
-    recommended: true,
-  },
-  {
-    id: 'pioneer_monthly',
-    name: '先行者',
-    price: '¥98',
-    period: '/月',
-    description: '为先锋而生的专属体验',
-    features: ['所有共建者权益', '提前体验实验性功能', '定制化需求优先实现', '专属技术咨询'],
-  },
-];
+function getTiers() {
+  return [
+    {
+      id: 'coffee_monthly',
+      name: t('support.tierCoffee'),
+      price: t('support.tierCoffeePrice'),
+      period: t('support.tierCoffeePeriod'),
+      description: t('support.tierCoffeeDescription'),
+      features: [t('support.tierCoffeeFeature1'), t('support.tierCoffeeFeature2')],
+    },
+    {
+      id: 'builder_monthly',
+      name: t('support.tierBuilder'),
+      price: t('support.tierBuilderPrice'),
+      period: t('support.tierBuilderPeriod'),
+      description: t('support.tierBuilderDescription'),
+      features: [
+        t('support.tierBuilderFeature1'),
+        t('support.tierBuilderFeature2'),
+        t('support.tierBuilderFeature3'),
+      ],
+      recommended: true,
+    },
+    {
+      id: 'pioneer_monthly',
+      name: t('support.tierPioneer'),
+      price: t('support.tierPioneerPrice'),
+      period: t('support.tierPioneerPeriod'),
+      description: t('support.tierPioneerDescription'),
+      features: [
+        t('support.tierPioneerFeature1'),
+        t('support.tierPioneerFeature2'),
+        t('support.tierPioneerFeature3'),
+        t('support.tierPioneerFeature4'),
+      ],
+    },
+  ];
+}
 
 export default function SupportScreen() {
   const { theme } = useUnistyles();
@@ -46,7 +58,8 @@ export default function SupportScreen() {
   const [selectedId, setSelectedId] = React.useState('builder_monthly');
   const [isPurchasing, setIsPurchasing] = React.useState(false);
 
-  const selectedTier = TIERS.find(t => t.id === selectedId)!;
+  const TIERS = getTiers();
+  const selectedTier = TIERS.find(tier => tier.id === selectedId)!;
   const btnBg = theme.colors.button.primary.background;
   const btnText = theme.colors.button.primary.tint;
   const accent = '#4F46E5';
@@ -57,16 +70,16 @@ export default function SupportScreen() {
     try {
       const result = await sync.purchaseProduct(selectedTier.id);
       if (result.success) {
-        Modal.alert('感谢支持', `您已成为「${selectedTier.name}」，感谢您的支持！`);
+        Modal.alert(t('support.thankYouTitle'), t('support.purchaseSuccess', { name: selectedTier.name }));
       } else if (
         result.error &&
         !result.error.includes('cancelled') &&
         !result.error.includes('取消')
       ) {
-        Modal.alert('购买失败', result.error);
+        Modal.alert(t('support.purchaseFailed'), result.error);
       }
     } catch (error: any) {
-      Modal.alert('购买失败', error?.message || '未知错误，请重试');
+      Modal.alert(t('support.purchaseFailed'), error?.message || t('support.unknownError'));
     } finally {
       setIsPurchasing(false);
     }
@@ -76,7 +89,7 @@ export default function SupportScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
         <StatusBar style={theme.dark ? 'light' : 'dark'} />
-        <Stack.Screen options={{ title: '赞赏', headerShown: true }} />
+        <Stack.Screen options={{ title: t('support.title'), headerShown: true }} />
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 }}>
           <Ionicons name="checkmark-circle" size={64} color="#34C759" />
           <Text
@@ -88,7 +101,7 @@ export default function SupportScreen() {
               marginBottom: 8,
             }}
           >
-            感谢您的支持
+            {t('support.thankYouMessage')}
           </Text>
           <Text
             style={{
@@ -98,7 +111,7 @@ export default function SupportScreen() {
               lineHeight: 22,
             }}
           >
-            您是尊贵的共建者，正是因为有您的支持，我们才能持续创新。
+            {t('support.thankYouDescription')}
           </Text>
         </View>
       </View>
@@ -108,17 +121,17 @@ export default function SupportScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
       <StatusBar style={theme.dark ? 'light' : 'dark'} />
-      <Stack.Screen options={{ title: '赞赏', headerShown: true }} />
+      <Stack.Screen options={{ title: t('support.title'), headerShown: true }} />
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 48 }}>
         <View style={{ marginBottom: 24 }}>
           <Text
             style={{ fontSize: 22, fontWeight: '700', color: theme.colors.text, marginBottom: 6 }}
           >
-            支持开发
+            {t('support.supportDevelopment')}
           </Text>
           <Text style={{ fontSize: 14, color: theme.colors.textSecondary, lineHeight: 20 }}>
-            您的支持是我们持续创新的动力。选择一个适合您的方式，与我们一起塑造编程的未来。
+            {t('support.supportDescription')}
           </Text>
         </View>
 
@@ -148,7 +161,7 @@ export default function SupportScreen() {
                       marginBottom: 10,
                     }}
                   >
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#fff' }}>推荐</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#fff' }}>{t('support.recommended')}</Text>
                   </View>
                 )}
                 <View
@@ -213,8 +226,8 @@ export default function SupportScreen() {
         >
           <Text style={{ fontSize: 16, fontWeight: '600', color: btnText }}>
             {isPurchasing
-              ? '处理中...'
-              : `加入 ${selectedTier.name} · ${selectedTier.price}${selectedTier.period}`}
+              ? t('support.processing')
+              : t('support.joinTier', { name: selectedTier.name, price: selectedTier.price, period: selectedTier.period })}
           </Text>
         </Pressable>
 
@@ -226,7 +239,7 @@ export default function SupportScreen() {
             marginTop: 10,
           }}
         >
-          可随时取消 · 安全支付
+          {t('support.cancellableSecurePayment')}
         </Text>
 
         {__DEV__ && (

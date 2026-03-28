@@ -113,12 +113,12 @@ export default function Restore() {
       <View style={styles.container}>
         <View style={styles.contentWrapper}>
           <Text style={styles.instructionText}>
-            Enter your secret key to restore access to your account.
+            {t('restore.enterSecretKeyInstruction')}
           </Text>
 
           <TextInput
             style={styles.textInput}
-            placeholder="XXXXX-XXXXX-XXXXX..."
+            placeholder={t('restore.secretKeyPlaceholder')}
             placeholderTextColor={theme.colors.input.placeholder}
             value={restoreKey}
             onChangeText={setRestoreKey}

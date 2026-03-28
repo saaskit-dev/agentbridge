@@ -382,8 +382,8 @@ export const OAuthViewUnsupported = React.memo((props: { name: string; command?:
 
   return (
     <View style={styles.unsupportedContainer}>
-      <Text style={styles.unsupportedTitle}>Connect {props.name}</Text>
-      <Text style={styles.unsupportedText}>Run the following command in your terminal:</Text>
+      <Text style={styles.unsupportedTitle}>{t('connect.connectName', { name: props.name })}</Text>
+      <Text style={styles.unsupportedText}>{t('connect.runCommandInTerminal')}</Text>
       <View style={styles.terminalContainer}>
         <Text style={styles.terminalCommand}>
           <Text style={styles.terminalPrompt}>$ </Text>

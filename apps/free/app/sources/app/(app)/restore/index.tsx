@@ -137,10 +137,13 @@ export default function Restore() {
       <View style={styles.container}>
         <View style={{ justifyContent: 'flex-end' }}>
           <Text style={styles.secondInstructionText}>
-            1. Open Free on your mobile device{'\n'}
-            2. Go to Settings → Account{'\n'}
-            3. Tap "Link New Device"{'\n'}
-            4. Scan this QR code
+            {t('restore.qrStep1')}
+            {'\n'}
+            {t('restore.qrStep2')}
+            {'\n'}
+            {t('restore.qrStep3')}
+            {'\n'}
+            {t('restore.qrStep4')}
           </Text>
         </View>
         {!authReady && (
@@ -166,7 +169,7 @@ export default function Restore() {
         )}
         <View style={{ flexGrow: 4, paddingTop: 30 }}>
           <RoundButton
-            title="Restore with Secret Key Instead"
+            title={t('restore.restoreWithSecretKeyInstead')}
             display="inverted"
             onPress={() => {
               router.push('/restore/manual');

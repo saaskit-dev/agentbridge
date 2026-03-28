@@ -258,7 +258,7 @@ function SessionInfoContent({ session }: { session: Session }) {
 
   const handleCopyUpdateCommand = useCallback(async () => {
     const updateCommand =
-      'curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh | bash';
+      'npm install -g @saaskit-dev/free';
     try {
       await Clipboard.setStringAsync(updateCommand);
       Modal.alert(t('common.success'), updateCommand);
