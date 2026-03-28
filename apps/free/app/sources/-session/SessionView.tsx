@@ -19,12 +19,10 @@ import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSe
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import {
   sessionAbort,
-  sessionRunCommand,
   sessionSetConfig,
   sessionSetMode,
   sessionSetModel,
 } from '@/sync/ops';
-import { resolveCommandInput } from '@/sync/suggestionCommands';
 import {
   storage,
   useIsDataReady,
@@ -778,14 +776,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
         onConfigOptionChange={updateConfigOption}
         isSettingsBusy={isSettingsBusy}
         onRunCommand={commandId => {
-          setIsSettingsBusy(true);
-          void sessionRunCommand(sessionId, commandId)
-            .catch(error => {
-              logger.error('Failed to run command', toError(error), { sessionId, commandId });
-              Modal.alert(t('common.error'), 'Failed to run command');
-            })
-            .finally(() => {
-              setIsSettingsBusy(false);
+          void sync
+            .sendMessage(sessionId, `/${commandId}`)
+            .then(result => {
+              if (!result.ok) {
+                Modal.alert(
+                  t('common.error'),
+                  result.reason === 'server_disconnected'
+                    ? t('session.sendBlockedServerDisconnected')
+                    : t('session.sendBlockedDaemonOffline')
+                );
+              }
             });
         }}
         metadata={session.metadata}
@@ -799,25 +800,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
           const hasAttachments = pendingAttachments.some(a => a.ref && !a.error);
           if (message.trim() || hasAttachments) {
             const trimmedMessage = message.trim();
-            const command = resolveCommandInput(sessionId, trimmedMessage);
-            if (command?.commandId && trimmedMessage === `/${command.command}`) {
-              setMessage('');
-              clearDraft();
-              setFooterNotice(null);
-              setIsSettingsBusy(true);
-              void sessionRunCommand(sessionId, command.commandId)
-                .catch(error => {
-                  logger.error('Failed to run slash command', toError(error), {
-                    sessionId,
-                    commandId: command.commandId,
-                  });
-                  Modal.alert(t('common.error'), 'Failed to run command');
-                })
-                .finally(() => {
-                  setIsSettingsBusy(false);
-                });
-              return;
-            }
+            // Slash commands are sent as regular messages so the user sees their own
+            // message bubble (e.g. "/compact") and the agent receives the text naturally.
+            // No special RPC path needed — ACP agents handle "/" commands in prompts.
             // Collect successfully uploaded attachment refs
             const attachmentRefs = pendingAttachments
               .filter(a => a.ref && !a.error)
