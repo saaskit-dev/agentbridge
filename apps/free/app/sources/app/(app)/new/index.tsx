@@ -237,11 +237,17 @@ function NewSessionWizard() {
   // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below.
   React.useEffect(() => {
     let cancelled = false;
+    // Clear stale capabilities immediately so the UI does not show previous machine/agent data.
+    setCachedCapabilities(null);
     setCacheHydrated(false);
 
+    /**
+     * Load cached capabilities for the currently selected machine and agent.
+     * It first uses local SQLite for fast paint, then hydrates from remote KV.
+     */
     // Load from local SQLite first (fast), then hydrate from remote KV (may be newer).
     // Sequential: local provides instant UI, remote overwrites only if it has data.
-    void (async () => {
+    void (async function loadCapabilitiesForSelection() {
       const local = await loadCachedCapabilities(selectedMachineId, agentType);
       if (cancelled) return;
       if (local) setCachedCapabilities(local);
