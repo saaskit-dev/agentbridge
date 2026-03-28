@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -63,20 +63,6 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
   metadata,
 }) => {
   const { theme } = useUnistyles();
-
-  // 5 分钟后自动拒绝仍处于 pending 状态的权限申请，防止用户离开后永久挂起
-  useEffect(() => {
-    if (permission.status !== 'pending') return;
-    const timer = setTimeout(() => {
-      void sessionDeny(sessionId, permission.id, undefined, undefined, 'denied');
-      logger.info('tool_permission_auto_denied_timeout', {
-        sessionId,
-        permissionId: permission.id,
-        toolName,
-      });
-    }, 5 * 60 * 1000);
-    return () => clearTimeout(timer);
-  }, [permission.id, permission.status, sessionId]);
 
   const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | 'abort' | null>(null);
   const [loadingAllEdits, setLoadingAllEdits] = useState(false);
@@ -478,6 +464,19 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     return null;
   };
 
+  const renderPendingContext = () => {
+    const target = getTargetSummary();
+    if (!target) return null;
+    return (
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryLabel}>{toolName}</Text>
+        <Text style={styles.summaryMeta} numberOfLines={3}>
+          {target}
+        </Text>
+      </View>
+    );
+  };
+
   const renderResolvedSummary = (
     decisionLabel: string,
     tone: 'success' | 'warning' | 'error',
@@ -545,6 +544,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
   if (useAcpPermissions) {
     return (
       <View style={styles.container}>
+        {renderPendingContext()}
         <View style={styles.buttonContainer}>
           {/* ACP: Yes button */}
           <TouchableOpacity
@@ -667,6 +667,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
   // Render Claude buttons (existing behavior)
   return (
     <View style={styles.container}>
+      {renderPendingContext()}
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={[

@@ -48,11 +48,6 @@ export interface PermissionHandlerOpts {
   initialPermissionMode?: PermissionMode;
 }
 
-/** 30 分钟未响应的 pending request 自动标记为 denied */
-const PENDING_REQUEST_TTL_MS = 30 * 60 * 1000;
-/** 每 5 分钟扫描一次超时 pending requests */
-const PENDING_REQUEST_GC_INTERVAL_MS = 5 * 60 * 1000;
-
 export class PermissionHandler {
   private toolCalls: { id: string; name: string; input: any; used: boolean }[] = [];
   private responses = new Map<string, PermissionResponse>();
@@ -64,70 +59,12 @@ export class PermissionHandler {
   private allowedBashPrefixes = new Set<string>();
   private permissionMode: PermissionMode;
   private onPermissionRequestCallback?: (toolCallId: string) => void;
-  private gcTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(client: ApiSessionClient, opts: PermissionHandlerOpts = {}) {
     this.client = client;
     this.opts = opts;
     this.permissionMode = opts.initialPermissionMode ?? 'accept-edits';
     this.setupClientHandler();
-    this.startGcTimer();
-  }
-
-  /**
-   * 定期扫描并清理超过 30 分钟仍未响应的 pending requests，自动标记为 denied。
-   * 防止 agent tool call 因用户长时间离开而永久挂起。
-   */
-  private startGcTimer(): void {
-    this.gcTimer = setInterval(() => {
-      const now = Date.now();
-      for (const [id, pending] of this.pendingRequests.entries()) {
-        if (now - pending.createdAt > PENDING_REQUEST_TTL_MS) {
-          logger.warn('tool_permission_auto_denied_daemon_ttl', {
-            sessionId: this.client.sessionId,
-            permissionId: id,
-            toolName: pending.toolName,
-            pendingMs: now - pending.createdAt,
-          });
-          this.pendingRequests.delete(id);
-          const response: PermissionResponse = { id, approved: false, reason: 'Permission request timed out after 30 minutes' };
-          // 更新 agentState：将该请求移到 completedRequests
-          this.client.updateAgentState(currentState => {
-            const request = currentState.requests?.[id];
-            const r = { ...currentState.requests };
-            delete r[id];
-            return {
-              ...currentState,
-              requests: r,
-              completedRequests: {
-                ...currentState.completedRequests,
-                ...(request
-                  ? {
-                      [id]: {
-                        ...request,
-                        completedAt: now,
-                        status: 'denied' as const,
-                        reason: response.reason,
-                      },
-                    }
-                  : {}),
-              },
-            };
-          });
-          this.handlePermissionResponse(response, pending);
-        }
-      }
-    }, PENDING_REQUEST_GC_INTERVAL_MS);
-  }
-
-  /**
-   * 停止 GC 定时器，在实例销毁时调用。
-   */
-  destroy(): void {
-    if (this.gcTimer !== null) {
-      clearInterval(this.gcTimer);
-      this.gcTimer = null;
-    }
   }
 
   /**
