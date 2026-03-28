@@ -1582,7 +1582,6 @@ export class AcpBackend implements IAgentBackend {
       this.logAcpRequest('cancel', cancelRequest, { requestedSessionId: _sessionId });
       await withTimeout(this.connection.cancel(cancelRequest), 10_000, 'cancel()');
       this.logAcpResponse('cancel', { ok: true }, { requestedSessionId: _sessionId });
-      this.emit({ type: 'status', status: 'stopped', detail: 'Cancelled by user' });
     } catch (error) {
       logger.warn('[AcpBackend] Error cancelling:', error);
     }

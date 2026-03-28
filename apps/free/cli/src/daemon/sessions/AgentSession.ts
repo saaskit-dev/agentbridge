@@ -454,10 +454,17 @@ export abstract class AgentSession<TMode> {
     logger.debug('[AgentSession] attachment written', { id, ext, bytes: data.length });
   }
 
-  /** IPCServer abort message path. */
+  /**
+   * Cancel the current agent turn.
+   *
+   * Only calls backend.abort() — does NOT set shouldExit or close the queue.
+   * - ACP backends: cancel() makes waitForResponseComplete() return/throw,
+   *   messageLoop catches it and waits for the next message.
+   * - PTY backend: kill() ends the output stream, pipeBackendOutput sets
+   *   shouldExit, triggering the crash-restart path (which IS appropriate
+   *   because the process is actually dead).
+   */
   abort(): Promise<void> {
-    this.shouldExit = true;
-    this.messageQueue?.close();
     return this.backend?.abort() ?? Promise.resolve();
   }
 
@@ -917,7 +924,6 @@ export abstract class AgentSession<TMode> {
 
         const isForceRestart = this._isForceRestarting;
         this._isForceRestarting = false;
-        this.backendRestartCount++;
 
         if (isForceRestart) {
           logger.info('[AgentSession] force restarting backend', {
@@ -926,6 +932,7 @@ export abstract class AgentSession<TMode> {
           });
           this.publishVisibleInfo('Agent process restarting...');
         } else {
+          this.backendRestartCount++;
           logger.warn('[AgentSession] backend crashed, restarting', {
             sessionId: this.session.sessionId,
             agentType: this.agentType,
@@ -942,11 +949,11 @@ export abstract class AgentSession<TMode> {
             'backend crashed',
             true
           );
-        }
-        const cooldownMs = (this.constructor as typeof AgentSession).RESTART_COOLDOWN_MS;
-        const elapsed = Date.now() - this.lastBackendStartTime;
-        if (elapsed < cooldownMs) {
-          await new Promise(r => setTimeout(r, cooldownMs - elapsed));
+          const cooldownMs = (this.constructor as typeof AgentSession).RESTART_COOLDOWN_MS;
+          const elapsed = Date.now() - this.lastBackendStartTime;
+          if (elapsed < cooldownMs) {
+            await new Promise(r => setTimeout(r, cooldownMs - elapsed));
+          }
         }
         // Re-open message queue and reset exit flag before restarting
         this.shouldExit = false;
