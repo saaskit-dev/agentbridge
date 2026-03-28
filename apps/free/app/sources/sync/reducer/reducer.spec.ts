@@ -3357,6 +3357,148 @@ describe('reducer', () => {
       expect(tools[1].seq).toBeLessThan(texts[2].seq!);
     });
 
+    it('should merge consecutive thinking chunks in a single batch (Phase 5.5)', () => {
+      // Simulates history reload where all thinking chunks arrive in one batch.
+      // Phase 5.5 must merge adjacent thinking roots with same traceId.
+      const state = createReducer();
+
+      const result = reducer(state, [
+        {
+          id: 'think-1',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-t',
+          content: [{ type: 'thinking', thinking: 'Step 1', uuid: 'k1', parentUUID: null }],
+        },
+        {
+          id: 'think-2',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-t',
+          content: [{ type: 'thinking', thinking: ' Step 2', uuid: 'k2', parentUUID: null }],
+        },
+        {
+          id: 'think-3',
+          createdAt: 1200,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-t',
+          content: [{ type: 'thinking', thinking: ' Step 3', uuid: 'k3', parentUUID: null }],
+        },
+      ]);
+
+      const thinkingMessages = result.messages.filter(
+        m => m.kind === 'agent-text' && m.isThinking
+      );
+      expect(thinkingMessages).toHaveLength(1);
+      if (thinkingMessages[0].kind === 'agent-text') {
+        expect(thinkingMessages[0].text).toContain('Step 1');
+        expect(thinkingMessages[0].text).toContain('Step 3');
+      }
+    });
+
+    it('should merge thinking chunks across separate batches (Phase 5.5 fallback)', () => {
+      // Simulates cache load followed by server delta, each in separate reducer calls.
+      const state = createReducer();
+
+      // Batch 1 (from cache)
+      reducer(state, [
+        {
+          id: 'think-a',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-th',
+          content: [{ type: 'thinking', thinking: 'First', uuid: 'ka', parentUUID: null }],
+        },
+      ]);
+
+      // Batch 2 (from server)
+      const result = reducer(state, [
+        {
+          id: 'think-b',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-th',
+          content: [{ type: 'thinking', thinking: ' Second', uuid: 'kb', parentUUID: null }],
+        },
+      ]);
+
+      const thinkingMessages = result.messages.filter(
+        m => m.kind === 'agent-text' && m.isThinking
+      );
+      // Phase 1 inline merge should handle this, but Phase 5.5 is the fallback
+      expect(thinkingMessages).toHaveLength(1);
+    });
+
+    it('should NOT merge thinking chunks with different traceIds', () => {
+      // Different traceIds represent different turns — must stay separate.
+      const state = createReducer();
+
+      const result = reducer(state, [
+        {
+          id: 'think-old',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-turn-1',
+          content: [{ type: 'thinking', thinking: 'Turn 1 thinking', uuid: 'ko', parentUUID: null }],
+        },
+        {
+          id: 'think-new',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-turn-2',
+          content: [{ type: 'thinking', thinking: 'Turn 2 thinking', uuid: 'kn', parentUUID: null }],
+        },
+      ]);
+
+      const thinkingMessages = result.messages.filter(
+        m => m.kind === 'agent-text' && m.isThinking
+      );
+      expect(thinkingMessages).toHaveLength(2);
+    });
+
+    it('should NOT merge thinking chunks across tool-call boundaries', () => {
+      const state = createReducer();
+
+      const result = reducer(state, [
+        {
+          id: 'think-before',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-z',
+          content: [{ type: 'thinking', thinking: 'Before tool', uuid: 'kb', parentUUID: null }],
+        },
+        {
+          id: 'tool-msg',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-z',
+          content: [{ type: 'tool-call', id: 'tc1', name: 'Read', input: {}, description: null, uuid: 'ut', parentUUID: null }],
+        },
+        {
+          id: 'think-after',
+          createdAt: 1200,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-z',
+          content: [{ type: 'thinking', thinking: 'After tool', uuid: 'ka', parentUUID: null }],
+        },
+      ]);
+
+      const thinkingMessages = result.messages.filter(
+        m => m.kind === 'agent-text' && m.isThinking
+      );
+      expect(thinkingMessages).toHaveLength(2);
+    });
+
     it('should NOT merge text across different traceIds even when separated by thinking', () => {
       const state = createReducer();
 

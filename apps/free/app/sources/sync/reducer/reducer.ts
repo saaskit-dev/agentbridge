@@ -1423,12 +1423,14 @@ function getLastRootMessage(state: ReducerState): ReducerMessage | null {
 }
 
 /**
- * Post-processing: merge consecutive agent-text root messages that should be one block.
+ * Post-processing: merge consecutive agent text/thinking root messages that
+ * should be one block.
  *
- * Two adjacent agent-text root messages are mergeable when:
- * - same isThinking flag
+ * Two adjacent agent roots are mergeable when:
+ * - same isThinking flag (both text or both thinking)
  * - compatible traceId (both undefined, or same value)
  * - second message's createdAt is within STREAM_CHUNK_WINDOW_MS of the first
+ * - different realID (from different streaming chunks, not same source message)
  * - no tool-call root between them (tool calls are always merge boundaries)
  *
  * When merged, the second message's text is appended to the first and the second
@@ -1440,36 +1442,20 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
     const currentId = state.rootMessageIds[i];
     const current = state.messages.get(currentId);
 
-    // Only consider non-thinking text roots as merge targets
+    // Only consider text or thinking agent roots (skip tools, events, non-text)
     if (
       !current ||
       current.role !== 'agent' ||
       current.text === null ||
       current.tool ||
-      current.event ||
-      current.isThinking
+      current.event
     ) {
       i++;
       continue;
     }
 
-    // Scan forward to find the next non-thinking text root.
-    // Thinking roots and tool-call roots are always merge boundaries.
-    let j = i + 1;
-    while (j < state.rootMessageIds.length) {
-      const candidate = state.messages.get(state.rootMessageIds[j]);
-      if (!candidate) break;
-      // Thinking root messages are always merge boundaries.
-      if (candidate.role === 'agent' && candidate.text !== null && candidate.isThinking) {
-        break;
-      }
-      // Tool call roots are always merge boundaries — don't merge text across tool calls.
-      if (candidate.role === 'agent' && candidate.tool !== null) {
-        break;
-      }
-      break;
-    }
-
+    // Look at the immediately next root
+    const j = i + 1;
     if (j >= state.rootMessageIds.length) {
       i++;
       continue;
@@ -1484,7 +1470,8 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
       next.text !== null &&
       !next.tool &&
       !next.event &&
-      !next.isThinking &&
+      // Same type: both thinking or both non-thinking
+      next.isThinking === current.isThinking &&
       // Only merge chunks from DIFFERENT source messages (streaming chunks).
       // Multiple text blocks within a single agent message (same realID) are
       // intentionally separate and must not be merged.
@@ -1496,7 +1483,6 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
       // Merge next into current
       current.text += next.text;
       changed.add(currentId);
-      // Remove the merged text root (keep thinking roots in between)
       state.rootMessageIds.splice(j, 1);
       state.messages.delete(nextId);
       changed.delete(nextId);
