@@ -353,6 +353,9 @@ export const pt: TranslationStructure = {
     enterPathPlaceholder: 'Inserir caminho (ex. /home/user/projects)',
     recentPaths: 'Caminhos recentes',
     suggestedPaths: 'Caminhos sugeridos',
+    browse: 'Explorar',
+    browseError: 'Não foi possível carregar o diretório',
+    emptyDirectory: 'Sem subdiretórios',
   },
 
   sessionHistory: {

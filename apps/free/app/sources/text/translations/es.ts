@@ -352,6 +352,9 @@ export const es: TranslationStructure = {
     enterPathPlaceholder: 'Ingresar ruta (ej. /home/user/projects)',
     recentPaths: 'Rutas recientes',
     suggestedPaths: 'Rutas sugeridas',
+    browse: 'Explorar',
+    browseError: 'No se pudo cargar el directorio',
+    emptyDirectory: 'Sin subdirectorios',
   },
 
   sessionHistory: {

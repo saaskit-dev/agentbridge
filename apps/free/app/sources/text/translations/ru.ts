@@ -333,6 +333,9 @@ export const ru: TranslationStructure = {
     enterPathPlaceholder: 'Введите путь (напр. /home/user/projects)',
     recentPaths: 'Недавние пути',
     suggestedPaths: 'Предложенные пути',
+    browse: 'Обзор',
+    browseError: 'Не удалось загрузить каталог',
+    emptyDirectory: 'Нет подкаталогов',
   },
 
   sessionHistory: {

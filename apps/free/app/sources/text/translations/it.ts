@@ -353,6 +353,9 @@ export const it: TranslationStructure = {
     enterPathPlaceholder: 'Inserisci percorso (es. /home/user/projects)',
     recentPaths: 'Percorsi recenti',
     suggestedPaths: 'Percorsi suggeriti',
+    browse: 'Sfoglia',
+    browseError: 'Impossibile caricare la directory',
+    emptyDirectory: 'Nessuna sottodirectory',
   },
 
   sessionHistory: {

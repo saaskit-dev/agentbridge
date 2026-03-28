@@ -342,6 +342,9 @@ export const zhHant: TranslationStructure = {
     enterPathPlaceholder: '輸入路徑（例如 /home/user/projects）',
     recentPaths: '最近的路徑',
     suggestedPaths: '建議的路徑',
+    browse: '瀏覽',
+    browseError: '無法載入目錄',
+    emptyDirectory: '沒有子目錄',
   },
 
   sessionHistory: {

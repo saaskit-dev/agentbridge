@@ -351,6 +351,9 @@ export const ja: TranslationStructure = {
     enterPathPlaceholder: 'パスを入力 (例: /home/user/projects)',
     recentPaths: '最近のパス',
     suggestedPaths: '提案されたパス',
+    browse: '参照',
+    browseError: 'ディレクトリを読み込めません',
+    emptyDirectory: 'サブディレクトリがありません',
   },
 
   sessionHistory: {

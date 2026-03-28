@@ -363,6 +363,9 @@ export const en: TranslationStructure = {
     enterPathPlaceholder: 'Enter path (e.g. /home/user/projects)',
     recentPaths: 'Recent Paths',
     suggestedPaths: 'Suggested Paths',
+    browse: 'Browse',
+    browseError: 'Unable to load directory',
+    emptyDirectory: 'No subdirectories',
   },
 
   sessionHistory: {

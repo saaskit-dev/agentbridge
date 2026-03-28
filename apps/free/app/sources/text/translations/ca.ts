@@ -352,6 +352,9 @@ export const ca: TranslationStructure = {
     enterPathPlaceholder: 'Introdueix un camí (p. ex. /home/user/projects)',
     recentPaths: 'Camins recents',
     suggestedPaths: 'Camins suggerits',
+    browse: 'Explorar',
+    browseError: "No s'ha pogut carregar el directori",
+    emptyDirectory: 'Sense subdirectoris',
   },
 
   sessionHistory: {

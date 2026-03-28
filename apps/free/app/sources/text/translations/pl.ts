@@ -366,6 +366,9 @@ export const pl: TranslationStructure = {
     enterPathPlaceholder: 'Wprowadź ścieżkę (np. /home/user/projects)',
     recentPaths: 'Ostatnie ścieżki',
     suggestedPaths: 'Sugerowane ścieżki',
+    browse: 'Przeglądaj',
+    browseError: 'Nie można załadować katalogu',
+    emptyDirectory: 'Brak podkatalogów',
   },
 
   sessionHistory: {
