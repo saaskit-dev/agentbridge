@@ -15,6 +15,7 @@ const REMOTE_KEY_PREFIX = 'caps';
 const REMOTE_HYDRATE_FRESH_MS = 5 * 60 * 1000;
 const persistChains = new Map<string, Promise<void>>();
 const hydrateInflight = new Map<string, Promise<CachedCapabilitiesEnvelope | null>>();
+const hydrateCheckedAt = new Map<string, number>();
 
 type CachedCapabilitiesEnvelope = {
   agentType?: AgentType;
@@ -142,6 +143,7 @@ async function hydrateRemoteEnvelope(
   }
 
   const request = fetchRemoteEnvelope(machineId, agentType, credentials).finally(() => {
+    hydrateCheckedAt.set(key, Date.now());
     if (hydrateInflight.get(key) === request) {
       hydrateInflight.delete(key);
     }
@@ -233,6 +235,11 @@ export async function hydrateCachedCapabilities(
 
   const local = await loadLocalEnvelope(machineId, agentType);
   if (isEnvelopeFresh(local)) {
+    return local?.capabilities ?? null;
+  }
+  const chainKey = getPersistChainKey(machineId, agentType);
+  const lastCheckedAt = hydrateCheckedAt.get(chainKey);
+  if (lastCheckedAt && Date.now() - lastCheckedAt < REMOTE_HYDRATE_FRESH_MS) {
     return local?.capabilities ?? null;
   }
   const credentials = await TokenStorage.getCredentials();
