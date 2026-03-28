@@ -332,6 +332,7 @@ export const zhHant: TranslationStructure = {
     searchPlaceholder: '輸入以篩選裝置...',
     recentSection: '最近的裝置',
     favoritesSection: '收藏的裝置',
+    allSection: '所有裝置',
   },
 
   pathPicker: {

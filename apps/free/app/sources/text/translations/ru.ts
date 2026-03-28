@@ -323,6 +323,7 @@ export const ru: TranslationStructure = {
     searchPlaceholder: 'Введите для фильтрации машин...',
     recentSection: 'Недавние машины',
     favoritesSection: 'Избранные машины',
+    allSection: 'Все устройства',
   },
 
   pathPicker: {

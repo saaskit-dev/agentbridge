@@ -343,6 +343,7 @@ export const pt: TranslationStructure = {
     searchPlaceholder: 'Digite para filtrar máquinas...',
     recentSection: 'Máquinas recentes',
     favoritesSection: 'Máquinas favoritas',
+    allSection: 'Todos os dispositivos',
   },
 
   pathPicker: {

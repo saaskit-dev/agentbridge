@@ -13,7 +13,7 @@ import '@/encryption/deriveKey.appspec';
 import '@/sync/encryption/encryptor.appspec';
 import '@/encryption/aes.appspec';
 import '@/encryption/base64.appspec';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, safeStringify } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/dev/tests');
 
@@ -35,7 +35,7 @@ export default function TestsScreen() {
       const results = await testRunner.runAll();
       setState({ running: false, results });
     } catch (error) {
-      logger.error('Error running tests', { error: String(error) });
+      logger.error('Error running tests', { error: safeStringify(error) });
       setState({ running: false, results: [] });
     }
   };
@@ -52,7 +52,7 @@ export default function TestsScreen() {
         }));
       }
     } catch (error) {
-      logger.error('Error running test suite', { error: String(error) });
+      logger.error('Error running test suite', { error: safeStringify(error) });
       setState(prev => ({ ...prev, running: false }));
     }
   };

@@ -341,6 +341,7 @@ export const ja: TranslationStructure = {
     searchPlaceholder: '入力してマシンをフィルター...',
     recentSection: '最近のマシン',
     favoritesSection: 'お気に入りのマシン',
+    allSection: 'すべてのデバイス',
   },
 
   pathPicker: {

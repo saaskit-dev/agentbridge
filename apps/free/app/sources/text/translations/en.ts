@@ -353,6 +353,7 @@ export const en: TranslationStructure = {
     searchPlaceholder: 'Type to filter machines...',
     recentSection: 'Recent Machines',
     favoritesSection: 'Favorite Machines',
+    allSection: 'All Machines',
   },
 
   pathPicker: {

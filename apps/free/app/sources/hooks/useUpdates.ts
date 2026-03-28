@@ -1,7 +1,7 @@
 import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, safeStringify } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/hooks/useUpdates');
 
 export function useUpdates() {
@@ -45,7 +45,7 @@ export function useUpdates() {
         setUpdateAvailable(true);
       }
     } catch (error) {
-      logger.warn('Error checking for updates', { error: String(error) });
+      logger.warn('Error checking for updates', { error: safeStringify(error) });
     } finally {
       setIsChecking(false);
     }
@@ -58,7 +58,7 @@ export function useUpdates() {
       try {
         await Updates.reloadAsync();
       } catch (error) {
-        logger.warn('Error reloading app', { error: String(error) });
+        logger.warn('Error reloading app', { error: safeStringify(error) });
       }
     }
   };

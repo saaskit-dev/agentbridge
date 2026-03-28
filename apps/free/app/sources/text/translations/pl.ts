@@ -356,6 +356,7 @@ export const pl: TranslationStructure = {
     searchPlaceholder: 'Wpisz, aby filtrować maszyny...',
     recentSection: 'Ostatnie maszyny',
     favoritesSection: 'Ulubione maszyny',
+    allSection: 'Wszystkie urządzenia',
   },
 
   pathPicker: {

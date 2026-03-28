@@ -342,6 +342,7 @@ export const es: TranslationStructure = {
     searchPlaceholder: 'Escribe para filtrar máquinas...',
     recentSection: 'Máquinas recientes',
     favoritesSection: 'Máquinas favoritas',
+    allSection: 'Todos los dispositivos',
   },
 
   pathPicker: {

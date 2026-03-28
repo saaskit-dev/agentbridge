@@ -342,6 +342,7 @@ export const ca: TranslationStructure = {
     searchPlaceholder: 'Escriu per filtrar màquines...',
     recentSection: 'Màquines recents',
     favoritesSection: 'Màquines favorites',
+    allSection: 'Tots els dispositius',
   },
 
   pathPicker: {

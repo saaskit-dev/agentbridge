@@ -332,6 +332,7 @@ export const zhHans: TranslationStructure = {
     searchPlaceholder: '输入以筛选设备...',
     recentSection: '最近的设备',
     favoritesSection: '收藏的设备',
+    allSection: '所有设备',
   },
 
   pathPicker: {
@@ -341,6 +342,9 @@ export const zhHans: TranslationStructure = {
     enterPathPlaceholder: '输入路径（例如 /home/user/projects）',
     recentPaths: '最近的路径',
     suggestedPaths: '建议的路径',
+    browse: '浏览',
+    browseError: '无法加载目录',
+    emptyDirectory: '没有子目录',
   },
 
   sessionHistory: {

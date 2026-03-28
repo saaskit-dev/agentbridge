@@ -338,6 +338,7 @@ export const en = {
     searchPlaceholder: 'Type to filter machines...',
     recentSection: 'Recent Machines',
     favoritesSection: 'Favorite Machines',
+    allSection: 'All Machines',
   },
 
   pathPicker: {
@@ -347,6 +348,9 @@ export const en = {
     enterPathPlaceholder: 'Enter path (e.g. /home/user/projects)',
     recentPaths: 'Recent Paths',
     suggestedPaths: 'Suggested Paths',
+    browse: 'Browse',
+    browseError: 'Unable to load directory',
+    emptyDirectory: 'No subdirectories',
   },
 
   sessionHistory: {

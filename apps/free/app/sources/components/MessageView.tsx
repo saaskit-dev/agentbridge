@@ -649,17 +649,18 @@ const styles = StyleSheet.create(theme => ({
   },
   devBadgeContainer: {
     flexDirection: 'column',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginTop: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginTop: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
     borderRadius: 4,
     alignSelf: 'flex-start',
-    gap: 1,
+    gap: 0,
   },
   devBadgeText: {
     fontFamily: 'Courier',
-    fontSize: 9,
+    fontSize: 8,
+    lineHeight: 10,
     color: '#4ade80',
   },
 }));

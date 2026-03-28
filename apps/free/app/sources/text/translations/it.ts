@@ -343,6 +343,7 @@ export const it: TranslationStructure = {
     searchPlaceholder: 'Digita per filtrare le macchine...',
     recentSection: 'Macchine recenti',
     favoritesSection: 'Macchine preferite',
+    allSection: 'Tutti i dispositivi',
   },
 
   pathPicker: {
