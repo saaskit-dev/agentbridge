@@ -4,23 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { parseToolUseError } from '@/utils/toolErrorParser';
-
-export function resultToString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'object' && value !== null) {
-    if ('error' in value && typeof (value as Record<string, unknown>).error === 'string') {
-      return (value as Record<string, unknown>).error as string;
-    }
-    return JSON.stringify(value);
-  }
-  return String(value);
-}
+import { extractErrorMessage } from '@saaskit-dev/agentbridge/common';
 
 export function ToolError(props: { message: unknown }) {
   const { theme } = useUnistyles();
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const msg = resultToString(props.message);
+  const msg = extractErrorMessage(props.message);
   const { isToolUseError, errorMessage } = parseToolUseError(msg);
   const displayMessage = isToolUseError && errorMessage ? errorMessage : msg;
 

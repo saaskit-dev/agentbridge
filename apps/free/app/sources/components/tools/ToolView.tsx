@@ -31,9 +31,9 @@ export const ToolView = React.memo<ToolViewProps>(props => {
   const { tool, onPress, sessionId, messageId } = props;
   const router = useRouter();
   const { theme } = useUnistyles();
+  const [isExpanded, setIsExpanded] = React.useState(false);
 
-  // Create default onPress handler for navigation
-  const handlePress = React.useCallback(() => {
+  const handleOpenDetails = React.useCallback(() => {
     logger.info('tool_card_open', {
       toolName: tool.name,
       state: tool.state,
@@ -48,9 +48,6 @@ export const ToolView = React.memo<ToolViewProps>(props => {
     }
   }, [onPress, sessionId, messageId, router, tool.name, tool.permission, tool.state]);
 
-  // Enable pressable if either onPress is provided or we have navigation params
-  const isPressable = !!(onPress || (sessionId && messageId));
-
   const knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
   let description: string | null = null;
@@ -59,6 +56,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
   let icon = <Ionicons name="construct-outline" size={16} color={theme.colors.textSecondary} />;
   let noStatus = false;
   let hideDefaultError = false;
+  let autoCollapseOnSettled = true;
 
   // For Gemini/OpenCode: unknown tools should be rendered as minimal (hidden)
   // This prevents showing raw INPUT/OUTPUT for internal tools
@@ -124,6 +122,9 @@ export const ToolView = React.memo<ToolViewProps>(props => {
   if (knownTool && typeof knownTool.hideDefaultError === 'boolean') {
     hideDefaultError = knownTool.hideDefaultError;
   }
+  if (knownTool && typeof knownTool.autoCollapseOnSettled === 'boolean') {
+    autoCollapseOnSettled = knownTool.autoCollapseOnSettled;
+  }
 
   let statusIcon = null;
 
@@ -139,10 +140,35 @@ export const ToolView = React.memo<ToolViewProps>(props => {
     tool.permission.status !== 'pending' &&
     // Don't collapse if the tool is still running (approved → executing)
     tool.state !== 'running';
+  const isSettled = tool.state !== 'running';
 
   if (isPermissionResolved) {
     minimal = true;
   }
+  if (autoCollapseOnSettled && isSettled && tool.permission?.status !== 'pending') {
+    minimal = true;
+  }
+
+  React.useEffect(() => {
+    if (autoCollapseOnSettled && isSettled) {
+      setIsExpanded(false);
+    }
+  }, [autoCollapseOnSettled, isSettled, tool.completedAt, tool.state]);
+
+  const canOpenDetails = !!(onPress || (sessionId && messageId));
+  const canToggleInline = minimal;
+  const isContentExpanded = !minimal || isExpanded;
+  const showDescription = !!description && isContentExpanded;
+
+  const handleHeaderPress = React.useCallback(() => {
+    if (canToggleInline) {
+      setIsExpanded(current => !current);
+      return;
+    }
+    if (canOpenDetails) {
+      handleOpenDetails();
+    }
+  }, [canOpenDetails, canToggleInline, handleOpenDetails]);
 
   // Check permission status first for denied/canceled states
   if (
@@ -192,8 +218,8 @@ export const ToolView = React.memo<ToolViewProps>(props => {
 
   return (
     <View style={styles.container}>
-      {isPressable ? (
-        <TouchableOpacity style={styles.header} onPress={handlePress} activeOpacity={0.8}>
+      {canToggleInline || canOpenDetails ? (
+        <TouchableOpacity style={styles.header} onPress={handleHeaderPress} activeOpacity={0.8}>
           <View style={styles.headerLeft}>
             <View style={styles.iconContainer}>{icon}</View>
             <View style={styles.titleContainer}>
@@ -201,7 +227,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
                 {toolTitle}
                 {status ? <Text style={styles.status}>{` ${status}`}</Text> : null}
               </Text>
-              {description && (
+              {showDescription && (
                 <Text style={styles.toolDescription} numberOfLines={1}>
                   {description}
                 </Text>
@@ -209,7 +235,27 @@ export const ToolView = React.memo<ToolViewProps>(props => {
             </View>
             <ToolDuration tool={tool} />
             {statusIcon}
+            {canToggleInline ? (
+              <Ionicons
+                name={isContentExpanded ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={theme.colors.tool.muted}
+              />
+            ) : null}
           </View>
+          {canOpenDetails ? (
+            <TouchableOpacity
+              onPress={handleOpenDetails}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.detailButton}
+            >
+              <Ionicons
+                name="open-outline"
+                size={15}
+                color={theme.colors.tool.muted}
+              />
+            </TouchableOpacity>
+          ) : null}
         </TouchableOpacity>
       ) : (
         <View style={styles.header}>
@@ -220,7 +266,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
                 {toolTitle}
                 {status ? <Text style={styles.status}>{` ${status}`}</Text> : null}
               </Text>
-              {description && (
+              {showDescription && (
                 <Text style={styles.toolDescription} numberOfLines={1}>
                   {description}
                 </Text>
@@ -235,7 +281,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
       {/* Content area - either custom children or tool-specific view */}
       {(() => {
         // Check if minimal first - minimal tools don't show content
-        if (minimal) {
+        if (!isContentExpanded) {
           return null;
         }
 
@@ -256,7 +302,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
                   tool.permission &&
                   (tool.permission.status === 'denied' || tool.permission.status === 'canceled')
                 ) &&
-                !hideDefaultError && <ToolError message={String(tool.result)} />}
+                !hideDefaultError && <ToolError message={tool.result} />}
             </View>
           );
         }
@@ -357,7 +403,7 @@ const styles = StyleSheet.create(theme => ({
   container: {
     backgroundColor: theme.colors.tool.cardBackground,
     borderRadius: theme.borderRadius.lg,
-    marginVertical: 4,
+    marginVertical: 2,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: theme.colors.tool.cardBorder,
@@ -366,19 +412,20 @@ const styles = StyleSheet.create(theme => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    minHeight: 34,
     backgroundColor: theme.colors.tool.headerBackground,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 5,
     flex: 1,
   },
   iconContainer: {
-    width: 20,
-    height: 20,
+    width: 16,
+    height: 16,
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 0.92,
@@ -387,34 +434,41 @@ const styles = StyleSheet.create(theme => ({
     flex: 1,
   },
   elapsedContainer: {
-    marginLeft: 8,
+    marginLeft: 4,
+  },
+  detailButton: {
+    marginLeft: 4,
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   elapsedText: {
-    fontSize: 12,
+    fontSize: 10,
     color: theme.colors.tool.muted,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
   },
   toolName: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
     color: theme.colors.tool.title,
   },
   status: {
     fontWeight: '400',
     opacity: 0.6,
-    fontSize: 13,
+    fontSize: 11,
     color: theme.colors.tool.muted,
   },
   toolDescription: {
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 9,
+    lineHeight: 11,
     color: theme.colors.tool.subtitle,
-    marginTop: 2,
+    marginTop: 1,
   },
   content: {
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingHorizontal: 9,
+    paddingTop: 5,
+    paddingBottom: 2,
     overflow: 'visible',
   },
 }));
