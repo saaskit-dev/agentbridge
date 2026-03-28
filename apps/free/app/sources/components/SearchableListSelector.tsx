@@ -100,12 +100,17 @@ export interface SearchableListSelectorProps<T> {
 }
 
 const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
-// Spacing constants (match existing codebase patterns)
-const STATUS_DOT_TEXT_GAP = 4; // Gap between StatusDot and text (used throughout app for status indicators)
-const ITEM_SPACING_GAP = 4; // Gap between elements and spacing between items (compact)
-const COMPACT_ITEM_PADDING = 4; // Vertical padding for compact lists
-const INPUT_BORDER_RADIUS = 10; // Input field and containers
-const BUTTON_BORDER_RADIUS = 8; // Buttons and actionable elements
+const STATUS_DOT_TEXT_GAP = 4;
+const ITEM_SPACING_GAP = 4;
+const COMPACT_ITEM_PADDING = 4;
+const BUTTON_BORDER_RADIUS = 8;
+
+// Suppress ItemGroup's built-in header when using external section headers
+const noHeaderProps = {
+  title: ' ' as string,
+  headerStyle: { padding: 0, height: 0 } as const,
+  titleStyle: { height: 0 } as const,
+};
 
 const stylesheet = StyleSheet.create(theme => ({
   inputContainer: {
@@ -113,20 +118,15 @@ const stylesheet = StyleSheet.create(theme => ({
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingVertical: Platform.select({ ios: 8, default: 10 }),
   },
   inputWrapper: {
     flex: 1,
-    backgroundColor: theme.colors.input.background,
-    borderRadius: INPUT_BORDER_RADIUS,
-    borderWidth: 1,
-    borderColor: theme.colors.divider,
   },
   inputInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 4,
   },
   inputField: {
     flex: 1,
@@ -134,23 +134,29 @@ const stylesheet = StyleSheet.create(theme => ({
   clearButton: {
     width: 20,
     height: 20,
-    borderRadius: INPUT_BORDER_RADIUS,
+    borderRadius: 10,
     backgroundColor: theme.colors.textSecondary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
+    marginRight: 4,
   },
   favoriteButton: {
     borderRadius: BUTTON_BORDER_RADIUS,
     padding: 8,
+  },
+  searchIcon: {
+    marginLeft: 12,
+  },
+  searchGroupWrapper: {
+    marginTop: Platform.select({ ios: 16, default: 12 }),
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
-    paddingTop: 6,
-    paddingBottom: 6,
+    paddingTop: Platform.select({ ios: 24, default: 16 }),
+    paddingBottom: Platform.select({ ios: 6, default: 8 }),
   },
   sectionHeaderText: {
     fontSize: Platform.select({ ios: 13, default: 14 }),
@@ -160,12 +166,10 @@ const stylesheet = StyleSheet.create(theme => ({
     letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
     ...Typography.default('regular'),
   },
-  selectedItemStyle: {},
   compactItemStyle: {
     paddingVertical: COMPACT_ITEM_PADDING,
     minHeight: 0, // Override Item's default minHeight (44-56px) for compact mode
   },
-  itemBackground: {},
   showMoreTitle: {
     textAlign: 'center',
     color: theme.colors.button.primary.tint,
@@ -463,11 +467,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         showChevron={false}
         selected={isSelected}
         showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
-        style={[
-          styles.itemBackground,
-          config.compactItems ? styles.compactItemStyle : undefined,
-          isSelected ? styles.selectedItemStyle : undefined,
-        ]}
+        style={config.compactItems ? styles.compactItemStyle : undefined}
       />
     );
   };
@@ -482,54 +482,67 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
     <>
       {/* Search Input */}
       {showSearch && (
-        <View style={styles.inputContainer}>
-          <View style={styles.inputWrapper}>
-            <View style={styles.inputInner}>
-              <View style={styles.inputField}>
-                <MultiTextInput
-                  value={inputText}
-                  onChangeText={handleInputChange}
-                  placeholder={config.searchPlaceholder}
-                  maxHeight={40}
-                  paddingTop={8}
-                  paddingBottom={8}
-                />
+        <ItemGroup {...noHeaderProps} style={styles.searchGroupWrapper}>
+          <View style={styles.inputContainer}>
+            <Ionicons
+              name="search"
+              size={18}
+              color={theme.colors.textSecondary}
+              style={styles.searchIcon}
+            />
+            <View style={styles.inputWrapper}>
+              <View style={styles.inputInner}>
+                <View style={styles.inputField}>
+                  <MultiTextInput
+                    value={inputText}
+                    onChangeText={handleInputChange}
+                    placeholder={config.searchPlaceholder}
+                    maxHeight={40}
+                    paddingTop={8}
+                    paddingBottom={8}
+                  />
+                </View>
+                {inputText.trim() && (
+                  <Pressable
+                    onPress={handleClear}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={({ pressed }) => [
+                      styles.clearButton,
+                      { opacity: pressed ? 0.6 : 0.8 },
+                    ]}
+                  >
+                    <Ionicons name="close" size={14} color={theme.colors.surface} />
+                  </Pressable>
+                )}
               </View>
-              {inputText.trim() && (
-                <Pressable
-                  onPress={handleClear}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={({ pressed }) => [styles.clearButton, { opacity: pressed ? 0.6 : 0.8 }]}
-                >
-                  <Ionicons name="close" size={14} color={theme.colors.input.background} />
-                </Pressable>
-              )}
             </View>
+            {showFavorites && onToggleFavorite && (
+              <Pressable
+                onPress={handleAddToFavorites}
+                disabled={!canAddToFavorites}
+                style={({ pressed }) => [
+                  styles.favoriteButton,
+                  {
+                    backgroundColor: canAddToFavorites
+                      ? theme.colors.button.primary.background
+                      : theme.colors.divider,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="star"
+                  size={20}
+                  color={
+                    canAddToFavorites
+                      ? theme.colors.button.primary.tint
+                      : theme.colors.textSecondary
+                  }
+                />
+              </Pressable>
+            )}
           </View>
-          {showFavorites && onToggleFavorite && (
-            <Pressable
-              onPress={handleAddToFavorites}
-              disabled={!canAddToFavorites}
-              style={({ pressed }) => [
-                styles.favoriteButton,
-                {
-                  backgroundColor: canAddToFavorites
-                    ? theme.colors.button.primary.background
-                    : theme.colors.divider,
-                  opacity: pressed ? 0.7 : 1,
-                },
-              ]}
-            >
-              <Ionicons
-                name="star"
-                size={20}
-                color={
-                  canAddToFavorites ? theme.colors.button.primary.tint : theme.colors.textSecondary
-                }
-              />
-            </Pressable>
-          )}
-        </View>
+        </ItemGroup>
       )}
 
       {/* Recent Items Section */}
@@ -545,7 +558,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
           </Pressable>
 
           {showRecentSection && (
-            <ItemGroup title=" " headerStyle={{ padding: 0, height: 0 }} titleStyle={{ height: 0 }}>
+            <ItemGroup {...noHeaderProps}>
               {itemsToShow.map((item, index, arr) => {
                 const itemId = config.getItemId(item);
                 const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -595,7 +608,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
           </Pressable>
 
           {showFavoritesSection && (
-            <ItemGroup title=" " headerStyle={{ padding: 0, height: 0 }} titleStyle={{ height: 0 }}>
+            <ItemGroup {...noHeaderProps}>
               {filteredFavoriteItems.map((item, index) => {
                 const itemId = config.getItemId(item);
                 const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
@@ -648,11 +661,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                     showChevron={false}
                     selected={isSelected}
                     showDivider={!isLast}
-                    style={[
-                      styles.itemBackground,
-                      config.compactItems ? styles.compactItemStyle : undefined,
-                      isSelected ? styles.selectedItemStyle : undefined,
-                    ]}
+                    style={config.compactItems ? styles.compactItemStyle : undefined}
                   />
                 );
               })}
@@ -674,7 +683,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
           </Pressable>
 
           {showAllItemsSection && (
-            <ItemGroup title=" " headerStyle={{ padding: 0, height: 0 }} titleStyle={{ height: 0 }}>
+            <ItemGroup {...noHeaderProps}>
               {items.map((item, index) => {
                 const itemId = config.getItemId(item);
                 const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
