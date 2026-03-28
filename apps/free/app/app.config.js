@@ -226,6 +226,8 @@ export default {
       app: {
         isDev: variant === 'development',
         serverUrl,
+        elevenLabsAgentIdDev: 'agent_1601kmtfet07fdxvxdrt15jxn7xe',
+        elevenLabsAgentIdProd: 'agent_1601kmtfet07fdxvxdrt15jxn7xe',
       },
     },
     owner: 'saaskit-dev',

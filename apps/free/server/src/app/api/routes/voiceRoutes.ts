@@ -33,19 +33,20 @@ export function voiceRoutes(app: Fastify) {
       log.info(`Voice token request from user ${userId}`);
 
       const isDevelopment = process.env.NODE_ENV === 'development' || process.env.ENV === 'dev';
+      const skipBillingCheck = process.env.SKIP_BILLING_CHECK === 'true';
 
-      // Production requires RevenueCat key
-      if (!isDevelopment && !revenueCatPublicKey) {
-        log.info('Production environment requires RevenueCat public key');
-        return reply.code(400).send({
-          allowed: false,
-          error: 'RevenueCat public key required',
-        });
-      }
+      if (!isDevelopment && !skipBillingCheck) {
+        // Production requires RevenueCat key
+        if (!revenueCatPublicKey) {
+          log.info('Production environment requires RevenueCat public key');
+          return reply.code(400).send({
+            allowed: false,
+            error: 'RevenueCat public key required',
+          });
+        }
 
-      // Check subscription in production
-      if (!isDevelopment && revenueCatPublicKey) {
-        const response = await fetch(`https://api.revenuecat.com/v1/subscribers/${userId}`, {
+        // Check subscription
+        const rcResponse = await fetch(`https://api.revenuecat.com/v1/subscribers/${userId}`, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${revenueCatPublicKey}`,
@@ -53,23 +54,17 @@ export function voiceRoutes(app: Fastify) {
           },
         });
 
-        if (!response.ok) {
-          log.info(`RevenueCat check failed for user ${userId}: ${response.status}`);
-          return reply.send({
-            allowed: false,
-            agentId,
-          });
+        if (!rcResponse.ok) {
+          log.info(`RevenueCat check failed for user ${userId}: ${rcResponse.status}`);
+          return reply.send({ allowed: false, agentId });
         }
 
-        const data = (await response.json()) as any;
-        const proEntitlement = data.subscriber?.entitlements?.active?.pro;
+        const rcData = (await rcResponse.json()) as any;
+        const proEntitlement = rcData.subscriber?.entitlements?.active?.pro;
 
         if (!proEntitlement) {
           log.info(`User ${userId} does not have active subscription`);
-          return reply.send({
-            allowed: false,
-            agentId,
-          });
+          return reply.send({ allowed: false, agentId });
         }
       }
 
