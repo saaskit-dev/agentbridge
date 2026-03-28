@@ -8,6 +8,9 @@ export const LocalSettingsSchema = z.object({
   // Developer settings (device-specific)
   devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
   showDebugIds: z.boolean().describe('Show diagnostic IDs (session ID, agent ID, etc.) in UI'),
+  debugIdsInitializedForDevMode: z
+    .boolean()
+    .describe('Tracks whether Show Debug IDs has been auto-initialized for developer mode'),
   // Note: analyticsEnabled moved to sync'd Settings for cross-device sync with CLI
   commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
   themePreference: z
@@ -38,6 +41,7 @@ export type LocalSettings = z.infer<typeof LocalSettingsSchema>;
 export const localSettingsDefaults: LocalSettings = {
   devModeEnabled: __DEV__,
   showDebugIds: false,
+  debugIdsInitializedForDevMode: false,
   commandPaletteEnabled: false,
   themePreference: 'adaptive',
   markdownCopyV2: false,
@@ -54,7 +58,18 @@ export function localSettingsParse(settings: unknown): LocalSettings {
   if (!parsed.success) {
     return { ...localSettingsDefaults };
   }
-  return { ...localSettingsDefaults, ...parsed.data };
+
+  const merged = { ...localSettingsDefaults, ...parsed.data };
+
+  if (merged.devModeEnabled && !merged.debugIdsInitializedForDevMode) {
+    return {
+      ...merged,
+      showDebugIds: true,
+      debugIdsInitializedForDevMode: true,
+    };
+  }
+
+  return merged;
 }
 
 //

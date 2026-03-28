@@ -66,7 +66,11 @@ export function loadLocalSettings(): LocalSettings {
   if (localSettings) {
     try {
       const parsed = JSON.parse(localSettings);
-      return localSettingsParse(parsed);
+      const normalized = localSettingsParse(parsed);
+      if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
+        saveLocalSettings(normalized);
+      }
+      return normalized;
     } catch (e) {
       logger.error('Failed to parse local settings', toError(e));
       return { ...localSettingsDefaults };

@@ -34,6 +34,9 @@ export const SettingsView = React.memo(function SettingsView() {
   const auth = useAuth();
   const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
   const [, setShowDebugIds] = useLocalSettingMutable('showDebugIds');
+  const [, setDebugIdsInitializedForDevMode] = useLocalSettingMutable(
+    'debugIdsInitializedForDevMode'
+  );
   const isPro = useEntitlement('pro');
   const experiments = useSetting('experiments');
   const isCustomServer = isUsingCustomServer();
@@ -71,7 +74,10 @@ export const SettingsView = React.memo(function SettingsView() {
       // Toggle dev mode
       const newDevMode = !devModeEnabled;
       setDevModeEnabled(newDevMode);
-      if (!newDevMode) {
+      if (newDevMode) {
+        setShowDebugIds(true);
+        setDebugIdsInitializedForDevMode(true);
+      } else {
         setShowDebugIds(false);
       }
       Modal.alert(
