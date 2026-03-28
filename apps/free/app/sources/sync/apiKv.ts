@@ -2,6 +2,7 @@ import { getServerUrl } from './serverConfig';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { backoff } from '@/utils/time';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 //
 // Types
@@ -62,6 +63,7 @@ export type KvMutateResponse = KvMutateSuccessResponse | KvMutateErrorResponse;
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const logger = new Logger('app/sync/apiKv');
 
 /**
  * KV values are always base64-encoded on the wire.
@@ -90,6 +92,7 @@ export async function kvGet(credentials: AuthCredentials, key: string): Promise<
   const API_ENDPOINT = getServerUrl();
 
   return await backoff(async () => {
+    logger.debug('kvGet request', { key });
     const response = await fetch(`${API_ENDPOINT}/v1/kv/${encodeURIComponent(key)}`, {
       headers: {
         Authorization: `Bearer ${credentials.token}`,
@@ -102,8 +105,11 @@ export async function kvGet(credentials: AuthCredentials, key: string): Promise<
 
     const data = (await response.json()) as KvItem | null;
     if (!data) {
+      logger.debug('kvGet miss', { key });
       return null;
     }
+
+    logger.debug('kvGet hit', { key, version: data.version });
 
     return {
       ...data,
@@ -217,6 +223,11 @@ export async function kvMutate(
   const API_ENDPOINT = getServerUrl();
 
   return await backoff(async () => {
+    logger.debug('kvMutate request', {
+      count: mutations.length,
+      keys: mutations.map(mutation => mutation.key),
+      versions: mutations.map(mutation => mutation.version),
+    });
     const response = await fetch(`${API_ENDPOINT}/v1/kv`, {
       method: 'POST',
       headers: {
@@ -237,6 +248,11 @@ export async function kvMutate(
 
     const data = (await response.json()) as KvMutateResponse;
     if (data.success === false) {
+      logger.debug('kvMutate conflict', {
+        count: mutations.length,
+        keys: mutations.map(mutation => mutation.key),
+        remoteVersions: data.errors.map(error => error.version),
+      });
       return {
         ...data,
         errors: data.errors.map(error => ({
@@ -245,6 +261,12 @@ export async function kvMutate(
         })),
       };
     }
+
+    logger.debug('kvMutate success', {
+      count: mutations.length,
+      keys: mutations.map(mutation => mutation.key),
+      versions: data.results.map(result => result.version),
+    });
 
     return data;
   });

@@ -2615,8 +2615,20 @@ class Sync {
             seq: updateData.seq,
           },
         ]);
-        // Only persist capabilities to KV when the server actually sent a new version
-        if (updateData.body.capabilities) {
+        // Only persist capabilities when the server sent a newer capabilities version.
+        // Some update-session events include capabilities unchanged alongside message/activity
+        // updates; writing those through to KV on every event creates redundant traffic.
+        if (
+          updateData.body.capabilities &&
+          updateData.body.capabilities.version !== session.capabilitiesVersion
+        ) {
+          logger.debug('update-session capabilities changed, persisting cache', {
+            sessionId: updateData.body.id,
+            machineId: metadata?.machineId,
+            agentType: metadata?.flavor,
+            previousVersion: session.capabilitiesVersion,
+            nextVersion: updateData.body.capabilities.version,
+          });
           void persistCachedCapabilities({
             machineId: metadata?.machineId,
             agentType:
@@ -2629,6 +2641,13 @@ class Sync {
             capabilities,
             credentials: this.credentials,
             updatedAt: updateData.createdAt,
+          });
+        } else if (updateData.body.capabilities) {
+          logger.debug('update-session capabilities unchanged, skipping cache persist', {
+            sessionId: updateData.body.id,
+            machineId: metadata?.machineId,
+            agentType: metadata?.flavor,
+            version: updateData.body.capabilities.version,
           });
         }
 

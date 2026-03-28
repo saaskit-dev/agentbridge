@@ -16,6 +16,7 @@ const REMOTE_HYDRATE_FRESH_MS = 5 * 60 * 1000;
 const persistChains = new Map<string, Promise<void>>();
 const hydrateInflight = new Map<string, Promise<CachedCapabilitiesEnvelope | null>>();
 const hydrateCheckedAt = new Map<string, number>();
+const memoryEnvelopes = new Map<string, CachedCapabilitiesEnvelope>();
 
 type CachedCapabilitiesEnvelope = {
   agentType?: AgentType;
@@ -37,6 +38,54 @@ function isEnvelopeFresh(envelope: CachedCapabilitiesEnvelope | null | undefined
     return false;
   }
   return now - envelope.updatedAt < REMOTE_HYDRATE_FRESH_MS;
+}
+
+function serializeCapabilitiesSnapshot(
+  capabilities: SessionCapabilities | null | undefined,
+  agentType: AgentType
+): string {
+  const snapshot = getCachedCapabilitySnapshot(capabilities, agentType);
+  return JSON.stringify({
+    models: snapshot.models
+      ? {
+          current: snapshot.models.current,
+          available: snapshot.models.available.map(model => ({
+            id: model.id,
+            name: model.name,
+            description: model.description ?? null,
+          })),
+        }
+      : null,
+    modes: snapshot.modes
+      ? {
+          current: snapshot.modes.current,
+          available: snapshot.modes.available.map(mode => ({
+            id: mode.id,
+            name: mode.name,
+            description: mode.description ?? null,
+          })),
+        }
+      : null,
+    configOptions:
+      snapshot.configOptions?.map(option => ({
+        id: option.id,
+        name: option.name,
+        description: option.description ?? null,
+        category: option.category,
+        type: option.type,
+        currentValue: option.currentValue,
+        options: option.options.map(choice => ({
+          value: choice.value,
+          label: choice.label,
+        })),
+      })) ?? null,
+    commands:
+      snapshot.commands?.map(command => ({
+        id: command.id,
+        name: command.name,
+        description: command.description ?? null,
+      })) ?? null,
+  });
 }
 
 function parseEnvelope(raw: string | null | undefined): CachedCapabilitiesEnvelope | null {
@@ -67,35 +116,80 @@ async function saveLocalEnvelope(
   agentType: AgentType,
   envelope: CachedCapabilitiesEnvelope
 ) {
-  await messageDB.upsertCapabilities({
-    machine_id: machineId,
-    agent_type: agentType,
-    capabilities: JSON.stringify(envelope.capabilities),
-    updated_at: envelope.updatedAt,
-    kv_version: envelope.kvVersion ?? null,
+  const cacheKey = getPersistChainKey(machineId, agentType);
+  memoryEnvelopes.set(cacheKey, envelope);
+  logger.debug('Capabilities cache saveLocalEnvelope memory', {
+    machineId,
+    agentType,
+    updatedAt: envelope.updatedAt,
+    kvVersion: envelope.kvVersion ?? null,
   });
+  try {
+    await messageDB.upsertCapabilities({
+      machine_id: machineId,
+      agent_type: agentType,
+      capabilities: JSON.stringify(envelope.capabilities),
+      updated_at: envelope.updatedAt,
+      kv_version: envelope.kvVersion ?? null,
+    });
+    logger.debug('Capabilities cache saveLocalEnvelope sqlite', {
+      machineId,
+      agentType,
+      updatedAt: envelope.updatedAt,
+      kvVersion: envelope.kvVersion ?? null,
+    });
+  } catch (error) {
+    logger.warn('Failed to persist capabilities cache to SQLite, using in-memory cache', {
+      machineId,
+      agentType,
+      error: toError(error),
+    });
+  }
 }
 
 async function loadLocalEnvelope(
   machineId: string,
   agentType: AgentType
 ): Promise<CachedCapabilitiesEnvelope | null> {
-  const row = await messageDB.getCapabilities(machineId, agentType);
-  if (!row) return null;
+  const cacheKey = getPersistChainKey(machineId, agentType);
+  const memory = memoryEnvelopes.get(cacheKey);
+  if (memory) {
+    logger.debug('Capabilities cache loadLocalEnvelope memory hit', {
+      machineId,
+      agentType,
+      updatedAt: memory.updatedAt,
+      kvVersion: memory.kvVersion ?? null,
+    });
+    return memory;
+  }
+
   try {
+    const row = await messageDB.getCapabilities(machineId, agentType);
+    if (!row) {
+      logger.debug('Capabilities cache loadLocalEnvelope miss', { machineId, agentType });
+      return null;
+    }
     const capabilities = getCachedCapabilitySnapshot(
       SessionCapabilitiesSchema.parse(JSON.parse(row.capabilities)),
       agentType
     );
-    return {
+    const envelope = {
       agentType,
       capabilities,
       updatedAt: row.updated_at,
       kvVersion: row.kv_version ?? undefined,
     };
+    memoryEnvelopes.set(cacheKey, envelope);
+    logger.debug('Capabilities cache loadLocalEnvelope sqlite hit', {
+      machineId,
+      agentType,
+      updatedAt: row.updated_at,
+      kvVersion: row.kv_version ?? null,
+    });
+    return envelope;
   } catch (error) {
-    logger.error('Failed to parse capabilities from SQLite', toError(error));
-    return null;
+    logger.error('Failed to read capabilities from SQLite', toError(error), { machineId, agentType });
+    return memory ?? null;
   }
 }
 
@@ -235,11 +329,22 @@ export async function hydrateCachedCapabilities(
 
   const local = await loadLocalEnvelope(machineId, agentType);
   if (isEnvelopeFresh(local)) {
+    logger.debug('Capabilities cache hydrate skipped: fresh local envelope', {
+      machineId,
+      agentType,
+      updatedAt: local?.updatedAt,
+      kvVersion: local?.kvVersion ?? null,
+    });
     return local?.capabilities ?? null;
   }
   const chainKey = getPersistChainKey(machineId, agentType);
   const lastCheckedAt = hydrateCheckedAt.get(chainKey);
   if (lastCheckedAt && Date.now() - lastCheckedAt < REMOTE_HYDRATE_FRESH_MS) {
+    logger.debug('Capabilities cache hydrate skipped: recent remote check', {
+      machineId,
+      agentType,
+      lastCheckedAt,
+    });
     return local?.capabilities ?? null;
   }
   const credentials = await TokenStorage.getCredentials();
@@ -250,9 +355,16 @@ export async function hydrateCachedCapabilities(
   try {
     const remote = await hydrateRemoteEnvelope(machineId, agentType, credentials);
     if (remote) {
+      logger.debug('Capabilities cache hydrate remote hit', {
+        machineId,
+        agentType,
+        updatedAt: remote.updatedAt,
+        kvVersion: remote.kvVersion ?? null,
+      });
       await saveLocalEnvelope(machineId, agentType, remote);
       return remote.capabilities;
     }
+    logger.debug('Capabilities cache hydrate remote miss', { machineId, agentType });
   } catch (error) {
     logger.error('Failed to hydrate capabilities cache', toError(error), { machineId, agentType });
   }
@@ -288,9 +400,16 @@ export async function persistCachedCapabilities(params: {
       const local = await loadLocalEnvelope(machineId, agentType);
 
       // Skip remote write if capabilities haven't changed
-      const localJson = local ? JSON.stringify(local.capabilities) : null;
-      const nextJson = JSON.stringify(snapshot);
+      const localJson = local ? serializeCapabilitiesSnapshot(local.capabilities, agentType) : null;
+      const nextJson = serializeCapabilitiesSnapshot(snapshot, agentType);
       if (localJson === nextJson) {
+        logger.debug('Capabilities cache persist skipped: unchanged snapshot', {
+          machineId,
+          agentType,
+          localUpdatedAt: local?.updatedAt,
+          localKvVersion: local?.kvVersion ?? null,
+          persistRemote,
+        });
         return;
       }
 
@@ -303,6 +422,12 @@ export async function persistCachedCapabilities(params: {
       await saveLocalEnvelope(machineId, agentType, nextEnvelope);
 
       if (!persistRemote) {
+        logger.debug('Capabilities cache persist skipped: local-only', {
+          machineId,
+          agentType,
+          updatedAt,
+          kvVersion: nextEnvelope.kvVersion ?? null,
+        });
         return;
       }
 
@@ -312,6 +437,12 @@ export async function persistCachedCapabilities(params: {
       }
 
       try {
+        logger.debug('Capabilities cache persist remote write', {
+          machineId,
+          agentType,
+          updatedAt,
+          kvVersion: nextEnvelope.kvVersion ?? null,
+        });
         const savedEnvelope = await saveRemoteEnvelope(auth, machineId, agentType, nextEnvelope);
         await saveLocalEnvelope(machineId, agentType, savedEnvelope);
       } catch (error) {
