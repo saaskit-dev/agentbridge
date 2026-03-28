@@ -1012,8 +1012,8 @@ class Sync {
               ? session.metadata.flavor
               : null,
           capabilities: session.capabilities,
-          credentials: this.credentials,
           updatedAt: session.updatedAt,
+          persistRemote: false,
         })
       )
     );

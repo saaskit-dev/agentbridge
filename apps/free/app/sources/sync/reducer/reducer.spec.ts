@@ -1,10 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AgentState } from '../storageTypes';
 import { NormalizedMessage } from '../typesRaw';
 import { createReducer } from './reducer';
 import { reducer } from './reducer';
 
 describe('reducer', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   // it('should process golden cases', () => {
   //     for (let i = 0; i <= 3; i++) {
 
@@ -905,6 +909,103 @@ describe('reducer', () => {
 
       // Verify the tool is properly linked
       expect(state.toolIdToMessageId.get('tool-1')).toBe(permMessageId);
+    });
+
+    it('should correct synthetic permission timestamps when the real tool call arrives later', () => {
+      const state = createReducer();
+      vi.spyOn(Date, 'now').mockReturnValue(10_000);
+
+      const pendingOnlyState: AgentState = {
+        requests: {
+          'tool-1': {
+            tool: 'Bash',
+            arguments: { command: 'ls' },
+          },
+        },
+      };
+
+      const result1 = reducer(state, [], pendingOnlyState);
+      expect(result1.messages).toHaveLength(1);
+
+      const messageId = state.toolIdToMessageId.get('tool-1');
+      const placeholder = state.messages.get(messageId!);
+      expect(placeholder?.createdAt).toBe(10_000);
+      expect(placeholder?.tool?.createdAt).toBe(10_000);
+
+      const toolMessages: NormalizedMessage[] = [
+        {
+          id: 'tool-msg-1',
+          createdAt: 5_000,
+          role: 'agent',
+          content: [
+            {
+              type: 'tool-call',
+              id: 'tool-1',
+              name: 'Bash',
+              input: { command: 'ls' },
+              description: null,
+              uuid: 'tool-uuid-1',
+              parentUUID: null,
+            },
+          ],
+          isSidechain: false,
+        },
+      ];
+
+      reducer(state, toolMessages, pendingOnlyState);
+
+      const finalMessage = state.messages.get(messageId!);
+      expect(finalMessage?.createdAt).toBe(5_000);
+      expect(finalMessage?.tool?.createdAt).toBe(5_000);
+      expect(finalMessage?.tool?.startedAt).toBe(5_000);
+      expect(finalMessage?.realID).toBe('tool-msg-1');
+    });
+
+    it('should inherit seq and trace metadata when a permission placeholder becomes a real tool call', () => {
+      const state = createReducer();
+
+      const pendingOnlyState: AgentState = {
+        requests: {
+          'tool-1': {
+            tool: 'Bash',
+            arguments: { command: 'ls' },
+            createdAt: 1_000,
+          },
+        },
+      };
+
+      reducer(state, [], pendingOnlyState);
+
+      const messageId = state.toolIdToMessageId.get('tool-1');
+      const toolMessages: NormalizedMessage[] = [
+        {
+          id: 'tool-msg-1',
+          seq: 42,
+          traceId: 'trace-123',
+          createdAt: 5_000,
+          role: 'agent',
+          content: [
+            {
+              type: 'tool-call',
+              id: 'tool-1',
+              name: 'Bash',
+              input: { command: 'ls' },
+              description: null,
+              uuid: 'tool-uuid-1',
+              parentUUID: null,
+            },
+          ],
+          isSidechain: false,
+          meta: { sentFrom: 'cli' },
+        },
+      ];
+
+      reducer(state, toolMessages, pendingOnlyState);
+
+      const finalMessage = state.messages.get(messageId!);
+      expect(finalMessage?.seq).toBe(42);
+      expect(finalMessage?.traceId).toBe('trace-123');
+      expect(finalMessage?.meta).toEqual({ sentFrom: 'cli' });
     });
 
     it('should create separate messages for same tool name with different arguments', () => {

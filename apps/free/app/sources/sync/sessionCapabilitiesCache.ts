@@ -12,7 +12,9 @@ import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/sessionCapabilitiesCache');
 const REMOTE_KEY_PREFIX = 'caps';
+const REMOTE_HYDRATE_FRESH_MS = 5 * 60 * 1000;
 const persistChains = new Map<string, Promise<void>>();
+const hydrateInflight = new Map<string, Promise<CachedCapabilitiesEnvelope | null>>();
 
 type CachedCapabilitiesEnvelope = {
   agentType?: AgentType;
@@ -27,6 +29,13 @@ function getRemoteCacheKey(machineId: string, agentType: AgentType) {
 
 function getPersistChainKey(machineId: string, agentType: AgentType) {
   return `${machineId}:${agentType}`;
+}
+
+function isEnvelopeFresh(envelope: CachedCapabilitiesEnvelope | null | undefined, now = Date.now()) {
+  if (!envelope) {
+    return false;
+  }
+  return now - envelope.updatedAt < REMOTE_HYDRATE_FRESH_MS;
 }
 
 function parseEnvelope(raw: string | null | undefined): CachedCapabilitiesEnvelope | null {
@@ -121,6 +130,26 @@ async function fetchRemoteEnvelope(
   };
 }
 
+async function hydrateRemoteEnvelope(
+  machineId: string,
+  agentType: AgentType,
+  credentials: AuthCredentials
+): Promise<CachedCapabilitiesEnvelope | null> {
+  const key = getPersistChainKey(machineId, agentType);
+  const inflight = hydrateInflight.get(key);
+  if (inflight) {
+    return inflight;
+  }
+
+  const request = fetchRemoteEnvelope(machineId, agentType, credentials).finally(() => {
+    if (hydrateInflight.get(key) === request) {
+      hydrateInflight.delete(key);
+    }
+  });
+  hydrateInflight.set(key, request);
+  return request;
+}
+
 async function saveRemoteEnvelope(
   credentials: AuthCredentials,
   machineId: string,
@@ -203,13 +232,16 @@ export async function hydrateCachedCapabilities(
   }
 
   const local = await loadLocalEnvelope(machineId, agentType);
+  if (isEnvelopeFresh(local)) {
+    return local?.capabilities ?? null;
+  }
   const credentials = await TokenStorage.getCredentials();
   if (!credentials) {
     return local?.capabilities ?? null;
   }
 
   try {
-    const remote = await fetchRemoteEnvelope(machineId, agentType, credentials);
+    const remote = await hydrateRemoteEnvelope(machineId, agentType, credentials);
     if (remote) {
       await saveLocalEnvelope(machineId, agentType, remote);
       return remote.capabilities;
@@ -227,8 +259,16 @@ export async function persistCachedCapabilities(params: {
   capabilities: SessionCapabilities | null | undefined;
   credentials?: AuthCredentials | null;
   updatedAt?: number;
+  persistRemote?: boolean;
 }) {
-  const { machineId, agentType, capabilities, credentials, updatedAt = Date.now() } = params;
+  const {
+    machineId,
+    agentType,
+    capabilities,
+    credentials,
+    updatedAt = Date.now(),
+    persistRemote = true,
+  } = params;
   if (!machineId || !agentType || !capabilities) {
     return;
   }
@@ -254,6 +294,10 @@ export async function persistCachedCapabilities(params: {
         kvVersion: local?.kvVersion,
       };
       await saveLocalEnvelope(machineId, agentType, nextEnvelope);
+
+      if (!persistRemote) {
+        return;
+      }
 
       const auth = credentials ?? (await TokenStorage.getCredentials());
       if (!auth) {

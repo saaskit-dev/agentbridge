@@ -253,6 +253,29 @@ function normalizePermissionResult(
   return content;
 }
 
+function resolvePendingPermissionCreatedAt(
+  request: { createdAt?: number | null },
+  fallback: number
+): number {
+  return typeof request.createdAt === 'number' ? request.createdAt : fallback;
+}
+
+function resolveCompletedPermissionCreatedAt(
+  completed: { createdAt?: number | null; completedAt?: number | null },
+  fallback: number
+): number {
+  if (typeof completed.createdAt === 'number') return completed.createdAt;
+  if (typeof completed.completedAt === 'number') return completed.completedAt;
+  return fallback;
+}
+
+function resolveCompletedPermissionCompletedAt(
+  completed: { completedAt?: number | null },
+  fallback: number
+): number {
+  return typeof completed.completedAt === 'number' ? completed.completedAt : fallback;
+}
+
 export function reducer(
   state: ReducerState,
   messages: NormalizedMessage[],
@@ -428,6 +451,7 @@ export function reducer(
     // Process pending permission requests
     if (agentState.requests) {
       for (const [permId, request] of Object.entries(agentState.requests)) {
+        const requestCreatedAt = resolvePendingPermissionCreatedAt(request, Date.now());
         // Skip if this permission is also in completedRequests (completed takes precedence)
         if (agentState.completedRequests && agentState.completedRequests[permId]) {
           continue;
@@ -485,7 +509,7 @@ export function reducer(
               name: request.tool,
               state: 'running' as const,
               input: request.arguments,
-              createdAt: request.createdAt || Date.now(),
+              createdAt: requestCreatedAt,
               startedAt: null,
               completedAt: null,
               description: null,
@@ -500,7 +524,7 @@ export function reducer(
               id: mid,
               realID: null,
               role: 'agent',
-              createdAt: request.createdAt || Date.now(),
+              createdAt: requestCreatedAt,
               text: null,
               tool: toolCall,
               event: null,
@@ -517,7 +541,7 @@ export function reducer(
         state.permissions.set(permId, {
           tool: request.tool,
           arguments: request.arguments,
-          createdAt: request.createdAt || Date.now(),
+          createdAt: requestCreatedAt,
           status: 'pending',
         });
       }
@@ -526,6 +550,8 @@ export function reducer(
     // Process completed permission requests
     if (agentState.completedRequests) {
       for (const [permId, completed] of Object.entries(agentState.completedRequests)) {
+        const completedCreatedAt = resolveCompletedPermissionCreatedAt(completed, Date.now());
+        const completedCompletedAt = resolveCompletedPermissionCompletedAt(completed, Date.now());
         // Check if we have a message for this permission ID
         const messageId = state.toolIdToMessageId.get(permId);
         if (messageId) {
@@ -592,7 +618,7 @@ export function reducer(
               // denied or canceled
               if (message.tool.state !== 'error' && message.tool.state !== 'completed') {
                 message.tool.state = 'error';
-                message.tool.completedAt = completed.completedAt || Date.now();
+                message.tool.completedAt = completedCompletedAt;
                 if (!message.tool.result && completed.reason) {
                   message.tool.result = { error: completed.reason };
                 }
@@ -604,8 +630,8 @@ export function reducer(
             state.permissions.set(permId, {
               tool: completed.tool,
               arguments: completed.arguments,
-              createdAt: completed.createdAt || Date.now(),
-              completedAt: completed.completedAt || undefined,
+              createdAt: completedCreatedAt,
+              completedAt: typeof completed.completedAt === 'number' ? completed.completedAt : undefined,
               status: completed.status,
               reason: completed.reason || undefined,
               mode: completed.mode || undefined,
@@ -627,8 +653,8 @@ export function reducer(
             state.permissions.set(permId, {
               tool: completed.tool,
               arguments: completed.arguments,
-              createdAt: completed.createdAt || Date.now(),
-              completedAt: completed.completedAt || undefined,
+              createdAt: completedCreatedAt,
+              completedAt: typeof completed.completedAt === 'number' ? completed.completedAt : undefined,
               status: completed.status,
               reason: completed.reason || undefined,
             });
@@ -646,9 +672,9 @@ export function reducer(
             name: completed.tool,
             state: completed.status === 'approved' ? 'completed' : 'error',
             input: completed.arguments,
-            createdAt: completed.createdAt || Date.now(),
+            createdAt: completedCreatedAt,
             startedAt: null,
-            completedAt: completed.completedAt || Date.now(),
+            completedAt: completedCompletedAt,
             description: null,
             result:
               completed.status === 'approved'
@@ -670,7 +696,7 @@ export function reducer(
             id: mid,
             realID: null,
             role: 'agent',
-            createdAt: completed.createdAt || Date.now(),
+            createdAt: completedCreatedAt,
             text: null,
             tool: toolCall,
             event: null,
@@ -682,8 +708,8 @@ export function reducer(
           state.permissions.set(permId, {
             tool: completed.tool,
             arguments: completed.arguments,
-            createdAt: completed.createdAt || Date.now(),
-            completedAt: completed.completedAt || undefined,
+            createdAt: completedCreatedAt,
+            completedAt: typeof completed.completedAt === 'number' ? completed.completedAt : undefined,
             status: completed.status,
             reason: completed.reason || undefined,
             mode: completed.mode || undefined,
@@ -798,6 +824,21 @@ export function reducer(
             const message = state.messages.get(existingMessageId);
             if (message?.tool) {
               message.realID = msg.id;
+              if (message.seq === undefined && msg.seq !== undefined) {
+                message.seq = msg.seq;
+              }
+              if (!message.meta && msg.meta) {
+                message.meta = msg.meta;
+              }
+              if (!message.traceId && msg.traceId) {
+                message.traceId = msg.traceId;
+              }
+              if (message.createdAt > msg.createdAt) {
+                message.createdAt = msg.createdAt;
+              }
+              if (message.tool.createdAt > msg.createdAt) {
+                message.tool.createdAt = msg.createdAt;
+              }
               message.tool.description = c.description;
               message.tool.startedAt = msg.createdAt;
               // If permission was approved and shown as completed (no tool), now it's running
