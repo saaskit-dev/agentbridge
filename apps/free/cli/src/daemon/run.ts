@@ -47,6 +47,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 import { buildAgentAuthEnv } from './buildAgentAuthEnv';
+import { listExternalAgentSessions } from './externalSessions/listExternalSessions';
 import { shutdownTelemetry, getProcessTraceContext } from '@/telemetry';
 import { isAnalyticsEnabledSync } from '@/api/analyticsHeaderSync';
 import { getChildProcStats } from '@/utils/childProcessUtils';
@@ -566,6 +567,10 @@ export async function startDaemon(): Promise<void> {
       spawnSession: mobileSpawnSession,
       stopSession,
       listSupportedAgents: () => AgentSessionFactory.listRegistered(),
+      listExternalAgentSessions: ({ token, forceRefresh }) =>
+        listExternalAgentSessions(AgentSessionFactory.listRegistered(), token, forceRefresh),
+      listExternalAgentSessionsForAgent: ({ agentType, token, forceRefresh }) =>
+        listExternalAgentSessions([agentType], token, forceRefresh),
       requestShutdown: () => requestShutdown('free-app'),
     });
 

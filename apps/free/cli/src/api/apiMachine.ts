@@ -114,6 +114,12 @@ type MachineRpcHandlers = {
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   stopSession: (sessionId: string) => boolean;
   listSupportedAgents: () => string[];
+  listExternalAgentSessions: (params: { token?: string; forceRefresh?: boolean }) => Promise<unknown>;
+  listExternalAgentSessionsForAgent: (params: {
+    agentType: string;
+    token?: string;
+    forceRefresh?: boolean;
+  }) => Promise<unknown>;
   requestShutdown: () => void;
 };
 
@@ -141,6 +147,8 @@ export class ApiMachineClient {
     spawnSession,
     stopSession,
     listSupportedAgents,
+    listExternalAgentSessions,
+    listExternalAgentSessionsForAgent,
     requestShutdown,
   }: MachineRpcHandlers) {
     // Register spawn session handler
@@ -230,6 +238,37 @@ export class ApiMachineClient {
       });
       return { agents };
     });
+
+    this.rpcHandlerManager.registerHandler('list-external-agent-sessions', async (params: any) => {
+      logger.debug('[API MACHINE] Listing external agent sessions', {
+        machineId: this.machine.id,
+        forceRefresh: params?.forceRefresh === true,
+      });
+      return await listExternalAgentSessions({
+        token: params?.token,
+        forceRefresh: params?.forceRefresh === true,
+      });
+    });
+
+    this.rpcHandlerManager.registerHandler(
+      'list-external-agent-sessions-for-agent',
+      async (params: any) => {
+        const agentType = params?.agentType;
+        if (!agentType || typeof agentType !== 'string') {
+          throw new Error('agentType is required');
+        }
+        logger.debug('[API MACHINE] Listing external agent sessions for agent', {
+          machineId: this.machine.id,
+          agentType,
+          forceRefresh: params?.forceRefresh === true,
+        });
+        return await listExternalAgentSessionsForAgent({
+          agentType,
+          token: params?.token,
+          forceRefresh: params?.forceRefresh === true,
+        });
+      }
+    );
 
     // Register stop daemon handler
     this.rpcHandlerManager.registerHandler('stop-daemon', () => {

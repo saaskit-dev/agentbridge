@@ -152,6 +152,22 @@ export interface SpawnSessionOptions {
   agent?: string;
   model?: string;
   mode?: string;
+  resumeAgentSessionId?: string;
+}
+
+export interface ExternalAgentSessionSummary {
+  agentType: string;
+  sessionId: string;
+  cwd: string;
+  title?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface ListExternalAgentSessionsResult {
+  sessions: ExternalAgentSessionSummary[];
+  listableAgents: string[];
+  errors: Array<{ agentType: string; error: string }>;
+  cachedAt?: number;
 }
 
 // Exported session operation functions
@@ -170,9 +186,17 @@ export async function machineSpawnNewSession(
     agent,
     model,
     mode,
+    resumeAgentSessionId,
   } = options;
 
-  logger.info('[ops] machineSpawnNewSession', { machineId, directory, agent, model, mode });
+  logger.info('[ops] machineSpawnNewSession', {
+    machineId,
+    directory,
+    agent,
+    model,
+    mode,
+    resumeAgentSessionId,
+  });
 
   try {
     const result = await apiSocket.machineRPC<
@@ -185,6 +209,7 @@ export async function machineSpawnNewSession(
         agent?: string;
         model?: string;
         mode?: string;
+        resumeAgentSessionId?: string;
       }
     >(machineId, 'spawn-free-session', {
       type: 'spawn-in-directory',
@@ -194,6 +219,7 @@ export async function machineSpawnNewSession(
       agent,
       model,
       mode,
+      resumeAgentSessionId,
     });
     logger.info('[ops] machineSpawnNewSession result', {
       machineId,
@@ -201,13 +227,18 @@ export async function machineSpawnNewSession(
       agent,
       model,
       mode,
+      resumeAgentSessionId,
       type: result.type,
       sessionId: result.type === 'success' ? result.sessionId : undefined,
     });
     return result;
   } catch (error) {
     // Handle RPC errors
-    logger.error('[ops] machineSpawnNewSession failed', toError(error), { machineId, directory });
+    logger.error('[ops] machineSpawnNewSession failed', toError(error), {
+      machineId,
+      directory,
+      resumeAgentSessionId,
+    });
     return {
       type: 'error',
       errorMessage: safeStringify(error),
@@ -233,6 +264,44 @@ export async function machineListSupportedAgents(machineId: string): Promise<str
 /**
  * Stop the daemon on a specific machine
  */
+export async function machineListExternalAgentSessions(
+  machineId: string,
+  token?: string,
+  forceRefresh: boolean = false
+): Promise<ListExternalAgentSessionsResult> {
+  logger.info('[ops] machineListExternalAgentSessions', { machineId });
+  try {
+    return await apiSocket.machineRPC<
+      ListExternalAgentSessionsResult,
+      { token?: string; forceRefresh?: boolean }
+    >(machineId, 'list-external-agent-sessions', { token, forceRefresh });
+  } catch (error) {
+    logger.error('[ops] machineListExternalAgentSessions failed', toError(error), { machineId });
+    return { sessions: [], listableAgents: [], errors: [], cachedAt: Date.now() };
+  }
+}
+
+export async function machineListExternalAgentSessionsForAgent(
+  machineId: string,
+  agentType: string,
+  token?: string,
+  forceRefresh: boolean = false
+): Promise<ListExternalAgentSessionsResult> {
+  logger.info('[ops] machineListExternalAgentSessionsForAgent', { machineId, agentType });
+  try {
+    return await apiSocket.machineRPC<
+      ListExternalAgentSessionsResult,
+      { agentType: string; token?: string; forceRefresh?: boolean }
+    >(machineId, 'list-external-agent-sessions-for-agent', { agentType, token, forceRefresh });
+  } catch (error) {
+    logger.error('[ops] machineListExternalAgentSessionsForAgent failed', toError(error), {
+      machineId,
+      agentType,
+    });
+    return { sessions: [], listableAgents: [], errors: [], cachedAt: Date.now() };
+  }
+}
+
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
   logger.info('[ops] machineStopDaemon', { machineId });
   const result = await apiSocket.machineRPC<{ message: string }, {}>(machineId, 'stop-daemon', {});

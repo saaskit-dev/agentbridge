@@ -1,16 +1,8 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import React, { useState, useMemo, useCallback, useRef } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  ActivityIndicator,
-  RefreshControl,
-  Platform,
-  Pressable,
-  TextInput,
-} from 'react-native';
+import { View, Text, ActivityIndicator, RefreshControl, Platform, Pressable } from 'react-native';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -19,9 +11,9 @@ import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTex
 import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineListExternalAgentSessions, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { machineSpawnNewSession } from '@/sync/ops';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
+import { useSessions, useMachine } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
@@ -86,6 +78,7 @@ export default function MachineDetailScreen() {
   const [isSpawning, setIsSpawning] = useState(false);
   const inputRef = useRef<MultiTextInputHandle>(null);
   const [showAllPaths, setShowAllPaths] = useState(false);
+  const [externalSessionCount, setExternalSessionCount] = useState<number | null>(null);
   // Variant D only
 
   const machineSessions = useMemo(() => {
@@ -118,6 +111,26 @@ export default function MachineDetailScreen() {
   }, [recentPaths, showAllPaths]);
 
   // Determine daemon status from metadata
+  const refreshExternalSessionCount = useCallback(async () => {
+    if (!machineId || !machine || !isMachineOnline(machine)) {
+      setExternalSessionCount(null);
+      return;
+    }
+
+    try {
+      const result = await machineListExternalAgentSessions(machineId);
+      setExternalSessionCount(result.sessions.length);
+    } catch {
+      setExternalSessionCount(null);
+    }
+  }, [machine, machineId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshExternalSessionCount().catch(() => undefined);
+    }, [refreshExternalSessionCount])
+  );
+
   const daemonStatus = useMemo(() => {
     if (!machine) return 'unknown';
 
@@ -134,25 +147,25 @@ export default function MachineDetailScreen() {
   const handleStopDaemon = async () => {
     // Show confirmation modal using alert with buttons
     Modal.alert(
-      'Stop Daemon?',
-      'You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.',
+      t('machine.stopDaemonConfirmTitle'),
+      t('machine.stopDaemonConfirmMessage'),
       [
         {
-          text: 'Cancel',
+          text: t('common.cancel'),
           style: 'cancel',
         },
         {
-          text: 'Stop Daemon',
+          text: t('machine.stopDaemon'),
           style: 'destructive',
           onPress: async () => {
             setIsStoppingDaemon(true);
             try {
               const result = await machineStopDaemon(machineId!);
-              Modal.alert('Daemon Stopped', result.message);
+              Modal.alert(t('machine.daemonStopped'), result.message);
               // Refresh to get updated metadata
               await sync.refreshMachines();
             } catch (error) {
-              Modal.alert(t('common.error'), 'Failed to stop daemon. It may not be running.');
+              Modal.alert(t('common.error'), t('machine.failedToStopDaemon'));
             } finally {
               setIsStoppingDaemon(false);
             }
@@ -174,11 +187,11 @@ export default function MachineDetailScreen() {
     if (!machine || !machineId) return;
 
     const newDisplayName = await Modal.prompt(
-      'Rename Machine',
-      'Give this machine a custom name. Leave empty to use the default hostname.',
+      t('machine.renameMachine'),
+      t('machine.renameMachineMessage'),
       {
         defaultValue: machine.metadata?.displayName || '',
-        placeholder: machine.metadata?.host || 'Enter machine name',
+        placeholder: machine.metadata?.host || t('machine.enterMachineName'),
         cancelText: t('common.cancel'),
         confirmText: t('common.rename'),
       }
@@ -194,9 +207,9 @@ export default function MachineDetailScreen() {
 
         await machineUpdateMetadata(machineId, updatedMetadata, machine.metadataVersion);
 
-        Modal.alert(t('common.success'), 'Machine renamed successfully');
+        Modal.alert(t('common.success'), t('machine.machineRenamed'));
       } catch (error) {
-        Modal.alert('Error', safeStringify(error));
+        Modal.alert(t('common.error'), safeStringify(error));
         // Refresh to get latest state
         await sync.refreshMachines();
       } finally {
@@ -228,8 +241,8 @@ export default function MachineDetailScreen() {
           break;
         case 'requestToApproveDirectoryCreation': {
           const approved = await Modal.confirm(
-            'Create Directory?',
-            `The directory '${result.directory}' does not exist. Would you like to create it?`,
+            t('machine.createDirectoryTitle'),
+            t('machine.createDirectoryMessage', { directory: result.directory }),
             { cancelText: t('common.cancel'), confirmText: t('common.create') }
           );
           if (approved) {
@@ -242,8 +255,7 @@ export default function MachineDetailScreen() {
           break;
       }
     } catch (error) {
-      let errorMessage =
-        'Failed to start session. Make sure the daemon is running on the target machine.';
+      let errorMessage = t('machine.failedToStartSession');
       const errMsg = safeStringify(error);
       if (!errMsg.includes('Failed to spawn session')) {
         errorMessage = errMsg;
@@ -253,11 +265,6 @@ export default function MachineDetailScreen() {
       setIsSpawning(false);
     }
   };
-
-  const pastUsedRelativePath = useCallback((session: Session) => {
-    if (!session.metadata) return 'unknown path';
-    return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
-  }, []);
 
   if (!machine) {
     return (
@@ -271,7 +278,7 @@ export default function MachineDetailScreen() {
         />
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <Text style={[Typography.default(), { fontSize: 16, color: '#666' }]}>
-            Machine not found
+            {t('machine.machineNotFound')}
           </Text>
         </View>
       </>
@@ -370,7 +377,7 @@ export default function MachineDetailScreen() {
                       ref={inputRef}
                       value={customPath}
                       onChangeText={setCustomPath}
-                      placeholder={'Enter custom path'}
+                      placeholder={t('machine.enterCustomPath')}
                       maxHeight={76}
                       paddingTop={8}
                       paddingBottom={8}
@@ -523,7 +530,7 @@ export default function MachineDetailScreen() {
 
         {/* Previous Sessions (debug view) */}
         {previousSessions.length > 0 && (
-          <ItemGroup title={'Previous Sessions (up to 5 most recent)'}>
+          <ItemGroup title={t('machine.previousSessions')}>
             {previousSessions.map(session => (
               <Item
                 key={session.id}
@@ -535,6 +542,22 @@ export default function MachineDetailScreen() {
             ))}
           </ItemGroup>
         )}
+
+        <ItemGroup title={t('machineImport.title')}>
+          <Item
+            title={t('machineImport.browse')}
+            subtitle={
+              externalSessionCount == null
+                ? t('machineImport.machineSummarySimple')
+                : t('machineImport.machineSummaryCount', { count: externalSessionCount })
+            }
+            subtitleLines={0}
+            leftElement={
+              <Ionicons name="sparkles-outline" size={18} color={theme.colors.textSecondary} />
+            }
+            onPress={() => router.push(`/machine/${machineId}/import-sessions`)}
+          />
+        </ItemGroup>
 
         {/* Machine */}
         <ItemGroup title={t('machine.machineGroup')}>
