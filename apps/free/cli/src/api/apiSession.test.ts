@@ -3,6 +3,14 @@ import { ApiSessionClient } from './apiSession';
 import { createCipher, encryptToWireString, decryptFromWireString } from './encryption';
 import type { Update } from './types';
 
+/** Helper: create a minimal NormalizedMessage for pipeline tests. */
+function testMsg(label: string) {
+  return {
+    role: 'agent' as const,
+    content: [{ type: 'text' as const, text: label, uuid: label, parentUUID: null }],
+  };
+}
+
 const { mockIo, mockBackoff, mockDelay } = vi.hoisted(() => ({
   mockIo: vi.fn(),
   mockBackoff: vi.fn(async <T>(callback: () => Promise<T>) => {
@@ -179,7 +187,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       ],
     });
 
-    client.sendCodexMessage({ type: 'delta', text: 'hello' });
+    client.sendNormalizedMessage(testMsg('hello'));
 
     await waitForCheck(() => {
       expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
@@ -198,15 +206,9 @@ describe('ApiSessionClient v3 messages API migration', () => {
       session.encryptionVariant,
       payload.messages[0].content
     );
-    expect(decrypted).toEqual({
+    expect(decrypted).toMatchObject({
       role: 'agent',
-      content: {
-        type: 'codex',
-        data: { type: 'delta', text: 'hello' },
-      },
-      meta: {
-        sentFrom: 'cli',
-      },
+      content: [{ type: 'text', text: 'hello' }],
     });
   });
 
@@ -238,13 +240,13 @@ describe('ApiSessionClient v3 messages API migration', () => {
         ],
       });
 
-    client.sendCodexMessage({ type: 'first' });
+    client.sendNormalizedMessage(testMsg('first'));
     await waitForCheck(() => {
       expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
 
-    client.sendCodexMessage({ type: 'second' });
-    client.sendCodexMessage({ type: 'third' });
+    client.sendNormalizedMessage(testMsg('second'));
+    client.sendNormalizedMessage(testMsg('third'));
 
     resolveFirstAck({
       ok: true,
@@ -269,7 +271,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
     });
 
-    client.sendCodexMessage({ type: 'retry-me' });
+    client.sendNormalizedMessage(testMsg('retry-me'));
 
     await waitForCheck(() => {
       expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
@@ -319,17 +321,14 @@ describe('ApiSessionClient v3 messages API migration', () => {
     });
   });
 
-  it('sends ACP agent messages through enqueueMessage', async () => {
+  it('sends normalized messages through enqueueMessage', async () => {
     const client = new ApiSessionClient('fake-token', session);
     mockSocket.emitWithAck.mockResolvedValueOnce({
       ok: true,
       messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
     });
 
-    client.sendAgentMessage('codex', {
-      type: 'message',
-      message: 'hi',
-    });
+    client.sendNormalizedMessage(testMsg('hi'));
 
     await waitForCheck(() => {
       expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
@@ -343,19 +342,9 @@ describe('ApiSessionClient v3 messages API migration', () => {
       payload.messages[0].content
     );
 
-    expect(decrypted).toEqual({
+    expect(decrypted).toMatchObject({
       role: 'agent',
-      content: {
-        type: 'acp',
-        provider: 'codex',
-        data: {
-          type: 'message',
-          message: 'hi',
-        },
-      },
-      meta: {
-        sentFrom: 'cli',
-      },
+      content: [{ type: 'text', text: 'hi' }],
     });
   });
 
@@ -701,7 +690,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       messages: [{ id: 'msg-9', seq: 9, createdAt: 9, updatedAt: 9 }],
     });
 
-    client.sendCodexMessage({ type: 'older' });
+    client.sendNormalizedMessage(testMsg('older'));
     await waitForCheck(() => {
       expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
@@ -712,7 +701,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       messages: [{ id: 'msg-11', seq: 11, createdAt: 11, updatedAt: 11 }],
     });
 
-    client.sendCodexMessage({ type: 'newer' });
+    client.sendNormalizedMessage(testMsg('newer'));
     await waitForCheck(() => {
       expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
     });
@@ -759,7 +748,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       ok: true,
     });
 
-    client.sendCodexMessage({ type: 'no-messages-field' });
+    client.sendNormalizedMessage(testMsg('no-messages-field'));
     await waitForCheck(() => {
       expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
     });
@@ -866,7 +855,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         })
       )
     );
-    client.sendCodexMessage({ type: 'after-close-send' });
+    client.sendNormalizedMessage(testMsg('after-close-send'));
 
     await new Promise(resolve => setTimeout(resolve, 20));
 

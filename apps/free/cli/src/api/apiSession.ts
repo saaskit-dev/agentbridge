@@ -59,47 +59,6 @@ function getWireTrace(): WireTrace | undefined {
   injectTrace(ctx, obj);
   return obj._trace as WireTrace | undefined;
 }
-/**
- * ACP (Agent Communication Protocol) message data types.
- * This is the unified format for all agent messages - CLI adapts each provider's format to ACP.
- */
-export type ACPMessageData =
-  // Core message types
-  | { type: 'message'; message: string }
-  | { type: 'reasoning'; message: string }
-  | { type: 'thinking'; text: string }
-  // Tool interactions
-  | { type: 'tool-call'; callId: string; name: string; input: unknown; id: string }
-  | { type: 'tool-result'; callId: string; output: unknown; id: string; isError?: boolean }
-  // File operations
-  | {
-      type: 'file-edit';
-      description: string;
-      filePath: string;
-      diff?: string;
-      oldContent?: string;
-      newContent?: string;
-      id: string;
-    }
-  // Terminal/command output
-  | { type: 'terminal-output'; data: string; callId: string }
-  // Task lifecycle events
-  | { type: 'task_started'; id: string }
-  | { type: 'task_complete'; id: string }
-  | { type: 'turn_aborted'; id: string }
-  // Permissions
-  | {
-      type: 'permission-request';
-      permissionId: string;
-      toolName: string;
-      description: string;
-      options?: unknown;
-    }
-  // Usage/metrics
-  | { type: 'token_count'; [key: string]: unknown };
-
-export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
-
 type V3SessionMessage = {
   id: string;
   seq: number;
@@ -781,23 +740,6 @@ export class ApiSessionClient extends EventEmitter {
     return id;
   }
 
-  /**
-   * Legacy transport wrapper kept for older tests and compatibility paths.
-   * The daemon/app main path should prefer sendNormalizedMessage().
-   */
-  async sendCodexMessage(body: any) {
-    const content = {
-      role: 'agent',
-      content: {
-        type: 'codex',
-        data: body, // This wraps the entire Claude message
-      },
-      meta: {
-        sentFrom: 'cli',
-      },
-    };
-    await this.enqueueMessage(content);
-  }
 
   /**
    * Legacy Claude session-protocol envelope used by local Claude JSONL/session sync.
@@ -828,41 +770,6 @@ export class ApiSessionClient extends EventEmitter {
     return this.enqueueMessage(msg);
   }
 
-  /**
-   * Send a generic agent message to the session using ACP (Agent Communication Protocol) format.
-   * Works for any agent type (Gemini, Codex, Claude, etc.) - CLI normalizes to unified ACP format.
-   *
-   * @param provider - The agent provider sending the message (e.g., 'gemini', 'codex', 'claude')
-   * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
-   */
-  /**
-   * Legacy ACP wrapper kept for compatibility. New daemon output should already
-   * be normalized before reaching ApiSessionClient.
-   */
-  async sendAgentMessage(
-    provider: 'gemini' | 'codex' | 'claude' | 'opencode',
-    body: ACPMessageData
-  ) {
-    const content = {
-      role: 'agent',
-      content: {
-        type: 'acp',
-        provider,
-        data: body,
-      },
-      meta: {
-        sentFrom: 'cli',
-      },
-    };
-
-    const id = await this.enqueueMessage(content);
-    logger.debug(`[SOCKET] Sending ACP message from ${provider}`, {
-      userId: this.userId,
-      sessionId: this.sessionId,
-      id,
-      type: body.type,
-    });
-  }
 
   async sendSessionEvent(
     event:
@@ -880,6 +787,7 @@ export class ApiSessionClient extends EventEmitter {
         }
       | {
           type: 'ready';
+          stopReason?: string;
         },
     id?: string
   ) {

@@ -23,7 +23,7 @@ import { config } from '@/config';
 import { getServerUrl } from '@/sync/serverConfig';
 import { sync } from '@/sync/sync';
 import { getSessionTrace, wireTraceToContext } from '@/sync/appTraceStore';
-import { getCurrentRealtimeSessionId } from '@/realtime/realtimeSessionState';
+import { getCurrentRealtimeSessionId } from '@/realtime/RealtimeSession';
 
 // Lazily-resolved auth token for RemoteSink — set after login, cleared on logout
 let _telemetryAuthToken: string | undefined;

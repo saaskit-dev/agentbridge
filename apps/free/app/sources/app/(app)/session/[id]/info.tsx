@@ -18,6 +18,7 @@ import { useFreeAction } from '@/hooks/useFreeAction';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete, sessionRestart, sessionArchiveViaServer } from '@/sync/ops';
 import { useSession, useIsDataReady } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { FreeError } from '@/utils/errors';
@@ -252,6 +253,22 @@ function SessionInfoContent({ session }: { session: Session }) {
     ]);
   }, [performDelete]);
 
+  const [clearingCache, performClearCache] = useFreeAction(async () => {
+    await sync.clearSessionCache(session.id);
+    Modal.alert(t('common.success'), t('sessionInfo.clearCacheSuccess'));
+  });
+
+  const handleClearCache = useCallback(() => {
+    Modal.alert(t('sessionInfo.clearCache'), t('sessionInfo.clearCacheConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('sessionInfo.clearCache'),
+        style: 'destructive',
+        onPress: performClearCache,
+      },
+    ]);
+  }, [performClearCache]);
+
   const formatDate = useCallback((timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   }, []);
@@ -421,6 +438,13 @@ function SessionInfoContent({ session }: { session: Session }) {
               disabled={restartingSession}
             />
           )}
+          <Item
+            title={t('sessionInfo.clearCache')}
+            subtitle={t('sessionInfo.clearCacheSubtitle')}
+            icon={<Ionicons name="trash-bin-outline" size={29} color="#FF9500" />}
+            onPress={handleClearCache}
+            disabled={clearingCache}
+          />
           {(sessionStatus.isConnected || sessionStatus.state === 'recovery_failed') && (
             <Item
               title={t('sessionInfo.archiveSession')}

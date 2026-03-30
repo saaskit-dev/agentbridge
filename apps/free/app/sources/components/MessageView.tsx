@@ -553,9 +553,6 @@ function DaemonLogBlock(props: {
   event: { type: 'daemon-log'; level: 'error' | 'warn'; component: string; message: string; error?: string };
 }) {
   const { theme } = useUnistyles();
-  const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
-  if (!devModeEnabled) return null;
-
   const { level, component, message, error } = props.event;
   const color = level === 'error' ? theme.colors.warningCritical : theme.colors.warning;
   return (

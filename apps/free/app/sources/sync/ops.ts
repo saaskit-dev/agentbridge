@@ -688,8 +688,8 @@ export async function sessionArchiveViaServer(
 ): Promise<{ success: boolean; message?: string }> {
   logger.info('[ops] sessionArchiveViaServer', { sessionId });
   try {
-    const response = await apiSocket.request(`/v1/sessions/${sessionId}`, {
-      method: 'DELETE',
+    const response = await apiSocket.request(`/v1/sessions/${sessionId}/archive`, {
+      method: 'PATCH',
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');

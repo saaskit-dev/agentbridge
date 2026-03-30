@@ -44,7 +44,7 @@ export const localSettingsDefaults: LocalSettings = {
   debugIdsInitializedForDevMode: false,
   commandPaletteEnabled: false,
   themePreference: 'adaptive',
-  markdownCopyV2: false,
+  markdownCopyV2: true,
   acknowledgedCliVersions: {},
 };
 Object.freeze(localSettingsDefaults);

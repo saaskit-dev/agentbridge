@@ -283,10 +283,13 @@ class Sync {
         const cachedSeq = await messageDB.getLastSeq(sessionId);
         if (cachedSeq > 0) {
           this.sessionLastSeq.set(sessionId, cachedSeq);
-          // Load latest 50 messages for fast initial render; older messages are
+          // Load latest messages for fast initial render; older messages are
           // fetched on demand via loadOlderMessages (triggered by ChatList scroll).
+          // Use a generous limit (500) to avoid splitting streaming text chunks
+          // across cache boundaries — ACP backends emit one raw message per
+          // text delta, so a single response can easily exceed 50 rows.
           const cached = await messageDB.getMessages(sessionId, {
-            limit: 50,
+            limit: 500,
             beforeSeq: cachedSeq + 1,
           });
           if (cached.length > 0) {
@@ -1001,6 +1004,21 @@ class Sync {
 
     // Apply to storage
     this.applySessions(decryptedSessions);
+
+    // Reconcile deletions: the server returns all non-deleted sessions (up to 150).
+    // When the count is under the limit, we have the full picture — any local session
+    // absent from the response was hard-deleted on the server while the client was
+    // offline and must be purged locally.
+    if (sessions.length < 150) {
+      const fetchedIds = new Set(sessions.map(s => s.id));
+      for (const sessionId of Object.keys(storage.getState().sessions)) {
+        if (!fetchedIds.has(sessionId)) {
+          logger.info('[sync] purging session absent from server response (deleted while offline)', { sessionId });
+          this.purgeSession(sessionId);
+        }
+      }
+    }
+
     void Promise.allSettled(
       decryptedSessions.map(session =>
         persistCachedCapabilities({
@@ -1806,6 +1824,12 @@ class Sync {
       return;
     }
 
+    // Socket.IO v4.8+ rejects emitWithAck() immediately when disconnected.
+    // Don't attempt to flush — onReconnected() will re-invalidate sendSync for all sessions.
+    if (apiSocket.getStatus() !== 'connected') {
+      return;
+    }
+
     // Drain in batches via WebSocket emitWithAck (RFC-010).
     while (pending.length > 0) {
       const batch = pending.slice(0, Sync.FLUSH_BATCH_SIZE);
@@ -2229,6 +2253,69 @@ class Sync {
     logger.info('[sync] message cache cleared');
   }
 
+  /**
+   * Clear the local cache for a single session: SQLite messages/sync,
+   * in-memory seq tracking, encryption cache, batch timers, messagesSync,
+   * send state, and Zustand messages — so the next visit re-fetches from server.
+   */
+  async clearSessionCache(sessionId: string): Promise<void> {
+    // SQLite: messages + session_sync rows
+    await messageDB.deleteSession(sessionId);
+
+    // Seq tracking
+    this.sessionLastSeq.delete(sessionId);
+    this.sessionOldestSeq.delete(sessionId);
+
+    // Flush pending message batch timer
+    const batchTimer = this.sessionBatchTimers.get(sessionId);
+    if (batchTimer) {
+      clearTimeout(batchTimer);
+      this.sessionBatchTimers.delete(sessionId);
+    }
+    this.sessionMessageQueue.delete(sessionId);
+    this.sessionQueueProcessing.delete(sessionId);
+
+    // Stop in-flight message fetch
+    const msgSync = this.messagesSync.get(sessionId);
+    if (msgSync) {
+      msgSync.stop();
+      this.messagesSync.delete(sessionId);
+    }
+
+    // Stop in-flight send and clear pending outbox
+    const sSync = this.sendSync.get(sessionId);
+    if (sSync) {
+      sSync.stop();
+      this.sendSync.delete(sessionId);
+    }
+    this.pendingOutbox.delete(sessionId);
+    this.persistOutbox();
+
+    // Encryption cache (decrypted agentState/metadata/capabilities)
+    this.encryption.clearSessionDecryptionCache(sessionId);
+
+    // Wire trace
+    clearSessionTrace(sessionId);
+
+    // Git status cache
+    gitStatusSync.clearForSession(sessionId);
+
+    // Zustand: remove this session's messages entirely so the reducer
+    // starts fresh (processedIds is cleared). applyMessages / applyMessagesLoaded
+    // will recreate the entry from scratch.
+    const state = storage.getState();
+    if (state.sessionMessages[sessionId]) {
+      const { [sessionId]: _, ...remaining } = state.sessionMessages;
+      storage.setState({ sessionMessages: remaining });
+    }
+
+    logger.info('[sync] session cache cleared', { sessionId });
+
+    // Re-trigger fetch so the session reloads from server immediately.
+    // onSessionVisible won't be called again because SessionView is already mounted.
+    this.onSessionVisible(sessionId);
+  }
+
   private registerPushToken = async () => {
     logger.debug('registerPushToken');
     // Only register on mobile platforms
@@ -2589,39 +2676,7 @@ class Sync {
     } else if (updateData.body.t === 'delete-session') {
       logger.debug('🗑️ Delete session update received');
       const sessionId = updateData.body.sid;
-
-      // Remove session from storage
-      storage.getState().deleteSession(sessionId);
-
-      // Remove encryption keys from memory
-      this.encryption.removeSessionEncryption(sessionId);
-      this.sessionDataKeys.delete(sessionId);
-
-      // Remove from project manager
-      projectManager.removeSession(sessionId);
-
-      // Clear any cached git status
-      gitStatusSync.clearForSession(sessionId);
-      this.messagesSync.delete(sessionId);
-      this.sendSync.delete(sessionId);
-      this.pendingOutbox.delete(sessionId);
-      this.persistOutbox();
-      this.sessionLastSeq.delete(sessionId);
-      this.sessionOldestSeq.delete(sessionId);
-      this.sessionMessageQueue.delete(sessionId);
-      this.sessionQueueProcessing.delete(sessionId);
-      const batchTimer = this.sessionBatchTimers.get(sessionId);
-      if (batchTimer) {
-        clearTimeout(batchTimer);
-        this.sessionBatchTimers.delete(sessionId);
-      }
-      clearSessionTrace(sessionId);
-      messageDB
-        .deleteSession(sessionId)
-        .catch(e =>
-          logger.debug('[sync] messageDB deleteSession failed', { sessionId, error: String(e) })
-        );
-
+      this.purgeSession(sessionId);
       logger.debug(`🗑️ Session ${sessionId} deleted from local storage`);
     } else if (updateData.body.t === 'update-session') {
       const session = storage.getState().sessions[updateData.body.id];
@@ -2660,6 +2715,8 @@ class Sync {
         this.applySessions([
           {
             ...session,
+            status: updateData.body.status ?? session.status,
+            activeAt: updateData.body.activeAt ?? session.activeAt,
             agentState,
             agentStateVersion: updateData.body.agentState
               ? updateData.body.agentState.version
@@ -2715,19 +2772,6 @@ class Sync {
         // Invalidate git status when agent state changes (files may have been modified)
         if (updateData.body.agentState) {
           gitStatusSync.invalidate(updateData.body.id);
-
-          // Check for new permission requests and notify voice assistant
-          if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
-            const requestIds = Object.keys(agentState.requests);
-            const firstRequest = agentState.requests[requestIds[0]];
-            const toolName = firstRequest?.tool;
-            voiceHooks.onPermissionRequested(
-              updateData.body.id,
-              requestIds[0],
-              toolName,
-              firstRequest?.arguments
-            );
-          }
 
           // Re-fetch messages when control returns to mobile (local -> remote mode switch)
           // This catches up on any messages that were exchanged while desktop had control
@@ -3146,6 +3190,40 @@ class Sync {
       voiceHooks.onReady(sessionId);
     }
   };
+
+  /**
+   * Purge a session from all local state: storage, encryption, sync maps, caches.
+   * Mirrors the delete-session WS handler — call this whenever a session must be
+   * removed regardless of whether a WS event was received.
+   */
+  private purgeSession(sessionId: string): void {
+    storage.getState().deleteSession(sessionId);
+    this.encryption.removeSessionEncryption(sessionId);
+    this.sessionDataKeys.delete(sessionId);
+    projectManager.removeSession(sessionId);
+    gitStatusSync.clearForSession(sessionId);
+    this.messagesSync.get(sessionId)?.stop();
+    this.messagesSync.delete(sessionId);
+    this.sendSync.get(sessionId)?.stop();
+    this.sendSync.delete(sessionId);
+    this.pendingOutbox.delete(sessionId);
+    this.persistOutbox();
+    this.sessionLastSeq.delete(sessionId);
+    this.sessionOldestSeq.delete(sessionId);
+    this.sessionMessageQueue.delete(sessionId);
+    this.sessionQueueProcessing.delete(sessionId);
+    const batchTimer = this.sessionBatchTimers.get(sessionId);
+    if (batchTimer) {
+      clearTimeout(batchTimer);
+      this.sessionBatchTimers.delete(sessionId);
+    }
+    clearSessionTrace(sessionId);
+    messageDB
+      .deleteSession(sessionId)
+      .catch(e =>
+        logger.debug('[sync] messageDB deleteSession failed', { sessionId, error: String(e) })
+      );
+  }
 
   private applySessions = (
     sessions: (Omit<Session, 'presence'> & {

@@ -44,6 +44,8 @@ export type UpdateBody = z.infer<typeof UpdateBodySchema>;
 export const UpdateSessionBodySchema = z.object({
   t: z.literal('update-session'),
   id: z.string(),
+  status: z.enum(['active', 'offline', 'archived', 'deleted']).optional(),
+  activeAt: z.number().optional(),
   metadata: z
     .object({
       version: z.number(),

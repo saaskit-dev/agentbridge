@@ -35,6 +35,7 @@ const agentEventSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('ready'),
+    stopReason: z.string().optional(),
   }),
   z.object({
     type: z.literal('status'),
@@ -451,6 +452,10 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [
     data: agentEventSchema,
   }),
   z.object({
+    type: z.literal('session'),
+    data: sessionEnvelopeSchema,
+  }),
+  z.object({
     type: z.literal('codex'),
     data: z.discriminatedUnion('type', [
       z.object({ type: z.literal('reasoning'), message: z.string() }),
@@ -471,19 +476,12 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [
     ]),
   }),
   z.object({
-    type: z.literal('session'),
-    data: sessionEnvelopeSchema,
-  }),
-  z.object({
-    // ACP (Agent Communication Protocol) - unified format for all agent providers
     type: z.literal('acp'),
     provider: z.enum(['gemini', 'codex', 'claude', 'opencode']),
     data: z.discriminatedUnion('type', [
-      // Core message types
       z.object({ type: z.literal('reasoning'), message: z.string() }),
       z.object({ type: z.literal('message'), message: z.string() }),
       z.object({ type: z.literal('thinking'), text: z.string() }),
-      // Tool interactions
       z.object({
         type: z.literal('tool-call'),
         callId: z.string(),
@@ -498,14 +496,12 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [
         id: z.string(),
         isError: z.boolean().optional(),
       }),
-      // Hyphenated tool-call-result (for backwards compatibility with CLI)
       z.object({
         type: z.literal('tool-call-result'),
         callId: z.string(),
         output: z.any(),
         id: z.string(),
       }),
-      // File operations
       z.object({
         type: z.literal('file-edit'),
         description: z.string(),
@@ -515,17 +511,14 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [
         newContent: z.string().optional(),
         id: z.string(),
       }),
-      // Terminal/command output
       z.object({
         type: z.literal('terminal-output'),
         data: z.string(),
         callId: z.string(),
       }),
-      // Task lifecycle events
       z.object({ type: z.literal('task_started'), id: z.string() }),
       z.object({ type: z.literal('task_complete'), id: z.string() }),
       z.object({ type: z.literal('turn_aborted'), id: z.string() }),
-      // Permissions
       z.object({
         type: z.literal('permission-request'),
         permissionId: z.string(),
@@ -533,7 +526,6 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [
         description: z.string(),
         options: z.any().optional(),
       }),
-      // Usage/metrics
       z.object({ type: z.literal('token_count') }).passthrough(),
     ]),
   }),
@@ -967,89 +959,6 @@ export function normalizeRawMessage(
         isSidechain: false,
       };
     }
-    if (raw.content.type === 'codex') {
-      if (raw.content.data.type === 'message') {
-        // Cast codex messages to agent text messages
-        return {
-          id,
-
-          createdAt,
-          role: 'agent',
-          isSidechain: false,
-          content: [
-            {
-              type: 'text',
-              text: raw.content.data.message,
-              uuid: id,
-              parentUUID: null,
-            },
-          ],
-          meta: raw.meta,
-        };
-      }
-      if (raw.content.data.type === 'reasoning') {
-        // Cast codex messages to agent text messages
-        return {
-          id,
-
-          createdAt,
-          role: 'agent',
-          isSidechain: false,
-          content: [
-            {
-              type: 'text',
-              text: raw.content.data.message,
-              uuid: id,
-              parentUUID: null,
-            },
-          ],
-          meta: raw.meta,
-        } satisfies NormalizedMessage;
-      }
-      if (raw.content.data.type === 'tool-call') {
-        // Cast tool calls to agent tool-call messages
-        return {
-          id,
-
-          createdAt,
-          role: 'agent',
-          isSidechain: false,
-          content: [
-            {
-              type: 'tool-call',
-              id: raw.content.data.callId,
-              name: raw.content.data.name || 'unknown',
-              input: raw.content.data.input,
-              description: null,
-              uuid: raw.content.data.id,
-              parentUUID: null,
-            },
-          ],
-          meta: raw.meta,
-        } satisfies NormalizedMessage;
-      }
-      if (raw.content.data.type === 'tool-call-result') {
-        // Cast tool call results to agent tool-result messages
-        return {
-          id,
-
-          createdAt,
-          role: 'agent',
-          isSidechain: false,
-          content: [
-            {
-              type: 'tool-result',
-              tool_use_id: raw.content.data.callId,
-              content: raw.content.data.output,
-              is_error: false,
-              uuid: raw.content.data.id,
-              parentUUID: null,
-            },
-          ],
-          meta: raw.meta,
-        } satisfies NormalizedMessage;
-      }
-    }
     if (raw.content.type === 'session') {
       const envelope = raw.content.data;
 
@@ -1245,9 +1154,8 @@ export function normalizeRawMessage(
         } satisfies NormalizedMessage;
       }
     }
-    // ACP (Agent Communication Protocol) - unified format for all agent providers
-    if (raw.content.type === 'acp') {
-      if (raw.content.data.type === 'message') {
+    if (raw.content.type === 'codex') {
+      if (raw.content.data.type === 'message' || raw.content.data.type === 'reasoning') {
         return {
           id,
 
@@ -1265,7 +1173,50 @@ export function normalizeRawMessage(
           meta: raw.meta,
         } satisfies NormalizedMessage;
       }
-      if (raw.content.data.type === 'reasoning') {
+      if (raw.content.data.type === 'tool-call') {
+        return {
+          id,
+
+          createdAt,
+          role: 'agent',
+          isSidechain: false,
+          content: [
+            {
+              type: 'tool-call',
+              id: raw.content.data.callId,
+              name: raw.content.data.name || 'unknown',
+              input: raw.content.data.input,
+              description: null,
+              uuid: raw.content.data.id,
+              parentUUID: null,
+            },
+          ],
+          meta: raw.meta,
+        } satisfies NormalizedMessage;
+      }
+      if (raw.content.data.type === 'tool-call-result') {
+        return {
+          id,
+
+          createdAt,
+          role: 'agent',
+          isSidechain: false,
+          content: [
+            {
+              type: 'tool-result',
+              tool_use_id: raw.content.data.callId,
+              content: raw.content.data.output,
+              is_error: false,
+              uuid: raw.content.data.id,
+              parentUUID: null,
+            },
+          ],
+          meta: raw.meta,
+        } satisfies NormalizedMessage;
+      }
+    }
+    if (raw.content.type === 'acp') {
+      if (raw.content.data.type === 'message' || raw.content.data.type === 'reasoning') {
         return {
           id,
 
@@ -1324,7 +1275,6 @@ export function normalizeRawMessage(
           meta: raw.meta,
         } satisfies NormalizedMessage;
       }
-      // Handle hyphenated tool-call-result (backwards compatibility)
       if (raw.content.data.type === 'tool-call-result') {
         return {
           id,
@@ -1364,7 +1314,6 @@ export function normalizeRawMessage(
         } satisfies NormalizedMessage;
       }
       if (raw.content.data.type === 'file-edit') {
-        // Map file-edit to tool-call for UI rendering
         return {
           id,
 
@@ -1392,7 +1341,6 @@ export function normalizeRawMessage(
         } satisfies NormalizedMessage;
       }
       if (raw.content.data.type === 'terminal-output') {
-        // Map terminal-output to tool-result
         return {
           id,
 
@@ -1413,7 +1361,6 @@ export function normalizeRawMessage(
         } satisfies NormalizedMessage;
       }
       if (raw.content.data.type === 'permission-request') {
-        // Map permission-request to tool-call for UI to show permission dialog
         return {
           id,
 
@@ -1434,8 +1381,6 @@ export function normalizeRawMessage(
           meta: raw.meta,
         } satisfies NormalizedMessage;
       }
-      // Task lifecycle events (task_started, task_complete, turn_aborted) and token_count
-      // are status/metrics - skip normalization, they don't need UI rendering
     }
   }
   return null;

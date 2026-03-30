@@ -13,6 +13,7 @@ import { ChatList } from '@/components/ChatList';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
@@ -221,7 +222,30 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const isLandscape = useIsLandscape();
   const deviceType = useDeviceType();
   const [message, setMessage] = React.useState('');
+  const { isListening: isSpeechActive, start: startSpeech, stop: stopSpeech, cancel: cancelSpeech } = useSpeechInput(setMessage);
+  const handleSpeechInputPress = React.useCallback(() => {
+    if (isSpeechActive) stopSpeech();
+    else startSpeech(message);
+  }, [isSpeechActive, startSpeech, stopSpeech, message]);
+  const handleSpeechInputCancel = React.useCallback(() => {
+    cancelSpeech();
+  }, [cancelSpeech]);
   const realtimeStatus = useRealtimeStatus();
+
+  const handleMicrophonePress = React.useCallback(async () => {
+    if (realtimeStatus === 'connecting') return;
+    if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
+      try {
+        const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
+        await startRealtimeSession(sessionId, initialPrompt);
+      } catch (error) {
+        Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
+      }
+    } else if (realtimeStatus === 'connected') {
+      await stopRealtimeSession();
+      voiceHooks.onVoiceStopped();
+    }
+  }, [realtimeStatus, sessionId]);
   const { messages, isLoaded } = useSessionMessages(sessionId);
   const sendError = useSessionSendError(sessionId);
   const [isSettingsBusy, setIsSettingsBusy] = React.useState(false);
@@ -686,36 +710,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     []
   );
 
-  // Handle microphone button press - memoized to prevent button flashing
-  const handleMicrophonePress = React.useCallback(async () => {
-    if (realtimeStatus === 'connecting') {
-      return; // Prevent actions during transitions
-    }
-    if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
-      try {
-        const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
-        await startRealtimeSession(sessionId, initialPrompt);
-      } catch (error) {
-        logger.error('Failed to start realtime session:', toError(error));
-        Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
-      }
-    } else if (realtimeStatus === 'connected') {
-      await stopRealtimeSession();
-
-      // Notify voice assistant about voice session stop
-      voiceHooks.onVoiceStopped();
-    }
-  }, [realtimeStatus, sessionId]);
-
-  // Memoize mic button state to prevent flashing during chat transitions
-  const micButtonState = useMemo(
-    () => ({
-      onMicPress: handleMicrophonePress,
-      isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting',
-    }),
-    [handleMicrophonePress, realtimeStatus]
-  );
-
   // Trigger session visibility and initialize git status sync
   React.useLayoutEffect(() => {
     // Trigger session sync
@@ -833,8 +827,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
         pendingAttachments={pendingAttachments}
         onRemoveAttachment={handleRemoveAttachment}
         isSendDisabled={isUploading}
-        onMicPress={micButtonState.onMicPress}
-        isMicActive={micButtonState.isMicActive}
+        onSpeechInputPress={handleSpeechInputPress}
+        onSpeechInputCancel={handleSpeechInputCancel}
+        isSpeechInputActive={isSpeechActive}
+        onMicPress={handleMicrophonePress}
+        isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
         onAbort={() => sessionAbort(sessionId)}
         showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
         onFileViewerPress={

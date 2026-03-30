@@ -3728,4 +3728,209 @@ describe('reducer', () => {
       expect(state.messages.size).toBe(2);
     });
   });
+
+  describe('self-closing tool-call + tool-result in single message', () => {
+    it('should create a completed tool card from [tool-call, tool-result] pair', () => {
+      const state = createReducer();
+      const messages: NormalizedMessage[] = [
+        {
+          id: 'fs-edit-1',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          content: [
+            {
+              type: 'tool-call',
+              id: 'call-abc',
+              name: 'FileEdit',
+              input: { path: '/src/config.ts', description: 'Update config' },
+              description: 'Update config',
+              uuid: 'uuid-1',
+              parentUUID: null,
+            },
+            {
+              type: 'tool-result',
+              tool_use_id: 'call-abc',
+              content: '- old\n+ new',
+              is_error: false,
+              uuid: 'uuid-2',
+              parentUUID: null,
+            },
+          ],
+        },
+      ];
+
+      const result = reducer(state, messages);
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].kind).toBe('tool-call');
+      if (result.messages[0].kind === 'tool-call') {
+        expect(result.messages[0].tool.name).toBe('FileEdit');
+        expect(result.messages[0].tool.state).toBe('completed');
+        expect(result.messages[0].tool.result).toBe('- old\n+ new');
+        expect(result.messages[0].tool.input).toEqual({
+          path: '/src/config.ts',
+          description: 'Update config',
+        });
+      }
+    });
+
+    it('should create a completed TerminalOutput card', () => {
+      const state = createReducer();
+      const messages: NormalizedMessage[] = [
+        {
+          id: 'term-1',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          content: [
+            {
+              type: 'tool-call',
+              id: 'call-xyz',
+              name: 'TerminalOutput',
+              input: {},
+              description: null,
+              uuid: 'uuid-3',
+              parentUUID: null,
+            },
+            {
+              type: 'tool-result',
+              tool_use_id: 'call-xyz',
+              content: 'total 24\ndrwxr-xr-x 5 user staff',
+              is_error: false,
+              uuid: 'uuid-4',
+              parentUUID: null,
+            },
+          ],
+        },
+      ];
+
+      const result = reducer(state, messages);
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].kind).toBe('tool-call');
+      if (result.messages[0].kind === 'tool-call') {
+        expect(result.messages[0].tool.name).toBe('TerminalOutput');
+        expect(result.messages[0].tool.state).toBe('completed');
+        expect(result.messages[0].tool.result).toBe('total 24\ndrwxr-xr-x 5 user staff');
+      }
+    });
+
+    it('should not merge adjacent text into self-closing tool message', () => {
+      const state = createReducer();
+      const messages: NormalizedMessage[] = [
+        {
+          id: 'text-before',
+          createdAt: 999,
+          role: 'agent',
+          isSidechain: false,
+          content: [
+            {
+              type: 'text',
+              text: 'I will edit the file now.',
+              uuid: 'uuid-t1',
+              parentUUID: null,
+            },
+          ],
+        },
+        {
+          id: 'fs-edit-2',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          content: [
+            {
+              type: 'tool-call',
+              id: 'call-def',
+              name: 'FileEdit',
+              input: { path: '/a.ts', description: 'fix bug' },
+              description: 'fix bug',
+              uuid: 'uuid-t2',
+              parentUUID: null,
+            },
+            {
+              type: 'tool-result',
+              tool_use_id: 'call-def',
+              content: '- old\n+ new',
+              is_error: false,
+              uuid: 'uuid-t3',
+              parentUUID: null,
+            },
+          ],
+        },
+        {
+          id: 'text-after',
+          createdAt: 1001,
+          role: 'agent',
+          isSidechain: false,
+          content: [
+            {
+              type: 'text',
+              text: 'Done editing.',
+              uuid: 'uuid-t4',
+              parentUUID: null,
+            },
+          ],
+        },
+      ];
+
+      const result = reducer(state, messages);
+      // Should have 3 separate messages: text, tool, text — NOT merged together
+      expect(result.messages).toHaveLength(3);
+
+      const kinds = result.messages.map(m => m.kind);
+      // Tool should appear somewhere in the list, text should NOT be merged
+      expect(kinds).toContain('tool-call');
+      expect(kinds.filter(k => k === 'agent-text')).toHaveLength(2);
+
+      const toolMsg = result.messages.find(m => m.kind === 'tool-call');
+      expect(toolMsg).toBeDefined();
+      if (toolMsg?.kind === 'tool-call') {
+        expect(toolMsg.tool.name).toBe('FileEdit');
+        expect(toolMsg.tool.state).toBe('completed');
+      }
+
+      const textMsgs = result.messages.filter(m => m.kind === 'agent-text');
+      const texts = textMsgs.map(m => m.kind === 'agent-text' ? m.text : '');
+      expect(texts).toContain('I will edit the file now.');
+      expect(texts).toContain('Done editing.');
+    });
+
+    it('should handle FileEdit with null diff (tool-result content is null)', () => {
+      const state = createReducer();
+      const messages: NormalizedMessage[] = [
+        {
+          id: 'fs-edit-no-diff',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          content: [
+            {
+              type: 'tool-call',
+              id: 'call-no-diff',
+              name: 'FileEdit',
+              input: { path: null, description: 'Create new file' },
+              description: 'Create new file',
+              uuid: 'uuid-nd1',
+              parentUUID: null,
+            },
+            {
+              type: 'tool-result',
+              tool_use_id: 'call-no-diff',
+              content: null,
+              is_error: false,
+              uuid: 'uuid-nd2',
+              parentUUID: null,
+            },
+          ],
+        },
+      ];
+
+      const result = reducer(state, messages);
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].kind).toBe('tool-call');
+      if (result.messages[0].kind === 'tool-call') {
+        expect(result.messages[0].tool.state).toBe('completed');
+        expect(result.messages[0].tool.result).toBeNull();
+      }
+    });
+  });
 });

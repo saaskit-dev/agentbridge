@@ -433,63 +433,44 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
         }
       }
     });
-  });
 
-  describe('Codex/Gemini messages use native hyphenated schema (no transformation)', () => {
-    it('accepts Codex tool-call messages via codex schema path', () => {
-      const codexMessage = {
+    it('keeps parsing legacy codex rows already stored in history', () => {
+      const normalized = normalizeRawMessage('legacy-codex-1', 1700, {
         role: 'agent',
         content: {
           type: 'codex',
           data: {
-            type: 'tool-call',
-            callId: 'codex_1',
-            name: 'Bash',
-            input: { command: 'pwd' },
-            id: 'codex-id-1',
+            type: 'message',
+            message: 'legacy codex output',
           },
         },
-      };
+      } as any);
 
-      const result = RawRecordSchema.safeParse(codexMessage);
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        const content = result.data.content;
-        if (content.type === 'codex' && content.data.type === 'tool-call') {
-          // Codex path keeps hyphenated types as-is
-          expect(content.data.type).toBe('tool-call');
-          expect(content.data.callId).toBe('codex_1');
-        }
-      }
+      expect(normalized).toMatchObject({
+        role: 'agent',
+        content: [{ type: 'text', text: 'legacy codex output' }],
+      });
     });
 
-    it('accepts Codex tool-call-result messages via codex schema path', () => {
-      const codexMessage = {
+    it('keeps parsing legacy acp rows already stored in history', () => {
+      const normalized = normalizeRawMessage('legacy-acp-1', 1700, {
         role: 'agent',
         content: {
-          type: 'codex',
+          type: 'acp',
+          provider: 'codex',
           data: {
-            type: 'tool-call-result',
-            callId: 'codex_result_1',
-            output: 'command output',
-            id: 'codex-id-2',
+            type: 'tool-result',
+            callId: 'call-1',
+            output: 'done',
+            id: 'tool-result-1',
           },
         },
-      };
+      } as any);
 
-      const result = RawRecordSchema.safeParse(codexMessage);
-
-      expect(result.success).toBe(true);
-      if (result.success) {
-        const content = result.data.content;
-        if (content.type === 'codex' && content.data.type === 'tool-call-result') {
-          // Codex path keeps hyphenated types as-is
-          expect(content.data.type).toBe('tool-call-result');
-          expect(content.data.callId).toBe('codex_result_1');
-          expect(content.data.output).toBe('command output');
-        }
-      }
+      expect(normalized).toMatchObject({
+        role: 'agent',
+        content: [{ type: 'tool-result', tool_use_id: 'call-1', content: 'done' }],
+      });
     });
   });
 
@@ -547,6 +528,97 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
         expect(normalized.content).toHaveLength(2);
         expect(normalized.content[0].type).toBe('tool-call');
         expect(normalized.content[1].type).toBe('tool-result');
+      }
+    });
+
+    it('accepts FileEdit self-closing [tool-call, tool-result] from daemon mapper', () => {
+      // This is exactly what mapAcpMessageToNormalized produces for fs-edit
+      const raw = {
+        role: 'agent',
+        isSidechain: false,
+        content: [
+          {
+            type: 'tool-call',
+            id: 'fe-call-1',
+            name: 'FileEdit',
+            input: { path: '/src/config.ts', description: 'Update config' },
+            description: 'Update config',
+            uuid: 'fe-uuid-1',
+            parentUUID: null,
+          },
+          {
+            type: 'tool-result',
+            tool_use_id: 'fe-call-1',
+            content: '- old\n+ new',
+            is_error: false,
+            uuid: 'fe-uuid-2',
+            parentUUID: null,
+          },
+        ],
+      };
+
+      // Step 1: Zod schema accepts it
+      const parsed = RawRecordSchema.safeParse(raw);
+      expect(parsed.success).toBe(true);
+
+      // Step 2: normalizeRawMessage passes it through
+      const normalized = normalizeRawMessage('fe-db-1', 1700, raw as any);
+      expect(normalized).not.toBeNull();
+      expect(normalized?.role).toBe('agent');
+      if (normalized?.role === 'agent') {
+        expect(normalized.content).toHaveLength(2);
+        const call = normalized.content[0];
+        const result = normalized.content[1];
+        expect(call.type).toBe('tool-call');
+        expect(result.type).toBe('tool-result');
+        if (call.type === 'tool-call' && result.type === 'tool-result') {
+          expect(call.name).toBe('FileEdit');
+          expect(result.tool_use_id).toBe(call.id);
+          expect(result.content).toBe('- old\n+ new');
+        }
+      }
+    });
+
+    it('accepts TerminalOutput self-closing [tool-call, tool-result] from daemon mapper', () => {
+      const raw = {
+        role: 'agent',
+        isSidechain: false,
+        content: [
+          {
+            type: 'tool-call',
+            id: 'to-call-1',
+            name: 'TerminalOutput',
+            input: {},
+            description: null,
+            uuid: 'to-uuid-1',
+            parentUUID: null,
+          },
+          {
+            type: 'tool-result',
+            tool_use_id: 'to-call-1',
+            content: 'total 24\ndrwxr-xr-x 5 user staff',
+            is_error: false,
+            uuid: 'to-uuid-2',
+            parentUUID: null,
+          },
+        ],
+      };
+
+      const parsed = RawRecordSchema.safeParse(raw);
+      expect(parsed.success).toBe(true);
+
+      const normalized = normalizeRawMessage('to-db-1', 1700, raw as any);
+      expect(normalized).not.toBeNull();
+      expect(normalized?.role).toBe('agent');
+      if (normalized?.role === 'agent') {
+        expect(normalized.content).toHaveLength(2);
+        const call = normalized.content[0];
+        const result = normalized.content[1];
+        if (call.type === 'tool-call' && result.type === 'tool-result') {
+          expect(call.name).toBe('TerminalOutput');
+          expect(result.tool_use_id).toBe(call.id);
+          expect(result.content).toBe('total 24\ndrwxr-xr-x 5 user staff');
+        }
       }
     });
   });
@@ -1229,58 +1301,6 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
         expect(getFirstContentItem<any>(result.data.content.data.message.content)?.type).toBe(
           'tool_use'
         );
-      }
-    });
-
-    it('Codex (hyphenated via codex path) uses native schema', () => {
-      const codexMessage = {
-        role: 'agent',
-        content: {
-          type: 'codex',
-          data: {
-            type: 'tool-call',
-            callId: 'codex_tool',
-            name: 'Read',
-            input: {},
-            id: 'codex-msg-id',
-          },
-        },
-      };
-
-      const result = RawRecordSchema.safeParse(codexMessage);
-
-      expect(result.success).toBe(true);
-      // Codex path keeps hyphenated types (no transformation)
-      if (result.success && result.data.content.type === 'codex') {
-        expect(result.data.content.data.type).toBe('tool-call');
-        if (result.data.content.data.type === 'tool-call') {
-          expect(result.data.content.data.callId).toBe('codex_tool');
-        }
-      }
-    });
-
-    it('Gemini (uses codex path) works with hyphenated types', () => {
-      // Gemini uses sendCodexMessage() in CLI, so type: 'codex'
-      const geminiMessage = {
-        role: 'agent',
-        content: {
-          type: 'codex',
-          data: {
-            type: 'message',
-            message: 'Gemini reasoning output',
-          },
-        },
-      };
-
-      const result = RawRecordSchema.safeParse(geminiMessage);
-
-      expect(result.success).toBe(true);
-      if (
-        result.success &&
-        result.data.content.type === 'codex' &&
-        result.data.content.data.type === 'message'
-      ) {
-        expect(result.data.content.data.message).toBe('Gemini reasoning output');
       }
     });
 

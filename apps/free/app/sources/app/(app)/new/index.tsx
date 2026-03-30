@@ -22,6 +22,7 @@ import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { ModelMode } from '@/components/PermissionModeSelector';
 import { StyleSheet } from 'react-native-unistyles';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import {
   coerceAgentType,
@@ -388,6 +389,14 @@ function NewSessionWizard() {
   const [sessionPrompt, setSessionPrompt] = React.useState(() => {
     return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
   });
+  const { isListening: isSpeechActive, start: startSpeech, stop: stopSpeech, cancel: cancelSpeech } = useSpeechInput(setSessionPrompt);
+  const handleSpeechInputPress = React.useCallback(() => {
+    if (isSpeechActive) stopSpeech();
+    else startSpeech(sessionPrompt);
+  }, [isSpeechActive, startSpeech, stopSpeech, sessionPrompt]);
+  const handleSpeechInputCancel = React.useCallback(() => {
+    cancelSpeech();
+  }, [cancelSpeech]);
   const [isCreating, setIsCreating] = React.useState(false);
 
   // --- Image attachment state (pending before session is created) ---
@@ -898,6 +907,9 @@ function NewSessionWizard() {
               onSend={handleCreateSession}
               isSendDisabled={!canCreate || isUploading}
               isSending={isCreating}
+              onSpeechInputPress={handleSpeechInputPress}
+              onSpeechInputCancel={handleSpeechInputCancel}
+              isSpeechInputActive={isSpeechActive}
               placeholder={t('newSession.inputPlaceholder')}
               onPickImages={handlePickImages}
               pendingAttachments={pendingAttachments}

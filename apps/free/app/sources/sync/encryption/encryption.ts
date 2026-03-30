@@ -102,6 +102,14 @@ export class Encryption {
     this.cache.clearSessionCache(sessionId);
   }
 
+  /**
+   * Clear cached decrypted data for a session without removing its encryption key.
+   * Used when the user wants to force-refresh a session's data from server.
+   */
+  clearSessionDecryptionCache(sessionId: string): void {
+    this.cache.clearSessionCache(sessionId);
+  }
+
   //
   // Machine operations
   //

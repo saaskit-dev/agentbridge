@@ -142,7 +142,7 @@ interface StorageState {
   feedHasMore: boolean;
   feedLoaded: boolean; // True after initial feed fetch
   friendsLoaded: boolean; // True after initial friends fetch
-  realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+  realtimeStatus: 'disconnected' | 'connecting' | 'reconnecting' | 'connected' | 'error';
   realtimeMode: 'idle' | 'speaking';
   socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
   socketLastConnectedAt: number | null;
@@ -180,7 +180,7 @@ interface StorageState {
   applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
   clearAllSessionMessages: () => void;
   isMutableToolCall: (sessionId: string, callId: string) => boolean;
-  setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+  setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'reconnecting' | 'connected' | 'error') => void;
   setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => void;
   clearRealtimeModeDebounce: () => void;
   setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
@@ -526,7 +526,7 @@ export const storage = create<StorageState>()((set, get) => {
                   const toolName = request.tool;
                   // logger.debug('[REALTIME DEBUG] Sending permission notification for:', toolName);
                   voiceSession.sendTextMessage(
-                    `Claude is requesting permission to use the ${toolName} tool`
+                    `The agent is requesting permission to use the ${toolName} tool`
                   );
                 }
               }
@@ -862,7 +862,7 @@ export const storage = create<StorageState>()((set, get) => {
         ...state,
         sessionMessages: {},
       })),
-    setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') =>
+    setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'reconnecting' | 'connected' | 'error') =>
       set(state => ({
         ...state,
         realtimeStatus: status,
@@ -1584,7 +1584,7 @@ export function useEntitlement(id: KnownEntitlements): boolean {
   return storage(useShallow(state => state.purchases.entitlements[id] ?? false));
 }
 
-export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
+export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'reconnecting' | 'connected' | 'error' {
   return storage(useShallow(state => state.realtimeStatus));
 }
 

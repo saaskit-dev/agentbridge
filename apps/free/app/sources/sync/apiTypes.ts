@@ -45,6 +45,8 @@ export const ApiDeleteSessionSchema = z.object({
 export const ApiUpdateSessionStateSchema = z.object({
   t: z.literal('update-session'),
   id: z.string(),
+  status: z.enum(['active', 'offline', 'archived', 'deleted']).optional(),
+  activeAt: z.number().optional(),
   agentState: z
     .object({
       version: z.number(),

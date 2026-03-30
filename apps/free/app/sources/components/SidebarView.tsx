@@ -9,8 +9,9 @@ import { FABWide } from './FABWide';
 import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { useMachineStatus } from '@/hooks/useMachineStatus';
-import { useSocketStatus, useFriendRequests, useSettings } from '@/sync/storage';
-import { useRealtimeStatus } from '@/sync/storage';
+import { useSocketStatus, useFriendRequests, useSettings, useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
+import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { t } from '@/text';
 import { useHeaderHeight } from '@/utils/responsive';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
@@ -138,6 +139,7 @@ export const SidebarView = React.memo(() => {
   const headerHeight = useHeaderHeight();
   const socketStatus = useSocketStatus();
   const realtimeStatus = useRealtimeStatus();
+  const realtimeMode = useRealtimeMode();
   const friendRequests = useFriendRequests();
   const inboxHasContent = useInboxHasContent();
   const settings = useSettings();
@@ -196,6 +198,25 @@ export const SidebarView = React.memo(() => {
   const handleNewSession = React.useCallback(() => {
     router.push('/new');
   }, [router]);
+
+  const isVoiceActive = realtimeStatus === 'connected' || realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting';
+  const voiceIconName: React.ComponentProps<typeof Ionicons>['name'] =
+    isVoiceActive && realtimeStatus === 'connected' && realtimeMode === 'speaking'
+      ? 'volume-high'
+      : isVoiceActive
+        ? 'mic'
+        : 'mic-outline';
+
+  const handleVoicePress = React.useCallback(async () => {
+    if (realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting') return;
+    if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
+      const initialPrompt = voiceHooks.onVoiceStarted('');
+      await startRealtimeSession('', initialPrompt);
+    } else if (realtimeStatus === 'connected') {
+      await stopRealtimeSession();
+      voiceHooks.onVoiceStopped();
+    }
+  }, [realtimeStatus]);
 
   const machineStatusText = t('status.machinesOnline', { count: onlineCount });
   const machineStatusColor =
@@ -265,7 +286,21 @@ export const SidebarView = React.memo(() => {
         {realtimeStatus !== 'disconnected' && <VoiceAssistantStatusBar variant="sidebar" />}
         <MainView variant="sidebar" />
       </View>
-      <FABWide onPress={handleNewSession} />
+      <FABWide
+        onPress={handleNewSession}
+        trailingAction={{
+          onPress: handleVoicePress,
+          accessibilityLabel: isVoiceActive ? t('voiceStatusBar.tapToEnd') : t('voiceStatusBar.default'),
+          isActive: isVoiceActive,
+          icon: (
+            <Ionicons
+              name={voiceIconName}
+              size={20}
+              color={isVoiceActive ? theme.colors.button.primary.tint : theme.colors.fab.icon}
+            />
+          ),
+        }}
+      />
     </>
   );
 });
