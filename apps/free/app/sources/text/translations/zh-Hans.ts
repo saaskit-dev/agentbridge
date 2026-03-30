@@ -559,6 +559,9 @@ export const zhHans: TranslationStructure = {
       folderLabel: '文件夹',
     },
     noMachinesAvailable: '无设备',
+    abortConfirmTitle: '停止当前回复？',
+    abortConfirmMessage: '将中断智能体对当前回复的处理。',
+    abortConfirmAction: '停止',
     speechInput: {
       recording: '正在聆听...',
       permissionTitle: '需要麦克风权限',

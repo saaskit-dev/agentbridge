@@ -2,6 +2,7 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as React from 'react';
 import {
+  Alert,
   View,
   Platform,
   useWindowDimensions,
@@ -560,8 +561,10 @@ export const AgentInput = React.memo(
       [props.onPermissionModeChange]
     );
 
-    // Handle abort button press
-    const handleAbortPress = React.useCallback(async () => {
+    /**
+     * Executes the abort RPC after the user confirms (haptics, loading state, min visible duration).
+     */
+    const performAbort = React.useCallback(async () => {
       if (!props.onAbort) return;
 
       inputRef.current?.blur();
@@ -585,6 +588,28 @@ export const AgentInput = React.memo(
         setIsAborting(false);
       }
     }, [props.onAbort]);
+
+    /**
+     * Asks for confirmation before stopping the current agent response (button and Escape).
+     */
+    const handleAbortPress = React.useCallback(() => {
+      if (!props.onAbort || isAborting) return;
+
+      Alert.alert(
+        t('agentInput.abortConfirmTitle'),
+        t('agentInput.abortConfirmMessage'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('agentInput.abortConfirmAction'),
+            style: 'destructive',
+            onPress: () => {
+              void performAbort();
+            },
+          },
+        ]
+      );
+    }, [props.onAbort, isAborting, performAbort]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback(

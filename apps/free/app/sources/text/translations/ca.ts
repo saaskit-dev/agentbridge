@@ -570,6 +570,9 @@ export const ca: TranslationStructure = {
       folderLabel: 'CARPETA',
     },
     noMachinesAvailable: 'Sense màquines',
+    abortConfirmTitle: 'Aturar la resposta actual?',
+    abortConfirmMessage: "L'agent deixarà de treballar en aquesta resposta.",
+    abortConfirmAction: 'Aturar',
     speechInput: {
       recording: 'Escoltant...',
       permissionTitle: 'Cal accés al micròfon',

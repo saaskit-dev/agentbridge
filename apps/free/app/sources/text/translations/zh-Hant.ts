@@ -522,6 +522,9 @@ export const zhHant: TranslationStructure = {
       folderLabel: '資料夾',
     },
     noMachinesAvailable: '無裝置',
+    abortConfirmTitle: '停止目前回覆？',
+    abortConfirmMessage: '將中斷智慧助理對目前回覆的處理。',
+    abortConfirmAction: '停止',
     speechInput: {
       recording: '正在聆聽...',
       permissionTitle: '需要麥克風權限',

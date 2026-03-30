@@ -585,6 +585,9 @@ export const pl: TranslationStructure = {
       folderLabel: 'FOLDER',
     },
     noMachinesAvailable: 'Brak maszyn',
+    abortConfirmTitle: 'Zatrzymać bieżącą odpowiedź?',
+    abortConfirmMessage: 'Agent przestanie pracować nad tą odpowiedzią.',
+    abortConfirmAction: 'Zatrzymaj',
     speechInput: {
       recording: 'Słucham...',
       permissionTitle: 'Wymagany dostęp do mikrofonu',

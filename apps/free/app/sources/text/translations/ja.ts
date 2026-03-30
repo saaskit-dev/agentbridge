@@ -533,6 +533,9 @@ export const ja: TranslationStructure = {
       folderLabel: 'フォルダ',
     },
     noMachinesAvailable: 'マシンなし',
+    abortConfirmTitle: '現在の応答を停止しますか？',
+    abortConfirmMessage: 'エージェントはこの応答の処理を中断します。',
+    abortConfirmAction: '停止',
     speechInput: {
       recording: '聞いています...',
       permissionTitle: 'マイクへのアクセスが必要です',

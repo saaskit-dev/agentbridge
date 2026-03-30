@@ -571,6 +571,9 @@ export const it: TranslationStructure = {
       folderLabel: 'CARTELLA',
     },
     noMachinesAvailable: 'Nessuna macchina',
+    abortConfirmTitle: 'Interrompere la risposta corrente?',
+    abortConfirmMessage: "L'agente smetterà di lavorare su questa risposta.",
+    abortConfirmAction: 'Interrompi',
     speechInput: {
       recording: 'In ascolto...',
       permissionTitle: 'Accesso al microfono richiesto',

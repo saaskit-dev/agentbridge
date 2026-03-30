@@ -587,6 +587,9 @@ export const ru: TranslationStructure = {
       folderLabel: 'ПАПКА',
     },
     noMachinesAvailable: 'Нет машин',
+    abortConfirmTitle: 'Остановить текущий ответ?',
+    abortConfirmMessage: 'Агент прекратит работу над этим ответом.',
+    abortConfirmAction: 'Остановить',
     speechInput: {
       recording: 'Слушаю...',
       permissionTitle: 'Требуется доступ к микрофону',

@@ -544,6 +544,9 @@ export const en: TranslationStructure = {
       folderLabel: 'FOLDER',
     },
     noMachinesAvailable: 'No machines',
+    abortConfirmTitle: 'Stop current response?',
+    abortConfirmMessage: 'The agent will stop working on this reply.',
+    abortConfirmAction: 'Stop',
     speechInput: {
       recording: 'Listening...',
       permissionTitle: 'Microphone Access Required',

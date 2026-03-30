@@ -571,6 +571,9 @@ export const pt: TranslationStructure = {
       folderLabel: 'PASTA',
     },
     noMachinesAvailable: 'Sem máquinas',
+    abortConfirmTitle: 'Parar a resposta atual?',
+    abortConfirmMessage: 'O agente vai parar de trabalhar nesta resposta.',
+    abortConfirmAction: 'Parar',
     speechInput: {
       recording: 'Ouvindo...',
       permissionTitle: 'Acesso ao microfone necessário',
