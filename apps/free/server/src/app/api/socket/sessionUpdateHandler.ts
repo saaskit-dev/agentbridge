@@ -602,9 +602,12 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         return;
       }
       const limit =
-        typeof rawLimit === 'number' && rawLimit >= 1 && rawLimit <= 1000
+        typeof rawLimit === 'number' && rawLimit >= 1 && rawLimit <= 5000
           ? Math.floor(rawLimit)
-          : 1000;
+          : 5000;
+      // Hard cap on total response payload to prevent outsized responses.
+      // Each message content is a string (JSON-encoded NormalizedMessage); cap at 50 MB total.
+      const MAX_RESPONSE_CHARS = 50 * 1024 * 1024;
 
       const session = await db.session.findFirst({
         where: { id: sid, accountId: userId },
@@ -635,17 +638,27 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         const page = hasOlderMessages ? messages.slice(0, limit) : messages;
         page.reverse(); // Back to ASC order
 
+        // Enforce total payload size cap
+        let totalChars = 0;
+        const safePageOlder = page.filter(m => {
+          totalChars += m.content == null ? 0 : JSON.stringify(m.content).length;
+          return totalChars <= MAX_RESPONSE_CHARS;
+        });
+        // If size cap trimmed the page, the omitted messages still exist — signal the client to paginate.
+        const hasOlderMessagesFinal = hasOlderMessages || safePageOlder.length < page.length;
+
         log.debug('[fetch-messages] older', {
           sessionId: sid,
           userId,
           beforeSeq,
-          count: page.length,
-          hasOlderMessages,
+          count: safePageOlder.length,
+          hasOlderMessages: hasOlderMessagesFinal,
+          truncated: safePageOlder.length < page.length,
         });
 
         callback({
           ok: true,
-          messages: page.map(m => ({
+          messages: safePageOlder.map(m => ({
             id: m.id,
             seq: m.seq,
             content: m.content,
@@ -654,7 +667,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             updatedAt: m.updatedAt.getTime(),
           })),
           hasMore: false,
-          hasOlderMessages,
+          hasOlderMessages: hasOlderMessagesFinal,
         });
         return;
       }
@@ -679,17 +692,27 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       const hasMore = messages.length > limit;
       const page = hasMore ? messages.slice(0, limit) : messages;
 
+      // Enforce total payload size cap
+      let totalChars = 0;
+      const safePage = page.filter(m => {
+        totalChars += m.content == null ? 0 : JSON.stringify(m.content).length;
+        return totalChars <= MAX_RESPONSE_CHARS;
+      });
+      // If size cap trimmed the page, the omitted messages still exist — signal the client to paginate.
+      const hasMoreFinal = hasMore || safePage.length < page.length;
+
       log.debug('[fetch-messages]', {
         sessionId: sid,
         userId,
         afterSeq,
-        count: page.length,
-        hasMore,
+        count: safePage.length,
+        hasMore: hasMoreFinal,
+        truncated: safePage.length < page.length,
       });
 
       callback({
         ok: true,
-        messages: page.map(m => ({
+        messages: safePage.map(m => ({
           id: m.id,
           seq: m.seq,
           content: m.content,
@@ -697,7 +720,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
           createdAt: m.createdAt.getTime(),
           updatedAt: m.updatedAt.getTime(),
         })),
-        hasMore,
+        hasMore: hasMoreFinal,
       });
     } catch (error) {
       log.error('Error in fetch-messages', undefined, {
@@ -735,9 +758,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       }
 
       // Mark session archived
+      const archivedAt = new Date(t);
       await db.session.updateMany({
         where: { id: sid, accountId: userId },
-        data: { lastActiveAt: new Date(t), status: 'archived' },
+        data: { lastActiveAt: archivedAt, status: 'archived', archivedAt },
       });
 
       // Evict from activity cache so subsequent session-alive checks see the archived state
@@ -751,6 +775,23 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         userId,
         payload: sessionActivity,
         recipientFilter: { type: 'user-scoped-only' },
+      });
+      const updateSeq = await allocateUserSeq(userId);
+      const updatePayload = buildUpdateSessionUpdate(
+        sid,
+        updateSeq,
+        randomKeyNaked(12),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'archived',
+        t
+      );
+      eventRouter.emitUpdate({
+        userId,
+        payload: updatePayload,
+        recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
       });
       log.info('[session-end] session archived', { userId, sessionId: sid });
     } catch (error) {

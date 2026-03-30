@@ -1,57 +1,87 @@
 import { eventRouter, buildDeleteSessionUpdate } from '@/app/events/eventRouter';
 import { Context } from '@/context';
-import { inTx, afterTx } from '@/storage/inTx';
+import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 
 const log = new Logger('app/session/sessionDelete');
+
 /**
- * Soft-delete a session by setting status='deleted' and releasing the tag.
- * The session record and all related data are retained for audit purposes.
- * Deleted sessions are hidden from all API list endpoints.
- * Sends a delete notification to all connected clients after the transaction commits.
+ * Physically delete a session and all related data.
+ * Deletes SessionMessage, UsageReport, AccessKey records, then the Session itself.
+ * Sends a delete-session notification to all connected clients after deletion.
  *
- * @param ctx - Context with user information
- * @param sessionId - ID of the session to delete
- * @returns true if deletion was successful, false if session not found or not owned by user
+ * @returns true if deleted, false if not found or not owned by user
  */
 export async function sessionDelete(ctx: Context, sessionId: string): Promise<boolean> {
-  let found = false;
-
-  await inTx(async tx => {
-    const session = await tx.session.findFirst({
-      where: { id: sessionId, accountId: ctx.uid },
-    });
-
-    if (!session) {
-      log.info('Session not found or not owned by user', { userId: ctx.uid, sessionId });
-      return;
-    }
-
-    // Soft-delete: set status='deleted'
-    await tx.session.update({
-      where: { id: sessionId },
-      data: { status: 'deleted' },
-    });
-    found = true;
-    log.info('Session soft-deleted', { userId: ctx.uid, sessionId });
-
-    // Emit notification after transaction commits — guarantees client sees the delete
-    afterTx(tx, async () => {
-      const updSeq = await allocateUserSeq(ctx.uid);
-      const updatePayload = buildDeleteSessionUpdate(sessionId, updSeq, randomKeyNaked(12));
-      log.info('Emitting delete-session update to user-scoped connections', {
-        userId: ctx.uid,
-        sessionId,
-      });
-      eventRouter.emitUpdate({
-        userId: ctx.uid,
-        payload: updatePayload,
-        recipientFilter: { type: 'user-scoped-only' },
-      });
-    });
+  const session = await db.session.findFirst({
+    where: { id: sessionId, accountId: ctx.uid },
   });
 
-  return found;
+  if (!session) {
+    log.info('Session not found or not owned by user', { userId: ctx.uid, sessionId });
+    return false;
+  }
+
+  // Delete all related records, then the session itself
+  await db.$transaction([
+    db.sessionMessage.deleteMany({ where: { sessionId } }),
+    db.usageReport.deleteMany({ where: { sessionId } }),
+    db.accessKey.deleteMany({ where: { sessionId } }),
+    db.session.delete({ where: { id: sessionId } }),
+  ]);
+
+  log.info('Session hard-deleted', { userId: ctx.uid, sessionId });
+
+  // Notify clients after deletion. Errors here do not affect the delete result —
+  // the session is already gone — but we log them so stale UI can be diagnosed.
+  try {
+    const updSeq = await allocateUserSeq(ctx.uid);
+    const updatePayload = buildDeleteSessionUpdate(sessionId, updSeq, randomKeyNaked(12));
+    eventRouter.emitUpdate({
+      userId: ctx.uid,
+      payload: updatePayload,
+      recipientFilter: { type: 'user-scoped-only' },
+    });
+  } catch (error) {
+    log.error('Failed to notify clients after session delete', undefined, {
+      userId: ctx.uid,
+      sessionId,
+      error: String(error),
+    });
+  }
+
+  return true;
+}
+
+/**
+ * Physically delete a session without user context (used by auto-delete job).
+ * Skips ownership check — caller must ensure session belongs to correct account.
+ */
+export async function sessionDeleteById(sessionId: string, accountId: string): Promise<void> {
+  await db.$transaction([
+    db.sessionMessage.deleteMany({ where: { sessionId } }),
+    db.usageReport.deleteMany({ where: { sessionId } }),
+    db.accessKey.deleteMany({ where: { sessionId } }),
+    db.session.delete({ where: { id: sessionId } }),
+  ]);
+
+  log.info('Session auto-deleted', { accountId, sessionId });
+
+  try {
+    const updSeq = await allocateUserSeq(accountId);
+    const updatePayload = buildDeleteSessionUpdate(sessionId, updSeq, randomKeyNaked(12));
+    eventRouter.emitUpdate({
+      userId: accountId,
+      payload: updatePayload,
+      recipientFilter: { type: 'user-scoped-only' },
+    });
+  } catch (error) {
+    log.error('Failed to notify clients after session auto-delete', undefined, {
+      accountId,
+      sessionId,
+      error: String(error),
+    });
+  }
 }

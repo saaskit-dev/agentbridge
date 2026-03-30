@@ -76,6 +76,8 @@ export type UpdateEvent =
   | {
       type: 'update-session';
       sessionId: string;
+      status?: 'active' | 'offline' | 'archived' | 'deleted';
+      activeAt?: number;
       metadata?:
         | {
             value: string | null;
@@ -626,7 +628,9 @@ export function buildUpdateSessionUpdate(
   metadata?: { value: string; version: number },
   agentState?: { value: string | null; version: number },
   trace?: WireTrace,
-  capabilities?: { value: string | null; version: number }
+  capabilities?: { value: string | null; version: number },
+  status?: 'active' | 'offline' | 'archived' | 'deleted',
+  activeAt?: number
 ): UpdatePayload {
   return {
     id: updateId,
@@ -634,6 +638,8 @@ export function buildUpdateSessionUpdate(
     body: {
       t: 'update-session',
       id: sessionId,
+      ...(status ? { status } : {}),
+      ...(activeAt != null ? { activeAt } : {}),
       metadata,
       agentState,
       capabilities,

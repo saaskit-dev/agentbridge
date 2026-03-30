@@ -201,13 +201,18 @@ beforeEach(() => {
 describe('send-messages', () => {
   it('rejects missing sessionId', async () => {
     const socket = setupHandler();
-    const result = await socket.triggerWithAck('send-messages', { messages: [{ id: '1', content: 'hi' }] });
+    const result = await socket.triggerWithAck('send-messages', {
+      messages: [{ id: '1', content: 'hi' }],
+    });
     expect(result).toEqual({ ok: false, error: 'Missing sessionId' });
   });
 
   it('rejects non-string sessionId', async () => {
     const socket = setupHandler();
-    const result = await socket.triggerWithAck('send-messages', { sessionId: 123, messages: [{ id: '1', content: 'hi' }] });
+    const result = await socket.triggerWithAck('send-messages', {
+      sessionId: 123,
+      messages: [{ id: '1', content: 'hi' }],
+    });
     expect(result).toEqual({ ok: false, error: 'Missing sessionId' });
   });
 
@@ -219,14 +224,20 @@ describe('send-messages', () => {
 
   it('rejects empty messages array', async () => {
     const socket = setupHandler();
-    const result = await socket.triggerWithAck('send-messages', { sessionId: SESSION_ID, messages: [] });
+    const result = await socket.triggerWithAck('send-messages', {
+      sessionId: SESSION_ID,
+      messages: [],
+    });
     expect(result).toEqual({ ok: false, error: 'messages must be an array of 1-100 items' });
   });
 
   it('rejects batch exceeding 100 messages', async () => {
     const socket = setupHandler();
     const messages = Array.from({ length: 101 }, (_, i) => ({ id: `m${i}`, content: 'x' }));
-    const result = await socket.triggerWithAck('send-messages', { sessionId: SESSION_ID, messages });
+    const result = await socket.triggerWithAck('send-messages', {
+      sessionId: SESSION_ID,
+      messages,
+    });
     expect(result).toEqual({ ok: false, error: 'messages must be an array of 1-100 items' });
   });
 
@@ -254,7 +265,10 @@ describe('send-messages', () => {
       sessionId: SESSION_ID,
       messages: [{ id: 'msg1', content: 123 }],
     });
-    expect(result).toEqual({ ok: false, error: expect.stringContaining('Message content too large or invalid') });
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining('Message content too large or invalid'),
+    });
   });
 
   it('rejects message content exceeding size limit', async () => {
@@ -265,7 +279,10 @@ describe('send-messages', () => {
       sessionId: SESSION_ID,
       messages: [{ id: 'msg1', content: bigContent }],
     });
-    expect(result).toEqual({ ok: false, error: expect.stringContaining('Message content too large or invalid') });
+    expect(result).toEqual({
+      ok: false,
+      error: expect.stringContaining('Message content too large or invalid'),
+    });
   });
 
   it('rejects when session not found', async () => {
@@ -293,7 +310,11 @@ describe('send-messages', () => {
     const now = new Date();
     mocks.allocateSessionSeqBatch.mockResolvedValue([1]);
     mocks.dbMessageCreate.mockResolvedValue({
-      id: 'msg1', seq: 1, traceId: null, createdAt: now, updatedAt: now,
+      id: 'msg1',
+      seq: 1,
+      traceId: null,
+      createdAt: now,
+      updatedAt: now,
     });
 
     const result = await socket.triggerWithAck('send-messages', {
@@ -341,7 +362,11 @@ describe('send-messages', () => {
     const now = new Date();
     mocks.allocateSessionSeqBatch.mockResolvedValue([1]);
     mocks.dbMessageCreate.mockResolvedValue({
-      id: 'msg1', seq: 1, traceId: 'trace-123', createdAt: now, updatedAt: now,
+      id: 'msg1',
+      seq: 1,
+      traceId: 'trace-123',
+      createdAt: now,
+      updatedAt: now,
     });
 
     const result = await socket.triggerWithAck('send-messages', {
@@ -359,7 +384,11 @@ describe('send-messages', () => {
     const now = new Date();
     mocks.allocateSessionSeqBatch.mockResolvedValue([1]);
     mocks.dbMessageCreate.mockResolvedValue({
-      id: 'msg1', seq: 1, traceId: null, createdAt: now, updatedAt: now,
+      id: 'msg1',
+      seq: 1,
+      traceId: null,
+      createdAt: now,
+      updatedAt: now,
     });
 
     const result = await socket.triggerWithAck('send-messages', {
@@ -378,7 +407,11 @@ describe('send-messages', () => {
     const updated = new Date('2026-01-15T10:00:01Z');
     mocks.allocateSessionSeqBatch.mockResolvedValue([1]);
     mocks.dbMessageCreate.mockResolvedValue({
-      id: 'msg1', seq: 1, traceId: null, createdAt: created, updatedAt: updated,
+      id: 'msg1',
+      seq: 1,
+      traceId: null,
+      createdAt: created,
+      updatedAt: updated,
     });
 
     const result = await socket.triggerWithAck('send-messages', {
@@ -396,7 +429,11 @@ describe('send-messages', () => {
     const now = new Date();
     mocks.allocateSessionSeqBatch.mockResolvedValue([1]);
     mocks.dbMessageCreate.mockResolvedValue({
-      id: 'msg1', seq: 1, traceId: null, createdAt: now, updatedAt: now,
+      id: 'msg1',
+      seq: 1,
+      traceId: null,
+      createdAt: now,
+      updatedAt: now,
     });
 
     await socket.triggerWithAck('send-messages', {
@@ -405,11 +442,18 @@ describe('send-messages', () => {
     });
 
     expect(mocks.buildNewMessageUpdate).toHaveBeenCalledWith(
-      { id: 'msg1', seq: 1, traceId: null, createdAt: now, updatedAt: now, content: { t: 'encrypted', c: 'hello' } },
+      {
+        id: 'msg1',
+        seq: 1,
+        traceId: null,
+        createdAt: now,
+        updatedAt: now,
+        content: { t: 'encrypted', c: 'hello' },
+      },
       SESSION_ID,
       100,
       'random12char',
-      undefined,
+      undefined
     );
     expect(mocks.emitUpdate).toHaveBeenCalledWith({
       userId: USER_ID,
@@ -425,7 +469,11 @@ describe('send-messages', () => {
     const now = new Date();
     mocks.allocateSessionSeqBatch.mockResolvedValue([1]);
     mocks.dbMessageCreate.mockResolvedValue({
-      id: 'dup', seq: 1, traceId: null, createdAt: now, updatedAt: now,
+      id: 'dup',
+      seq: 1,
+      traceId: null,
+      createdAt: now,
+      updatedAt: now,
     });
 
     await socket.triggerWithAck('send-messages', {
@@ -439,11 +487,13 @@ describe('send-messages', () => {
     // Only one message should be created (the first one)
     expect(mocks.allocateSessionSeqBatch).toHaveBeenCalledWith(SESSION_ID, 1, expect.anything());
     expect(mocks.dbMessageCreate).toHaveBeenCalledTimes(1);
-    expect(mocks.dbMessageCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        content: { t: 'encrypted', c: 'first' },
-      }),
-    }));
+    expect(mocks.dbMessageCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: { t: 'encrypted', c: 'first' },
+        }),
+      })
+    );
   });
 
   it('skips creation for already-existing message ids', async () => {
@@ -516,7 +566,11 @@ describe('send-messages', () => {
     const now = new Date();
     mocks.allocateSessionSeqBatch.mockResolvedValue([1]);
     mocks.dbMessageCreate.mockResolvedValue({
-      id: 'msg1', seq: 1, traceId: null, createdAt: now, updatedAt: now,
+      id: 'msg1',
+      seq: 1,
+      traceId: null,
+      createdAt: now,
+      updatedAt: now,
     });
 
     const [r1, r2] = await Promise.all([
@@ -553,7 +607,11 @@ describe('send-messages', () => {
     const now = new Date();
     mocks.allocateSessionSeqBatch.mockResolvedValue([1]);
     mocks.dbMessageCreate.mockResolvedValue({
-      id: 'msg1', seq: 1, traceId: null, createdAt: now, updatedAt: now,
+      id: 'msg1',
+      seq: 1,
+      traceId: null,
+      createdAt: now,
+      updatedAt: now,
     });
 
     await socket.triggerWithAck('send-messages', {
@@ -592,16 +650,33 @@ describe('fetch-messages', () => {
     setupFetchSession();
     const now = new Date();
     mocks.dbMessageFindMany.mockResolvedValue([
-      { id: 'm1', seq: 6, content: { t: 'encrypted', c: 'hi' }, traceId: null, createdAt: now, updatedAt: now },
+      {
+        id: 'm1',
+        seq: 6,
+        content: { t: 'encrypted', c: 'hi' },
+        traceId: null,
+        createdAt: now,
+        updatedAt: now,
+      },
     ]);
 
-    const result = await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, after_seq: 5 });
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      after_seq: 5,
+    });
 
     expect(mocks.dbMessageFindMany).toHaveBeenCalledWith({
       where: { sessionId: SESSION_ID, seq: { gt: 5 } },
       orderBy: { seq: 'asc' },
-      take: 1001,
-      select: { id: true, seq: true, content: true, traceId: true, createdAt: true, updatedAt: true },
+      take: 5001,
+      select: {
+        id: true,
+        seq: true,
+        content: true,
+        traceId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
     expect(result.ok).toBe(true);
     expect(result.messages).toHaveLength(1);
@@ -616,7 +691,7 @@ describe('fetch-messages', () => {
     await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID });
 
     expect(mocks.dbMessageFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { sessionId: SESSION_ID, seq: { gt: 0 } } }),
+      expect.objectContaining({ where: { sessionId: SESSION_ID, seq: { gt: 0 } } })
     );
   });
 
@@ -626,11 +701,19 @@ describe('fetch-messages', () => {
     const now = new Date();
     // Return limit+1 items to trigger hasMore
     const messages = Array.from({ length: 3 }, (_, i) => ({
-      id: `m${i}`, seq: i + 1, content: { t: 'encrypted', c: '' }, traceId: null, createdAt: now, updatedAt: now,
+      id: `m${i}`,
+      seq: i + 1,
+      content: { t: 'encrypted', c: '' },
+      traceId: null,
+      createdAt: now,
+      updatedAt: now,
     }));
     mocks.dbMessageFindMany.mockResolvedValue(messages);
 
-    const result = await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, limit: 2 });
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      limit: 2,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.messages).toHaveLength(2);
@@ -642,10 +725,20 @@ describe('fetch-messages', () => {
     setupFetchSession();
     const now = new Date();
     mocks.dbMessageFindMany.mockResolvedValue([
-      { id: 'm1', seq: 1, content: { t: 'encrypted', c: '' }, traceId: null, createdAt: now, updatedAt: now },
+      {
+        id: 'm1',
+        seq: 1,
+        content: { t: 'encrypted', c: '' },
+        traceId: null,
+        createdAt: now,
+        updatedAt: now,
+      },
     ]);
 
-    const result = await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, limit: 5 });
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      limit: 5,
+    });
 
     expect(result.hasMore).toBe(false);
   });
@@ -667,16 +760,33 @@ describe('fetch-messages', () => {
     setupFetchSession();
     const now = new Date();
     mocks.dbMessageFindMany.mockResolvedValue([
-      { id: 'm2', seq: 2, content: { t: 'encrypted', c: '' }, traceId: null, createdAt: now, updatedAt: now },
+      {
+        id: 'm2',
+        seq: 2,
+        content: { t: 'encrypted', c: '' },
+        traceId: null,
+        createdAt: now,
+        updatedAt: now,
+      },
     ]);
 
-    const result = await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, before_seq: 3 });
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      before_seq: 3,
+    });
 
     expect(mocks.dbMessageFindMany).toHaveBeenCalledWith({
       where: { sessionId: SESSION_ID, seq: { lt: 3 } },
       orderBy: { seq: 'desc' },
-      take: 1001,
-      select: { id: true, seq: true, content: true, traceId: true, createdAt: true, updatedAt: true },
+      take: 5001,
+      select: {
+        id: true,
+        seq: true,
+        content: true,
+        traceId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
     expect(result.ok).toBe(true);
   });
@@ -692,7 +802,10 @@ describe('fetch-messages', () => {
       { id: 'm1', seq: 1, content: { c: 'a' }, traceId: null, createdAt: now, updatedAt: now },
     ]);
 
-    const result = await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, before_seq: 10 });
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      before_seq: 10,
+    });
 
     // Should be reversed to ASC
     expect(result.messages.map((m: any) => m.seq)).toEqual([1, 2, 3]);
@@ -704,11 +817,20 @@ describe('fetch-messages', () => {
     const now = new Date();
     // Return limit+1 items
     const messages = Array.from({ length: 3 }, (_, i) => ({
-      id: `m${i}`, seq: 3 - i, content: { c: '' }, traceId: null, createdAt: now, updatedAt: now,
+      id: `m${i}`,
+      seq: 3 - i,
+      content: { c: '' },
+      traceId: null,
+      createdAt: now,
+      updatedAt: now,
     }));
     mocks.dbMessageFindMany.mockResolvedValue(messages);
 
-    const result = await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, before_seq: 10, limit: 2 });
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      before_seq: 10,
+      limit: 2,
+    });
 
     expect(result.hasOlderMessages).toBe(true);
     expect(result.messages).toHaveLength(2);
@@ -722,7 +844,11 @@ describe('fetch-messages', () => {
       { id: 'm1', seq: 1, content: { c: '' }, traceId: null, createdAt: now, updatedAt: now },
     ]);
 
-    const result = await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, before_seq: 5, limit: 10 });
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      before_seq: 5,
+      limit: 10,
+    });
 
     expect(result.hasOlderMessages).toBe(false);
   });
@@ -732,28 +858,29 @@ describe('fetch-messages', () => {
     setupFetchSession();
     mocks.dbMessageFindMany.mockResolvedValue([]);
 
-    const result = await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, before_seq: 5 });
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      before_seq: 5,
+    });
 
     expect(result.hasMore).toBe(false);
   });
 
-  it('limit: default 1000', async () => {
+  it('limit: default 5000', async () => {
     const socket = setupHandler();
     setupFetchSession();
     mocks.dbMessageFindMany.mockResolvedValue([]);
 
     await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID });
 
-    expect(mocks.dbMessageFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 1001 }),
-    );
+    expect(mocks.dbMessageFindMany).toHaveBeenCalledWith(expect.objectContaining({ take: 5001 }));
   });
 
   it.each([
-    { input: 0, expected: 1001 },
-    { input: -1, expected: 1001 },
-    { input: 1001, expected: 1001 },
-    { input: 'not-a-number', expected: 1001 },
+    { input: 0, expected: 5001 },
+    { input: -1, expected: 5001 },
+    { input: 5001, expected: 5001 },
+    { input: 'not-a-number', expected: 5001 },
   ])('limit: clamps invalid value $input to default', async ({ input, expected }) => {
     const socket = setupHandler();
     setupFetchSession();
@@ -762,7 +889,7 @@ describe('fetch-messages', () => {
     await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, limit: input });
 
     expect(mocks.dbMessageFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: expected }),
+      expect.objectContaining({ take: expected })
     );
   });
 
@@ -773,9 +900,7 @@ describe('fetch-messages', () => {
 
     await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, limit: 50 });
 
-    expect(mocks.dbMessageFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 51 }),
-    );
+    expect(mocks.dbMessageFindMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51 }));
   });
 
   it('before_seq takes priority over after_seq', async () => {
@@ -783,14 +908,18 @@ describe('fetch-messages', () => {
     setupFetchSession();
     mocks.dbMessageFindMany.mockResolvedValue([]);
 
-    await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID, before_seq: 10, after_seq: 5 });
+    await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      before_seq: 10,
+      after_seq: 5,
+    });
 
     // Should use before_seq path (DESC query)
     expect(mocks.dbMessageFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { sessionId: SESSION_ID, seq: { lt: 10 } },
         orderBy: { seq: 'desc' },
-      }),
+      })
     );
   });
 
@@ -799,7 +928,14 @@ describe('fetch-messages', () => {
     setupFetchSession();
     const now = new Date();
     mocks.dbMessageFindMany.mockResolvedValue([
-      { id: 'm1', seq: 1, content: { t: 'encrypted', c: 'hello' }, traceId: null, createdAt: now, updatedAt: now },
+      {
+        id: 'm1',
+        seq: 1,
+        content: { t: 'encrypted', c: 'hello' },
+        traceId: null,
+        createdAt: now,
+        updatedAt: now,
+      },
     ]);
 
     const result = await socket.triggerWithAck('fetch-messages', { sessionId: SESSION_ID });
@@ -863,13 +999,24 @@ describe('update-metadata', () => {
   it('rejects invalid input (missing sid, non-string metadata, non-number version)', async () => {
     const socket = setupHandler();
 
-    const r1 = await socket.triggerWithAck('update-metadata', { metadata: 'x', expectedVersion: 1 });
+    const r1 = await socket.triggerWithAck('update-metadata', {
+      metadata: 'x',
+      expectedVersion: 1,
+    });
     expect(r1).toEqual({ result: 'error' });
 
-    const r2 = await socket.triggerWithAck('update-metadata', { sid: SESSION_ID, metadata: 123, expectedVersion: 1 });
+    const r2 = await socket.triggerWithAck('update-metadata', {
+      sid: SESSION_ID,
+      metadata: 123,
+      expectedVersion: 1,
+    });
     expect(r2).toEqual({ result: 'error' });
 
-    const r3 = await socket.triggerWithAck('update-metadata', { sid: SESSION_ID, metadata: 'x', expectedVersion: 'abc' });
+    const r3 = await socket.triggerWithAck('update-metadata', {
+      sid: SESSION_ID,
+      metadata: 'x',
+      expectedVersion: 'abc',
+    });
     expect(r3).toEqual({ result: 'error' });
   });
 
@@ -878,7 +1025,9 @@ describe('update-metadata', () => {
     mocks.dbSessionFindUnique.mockResolvedValue(null);
 
     const result = await socket.triggerWithAck('update-metadata', {
-      sid: SESSION_ID, metadata: '{}', expectedVersion: 1,
+      sid: SESSION_ID,
+      metadata: '{}',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({ result: 'error' });
@@ -892,7 +1041,9 @@ describe('update-metadata', () => {
     mocks.dbSessionFindUnique.mockResolvedValue({ ...baseSession, metadataVersion: 5 });
 
     const result = await socket.triggerWithAck('update-metadata', {
-      sid: SESSION_ID, metadata: '{}', expectedVersion: 3,
+      sid: SESSION_ID,
+      metadata: '{}',
+      expectedVersion: 3,
     });
 
     expect(result).toEqual({
@@ -909,7 +1060,9 @@ describe('update-metadata', () => {
     mocks.allocateUserSeq.mockResolvedValue(42);
 
     const result = await socket.triggerWithAck('update-metadata', {
-      sid: SESSION_ID, metadata: '{"title":"new"}', expectedVersion: 1,
+      sid: SESSION_ID,
+      metadata: '{"title":"new"}',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({ result: 'success', version: 2, metadata: '{"title":"new"}' });
@@ -923,10 +1076,15 @@ describe('update-metadata', () => {
     const socket = setupHandler();
     mocks.dbSessionFindUnique.mockResolvedValue(baseSession);
     mocks.dbSessionUpdateMany.mockResolvedValue({ count: 0 });
-    mocks.dbSessionFindFirst.mockResolvedValue({ metadataVersion: 3, metadata: '{"title":"concurrent"}' });
+    mocks.dbSessionFindFirst.mockResolvedValue({
+      metadataVersion: 3,
+      metadata: '{"title":"concurrent"}',
+    });
 
     const result = await socket.triggerWithAck('update-metadata', {
-      sid: SESSION_ID, metadata: '{}', expectedVersion: 1,
+      sid: SESSION_ID,
+      metadata: '{}',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({
@@ -943,7 +1101,9 @@ describe('update-metadata', () => {
     mocks.dbSessionFindFirst.mockResolvedValue(null);
 
     const result = await socket.triggerWithAck('update-metadata', {
-      sid: SESSION_ID, metadata: '{}', expectedVersion: 1,
+      sid: SESSION_ID,
+      metadata: '{}',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({ result: 'error' });
@@ -956,7 +1116,9 @@ describe('update-metadata', () => {
     mocks.allocateUserSeq.mockResolvedValue(42);
 
     await socket.triggerWithAck('update-metadata', {
-      sid: SESSION_ID, metadata: '{"title":"new"}', expectedVersion: 1,
+      sid: SESSION_ID,
+      metadata: '{"title":"new"}',
+      expectedVersion: 1,
     });
 
     expect(mocks.buildUpdateSessionUpdate).toHaveBeenCalledWith(
@@ -965,7 +1127,7 @@ describe('update-metadata', () => {
       'random12char',
       { value: '{"title":"new"}', version: 2 },
       undefined,
-      undefined,
+      undefined
     );
     expect(mocks.emitUpdate).toHaveBeenCalledWith({
       userId: USER_ID,
@@ -980,7 +1142,9 @@ describe('update-metadata', () => {
 
     // Trigger without callback — should not throw
     await socket.trigger('update-metadata', {
-      sid: SESSION_ID, metadata: '{}', expectedVersion: 1,
+      sid: SESSION_ID,
+      metadata: '{}',
+      expectedVersion: 1,
     });
     // If we get here, no error was thrown — that's the assertion
   });
@@ -1004,21 +1168,35 @@ describe('update-state', () => {
     const r1 = await socket.triggerWithAck('update-state', { agentState: 'x', expectedVersion: 1 });
     expect(r1).toEqual({ result: 'error' });
 
-    const r2 = await socket.triggerWithAck('update-state', { sid: SESSION_ID, agentState: 123, expectedVersion: 1 });
+    const r2 = await socket.triggerWithAck('update-state', {
+      sid: SESSION_ID,
+      agentState: 123,
+      expectedVersion: 1,
+    });
     expect(r2).toEqual({ result: 'error' });
 
-    const r3 = await socket.triggerWithAck('update-state', { sid: SESSION_ID, agentState: 'x', expectedVersion: 'abc' });
+    const r3 = await socket.triggerWithAck('update-state', {
+      sid: SESSION_ID,
+      agentState: 'x',
+      expectedVersion: 'abc',
+    });
     expect(r3).toEqual({ result: 'error' });
   });
 
   it('accepts null agentState', async () => {
     const socket = setupHandler();
-    mocks.dbSessionFindUnique.mockResolvedValue({ ...baseSession, agentState: null, agentStateVersion: 1 });
+    mocks.dbSessionFindUnique.mockResolvedValue({
+      ...baseSession,
+      agentState: null,
+      agentStateVersion: 1,
+    });
     mocks.dbSessionUpdateMany.mockResolvedValue({ count: 1 });
     mocks.allocateUserSeq.mockResolvedValue(10);
 
     const result = await socket.triggerWithAck('update-state', {
-      sid: SESSION_ID, agentState: null, expectedVersion: 1,
+      sid: SESSION_ID,
+      agentState: null,
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({ result: 'success', version: 2, agentState: null });
@@ -1027,7 +1205,9 @@ describe('update-state', () => {
   it('rejects non-string non-null agentState', async () => {
     const socket = setupHandler();
     const result = await socket.triggerWithAck('update-state', {
-      sid: SESSION_ID, agentState: { obj: true }, expectedVersion: 1,
+      sid: SESSION_ID,
+      agentState: { obj: true },
+      expectedVersion: 1,
     });
     expect(result).toEqual({ result: 'error' });
   });
@@ -1037,7 +1217,9 @@ describe('update-state', () => {
     mocks.dbSessionFindUnique.mockResolvedValue({ ...baseSession, agentStateVersion: 5 });
 
     const result = await socket.triggerWithAck('update-state', {
-      sid: SESSION_ID, agentState: 'x', expectedVersion: 3,
+      sid: SESSION_ID,
+      agentState: 'x',
+      expectedVersion: 3,
     });
 
     expect(result).toEqual({
@@ -1054,7 +1236,9 @@ describe('update-state', () => {
     mocks.allocateUserSeq.mockResolvedValue(10);
 
     const result = await socket.triggerWithAck('update-state', {
-      sid: SESSION_ID, agentState: '{"status":"idle"}', expectedVersion: 1,
+      sid: SESSION_ID,
+      agentState: '{"status":"idle"}',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({ result: 'success', version: 2, agentState: '{"status":"idle"}' });
@@ -1071,7 +1255,9 @@ describe('update-state', () => {
     mocks.dbSessionFindFirst.mockResolvedValue({ agentStateVersion: 4, agentState: 'latest' });
 
     const result = await socket.triggerWithAck('update-state', {
-      sid: SESSION_ID, agentState: 'new', expectedVersion: 1,
+      sid: SESSION_ID,
+      agentState: 'new',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({
@@ -1088,7 +1274,9 @@ describe('update-state', () => {
     mocks.dbSessionFindFirst.mockResolvedValue(null);
 
     const result = await socket.triggerWithAck('update-state', {
-      sid: SESSION_ID, agentState: 'new', expectedVersion: 1,
+      sid: SESSION_ID,
+      agentState: 'new',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({ result: 'error' });
@@ -1101,7 +1289,9 @@ describe('update-state', () => {
     mocks.allocateUserSeq.mockResolvedValue(10);
 
     await socket.triggerWithAck('update-state', {
-      sid: SESSION_ID, agentState: 'new-state', expectedVersion: 1,
+      sid: SESSION_ID,
+      agentState: 'new-state',
+      expectedVersion: 1,
     });
 
     expect(mocks.buildUpdateSessionUpdate).toHaveBeenCalledWith(
@@ -1110,7 +1300,7 @@ describe('update-state', () => {
       'random12char',
       undefined,
       { value: 'new-state', version: 2 },
-      undefined,
+      undefined
     );
     expect(mocks.emitUpdate).toHaveBeenCalledWith({
       userId: USER_ID,
@@ -1124,7 +1314,9 @@ describe('update-state', () => {
     mocks.dbSessionFindUnique.mockResolvedValue(null);
 
     const result = await socket.triggerWithAck('update-state', {
-      sid: SESSION_ID, agentState: 'x', expectedVersion: 1,
+      sid: SESSION_ID,
+      agentState: 'x',
+      expectedVersion: 1,
     });
 
     // update-state calls callback({ result: 'error' }) directly (no guard)
@@ -1147,24 +1339,41 @@ describe('update-capabilities', () => {
   it('rejects invalid input', async () => {
     const socket = setupHandler();
 
-    const r1 = await socket.triggerWithAck('update-capabilities', { capabilities: 'x', expectedVersion: 1 });
+    const r1 = await socket.triggerWithAck('update-capabilities', {
+      capabilities: 'x',
+      expectedVersion: 1,
+    });
     expect(r1).toEqual({ result: 'error' });
 
-    const r2 = await socket.triggerWithAck('update-capabilities', { sid: SESSION_ID, capabilities: 123, expectedVersion: 1 });
+    const r2 = await socket.triggerWithAck('update-capabilities', {
+      sid: SESSION_ID,
+      capabilities: 123,
+      expectedVersion: 1,
+    });
     expect(r2).toEqual({ result: 'error' });
 
-    const r3 = await socket.triggerWithAck('update-capabilities', { sid: SESSION_ID, capabilities: 'x', expectedVersion: 'abc' });
+    const r3 = await socket.triggerWithAck('update-capabilities', {
+      sid: SESSION_ID,
+      capabilities: 'x',
+      expectedVersion: 'abc',
+    });
     expect(r3).toEqual({ result: 'error' });
   });
 
   it('accepts null capabilities', async () => {
     const socket = setupHandler();
-    mocks.dbSessionFindUnique.mockResolvedValue({ ...baseSession, capabilities: null, capabilitiesVersion: 1 });
+    mocks.dbSessionFindUnique.mockResolvedValue({
+      ...baseSession,
+      capabilities: null,
+      capabilitiesVersion: 1,
+    });
     mocks.dbSessionUpdateMany.mockResolvedValue({ count: 1 });
     mocks.allocateUserSeq.mockResolvedValue(10);
 
     const result = await socket.triggerWithAck('update-capabilities', {
-      sid: SESSION_ID, capabilities: null, expectedVersion: 1,
+      sid: SESSION_ID,
+      capabilities: null,
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({ result: 'success', version: 2, capabilities: null });
@@ -1175,7 +1384,9 @@ describe('update-capabilities', () => {
     mocks.dbSessionFindUnique.mockResolvedValue({ ...baseSession, capabilitiesVersion: 5 });
 
     const result = await socket.triggerWithAck('update-capabilities', {
-      sid: SESSION_ID, capabilities: 'x', expectedVersion: 3,
+      sid: SESSION_ID,
+      capabilities: 'x',
+      expectedVersion: 3,
     });
 
     expect(result).toEqual({
@@ -1192,7 +1403,9 @@ describe('update-capabilities', () => {
     mocks.allocateUserSeq.mockResolvedValue(10);
 
     const result = await socket.triggerWithAck('update-capabilities', {
-      sid: SESSION_ID, capabilities: '{"tools":false}', expectedVersion: 1,
+      sid: SESSION_ID,
+      capabilities: '{"tools":false}',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({ result: 'success', version: 2, capabilities: '{"tools":false}' });
@@ -1209,7 +1422,9 @@ describe('update-capabilities', () => {
     mocks.dbSessionFindFirst.mockResolvedValue({ capabilitiesVersion: 4, capabilities: 'latest' });
 
     const result = await socket.triggerWithAck('update-capabilities', {
-      sid: SESSION_ID, capabilities: 'new', expectedVersion: 1,
+      sid: SESSION_ID,
+      capabilities: 'new',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({
@@ -1226,7 +1441,9 @@ describe('update-capabilities', () => {
     mocks.dbSessionFindFirst.mockResolvedValue(null);
 
     const result = await socket.triggerWithAck('update-capabilities', {
-      sid: SESSION_ID, capabilities: 'new', expectedVersion: 1,
+      sid: SESSION_ID,
+      capabilities: 'new',
+      expectedVersion: 1,
     });
 
     expect(result).toEqual({ result: 'error' });
@@ -1239,7 +1456,9 @@ describe('update-capabilities', () => {
     mocks.allocateUserSeq.mockResolvedValue(10);
 
     await socket.triggerWithAck('update-capabilities', {
-      sid: SESSION_ID, capabilities: '{"new":true}', expectedVersion: 1,
+      sid: SESSION_ID,
+      capabilities: '{"new":true}',
+      expectedVersion: 1,
     });
 
     expect(mocks.buildUpdateSessionUpdate).toHaveBeenCalledWith(
@@ -1249,7 +1468,7 @@ describe('update-capabilities', () => {
       undefined,
       undefined,
       undefined,
-      { value: '{"new":true}', version: 2 },
+      { value: '{"new":true}', version: 2 }
     );
     expect(mocks.emitUpdate).toHaveBeenCalledWith({
       userId: USER_ID,
@@ -1266,8 +1485,10 @@ describe('update-capabilities', () => {
     // without checking if callback exists, so it should throw
     await expect(
       socket.trigger('update-capabilities', {
-        sid: SESSION_ID, capabilities: 'x', expectedVersion: 1,
-      }),
+        sid: SESSION_ID,
+        capabilities: 'x',
+        expectedVersion: 1,
+      })
     ).rejects.toThrow();
   });
 });
@@ -1368,7 +1589,13 @@ describe('session-alive', () => {
     await socket.trigger('session-alive', { sid: SESSION_ID, time: NOW - 500 });
 
     expect(mocks.activityCacheQueue).toHaveBeenCalledWith(SESSION_ID, NOW - 500);
-    expect(mocks.broadcasterQueue).toHaveBeenCalledWith(USER_ID, SESSION_ID, true, NOW - 500, false);
+    expect(mocks.broadcasterQueue).toHaveBeenCalledWith(
+      USER_ID,
+      SESSION_ID,
+      true,
+      NOW - 500,
+      false
+    );
   });
 
   it('passes thinking flag to broadcaster', async () => {
@@ -1423,13 +1650,14 @@ describe('session-end', () => {
     const socket = setupHandler();
     mocks.dbSessionFindUnique.mockResolvedValue({ id: SESSION_ID });
     mocks.dbSessionUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.allocateUserSeq.mockResolvedValue(101);
 
     await socket.trigger('session-end', { sid: SESSION_ID, time: NOW + 5000 });
 
     // Should use NOW (clamped) not NOW+5000
     expect(mocks.dbSessionUpdateMany).toHaveBeenCalledWith({
       where: { id: SESSION_ID, accountId: USER_ID },
-      data: { lastActiveAt: new Date(NOW), status: 'archived' },
+      data: { lastActiveAt: new Date(NOW), status: 'archived', archivedAt: new Date(NOW) },
     });
   });
 
@@ -1455,12 +1683,17 @@ describe('session-end', () => {
     const socket = setupHandler();
     mocks.dbSessionFindUnique.mockResolvedValue({ id: SESSION_ID });
     mocks.dbSessionUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.allocateUserSeq.mockResolvedValue(101);
 
     await socket.trigger('session-end', { sid: SESSION_ID, time: NOW - 1000 });
 
     expect(mocks.dbSessionUpdateMany).toHaveBeenCalledWith({
       where: { id: SESSION_ID, accountId: USER_ID },
-      data: { lastActiveAt: new Date(NOW - 1000), status: 'archived' },
+      data: {
+        lastActiveAt: new Date(NOW - 1000),
+        status: 'archived',
+        archivedAt: new Date(NOW - 1000),
+      },
     });
   });
 
@@ -1468,6 +1701,7 @@ describe('session-end', () => {
     const socket = setupHandler();
     mocks.dbSessionFindUnique.mockResolvedValue({ id: SESSION_ID });
     mocks.dbSessionUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.allocateUserSeq.mockResolvedValue(101);
 
     await socket.trigger('session-end', { sid: SESSION_ID, time: NOW });
 
@@ -1478,6 +1712,7 @@ describe('session-end', () => {
     const socket = setupHandler();
     mocks.dbSessionFindUnique.mockResolvedValue({ id: SESSION_ID });
     mocks.dbSessionUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.allocateUserSeq.mockResolvedValue(101);
 
     await socket.trigger('session-end', { sid: SESSION_ID, time: NOW });
 
@@ -1488,10 +1723,16 @@ describe('session-end', () => {
     const socket = setupHandler();
     mocks.dbSessionFindUnique.mockResolvedValue({ id: SESSION_ID });
     mocks.dbSessionUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.allocateUserSeq.mockResolvedValue(101);
 
     await socket.trigger('session-end', { sid: SESSION_ID, time: NOW - 500 });
 
-    expect(mocks.buildSessionActivityEphemeral).toHaveBeenCalledWith(SESSION_ID, false, NOW - 500, false);
+    expect(mocks.buildSessionActivityEphemeral).toHaveBeenCalledWith(
+      SESSION_ID,
+      false,
+      NOW - 500,
+      false
+    );
     expect(mocks.emitEphemeral).toHaveBeenCalledWith({
       userId: USER_ID,
       payload: { type: 'session-activity' },
@@ -1503,13 +1744,40 @@ describe('session-end', () => {
     const socket = setupHandler();
     mocks.dbSessionFindUnique.mockResolvedValue({ id: SESSION_ID });
     mocks.dbSessionUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.allocateUserSeq.mockResolvedValue(101);
 
     await socket.trigger('session-end', { sid: SESSION_ID, time: NOW });
 
     expect(mocks.emitEphemeral).toHaveBeenCalledWith(
       expect.objectContaining({
         recipientFilter: { type: 'user-scoped-only' },
-      }),
+      })
     );
+  });
+
+  it('emits persistent update-session with archived status', async () => {
+    const socket = setupHandler();
+    mocks.dbSessionFindUnique.mockResolvedValue({ id: SESSION_ID });
+    mocks.dbSessionUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.allocateUserSeq.mockResolvedValue(101);
+
+    await socket.trigger('session-end', { sid: SESSION_ID, time: NOW });
+
+    expect(mocks.buildUpdateSessionUpdate).toHaveBeenCalledWith(
+      SESSION_ID,
+      101,
+      'random12char',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'archived',
+      NOW
+    );
+    expect(mocks.emitUpdate).toHaveBeenCalledWith({
+      userId: USER_ID,
+      payload: { type: 'update-session' },
+      recipientFilter: { type: 'all-interested-in-session', sessionId: SESSION_ID },
+    });
   });
 });

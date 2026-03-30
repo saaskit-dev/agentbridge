@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { type Fastify } from '../types';
 import { eventRouter, buildNewSessionUpdate } from '@/app/events/eventRouter';
 import { sessionDelete } from '@/app/session/sessionDelete';
+import { sessionArchive } from '@/app/session/sessionArchive';
 import { activityCache } from '@/app/presence/sessionCache';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
@@ -426,7 +427,35 @@ export function sessionRoutes(app: Fastify) {
     }
   );
 
-  // Delete session
+  // Archive session (HTTP path, used when daemon is unavailable e.g. recovery_failed)
+  app.patch(
+    '/v1/sessions/:sessionId/archive',
+    {
+      schema: {
+        params: z.object({
+          sessionId: z.string(),
+        }),
+      },
+      preHandler: app.authenticate,
+    },
+    async (request, reply) => {
+      const userId = request.userId;
+      const { sessionId } = request.params;
+
+      log.debug('[sessions] archive requested', { userId, sessionId });
+
+      const archived = await sessionArchive({ uid: userId }, sessionId);
+
+      if (!archived) {
+        log.debug('[sessions] archive: not found or already archived', { userId, sessionId });
+        return reply.code(404).send({ error: 'Session not found or already archived' });
+      }
+
+      return reply.send({ success: true });
+    }
+  );
+
+  // Delete session (physical delete)
   app.delete(
     '/v1/sessions/:sessionId',
     {
