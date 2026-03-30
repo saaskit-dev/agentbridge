@@ -7,8 +7,8 @@ import { VOICE_CONFIG } from '../voiceConfig';
 import {
   formatNewMessages,
   formatNewSingleMessage,
-  formatPermissionRequest,
   formatReadyEvent,
+  formatSessionBrief,
   formatSessionFocus,
   formatSessionFull,
   formatSessionOffline,
@@ -105,16 +105,6 @@ export const voiceHooks = {
   },
 
   /**
-   * Called when Claude requests permission for a tool use
-   */
-  onPermissionRequested(sessionId: string, requestId: string, toolName: string, toolArgs: any) {
-    if (VOICE_CONFIG.DISABLE_PERMISSION_REQUESTS) return;
-
-    reportSession(sessionId);
-    reportTextUpdate(formatPermissionRequest(sessionId, requestId, toolName, toolArgs));
-  },
-
-  /**
    * Called when agent sends a message/response
    */
   onMessages(sessionId: string, messages: Message[]) {
@@ -132,20 +122,30 @@ export const voiceHooks = {
       logger.debug('🎤 Voice session started for:', sessionId);
     }
     shownSessions.clear();
-    let prompt = '';
-    prompt +=
-      'THIS IS AN ACTIVE SESSION: \n\n' +
-      formatSessionFull(
-        storage.getState().sessions[sessionId],
-        storage.getState().sessionMessages[sessionId]?.messages ?? []
+
+    const state = storage.getState();
+    const parts: string[] = [];
+
+    // Full context for the focused session
+    const currentSession = state.sessions[sessionId];
+    if (currentSession) {
+      parts.push(
+        'CURRENT SESSION:\n\n' +
+          formatSessionFull(currentSession, state.sessionMessages[sessionId]?.messages ?? [])
       );
-    shownSessions.add(sessionId);
-    // prompt += 'Another active sessions: \n\n';
-    // for (let s of storage.getState().getActiveSessions()) {
-    //     if (s.id === sessionId) continue;
-    //     prompt += formatSessionFull(s, storage.getState().sessionMessages[s.id]?.messages ?? []);
-    // }
-    return prompt;
+      shownSessions.add(sessionId);
+    }
+
+    // Brief listing of all sessions (active + offline, no archived/deleted)
+    const allSessions = Object.values(state.sessions).filter(
+      s => s.status !== 'archived' && s.status !== 'deleted'
+    );
+    if (allSessions.length > 0) {
+      const briefs = allSessions.map(s => formatSessionBrief(s)).join('\n');
+      parts.push(`ALL SESSIONS (use switchSession to switch):\n${briefs}`);
+    }
+
+    return parts.join('\n\n');
   },
 
   /**

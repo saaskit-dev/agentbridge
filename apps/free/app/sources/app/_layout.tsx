@@ -33,6 +33,8 @@ import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { initKVStores } from '@/sync/cachedKVStore';
 import { syncRestore } from '@/sync/sync';
 import { loadSettings } from '@/sync/persistence';
+import { storage, useSetting } from '@/sync/storage';
+import { getCurrentLanguage, resolveLanguage, setLanguage } from '@/text';
 // import * as SystemUI from 'expo-system-ui';
 import { AsyncLock } from '@/utils/lock';
 import { useWatchConnectivity } from '@/hooks/useWatchConnectivity';
@@ -188,6 +190,20 @@ export default function RootLayout() {
   const [initState, setInitState] = React.useState<{ credentials: AuthCredentials | null } | null>(
     null
   );
+  const languageInitialized = React.useRef(false);
+  const [languageKey, setLanguageKey] = React.useState(0);
+
+  const preferredLanguage = useSetting('preferredLanguage');
+  React.useEffect(() => {
+    if (!languageInitialized.current) return;
+    const lang = resolveLanguage(preferredLanguage);
+    // Skip remount if language module is already on the correct language
+    // (e.g. when Zustand is refreshed from KV after init but setLanguage was already called)
+    if (lang === getCurrentLanguage()) return;
+    setLanguage(lang);
+    setLanguageKey(k => k + 1);
+  }, [preferredLanguage]);
+
   React.useEffect(() => {
     initPasteImageBridge();
     (async () => {
@@ -199,8 +215,16 @@ export default function RootLayout() {
         logger.debug('credentials', credentials);
         // Wire RemoteSink auth token so telemetry can upload after login (RFC §21.2)
         // Respect the user's analytics opt-in preference from synced Settings (RFC §8.1)
-        const { settings } = loadSettings();
+        const { settings, version } = loadSettings();
+        // Refresh Zustand with real KV data — the store was created before initKVStores()
+        // ran, so it loaded stale defaults. Without this, useSetting('preferredLanguage')
+        // returns 'zh-Hans' (default) even when the stored value is e.g. 'en', making
+        // the language settings page show the wrong selection and block switching.
+        storage.setState(state => ({ ...state, settings, settingsVersion: version }));
         setAnalyticsEnabled(settings.analyticsEnabled !== false, credentials?.token);
+        // Apply stored language preference now that KV store is ready
+        setLanguage(resolveLanguage(settings.preferredLanguage));
+        languageInitialized.current = true;
         if (credentials) {
           try {
             await syncRestore(credentials);
@@ -268,7 +292,9 @@ export default function RootLayout() {
   return (
     <>
       <FaviconPermissionIndicator />
-      {providers}
+      <React.Fragment key={languageKey}>
+        {providers}
+      </React.Fragment>
     </>
   );
 }

@@ -5,6 +5,7 @@ import { View, ActivityIndicator, Text, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { FABWide } from './FABWide';
+import { hapticsLight } from './haptics';
 import { Header } from './navigation/Header';
 import { HeaderLogo } from './HeaderLogo';
 import { SessionsList } from './SessionsList';
@@ -15,11 +16,15 @@ import { TabBar, TabType } from './TabBar';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { Typography } from '@/constants/Typography';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { voiceHooks } from '@/realtime/hooks/voiceHooks';
+import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { useMachineStatus } from '@/hooks/useMachineStatus';
-import { useSocketStatus, useRealtimeStatus } from '@/sync/storage';
+import { useSocketStatus, useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
 import { t } from '@/text';
 import { useIsTablet } from '@/utils/responsive';
+import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+const logger = new Logger('app/components/MainView');
 
 interface MainViewProps {
   variant: 'phone' | 'sidebar';
@@ -284,8 +289,6 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
   // Phone variant
   // Tablet in phone mode - special case (when showing index view on tablets, show empty view)
   if (isTablet) {
-    // Just show an empty view on tablets for the index view
-    // The sessions list is shown in the sidebar, so the main area should be blank
     return <View style={styles.emptyStateContentContainer} />;
   }
 
@@ -304,8 +307,79 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
           {realtimeStatus !== 'disconnected' && <VoiceAssistantStatusBar variant="full" />}
         </View>
         {renderTabContent()}
+        {activeTab === 'sessions' && <VoiceFAB />}
       </View>
       <TabBar activeTab={activeTab} onTabPress={handleTabPress} />
     </>
   );
 });
+
+// Floating voice assistant button — self-contained with its own handler and icon logic
+export function VoiceFAB() {
+  const { theme } = useUnistyles();
+  const realtimeStatus = useRealtimeStatus();
+  const realtimeMode = useRealtimeMode();
+  const isActive = realtimeStatus === 'connected' || realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting';
+
+  const handlePress = React.useCallback(async () => {
+    if (realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting') return;
+    hapticsLight();
+    if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
+      try {
+        const initialPrompt = voiceHooks.onVoiceStarted('');
+        await startRealtimeSession('', initialPrompt);
+      } catch (error) {
+        logger.error('Failed to start voice session:', toError(error));
+      }
+    } else if (realtimeStatus === 'connected') {
+      await stopRealtimeSession();
+      voiceHooks.onVoiceStopped();
+    }
+  }, [realtimeStatus]);
+
+  // Icon reflects the current interaction state:
+  //   disconnected/error  → mic-outline   (not active)
+  //   connecting          → radio-outline  (activating)
+  //   connected + idle    → radio          (active, listening)
+  //   connected + speaking→ volume-high   (assistant is talking)
+  const iconName: React.ComponentProps<typeof Ionicons>['name'] =
+    !isActive
+      ? 'mic-outline'
+      : realtimeStatus === 'connected' && realtimeMode === 'speaking'
+        ? 'volume-high'
+        : realtimeStatus === 'connected'
+          ? 'radio'
+          : 'radio-outline';
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => ({
+        position: 'absolute',
+        bottom: 16,
+        right: 20,
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        backgroundColor: isActive
+          ? theme.colors.button.primary.background
+          : theme.colors.fab.background,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 4,
+        shadowOpacity: theme.colors.shadow.opacity,
+        elevation: 5,
+        opacity: pressed ? 0.8 : 1,
+      })}
+      hitSlop={8}
+    >
+      <Ionicons
+        name={iconName}
+        size={22}
+        color={isActive ? theme.colors.button.primary.tint : theme.colors.fab.icon}
+      />
+    </Pressable>
+  );
+}

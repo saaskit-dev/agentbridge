@@ -14,8 +14,16 @@ const logger = new Logger('app/realtime/RealtimeSession');
 let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
 let currentSessionId: string | null = null;
+let isIntentionalStop: boolean = false;
+let reconnectAttempts: number = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let lastInitialContext: string | undefined = undefined;
+const MAX_RECONNECT_ATTEMPTS = 3;
 
 export async function startRealtimeSession(sessionId: string, initialContext?: string) {
+  if (initialContext !== undefined) {
+    lastInitialContext = initialContext;
+  }
   if (!voiceSession) {
     logger.warn('No voice session registered');
     const { Modal } = require('@/modal');
@@ -119,16 +127,55 @@ export async function stopRealtimeSession() {
     return;
   }
 
+  // Cancel any pending auto-reconnect before ending the session so the timer
+  // cannot fire and restart voice after the user explicitly stopped it.
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   try {
+    isIntentionalStop = true;
     await voiceSession.endSession();
     logger.info('[Voice] session stopped', { sessionId: currentSessionId });
     currentSessionId = null;
     voiceSessionStarted = false;
+    reconnectAttempts = 0;
+    lastInitialContext = undefined;
   } catch (error) {
     logger.error('Failed to stop realtime session', toError(error), {
       sessionId: currentSessionId,
     });
+  } finally {
+    isIntentionalStop = false;
   }
+}
+
+export function shouldAutoReconnect(): boolean {
+  return !isIntentionalStop && voiceSessionStarted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS;
+}
+
+export function scheduleReconnect(sessionId: string): void {
+  reconnectAttempts++;
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 8000); // 1s, 2s, 4s max 8s
+  logger.info('[Voice] scheduling reconnect', { attempt: reconnectAttempts, delayMs: delay, sessionId });
+  storage.getState().setRealtimeStatus('reconnecting');
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    startRealtimeSession(sessionId, lastInitialContext).catch(e => {
+      logger.error('[Voice] auto-reconnect failed', toError(e), { sessionId });
+    });
+  }, delay);
+}
+
+export function resetReconnectAttempts(): void {
+  reconnectAttempts = 0;
+}
+
+/** Switch the active agent session without restarting the ElevenLabs connection. */
+export function switchCurrentSession(sessionId: string): void {
+  logger.info('[Voice] switched current session', { from: currentSessionId, to: sessionId });
+  currentSessionId = sessionId;
 }
 
 export function registerVoiceSession(session: VoiceSession) {

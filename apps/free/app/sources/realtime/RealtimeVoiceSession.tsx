@@ -1,9 +1,16 @@
 import { useConversation } from '@elevenlabs/react-native';
 import React, { useEffect, useRef } from 'react';
 import { realtimeClientTools } from './realtimeClientTools';
-import { registerVoiceSession } from './RealtimeSession';
+import {
+  getCurrentRealtimeSessionId,
+  registerVoiceSession,
+  resetReconnectAttempts,
+  scheduleReconnect,
+  shouldAutoReconnect,
+} from './RealtimeSession';
 import type { VoiceSession, VoiceSessionConfig } from './types';
-import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
+import { getElevenLabsCodeFromLocale } from '@/constants/Languages';
+import { getLocales } from 'expo-localization';
 import { storage } from '@/sync/storage';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/RealtimeVoiceSession');
@@ -22,9 +29,9 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
     try {
       storage.getState().setRealtimeStatus('connecting');
 
-      // Get user's preferred language for voice assistant
-      const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
-      const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
+      const preferredLanguage = storage.getState().settings.preferredLanguage;
+      const localeTag = preferredLanguage ?? (getLocales()[0]?.languageTag ?? '');
+      const elevenLabsLanguage = getElevenLabsCodeFromLocale(localeTag);
 
       if (!config.token && !config.agentId) {
         throw new Error('Neither token nor agentId provided');
@@ -95,14 +102,20 @@ export const RealtimeVoiceSession: React.FC = () => {
     clientTools: realtimeClientTools,
     onConnect: data => {
       logger.debug('Realtime session connected:', data);
+      resetReconnectAttempts();
       storage.getState().setRealtimeStatus('connected');
       storage.getState().setRealtimeMode('idle');
     },
     onDisconnect: () => {
       logger.debug('Realtime session disconnected');
       storage.getState().setRealtimeStatus('disconnected');
-      storage.getState().setRealtimeMode('idle', true); // immediate mode change
+      storage.getState().setRealtimeMode('idle', true);
       storage.getState().clearRealtimeModeDebounce();
+
+      const sid = getCurrentRealtimeSessionId();
+      if (shouldAutoReconnect() && sid) {
+        scheduleReconnect(sid);
+      }
     },
     onMessage: data => {
       logger.debug('Realtime message:', data);

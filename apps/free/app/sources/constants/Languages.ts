@@ -142,52 +142,27 @@ export const LANGUAGES: Language[] = [
 ];
 
 /**
- * Format display name for a language
- */
-export const getLanguageDisplayName = (language: Language) => {
-  const parts = [];
-
-  if (language.name !== language.nativeName) {
-    parts.push(`${language.name} (${language.nativeName})`);
-  } else {
-    parts.push(language.name);
-  }
-
-  if (language.region) {
-    parts.push(language.region);
-  }
-
-  return parts.join(' - ');
-};
-
-/**
- * Find a language by its code (including null for autodetect)
- */
-export const findLanguageByCode = (code: string | null): Language | undefined => {
-  return LANGUAGES.find(lang => lang.code === code);
-};
-
-/**
- * Get the ElevenLabs language code for a given language
- */
-export const getElevenLabsCode = (language: Language): ElevenLabsLanguage | undefined => {
-  return language.elevenLabsCode;
-};
-
-/**
- * Get ElevenLabs code from user's language preference (handles null/autodetect)
- */
-export const getElevenLabsCodeFromPreference = (
-  languageCode: string | null
-): ElevenLabsLanguage | undefined => {
-  if (!languageCode) return undefined; // Auto-detect case
-  const language = findLanguageByCode(languageCode);
-  return language?.elevenLabsCode;
-};
-
-/**
  * Get all languages that support ElevenLabs
  */
 export const getElevenLabsSupportedLanguages = (): Language[] => {
   return LANGUAGES.filter(lang => lang.elevenLabsCode !== undefined);
+};
+
+/**
+ * Derive ElevenLabs code from a device locale tag (e.g. "zh-Hans-CN" → "zh", "en-US" → "en").
+ * Falls back to matching on language prefix if exact code not found.
+ */
+export const getElevenLabsCodeFromLocale = (
+  localeTag: string
+): ElevenLabsLanguage | undefined => {
+  // Try exact match first (e.g. "zh-CN", "en-US")
+  const exact = LANGUAGES.find(lang => lang.code === localeTag);
+  if (exact?.elevenLabsCode) return exact.elevenLabsCode;
+
+  // Try prefix match: "zh-Hans-CN" → "zh", then find any language starting with "zh"
+  const prefix = localeTag.split('-')[0];
+  const prefixMatch = LANGUAGES.find(
+    lang => lang.code && lang.code.toLowerCase().startsWith(prefix.toLowerCase())
+  );
+  return prefixMatch?.elevenLabsCode;
 };

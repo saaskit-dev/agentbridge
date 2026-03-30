@@ -1,7 +1,7 @@
 import { VOICE_CONFIG } from '../voiceConfig';
+import { normalizeAgentFlavor } from '@/sync/agentFlavor';
 import { Session } from '@/sync/storageTypes';
 import { Message } from '@/sync/typesMessage';
-import { trimIdent } from '@/utils/trimIdent';
 
 interface SessionMetadata {
   summary?: { text?: string };
@@ -9,23 +9,6 @@ interface SessionMetadata {
   machineId?: string;
   homeDir?: string;
   [key: string]: any;
-}
-
-/**
- * Format a permission request for natural language context
- */
-export function formatPermissionRequest(
-  sessionId: string,
-  requestId: string,
-  toolName: string,
-  toolArgs: any
-): string {
-  return trimIdent(`
-        Claude Code is requesting permission to use ${toolName} (session ${sessionId}):
-        <request_id>${requestId}</request_id>
-        <tool_name>${toolName}</tool_name>
-        <tool_args>${JSON.stringify(toolArgs)}</tool_args>
-    `);
 }
 
 //
@@ -36,18 +19,18 @@ export function formatMessage(message: Message): string | null {
   // Lines
   const lines: string[] = [];
   if (message.kind === 'agent-text') {
-    lines.push(`Claude Code: \n<text>${message.text}</text>`);
+    lines.push(`Agent: \n<text>${message.text}</text>`);
   } else if (message.kind === 'user-text') {
     lines.push(`User sent message: \n<text>${message.text}</text>`);
   } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
     const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
     if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
       if (message.tool.description) {
-        lines.push(`Claude Code is using ${message.tool.name}${toolDescription}`);
+        lines.push(`Agent is using ${message.tool.name}${toolDescription}`);
       }
     } else {
       lines.push(
-        `Claude Code is using ${message.tool.name}${toolDescription} (tool_use_id: ${message.id}) with arguments: <arguments>${JSON.stringify(message.tool.input)}</arguments>`
+        `Agent is using ${message.tool.name}${toolDescription} (tool_use_id: ${message.id}) with arguments: <arguments>${JSON.stringify(message.tool.input)}</arguments>`
       );
     }
   }
@@ -92,18 +75,15 @@ export function formatHistory(sessionId: string, messages: Message[]): string {
 export function formatSessionFull(session: Session, messages: Message[]): string {
   const sessionName = session.metadata?.summary?.text;
   const sessionPath = session.metadata?.path;
+  const agentType = normalizeAgentFlavor(session.metadata?.flavor);
   const lines: string[] = [];
 
   // Add session context
   lines.push(`# Session ID: ${session.id}`);
+  lines.push(`# Agent: ${agentType}`);
   lines.push(`# Project path: ${sessionPath}`);
-  lines.push(`# Session summary:\n${sessionName}`);
-
-  // Add session metadata if available
-  if (session.metadata?.summary?.text) {
-    lines.push('## Session Summary');
-    lines.push(session.metadata.summary.text);
-    lines.push('');
+  if (sessionName) {
+    lines.push(`# Session summary:\n${sessionName}`);
   }
 
   // Add history
@@ -112,6 +92,16 @@ export function formatSessionFull(session: Session, messages: Message[]): string
   lines.push(formatHistory(session.id, messages));
 
   return lines.join('\n\n');
+}
+
+/** One-line summary of a session for use in multi-session listings. */
+export function formatSessionBrief(session: Session): string {
+  const agentType = normalizeAgentFlavor(session.metadata?.flavor);
+  const path = session.metadata?.path ?? 'unknown path';
+  const name = session.metadata?.summary?.text;
+  const status = session.status === 'active' ? 'online' : 'offline';
+  const nameStr = name ? ` — ${name}` : '';
+  return `- ID: ${session.id} | Agent: ${agentType} | ${path}${nameStr} (${status})`;
 }
 
 export function formatSessionOffline(sessionId: string, metadata?: SessionMetadata): string {
@@ -127,5 +117,5 @@ export function formatSessionFocus(sessionId: string, metadata?: SessionMetadata
 }
 
 export function formatReadyEvent(sessionId: string): string {
-  return `Claude Code done working in session: ${sessionId}. The previous message(s) are the summary of the work done. Report this to the human immediately.`;
+  return `Agent done working in session: ${sessionId}. The previous message(s) are the summary of the work done. Report this to the human immediately.`;
 }

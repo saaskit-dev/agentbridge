@@ -8,6 +8,7 @@ import { VoiceBars } from './VoiceBars';
 import { Typography } from '@/constants/Typography';
 import { stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
+import { t } from '@/text';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/VoiceAssistantStatusBar');
 
@@ -36,7 +37,15 @@ export const VoiceAssistantStatusBar = React.memo(
             color: theme.colors.status.connecting,
             backgroundColor: theme.colors.surfaceHighest,
             isPulsing: true,
-            text: 'Connecting...',
+            text: t('voiceStatusBar.connecting'),
+            textColor: theme.colors.text,
+          };
+        case 'reconnecting':
+          return {
+            color: theme.colors.status.connecting,
+            backgroundColor: theme.colors.surfaceHighest,
+            isPulsing: true,
+            text: t('voiceStatusBar.reconnecting'),
             textColor: theme.colors.text,
           };
         case 'connected':
@@ -44,7 +53,7 @@ export const VoiceAssistantStatusBar = React.memo(
             color: theme.colors.status.connected,
             backgroundColor: theme.colors.surfaceHighest,
             isPulsing: false,
-            text: 'Voice Assistant Active',
+            text: t('voiceStatusBar.active'),
             textColor: theme.colors.text,
           };
         case 'error':
@@ -52,7 +61,7 @@ export const VoiceAssistantStatusBar = React.memo(
             color: theme.colors.status.error,
             backgroundColor: theme.colors.surfaceHighest,
             isPulsing: false,
-            text: 'Connection Error',
+            text: t('voiceStatusBar.error'),
             textColor: theme.colors.text,
           };
         default:
@@ -60,7 +69,7 @@ export const VoiceAssistantStatusBar = React.memo(
             color: theme.colors.status.default,
             backgroundColor: theme.colors.surfaceHighest,
             isPulsing: false,
-            text: 'Voice Assistant',
+            text: t('voiceStatusBar.default'),
             textColor: theme.colors.text,
           };
       }
@@ -69,7 +78,7 @@ export const VoiceAssistantStatusBar = React.memo(
     const statusInfo = getStatusInfo();
 
     const handlePress = async () => {
-      if (realtimeStatus === 'connected' || realtimeStatus === 'connecting') {
+      if (realtimeStatus === 'connected' || realtimeStatus === 'connecting' || realtimeStatus === 'reconnecting') {
         try {
           await stopRealtimeSession();
         } catch (error) {
@@ -130,7 +139,7 @@ export const VoiceAssistantStatusBar = React.memo(
                     { color: statusInfo.textColor, marginLeft: isVoiceSpeaking ? 8 : 0 },
                   ]}
                 >
-                  Tap to end
+                  {t('voiceStatusBar.tapToEnd')}
                 </Text>
               </View>
             </View>

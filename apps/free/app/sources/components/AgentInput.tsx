@@ -11,6 +11,7 @@ import {
   TouchableWithoutFeedback,
   Image as RNImage,
   Pressable,
+  Animated,
 } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { AgentInputAutocomplete } from './AgentInputAutocomplete';
@@ -22,6 +23,7 @@ import { ImagePreviewModal } from './ImagePreviewModal';
 import { FloatingOverlay } from './FloatingOverlay';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { hapticsLight, hapticsError } from './haptics';
+import { VoiceBars } from './VoiceBars';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
@@ -56,6 +58,9 @@ interface AgentInputProps {
   sessionId?: string;
   onSend: () => void;
   sendIcon?: React.ReactNode;
+  onSpeechInputPress?: () => void;
+  onSpeechInputCancel?: () => void;
+  isSpeechInputActive?: boolean;
   onMicPress?: () => void;
   isMicActive?: boolean;
   permissionMode?: PermissionMode;
@@ -352,6 +357,16 @@ export const AgentInput = React.memo(
     const hasReadyAttachments = (props.pendingAttachments ?? []).some(a => !a.uploading && !a.error);
     const canSend = hasText || hasReadyAttachments;
     const [previewUri, setPreviewUri] = React.useState<string | null>(null);
+
+    // Recording mode animation
+    const recordingAnim = React.useRef(new Animated.Value(0)).current;
+    React.useEffect(() => {
+      Animated.timing(recordingAnim, {
+        toValue: props.isSpeechInputActive ? 1 : 0,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
+    }, [props.isSpeechInputActive, recordingAnim]);
 
     // Check if this is a Codex, Gemini, or OpenCode session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
@@ -1487,8 +1502,69 @@ export const AgentInput = React.memo(
             )}
 
             {/* Action buttons below input */}
-            <View style={styles.actionButtonsContainer}>
-              <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
+            <View style={[styles.actionButtonsContainer, { position: 'relative', minHeight: 40 }]}>
+
+              {/* Recording bar - fades in when isSpeechInputActive */}
+              <Animated.View
+                pointerEvents={props.isSpeechInputActive ? 'auto' : 'none'}
+                style={{
+                  opacity: recordingAnim,
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 4,
+                  gap: 4,
+                }}
+              >
+                <VoiceBars isActive color={theme.colors.button.primary.background} size="medium" />
+                <Text
+                  style={{
+                    flex: 1,
+                    marginLeft: 4,
+                    fontSize: 13,
+                    color: theme.colors.textSecondary,
+                    ...Typography.default(),
+                  }}
+                  numberOfLines={1}
+                >
+                  {t('agentInput.speechInput.recording')}
+                </Text>
+                {/* Cancel - restores original text */}
+                <Pressable
+                  onPress={() => { hapticsLight(); props.onSpeechInputCancel?.(); }}
+                  hitSlop={10}
+                  style={p => ({ opacity: p.pressed ? 0.6 : 1, padding: 4 })}
+                >
+                  <Ionicons name="close-circle" size={26} color={theme.colors.textSecondary} />
+                </Pressable>
+                {/* Done - keeps transcript */}
+                <Pressable
+                  onPress={() => { hapticsLight(); props.onSpeechInputPress?.(); }}
+                  hitSlop={10}
+                  style={p => ({ opacity: p.pressed ? 0.6 : 1, padding: 4 })}
+                >
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={26}
+                    color={theme.colors.button.primary.background}
+                  />
+                </Pressable>
+              </Animated.View>
+
+              {/* Normal buttons - fades out when recording */}
+              <Animated.View
+                pointerEvents={props.isSpeechInputActive ? 'none' : 'auto'}
+                style={{
+                  opacity: recordingAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+                  flexDirection: 'column',
+                  flex: 1,
+                  gap: 2,
+                }}
+              >
                 {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
                 <View
                   style={{
@@ -1520,6 +1596,33 @@ export const AgentInput = React.memo(
                       >
                         <Ionicons
                           name="image-outline"
+                          size={18}
+                          color={theme.colors.button.secondary.tint}
+                        />
+                      </Pressable>
+                    )}
+
+                    {/* Speech-to-text button */}
+                    {props.onSpeechInputPress && (
+                      <Pressable
+                        onPress={() => {
+                          hapticsLight();
+                          props.onSpeechInputPress?.();
+                        }}
+                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                        style={p => ({
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          borderRadius: Platform.select({ default: 16, android: 20 }),
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                          justifyContent: 'center',
+                          height: 32,
+                          opacity: p.pressed ? 0.7 : 1,
+                        })}
+                      >
+                        <Ionicons
+                          name="mic-outline"
                           size={18}
                           color={theme.colors.button.secondary.tint}
                         />
@@ -1635,7 +1738,7 @@ export const AgentInput = React.memo(
                     />
                   </View>
 
-                  {/* Send/Voice button - aligned with first row */}
+                  {/* Send/Voice button */}
                   <View
                     style={[
                       styles.sendButton,
@@ -1677,14 +1780,11 @@ export const AgentInput = React.memo(
                             { marginTop: Platform.OS === 'web' ? 2 : 0 },
                           ]}
                         />
-                      ) : props.onMicPress && !props.isMicActive ? (
-                        <Image
-                          source={require('@/assets/images/icon-voice-white.png')}
-                          style={{
-                            width: 24,
-                            height: 24,
-                          }}
-                          tintColor={theme.colors.button.primary.tint}
+                      ) : props.onMicPress ? (
+                        <Ionicons
+                          name={props.isMicActive ? 'stop' : 'mic'}
+                          size={16}
+                          color={theme.colors.button.primary.tint}
                         />
                       ) : (
                         <Octicons
@@ -1700,7 +1800,7 @@ export const AgentInput = React.memo(
                     </Pressable>
                   </View>
                 </View>
-              </View>
+              </Animated.View>
             </View>
           </View>
         </View>
