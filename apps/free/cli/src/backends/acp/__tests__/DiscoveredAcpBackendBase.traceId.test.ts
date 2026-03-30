@@ -36,10 +36,11 @@ vi.mock('@/telemetry', () => ({
 
 vi.mock('@/backends/acp/mapAcpSessionCapabilities', () => ({
   applyCapabilitySelection: vi.fn(),
-  getModeConfigOptionId: vi.fn(),
-  getModelConfigOptionId: vi.fn(),
+  getModeConfigOptionId: vi.fn(() => null),
+  getModelConfigOptionId: vi.fn(() => null),
   mapAcpSessionCapabilities: vi.fn(() => ({})),
   mergeAcpSessionCapabilities: vi.fn(() => ({})),
+  CAPABILITY_UPDATE_TYPES: new Set(),
 }));
 
 vi.mock('@/backends/acp/createFreeMcpServerConfig', () => ({
@@ -54,8 +55,13 @@ vi.mock('@/backends/acp/modelSelection', () => ({
 vi.mock('@/backends/acp/AcpPermissionHandler', () => ({
   AcpPermissionHandler: class {
     constructor() {}
-    setPermissionMode() {}
+    setRequestedPermissionMode() {}
   },
+}));
+
+vi.mock('@/backends/acp/permissionModeMapping', () => ({
+  getAgentModeForPermission: vi.fn(() => null),
+  getPermissionModeForAgentMode: vi.fn(() => 'read-only'),
 }));
 
 // ---------------------------------------------------------------------------
@@ -218,11 +224,21 @@ describe('DiscoveredAcpBackendBase per-turn traceId', () => {
 
     // Simulate new user message (new turn)
     await backend.sendMessage('next question');
+    await tick(); // flush the 'ready' event emitted at turn end
 
     // Second turn
     backend.mockBackend.push({ type: 'model-output', textDelta: 'turn 2' });
     await tick();
-    const turn2TraceId = collected[1].traceId;
+
+    // Find the turn 2 model-output (skip any 'ready' events from sendMessage)
+    const turn2Msg = collected.find(
+      (m, i) =>
+        i > 0 &&
+        m.role === 'agent' &&
+        Array.isArray(m.content) &&
+        m.content.some((c: any) => c.type === 'text' && c.text === 'turn 2')
+    );
+    const turn2TraceId = turn2Msg?.traceId;
 
     expect(turn1TraceId).toBeDefined();
     expect(turn2TraceId).toBeDefined();

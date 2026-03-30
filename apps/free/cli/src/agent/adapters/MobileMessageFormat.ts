@@ -83,7 +83,7 @@ export type MobileSessionEvent =
   | { type: 'switch'; mode: 'local' | 'remote' }
   | { type: 'message'; message: string }
   | { type: 'permission-mode-changed'; mode: string }
-  | { type: 'ready' };
+  | { type: 'ready'; stopReason?: string };
 
 /**
  * Event message format

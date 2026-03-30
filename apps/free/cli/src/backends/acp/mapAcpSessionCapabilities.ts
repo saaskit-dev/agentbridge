@@ -10,8 +10,13 @@ import type { ConfigOption, SessionCapabilities } from '@/daemon/sessions/capabi
 type CapabilitySnapshotSource = Pick<NewSessionResponse, 'models' | 'modes' | 'configOptions'>;
 type ProtocolCurrentModeUpdate = SessionUpdate & {
   sessionUpdate: 'current_mode_update';
+  currentModeId?: string;
   modeId?: string;
 };
+
+function getCurrentModeId(update: ProtocolCurrentModeUpdate): string | null {
+  return update.currentModeId ?? update.modeId ?? null;
+}
 
 function isSelectGroup(
   option: SessionConfigSelectOption | SessionConfigSelectGroup
@@ -145,7 +150,7 @@ export function mergeAcpSessionCapabilities(
     }
 
     case 'current_mode_update': {
-      const modeId = (update as ProtocolCurrentModeUpdate).modeId;
+      const modeId = getCurrentModeId(update as ProtocolCurrentModeUpdate);
       if (!modeId) {
         return current;
       }

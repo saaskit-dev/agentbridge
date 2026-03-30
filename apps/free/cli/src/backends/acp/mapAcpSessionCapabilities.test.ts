@@ -125,7 +125,7 @@ describe('mergeAcpSessionCapabilities', () => {
     };
     const modeUpdate = {
       sessionUpdate: 'current_mode_update',
-      modeId: 'plan',
+      currentModeId: 'plan',
     } as unknown as SessionUpdate;
     const configUpdate: SessionUpdate = {
       sessionUpdate: 'config_option_update',
@@ -177,6 +177,36 @@ describe('mergeAcpSessionCapabilities', () => {
     } as SessionUpdate);
 
     expect(updated).toEqual(current);
+  });
+
+  it('accepts legacy modeId current_mode_update payloads for backward compatibility', () => {
+    const current = {
+      modes: {
+        available: [{ id: 'default', name: 'Default' }],
+        current: 'default',
+      },
+      configOptions: [
+        {
+          id: 'mode',
+          name: 'Mode',
+          category: 'mode' as const,
+          type: 'select' as const,
+          currentValue: 'default',
+          options: [
+            { value: 'default', label: 'Default' },
+            { value: 'plan', label: 'Plan' },
+          ],
+        },
+      ],
+    };
+
+    const updated = mergeAcpSessionCapabilities(current, {
+      sessionUpdate: 'current_mode_update',
+      modeId: 'plan',
+    } as unknown as SessionUpdate);
+
+    expect(updated.modes?.current).toBe('plan');
+    expect(updated.configOptions?.[0].currentValue).toBe('plan');
   });
 });
 

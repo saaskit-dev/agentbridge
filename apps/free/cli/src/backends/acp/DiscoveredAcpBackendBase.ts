@@ -11,6 +11,7 @@ import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
 import type { AgentBackend, AgentStartOpts, BackendExitInfo, LocalAttachment } from '@/daemon/sessions/AgentBackend';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
 import type { AgentType, NormalizedMessage } from '@/daemon/sessions/types';
+import { createNormalizedEvent } from '@/daemon/sessions/types';
 import type { CapabilityAwareAcpBackend } from '@/backends/acp/types';
 import type { PermissionMode } from '@/api/types';
 import type { ApiSessionClient } from '@/api/apiSession';
@@ -24,11 +25,19 @@ import {
 import { createFreeMcpServerConfig } from '@/backends/acp/createFreeMcpServerConfig';
 import { getDefaultDiscoveredModelId, hasDiscoveredModel } from '@/backends/acp/modelSelection';
 import { AcpPermissionHandler } from '@/backends/acp/AcpPermissionHandler';
+import {
+  getAgentModeForPermission,
+} from '@/backends/acp/permissionModeMapping';
 
 type ProtocolCurrentModeUpdate = {
   sessionUpdate: 'current_mode_update';
+  currentModeId?: string;
   modeId?: string;
 };
+
+function getCurrentModeUpdateId(update: ProtocolCurrentModeUpdate): string | null {
+  return update.currentModeId ?? update.modeId ?? null;
+}
 
 export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   abstract readonly agentType: AgentType;
@@ -49,11 +58,16 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   protected appliedModelSelection: string | null = null;
   protected desiredConfigSelections = new Map<string, string>();
   protected permissionHandler: AcpPermissionHandler | null = null;
-  protected currentPermissionMode: PermissionMode = 'accept-edits';
+  protected requestedPermissionMode: PermissionMode = 'accept-edits';
   private resumeSessionId: string | null = null;
   private startCwd: string = '';
   private startMcpServerUrl: string = '';
   private onSessionIdResolved: ((id: string) => void) | null = null;
+
+  /** Last native mode applied due to permission mode change (avoid redundant setSessionMode calls) */
+  private lastAppliedPermissionNativeMode: string | null = null;
+  /** True when the current agent mode was explicitly set by the user via the mode picker */
+  private modeSetByUser = false;
 
   /**
    * Per-turn trace ID for ACP backends.
@@ -68,6 +82,13 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
    * the reducer to correctly separate text blocks across turns.
    */
   private currentTurnTraceId: string = randomUUID();
+  /**
+   * Buffered `status: idle` message waiting to be flushed after `ready`.
+   * ACP backends emit `status: idle` before `ready` (because idle triggers
+   * waitForResponseComplete, and ready is pushed afterwards). Buffering idle
+   * ensures AgentSession sees `ready` first and doesn't synthesize a duplicate.
+   */
+  private pendingIdleMessage: NormalizedMessage | null = null;
 
   constructor(protected readonly logger: Logger) {}
 
@@ -107,8 +128,13 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   }
 
   async start(opts: AgentStartOpts): Promise<void> {
-    this.currentPermissionMode = opts.permissionMode ?? 'accept-edits';
-    this.permissionHandler = new AcpPermissionHandler(opts.session, this.currentPermissionMode);
+    this.requestedPermissionMode = opts.permissionMode ?? 'accept-edits';
+    this.permissionHandler = new AcpPermissionHandler(
+      opts.session,
+      this.agentType,
+      () => this.capabilitiesSnapshot.modes?.current ?? null,
+      this.requestedPermissionMode
+    );
 
     // Clear any stale pending requests from server state (recovery scenario).
     // This ensures the new permissionHandler's empty pendingRequests Map
@@ -126,6 +152,8 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.initialMode = opts.mode ?? null;
     this.appliedModelSelection = null;
     this.appliedModeSelection = null;
+    this.lastAppliedPermissionNativeMode = null;
+    this.modeSetByUser = false;
     this.capabilitiesSnapshot = {};
     this.publishedCapabilitiesSnapshot = {};
     this.isFirstMessage = true;
@@ -145,7 +173,15 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         if (!normalized.traceId) {
           normalized.traceId = this.currentTurnTraceId;
         }
-        this.output.push(normalized);
+        // Buffer status:idle — it must be emitted AFTER ready so AgentSession's
+        // synthesis guard (emittedReadyThisTurn check) fires on the real ready
+        // event and doesn't produce a duplicate synthetic one.
+        if (normalized.role === 'event' && (normalized.content as any).type === 'status' &&
+            (normalized.content as any).state === 'idle') {
+          this.pendingIdleMessage = normalized;
+        } else {
+          this.output.push(normalized);
+        }
       }
 
       // When the child process exits, the ACP backend emits status:'stopped'.
@@ -185,7 +221,9 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       this.logger.info(`[${this.agentType}] ACP session update`, {
         sessionUpdate: update.sessionUpdate ?? null,
         currentModeId:
-          update.sessionUpdate === 'current_mode_update' ? protocolUpdate.modeId : undefined,
+          update.sessionUpdate === 'current_mode_update'
+            ? getCurrentModeUpdateId(protocolUpdate)
+            : undefined,
         configOptionCount:
           'configOptions' in update && Array.isArray(update.configOptions)
             ? update.configOptions.length
@@ -196,6 +234,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
             : undefined,
       });
       this.publishCapabilities(mergeAcpSessionCapabilities(this.capabilitiesSnapshot, update));
+
     });
 
     this.logger.info(`[${this.agentType}] backend started`, {
@@ -203,7 +242,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       model: opts.model ?? null,
       mode: opts.mode ?? null,
       startingMode: opts.startingMode ?? null,
-      permissionMode: this.currentPermissionMode,
+      permissionMode: this.requestedPermissionMode,
       permissionHandlerAttached: this.permissionHandler != null,
     });
   }
@@ -213,8 +252,28 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     // enabling the App reducer to correctly separate text blocks across turns.
     this.currentTurnTraceId = randomUUID();
 
-    this.currentPermissionMode = permissionMode ?? this.currentPermissionMode;
-    this.permissionHandler?.setPermissionMode(this.currentPermissionMode);
+    const newPermissionMode = permissionMode ?? this.requestedPermissionMode;
+    // When the App explicitly sends a new permission mode, it takes precedence over
+    // user-driven agent mode selection — clear the flag so forward mapping can apply.
+    if (permissionMode && permissionMode !== this.requestedPermissionMode) {
+      this.modeSetByUser = false;
+    }
+    this.requestedPermissionMode = newPermissionMode;
+    this.permissionHandler?.setRequestedPermissionMode(this.requestedPermissionMode);
+
+    // Forward mapping: sync permission mode → agent native mode.
+    // Awaited so the agent switches mode before receiving the prompt.
+    // Errors are caught — the handler safety net ensures correct behavior regardless.
+    if (this.acpSessionId && !this.modeSetByUser) {
+      try {
+        await this.applyPermissionModeToAgent(this.requestedPermissionMode);
+      } catch (err) {
+        this.logger.warn(`[${this.agentType}] permission mode forward mapping failed`, {
+          error: safeStringify(err),
+        });
+      }
+    }
+
     if (!this.acpBackend) {
       this.logger.error(`[${this.agentType}] sendMessage called before start()`);
       return;
@@ -224,7 +283,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.isFirstMessage = false;
 
     this.logger.info(`[${this.agentType}] sending message with permission context`, {
-      permissionMode: this.currentPermissionMode,
+      permissionMode: this.requestedPermissionMode,
       permissionHandlerAttached: this.permissionHandler != null,
       isFirstAcpPrompt: this.acpSessionId == null,
       turnTraceId: this.currentTurnTraceId,
@@ -242,11 +301,10 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       if (resumed) {
         // Skip title injection on a resumed session — it already has a title.
         this.isFirstMessage = false;
-      } else {
-        await this.applyInitialModeIfNeeded(sessionId);
-        await this.applyInitialModelIfNeeded(sessionId);
-        await this.applyInitialConfigSelectionsIfNeeded(sessionId);
       }
+      await this.applyInitialModeIfNeeded(sessionId);
+      await this.applyInitialModelIfNeeded(sessionId);
+      await this.applyInitialConfigSelectionsIfNeeded(sessionId);
     }
 
     this.logger.debug(`[${this.agentType}] sending prompt`, {
@@ -255,7 +313,16 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       blockCount: prompt.length,
     });
     try {
-      await this.acpBackend.sendPrompt(this.acpSessionId, prompt);
+      // Inject W3C traceparent into ACP _meta for cross-tool trace interop.
+      // Format: 00-{traceId32hex}-{parentId16hex}-{flags}
+      // parent-id must be a freshly generated random 8-byte (16 hex char) value per W3C spec.
+      const traceIdHex = this.currentTurnTraceId.replace(/-/g, '');
+      const parentIdHex = randomUUID().replace(/-/g, '').substring(0, 16);
+      const traceparent = `00-${traceIdHex}-${parentIdHex}-01`;
+
+      await this.acpBackend.sendPrompt(this.acpSessionId, prompt, {
+        _meta: { traceparent },
+      });
       await this.acpBackend.waitForResponseComplete?.();
     } catch (err) {
       // Response complete timeout means the agent went silent — a cancel was
@@ -270,7 +337,16 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       }
       throw err;
     }
-    this.logger.debug(`[${this.agentType}] response complete`);
+    const stopReason = this.acpBackend.getLastStopReason?.() ?? undefined;
+    this.logger.debug(`[${this.agentType}] response complete`, { stopReason });
+    // Push ready FIRST so AgentSession sees it before status:idle (which was buffered
+    // in onMessage). This prevents AgentSession from emitting a duplicate synthetic ready.
+    this.output.push(createNormalizedEvent({ type: 'ready', stopReason }));
+    // Now flush the buffered idle so downstream consumers see the correct ordering.
+    if (this.pendingIdleMessage) {
+      this.output.push(this.pendingIdleMessage);
+      this.pendingIdleMessage = null;
+    }
   }
 
   /**
@@ -322,7 +398,10 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     | undefined {
     if (!this.startMcpServerUrl) return undefined;
     const config = createFreeMcpServerConfig(this.startMcpServerUrl);
-    return [{ name: 'free', command: config.command, args: config.args }];
+    if ('command' in config) {
+      return [{ name: 'free', command: config.command, args: config.args }];
+    }
+    return undefined;
   }
 
   async abort(): Promise<void> {
@@ -394,6 +473,8 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   async setMode(modeId: string): Promise<void> {
     this.initialMode = modeId;
     this.appliedModeSelection = modeId;
+    // User explicitly selected this mode via the mode picker — don't override with permission mapping
+    this.modeSetByUser = true;
 
     if (!this.capabilityBackend) {
       return;
@@ -469,15 +550,53 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     return this.permissionHandler;
   }
 
+  /**
+   * Forward mapping: sync our permission mode to the agent's native mode.
+   * Only applies when the mode wasn't explicitly set by the user via the mode picker.
+   */
+  private async applyPermissionModeToAgent(permissionMode: PermissionMode): Promise<void> {
+    const availableModes = (this.capabilitiesSnapshot.modes?.available ?? []).map(m => m.id);
+    const targetMode = getAgentModeForPermission(this.agentType, permissionMode, availableModes);
+
+    if (!targetMode || targetMode === this.lastAppliedPermissionNativeMode) {
+      return;
+    }
+
+    // Don't apply if the agent is already in this mode
+    if (targetMode === this.capabilitiesSnapshot.modes?.current) {
+      this.lastAppliedPermissionNativeMode = targetMode;
+      return;
+    }
+
+    this.logger.info(`[${this.agentType}] forward-mapping permission mode to agent mode`, {
+      permissionMode,
+      targetMode,
+      previousNativeMode: this.lastAppliedPermissionNativeMode,
+    });
+
+    try {
+      await this.applyModeSelection(this.acpSessionId!, targetMode);
+      this.lastAppliedPermissionNativeMode = targetMode;
+    } catch (err) {
+      this.logger.warn(`[${this.agentType}] failed to apply permission-mapped agent mode`, {
+        targetMode,
+        error: safeStringify(err),
+      });
+    }
+  }
+
   async runCommand(commandId: string): Promise<void> {
     if (!this.acpBackend || !this.acpSessionId) {
       return;
     }
 
+    // ACP spec: slash commands are sent as prompts with a `/` prefix
+    const slashCommand = commandId.startsWith('/') ? commandId : `/${commandId}`;
     this.logger.debug(`[${this.agentType}] running command`, {
       commandId,
+      slashCommand,
     });
-    await this.acpBackend.sendPrompt(this.acpSessionId, [{ type: 'text', text: commandId }]);
+    await this.acpBackend.sendPrompt(this.acpSessionId, [{ type: 'text', text: slashCommand }]);
     await this.acpBackend.waitForResponseComplete?.();
   }
 

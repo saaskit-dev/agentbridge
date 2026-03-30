@@ -3,7 +3,7 @@ import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
 import type { AgentStartOpts } from '@/daemon/sessions/AgentBackend';
 import { createGeminiBackend } from '@/agent/factories/gemini';
 import { DiscoveredAcpBackendBase } from '@/backends/acp/DiscoveredAcpBackendBase';
-import { mapGeminiRawToNormalized } from './mapGeminiRawToNormalized';
+import { mapAcpMessageToNormalized } from '@/backends/acp/mapAcpMessageToNormalized';
 
 const logger = new Logger('backends/gemini/GeminiBackend');
 
@@ -27,6 +27,6 @@ export class GeminiBackend extends DiscoveredAcpBackendBase {
   }
 
   protected mapRawMessage(msg: AgentMessage) {
-    return mapGeminiRawToNormalized(msg);
+    return mapAcpMessageToNormalized(msg);
   }
 }

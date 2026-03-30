@@ -1,0 +1,64 @@
+{
+  "source": "acp-probe+acp-sdk-matrix",
+  "generatedAt": "2026-03-29T08:19:01.529Z",
+  "agents": {
+    "claude": {
+      "currentModeId": "default",
+      "modeIds": [
+        "default",
+        "acceptEdits",
+        "plan",
+        "dontAsk",
+        "bypassPermissions"
+      ],
+      "authMethodIds": []
+    },
+    "codex": {
+      "currentModeId": "read-only",
+      "modeIds": [
+        "read-only",
+        "auto",
+        "full-access"
+      ],
+      "authMethodIds": [
+        "chatgpt",
+        "codex-api-key",
+        "openai-api-key"
+      ]
+    },
+    "gemini": {
+      "currentModeId": "default",
+      "modeIds": [
+        "default",
+        "autoEdit",
+        "yolo",
+        "plan"
+      ],
+      "authMethodIds": [
+        "oauth-personal",
+        "gemini-api-key",
+        "vertex-ai",
+        "gateway"
+      ]
+    },
+    "cursor": {
+      "currentModeId": "agent",
+      "modeIds": [
+        "agent",
+        "plan",
+        "ask"
+      ],
+      "authMethodIds": [
+        "cursor_login"
+      ]
+    },
+    "opencode": {
+      "currentModeId": "build",
+      "modeIds": [
+        "build",
+        "plan"
+      ],
+      "authMethodIds": []
+    }
+  }
+}

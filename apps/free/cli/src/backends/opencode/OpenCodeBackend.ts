@@ -3,7 +3,7 @@ import { createOpenCodeBackend } from '@saaskit-dev/agentbridge';
 import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
 import type { AgentStartOpts } from '@/daemon/sessions/AgentBackend';
 import { DiscoveredAcpBackendBase } from '@/backends/acp/DiscoveredAcpBackendBase';
-import { mapOpenCodeRawToNormalized } from './mapOpenCodeRawToNormalized';
+import { mapAcpMessageToNormalized } from '@/backends/acp/mapAcpMessageToNormalized';
 
 const logger = new Logger('backends/opencode/OpenCodeBackend');
 
@@ -24,6 +24,6 @@ export class OpenCodeBackend extends DiscoveredAcpBackendBase {
   }
 
   protected mapRawMessage(msg: AgentMessage) {
-    return mapOpenCodeRawToNormalized(msg);
+    return mapAcpMessageToNormalized(msg);
   }
 }

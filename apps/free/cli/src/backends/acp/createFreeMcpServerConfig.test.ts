@@ -13,7 +13,11 @@ describe('createFreeMcpServerConfig', () => {
     const bridgeEntry = join(projectPath(), 'dist', expectedFile);
 
     expect(existsSync(bridgeEntry)).toBe(true);
-    expect(config.command).toBe(process.execPath);
-    expect(config.args).toEqual([bridgeEntry, '--url', 'http://127.0.0.1:3005/mcp']);
+    // createFreeMcpServerConfig always returns stdio transport
+    expect('command' in config).toBe(true);
+    if ('command' in config) {
+      expect(config.command).toBe(process.execPath);
+      expect(config.args).toEqual([bridgeEntry, '--url', 'http://127.0.0.1:3005/mcp']);
+    }
   });
 });

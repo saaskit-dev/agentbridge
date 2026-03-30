@@ -16,7 +16,7 @@ import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
 import type { AgentStartOpts } from '@/daemon/sessions/AgentBackend';
 import { DiscoveredAcpBackendBase } from '@/backends/acp/DiscoveredAcpBackendBase';
 import { createCursorBackend } from '@/agent/factories/cursor';
-import { mapCursorRawToNormalized } from './mapCursorRawToNormalized';
+import { mapAcpMessageToNormalized } from '@/backends/acp/mapAcpMessageToNormalized';
 
 const logger = new Logger('backends/cursor/CursorBackend');
 
@@ -43,6 +43,6 @@ export class CursorBackend extends DiscoveredAcpBackendBase {
   }
 
   protected mapRawMessage(msg: AgentMessage) {
-    return mapCursorRawToNormalized(msg);
+    return mapAcpMessageToNormalized(msg, { skipExecAndPatch: true });
   }
 }

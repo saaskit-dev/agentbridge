@@ -141,6 +141,11 @@ export abstract class AgentSession<TMode> {
   private _keepStateForRecovery = false;
   private _isShuttingDown = false;
   protected lastStatus: 'working' | 'idle' = 'idle';
+  /**
+   * Whether the backend emitted a { type: 'ready' } event during the current turn.
+   * AgentSession auto-synthesizes a ready event on status→idle if the backend hasn't.
+   */
+  private emittedReadyThisTurn = false;
   /** Current execution mode — local (PTY) or remote (SDK). Updated by subclasses on mode switch. */
   protected currentMode: 'local' | 'remote' = 'remote';
   private outputPipeFinished: Promise<void> = Promise.resolve();
@@ -368,7 +373,7 @@ export abstract class AgentSession<TMode> {
 
   /**
    * Called just before each backend.sendMessage(), with the resolved TMode for that turn.
-   * Subclasses can override to react to mode changes (e.g. update currentPermissionMode).
+   * Subclasses can override to react to mode changes.
    */
   protected onModeChange(_mode: TMode): void {
     // no-op in base class
@@ -1246,7 +1251,19 @@ export abstract class AgentSession<TMode> {
 
     if (msg.role === 'event') {
       const c = msg.content;
-      if (c.type === 'status') {
+      if (c.type === 'ready') {
+        this.emittedReadyThisTurn = true;
+      } else if (c.type === 'status') {
+        if (c.state === 'working') {
+          // New turn starting — reset ready tracking
+          this.emittedReadyThisTurn = false;
+        } else if (c.state === 'idle' && !this.emittedReadyThisTurn) {
+          // Backend finished a turn without emitting ready — synthesize one now
+          const readyMsg = createNormalizedEvent({ type: 'ready' });
+          this.emittedReadyThisTurn = true;
+          // Forward the synthesized ready before the idle status update
+          this.forwardOutputMessage(readyMsg);
+        }
         this.lastStatus = c.state;
         logger.info('[AgentSession] status changed', {
           userId: this.userId,

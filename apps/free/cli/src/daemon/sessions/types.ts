@@ -103,7 +103,7 @@ export type AgentEvent =
   | { type: 'switch'; mode: 'local' | 'remote' }
   | { type: 'message'; message: string }
   | { type: 'limit-reached'; endsAt: number }
-  | { type: 'ready' }
+  | { type: 'ready'; stopReason?: string }
   | { type: 'daemon-log'; level: 'error'; component: string; message: string; error?: string }
   // ── Daemon-only operational signals (delivered via ephemeral channels, not persisted as messages)
   | { type: 'status'; state: 'working' | 'idle' }

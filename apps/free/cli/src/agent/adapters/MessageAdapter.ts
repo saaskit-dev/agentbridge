@@ -48,7 +48,7 @@ export interface MessageAdapterConfig {
  * ```typescript
  * const adapter = new MessageAdapter({ agentType: 'gemini' });
  * const mobileMsg = adapter.toMobile(agentMessage);
- * apiSession.sendAgentMessage(adapter.agentType, mobileMsg.content.data);
+ * apiSession.sendNormalizedMessage(normalizedMsg);
  * ```
  */
 export class MessageAdapter {

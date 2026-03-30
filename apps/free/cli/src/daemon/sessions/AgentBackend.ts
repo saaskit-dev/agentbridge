@@ -88,6 +88,20 @@ export interface AgentBackend {
   /**
    * Agent output stream. Consumed by AgentSession.pipeBackendOutput().
    * stop() must call output.end() to signal completion.
+   *
+   * **Event contract — `{ type: 'ready' }` (REQUIRED):**
+   * Every backend MUST push this event at the end of every agent turn — after all
+   * content and tool results are delivered — to signal the agent is ready for the
+   * next user message. The app's voice hooks and UI depend on this for post-turn
+   * actions (e.g. voice assistant listening state).
+   *
+   * - **Claude SDK backend**: emits `ready` natively via the SDK response lifecycle.
+   * - **ACP backends** (`DiscoveredAcpBackendBase`): emit `ready` explicitly in
+   *   `sendMessage()` after `waitForResponseComplete()` returns. All ACP subclasses
+   *   (Codex, Gemini, OpenCode, Cursor, etc.) inherit this automatically.
+   * - **New backends**: MUST emit `{ type: 'ready' }` at turn end. `AgentSession`
+   *   provides a safety-net synthesis when it sees `{ type: 'status', state: 'idle' }`
+   *   without a preceding `ready`, but this is a fallback — not the primary mechanism.
    */
   readonly output: PushableAsyncIterable<NormalizedMessage>;
 

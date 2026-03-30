@@ -2,17 +2,25 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import type { PermissionMode } from '@/api/types';
 import { ApiSessionClient } from '@/api/apiSession';
 import { BasePermissionHandler, PermissionResult } from '@/utils/BasePermissionHandler';
+import { getPermissionModeForAgentMode } from '@/backends/acp/permissionModeMapping';
+import { shouldAutoApprove } from '@/backends/acp/toolClassification';
 
 const logger = new Logger('backends/acp/AcpPermissionHandler');
 
 export class AcpPermissionHandler extends BasePermissionHandler {
-  private currentPermissionMode: PermissionMode;
+  private requestedPermissionMode: PermissionMode;
 
-  constructor(session: ApiSessionClient, initialPermissionMode: PermissionMode = 'accept-edits') {
+  constructor(
+    session: ApiSessionClient,
+    private readonly agentType: string,
+    private readonly getCurrentModeId: () => string | null,
+    initialPermissionMode: PermissionMode = 'accept-edits'
+  ) {
     super(session);
-    this.currentPermissionMode = initialPermissionMode;
+    this.requestedPermissionMode = initialPermissionMode;
     logger.info('ACP permission handler initialized', {
       initialPermissionMode,
+      agentType,
     });
   }
 
@@ -20,9 +28,19 @@ export class AcpPermissionHandler extends BasePermissionHandler {
     return '[ACP]';
   }
 
-  setPermissionMode(mode: PermissionMode): void {
-    this.currentPermissionMode = mode;
-    logger.debug('Permission mode updated', { mode });
+  setRequestedPermissionMode(mode: PermissionMode): void {
+    this.requestedPermissionMode = mode;
+    logger.debug('Requested permission mode updated', { mode });
+  }
+
+  private getEffectivePermissionMode(): PermissionMode | null {
+    const currentModeId = this.getCurrentModeId();
+
+    if (!currentModeId) {
+      return this.requestedPermissionMode;
+    }
+
+    return getPermissionModeForAgentMode(this.agentType, currentModeId) ?? this.requestedPermissionMode;
   }
 
   async handleToolCall(
@@ -30,8 +48,15 @@ export class AcpPermissionHandler extends BasePermissionHandler {
     toolName: string,
     input: unknown
   ): Promise<PermissionResult> {
-    if (this.currentPermissionMode === 'yolo') {
-      logger.debug('Auto-approving tool in yolo mode', { toolCallId, toolName });
+    const effectivePermissionMode = this.getEffectivePermissionMode();
+
+    if (effectivePermissionMode && shouldAutoApprove(toolName, effectivePermissionMode)) {
+      logger.debug('Auto-approving tool', {
+        toolCallId,
+        toolName,
+        currentModeId: this.getCurrentModeId(),
+        permissionMode: effectivePermissionMode,
+      });
       this.session.updateAgentState(currentState => ({
         ...currentState,
         completedRequests: {
@@ -42,11 +67,13 @@ export class AcpPermissionHandler extends BasePermissionHandler {
             createdAt: Date.now(),
             completedAt: Date.now(),
             status: 'approved',
-            decision: 'approved_for_session',
+            decision: effectivePermissionMode === 'yolo' ? 'approved_for_session' : 'approved',
           },
         },
       }));
-      return { decision: 'approved_for_session' };
+      return {
+        decision: effectivePermissionMode === 'yolo' ? 'approved_for_session' : 'approved',
+      };
     }
 
     return new Promise<PermissionResult>((resolve, reject) => {
@@ -61,7 +88,9 @@ export class AcpPermissionHandler extends BasePermissionHandler {
       logger.debug('Permission request sent to app', {
         toolCallId,
         toolName,
-        permissionMode: this.currentPermissionMode,
+        currentModeId: this.getCurrentModeId(),
+        permissionMode: effectivePermissionMode,
+        requestedPermissionMode: this.requestedPermissionMode,
       });
     });
   }

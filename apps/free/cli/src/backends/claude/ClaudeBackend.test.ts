@@ -180,7 +180,7 @@ describe('ClaudeBackend', () => {
     expect(mockSetSessionModel).toHaveBeenCalledWith('acp-session-1', 'claude-opus');
     expect(mockSendPrompt).toHaveBeenCalledWith('acp-session-1', expect.arrayContaining([
       expect.objectContaining({ type: 'text', text: expect.stringContaining('hello') }),
-    ]));
+    ]), expect.objectContaining({ _meta: expect.objectContaining({ traceparent: expect.any(String) }) }));
     expect(mockSetSessionModel.mock.invocationCallOrder[0]).toBeLessThan(
       mockSendPrompt.mock.invocationCallOrder[0]
     );

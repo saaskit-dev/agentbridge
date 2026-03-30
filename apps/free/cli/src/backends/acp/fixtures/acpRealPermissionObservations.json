@@ -1,0 +1,67 @@
+{
+  "source": "manual-acp-permission-sampling",
+  "generatedAt": "2026-03-29T08:30:00.000Z",
+  "agents": {
+    "claude": {
+      "status": "permission_request_observed",
+      "attemptedModeId": "default",
+      "attemptedPrompt": "Create a file named acp_force_permission.txt containing the text hi. You must use tools to do it.",
+      "options": [
+        {
+          "optionId": "allow_always",
+          "name": "Always Allow",
+          "kind": "allow_always"
+        },
+        {
+          "optionId": "allow",
+          "name": "Allow",
+          "kind": "allow_once"
+        },
+        {
+          "optionId": "reject",
+          "name": "Reject",
+          "kind": "reject_once"
+        }
+      ]
+    },
+    "codex": {
+      "status": "permission_request_observed",
+      "attemptedModeId": "read-only",
+      "attemptedPrompt": "Create a file named acp_perm_probe.txt containing the text hi.",
+      "options": [
+        {
+          "optionId": "allow_always",
+          "name": "Always Allow",
+          "kind": "allow_always"
+        },
+        {
+          "optionId": "allow",
+          "name": "Allow",
+          "kind": "allow_once"
+        },
+        {
+          "optionId": "reject",
+          "name": "Reject",
+          "kind": "reject_once"
+        }
+      ]
+    },
+    "gemini": {
+      "status": "sampling_blocked",
+      "reason": "Gemini API key is missing or not configured on this machine"
+    },
+    "cursor": {
+      "status": "no_permission_request_observed",
+      "attemptedModeId": "ask",
+      "attemptedPrompt": "Create a file named acp_force_permission.txt containing the text hi. You must use tools to do it."
+    },
+    "opencode": {
+      "status": "no_permission_request_observed",
+      "attemptedModeId": "build",
+      "attemptedPrompt": "Create a file named acp_force_permission.txt containing the text hi. You must use tools to do it.",
+      "notes": [
+        "setSessionMode('plan') returned an internal error: Agent not found: plan"
+      ]
+    }
+  }
+}

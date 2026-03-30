@@ -3,7 +3,7 @@ import { createClaudeBackend } from '@saaskit-dev/agentbridge';
 import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
 import type { AgentStartOpts } from '@/daemon/sessions/AgentBackend';
 import { DiscoveredAcpBackendBase } from '@/backends/acp/DiscoveredAcpBackendBase';
-import { mapClaudeRawToNormalized } from './mapClaudeRawToNormalized';
+import { mapAcpMessageToNormalized } from '@/backends/acp/mapAcpMessageToNormalized';
 
 const logger = new Logger('backends/claude/ClaudeBackend');
 
@@ -24,6 +24,6 @@ export class ClaudeBackend extends DiscoveredAcpBackendBase {
   }
 
   protected mapRawMessage(msg: AgentMessage) {
-    return mapClaudeRawToNormalized(msg);
+    return mapAcpMessageToNormalized(msg);
   }
 }

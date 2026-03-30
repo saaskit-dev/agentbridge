@@ -1,24 +1,27 @@
 /**
- * mapCursorRawToNormalized — maps AgentMessage (ACP) to NormalizedMessage.
+ * mapAcpMessageToNormalized — shared mapper from AgentMessage (ACP) to NormalizedMessage.
  *
- * Handles all message types emitted by the Cursor ACP backend:
+ * Single source of truth for all ACP-based backends (Claude, Codex, Cursor, Gemini, OpenCode).
+ *
+ * Handles all message types emitted by ACP backends:
  *   model-output, status, tool-call, tool-result, token-count,
  *   event (thinking), fs-edit, terminal-output,
  *   exec-approval-request, patch-apply-begin, patch-apply-end
- *
- * Cursor's session/update types map cleanly to the standard AgentMessage
- * types via the ACP SDK's sessionUpdateHandlers:
- *   agent_message_chunk → model-output
- *   agent_thought_chunk → event(thinking)
- *   tool_call           → tool-call
- *   tool_call_update    → tool-result / status
  */
 
 import { createId } from '@paralleldrive/cuid2';
 import type { AgentMessage } from '@/agent';
 import type { NormalizedMessage, UsageData } from '@/daemon/sessions/types';
 
-export function mapCursorRawToNormalized(msg: AgentMessage): NormalizedMessage | null {
+export type MapperOptions = {
+  /** When true, skip exec-approval-request and patch-apply-begin/end (used by Cursor). */
+  skipExecAndPatch?: boolean;
+};
+
+export function mapAcpMessageToNormalized(
+  msg: AgentMessage,
+  options?: MapperOptions
+): NormalizedMessage | null {
   const id = createId();
   const createdAt = Date.now();
   const base = { id, createdAt, isSidechain: false };
@@ -110,19 +113,56 @@ export function mapCursorRawToNormalized(msg: AgentMessage): NormalizedMessage |
     }
 
     case 'fs-edit': {
-      const text = msg.diff ? `${msg.description}\n${msg.diff}` : msg.description;
+      const callId = createId();
       return {
         ...base,
         role: 'agent',
-        content: [{ type: 'text', text, uuid: id, parentUUID: null }],
+        content: [
+          {
+            type: 'tool-call',
+            id: callId,
+            name: 'FileEdit',
+            input: { path: msg.path ?? null, description: msg.description },
+            description: msg.description,
+            uuid: id,
+            parentUUID: null,
+          },
+          {
+            type: 'tool-result',
+            tool_use_id: callId,
+            content: msg.diff ?? null,
+            is_error: false,
+            uuid: createId(),
+            parentUUID: null,
+          },
+        ],
       };
     }
 
     case 'terminal-output': {
+      const callId = createId();
       return {
         ...base,
         role: 'agent',
-        content: [{ type: 'text', text: msg.data, uuid: id, parentUUID: null }],
+        content: [
+          {
+            type: 'tool-call',
+            id: callId,
+            name: 'TerminalOutput',
+            input: {},
+            description: null,
+            uuid: id,
+            parentUUID: null,
+          },
+          {
+            type: 'tool-result',
+            tool_use_id: callId,
+            content: msg.data,
+            is_error: false,
+            uuid: createId(),
+            parentUUID: null,
+          },
+        ],
       };
     }
 
@@ -141,6 +181,65 @@ export function mapCursorRawToNormalized(msg: AgentMessage): NormalizedMessage |
             : {}),
         };
         return { ...base, role: 'event', content: { type: 'token_count', usage } };
+      }
+
+      if (!options?.skipExecAndPatch) {
+        if (type === 'exec-approval-request') {
+          const callId = String(m.call_id ?? m.callId ?? id);
+          const { call_id: _c, callId: _c2, type: _t, ...inputs } = m;
+          return {
+            ...base,
+            role: 'agent',
+            content: [
+              {
+                type: 'tool-call',
+                id: callId,
+                name: 'CodexBash',
+                input: inputs,
+                description: null,
+                uuid: id,
+                parentUUID: null,
+              },
+            ],
+          };
+        }
+
+        if (type === 'patch-apply-begin') {
+          const callId = String(m.call_id ?? m.callId ?? id);
+          return {
+            ...base,
+            role: 'agent',
+            content: [
+              {
+                type: 'tool-call',
+                id: callId,
+                name: 'CodexPatch',
+                input: { auto_approved: m.auto_approved, changes: m.changes },
+                description: null,
+                uuid: id,
+                parentUUID: null,
+              },
+            ],
+          };
+        }
+
+        if (type === 'patch-apply-end') {
+          const callId = String(m.call_id ?? m.callId ?? id);
+          return {
+            ...base,
+            role: 'agent',
+            content: [
+              {
+                type: 'tool-result',
+                tool_use_id: callId,
+                content: { stdout: m.stdout, stderr: m.stderr, success: m.success },
+                is_error: m.success === false,
+                uuid: id,
+                parentUUID: null,
+              },
+            ],
+          };
+        }
       }
 
       return null;

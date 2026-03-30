@@ -1,10 +1,10 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { afterEach, describe, expect, it, onTestFailed } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, onTestFailed } from 'vitest';
 import {
   ClientSideConnection,
   PROTOCOL_VERSION,
@@ -23,9 +23,17 @@ import {
 } from '@agentclientprotocol/sdk';
 
 const runRealSdkMatrix = process.env.FREE_RUN_ACP_SDK_MATRIX === '1';
+const acpMatrixOutputPath = resolve(
+  process.cwd(),
+  process.env.FREE_ACP_MATRIX_OUTPUT || 'test-results/acp-sdk-agent-capabilities.json'
+);
+const acpPermissionOutputPath = resolve(
+  process.cwd(),
+  process.env.FREE_ACP_PERMISSION_OUTPUT || 'test-results/acp-sdk-permission-options.json'
+);
 
 type AgentSpec = {
-  id: 'claude' | 'codex' | 'gemini' | 'opencode';
+  id: 'claude' | 'codex' | 'gemini' | 'cursor' | 'opencode';
   command: string;
   args: string[];
   env?: Record<string, string>;
@@ -45,6 +53,44 @@ type RunningAgent = {
 type FlattenedSelectValue = {
   value: string;
   label: string;
+};
+
+type AgentCapabilitySnapshot = {
+  currentModeId: string | null;
+  modes: Array<{ id: string; name: string; description?: string }>;
+  currentModelId: string | null;
+  models: Array<{ id: string; name: string; description?: string }>;
+  configOptions: Array<{
+    id: string;
+    name: string;
+    category?: string;
+    currentValue?: string;
+    options?: FlattenedSelectValue[];
+  }>;
+  authMethods: Array<{
+    id?: string;
+    name?: string;
+    description?: string;
+    envKey?: string;
+  }>;
+};
+
+type PermissionOptionSnapshot = {
+  toolName: string;
+  options: Array<{
+    optionId: string;
+    name: string;
+    kind: string;
+  }>;
+};
+
+type SessionWithOptionalAuthMethods = NewSessionResponse & {
+  authMethods?: Array<{
+    authMethodId?: string;
+    name?: string;
+    description?: string;
+    envKey?: string;
+  }>;
 };
 
 function getCodexAcpPlatformPackage(): string | null {
@@ -110,6 +156,12 @@ const agentMatrix: AgentSpec[] = [
     timeoutMs: 120_000,
   },
   {
+    id: 'cursor',
+    command: 'cursor-agent',
+    args: ['acp'],
+    timeoutMs: 120_000,
+  },
+  {
     id: 'opencode',
     command: 'opencode',
     args: ['acp'],
@@ -154,6 +206,93 @@ function flattenSelectOptions(
           label: `${entry.name} / ${option.name}`,
         }))
       : [{ value: entry.value, label: entry.name }]
+  );
+}
+
+function summarizeSessionCapabilities(session: NewSessionResponse): AgentCapabilitySnapshot {
+  const sessionWithAuth = session as SessionWithOptionalAuthMethods;
+
+  return {
+    currentModeId: session.modes?.currentModeId ?? null,
+    modes: (session.modes?.availableModes ?? []).map(mode => ({
+      id: mode.id,
+      name: mode.name,
+      ...(mode.description ? { description: mode.description } : {}),
+    })),
+    currentModelId: session.models?.currentModelId ?? null,
+    models: (session.models?.availableModels ?? []).map(model => ({
+      id: model.modelId,
+      name: model.name,
+      ...(model.description ? { description: model.description } : {}),
+    })),
+    configOptions: (session.configOptions ?? []).map(option => ({
+      id: option.id,
+      name: option.name,
+      ...(option.category ? { category: option.category } : {}),
+      ...('currentValue' in option && option.currentValue != null
+        ? { currentValue: String(option.currentValue) }
+        : {}),
+      ...('options' in option && option.type === 'select'
+        ? { options: flattenSelectOptions(option.options) }
+        : {}),
+    })),
+    authMethods: (sessionWithAuth.authMethods ?? []).map(method => ({
+      ...(method.authMethodId ? { id: method.authMethodId } : {}),
+      ...(method.name ? { name: method.name } : {}),
+      ...(method.description ? { description: method.description } : {}),
+      ...(method.envKey ? { envKey: method.envKey } : {}),
+    })),
+  };
+}
+
+const observedCapabilities = new Map<string, AgentCapabilitySnapshot>();
+const observedPermissionOptions = new Map<string, PermissionOptionSnapshot[]>();
+
+function persistObservedCapabilities(): void {
+  if (!observedCapabilities.size) {
+    return;
+  }
+
+  mkdirSync(dirname(acpMatrixOutputPath), { recursive: true });
+  writeFileSync(
+    acpMatrixOutputPath,
+    `${JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        agents: Object.fromEntries(
+          Array.from(observedCapabilities.entries()).sort(([left], [right]) =>
+            left.localeCompare(right)
+          )
+        ),
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
+  );
+}
+
+function persistObservedPermissionOptions(): void {
+  if (!observedPermissionOptions.size) {
+    return;
+  }
+
+  mkdirSync(dirname(acpPermissionOutputPath), { recursive: true });
+  writeFileSync(
+    acpPermissionOutputPath,
+    `${JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        agents: Object.fromEntries(
+          Array.from(observedPermissionOptions.entries()).sort(([left], [right]) =>
+            left.localeCompare(right)
+          )
+        ),
+      },
+      null,
+      2
+    )}\n`,
+    'utf8'
   );
 }
 
@@ -334,6 +473,11 @@ afterEach(async () => {
   }
 });
 
+afterAll(() => {
+  persistObservedCapabilities();
+  persistObservedPermissionOptions();
+});
+
 describe.skipIf(!runRealSdkMatrix)('ACP SDK agent matrix', () => {
   for (const spec of agentMatrix) {
     const skipReason = getSkipReason(spec);
@@ -368,6 +512,8 @@ describe.skipIf(!runRealSdkMatrix)('ACP SDK agent matrix', () => {
         });
 
         expect(session.sessionId).toBeTruthy();
+        observedCapabilities.set(spec.id, summarizeSessionCapabilities(session));
+        persistObservedCapabilities();
 
         const alternateMode = pickAlternateMode(session);
         const modeConfig = (session.configOptions ?? []).find(
@@ -480,4 +626,88 @@ describe.skipIf(runRealSdkMatrix)('ACP SDK agent matrix', () => {
   it('is gated behind FREE_RUN_ACP_SDK_MATRIX=1', () => {
     expect(true).toBe(true);
   });
+});
+
+describe.skipIf(!runRealSdkMatrix)('ACP SDK permission options', () => {
+  it(
+    'captures real permission option kinds from opencode and verifies ACP-standard kinds',
+    { timeout: 120_000 },
+    async () => {
+      const spec = agentMatrix.find(agent => agent.id === 'opencode');
+      if (!spec) {
+        throw new Error('opencode spec not found');
+      }
+
+      const running = await startRunningAgent(spec);
+      cleanupCallbacks.push(running.cleanup);
+
+      onTestFailed(async () => {
+        process.stderr.write(
+          `\n[${spec.id}] stderr tail:\n${running.stderrLines.slice(-50).join('\n')}\n`
+        );
+      });
+
+      await running.connection.initialize({
+        protocolVersion: PROTOCOL_VERSION,
+        clientCapabilities: {},
+        clientInfo: {
+          name: 'agentbridge-acp-sdk-permission-sampler',
+          version: '0.0.0-test',
+        },
+      });
+
+      const session = await running.connection.newSession({
+        cwd: running.cwd,
+        mcpServers: [],
+      });
+
+      await running.connection.prompt({
+        sessionId: session.sessionId,
+        messageId: randomUUID(),
+        prompt: [
+          {
+            type: 'text',
+            text: 'Run `pwd` in the workspace and return only the resulting path.',
+          },
+        ],
+      }).catch(() => {
+        // Permission rejection can end the turn early; the sampling target is the
+        // requestPermission payload itself, not a successful prompt completion.
+      });
+
+      await waitForCondition(
+        () => running.permissionRequests.length > 0,
+        20_000,
+        'opencode permission request'
+      );
+
+      const snapshots = running.permissionRequests.map(request => ({
+        toolName:
+          (request.toolCall as { toolName?: string; kind?: string } | undefined)?.toolName ||
+          (request.toolCall as { kind?: string } | undefined)?.kind ||
+          'unknown',
+        options: request.options.map(option => ({
+          optionId: option.optionId,
+          name: option.name,
+          kind: option.kind,
+        })),
+      }));
+
+      observedPermissionOptions.set(spec.id, snapshots);
+      persistObservedPermissionOptions();
+
+      expect(snapshots.length).toBeGreaterThan(0);
+      for (const snapshot of snapshots) {
+        expect(snapshot.options.length).toBeGreaterThan(0);
+        for (const option of snapshot.options) {
+          expect([
+            'allow_once',
+            'allow_always',
+            'reject_once',
+            'reject_always',
+          ]).toContain(option.kind);
+        }
+      }
+    }
+  );
 });

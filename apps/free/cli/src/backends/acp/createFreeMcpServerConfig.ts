@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
 
-export interface FreeMcpServerConfig {
-  command: string;
-  args: string[];
-}
+import type { McpServerConfig } from '@saaskit-dev/agentbridge';
+
+/** MCP server config for ACP — subset of McpServerConfig with required args for stdio. */
+export type FreeMcpServerConfig = McpServerConfig;
 
 export function createFreeMcpServerConfig(serverUrl: string): FreeMcpServerConfig {
   // Use the dev bridge entry when running in development so the child process
