@@ -469,14 +469,25 @@ export abstract class AgentSession<TMode> {
     try {
       const data = await fs.readFile(filePath);
       ack({ ok: true, data, mimeType: payload.mimeType });
-      logger.debug('[AgentSession] attachment sent', { id: payload.id, ext, bytes: data.length, sessionId });
+      logger.debug('[AgentSession] attachment sent', {
+        id: payload.id,
+        ext,
+        bytes: data.length,
+        sessionId,
+      });
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'ENOENT') {
         ack({ ok: false, error: 'not_found' });
-        logger.debug('[AgentSession] fetch-attachment: file not found', { id: payload.id, sessionId });
+        logger.debug('[AgentSession] fetch-attachment: file not found', {
+          id: payload.id,
+          sessionId,
+        });
       } else {
-        logger.error('[AgentSession] fetch-attachment read failed', toError(err), { id: payload.id, sessionId });
+        logger.error('[AgentSession] fetch-attachment read failed', toError(err), {
+          id: payload.id,
+          sessionId,
+        });
         ack({ ok: false, error: 'read_error' });
       }
     }
@@ -626,7 +637,9 @@ export abstract class AgentSession<TMode> {
             this.onAppMessageQueued(msg.content.text);
             const attachments = (msg.content.attachments ?? []).flatMap(({ id, mimeType }) => {
               const ext = MIME_TO_EXT[mimeType];
-              return ext ? [{ localPath: path.join(this.attachmentsDir, `${id}.${ext}`), mimeType }] : [];
+              return ext
+                ? [{ localPath: path.join(this.attachmentsDir, `${id}.${ext}`), mimeType }]
+                : [];
             });
             this.pendingAttachments.push(attachments);
             this.messageQueue.pushIsolateAndClear(msg.content.text, this.extractMode(msg));
@@ -834,9 +847,8 @@ export abstract class AgentSession<TMode> {
     // Attach a sink that forwards error-level log entries to the App as
     // daemon-log events. The App shows them only when developer mode is on.
     if (isCollectorReady() && this.session) {
-      this.devErrorSink = new DaemonLogSink(
-        this.session.sessionId,
-        (entry) => this.forwardDaemonLog(entry),
+      this.devErrorSink = new DaemonLogSink(this.session.sessionId, entry =>
+        this.forwardDaemonLog(entry)
       );
       getCollector().addSink(this.devErrorSink);
     }
@@ -1272,6 +1284,9 @@ export abstract class AgentSession<TMode> {
           id: msg.id,
           state: c.state,
         });
+      } else if (c.type === 'token_count') {
+        // 上报 usage 数据到服务器
+        this.session.sendUsageData(c.usage, this.opts.model ?? undefined);
       }
     } else if (msg.role === 'agent' && Array.isArray(msg.content)) {
       for (const block of msg.content as Array<{ type: string; [k: string]: unknown }>) {

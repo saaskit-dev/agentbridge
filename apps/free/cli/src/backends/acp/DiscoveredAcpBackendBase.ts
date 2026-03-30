@@ -83,6 +83,13 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
    */
   private currentTurnTraceId: string = randomUUID();
   /**
+   * True while loadSession() is in progress. ACP backends (OpenCode) emit historical
+   * session messages as notifications during loadSession — these must be suppressed so
+   * they are not forwarded to the server as new messages, which would cause the full
+   * conversation history to appear again after every resume.
+   */
+  private isLoadingSession = false;
+  /**
    * Buffered `status: idle` message waiting to be flushed after `ready`.
    * ACP backends emit `status: idle` before `ready` (because idle triggers
    * waitForResponseComplete, and ready is pushed afterwards). Buffering idle
@@ -164,6 +171,11 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.onSessionIdResolved = opts.onSessionIdResolved ?? null;
 
     backend.onMessage((msg: AgentMessage) => {
+      // Suppress messages while loadSession() is in progress. ACP backends replay
+      // historical messages as notifications during session load — forwarding them
+      // would cause the entire conversation history to re-appear in the App.
+      if (this.isLoadingSession) return;
+
       if (process.env.APP_ENV === 'development') {
         this.logger.debug(`[${this.agentType}] raw message`, { raw: msg });
       }
@@ -369,6 +381,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         resumeSessionId: this.resumeSessionId,
         freshSessionId,
       });
+      this.isLoadingSession = true;
       try {
         const { sessionId } = await this.capabilityBackend.loadSession!(
           this.resumeSessionId,
@@ -384,6 +397,8 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
           freshSessionId,
           error: safeStringify(err),
         });
+      } finally {
+        this.isLoadingSession = false;
       }
     }
 
