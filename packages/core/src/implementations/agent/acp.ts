@@ -267,7 +267,7 @@ export function selectPermissionOptionId(
   // the rejection beyond the current request. For abort, prefer persistent rejection.
   if (decision === 'denied') {
     const onceOption = options.find(opt => hasPermissionOptionKind(opt, 'reject_once'));
-    if (onceOption) return onceOption.optionId;
+    if (onceOption?.optionId) return onceOption.optionId;
   }
 
   const cancelOption = options.find(
