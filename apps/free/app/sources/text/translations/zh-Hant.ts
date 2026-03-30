@@ -135,8 +135,6 @@ export const zhHant: TranslationStructure = {
     accountSubtitle: '管理您的帳戶詳情',
     appearance: '外觀',
     appearanceSubtitle: '自訂應用程式外觀',
-    voiceAssistant: '語音助理',
-    voiceAssistantSubtitle: '設定語音互動偏好',
     featuresTitle: '功能',
     featuresSubtitle: '啟用或停用應用程式功能',
     developer: '開發者',
@@ -465,6 +463,11 @@ export const zhHant: TranslationStructure = {
     deleteSessionWarning: '此操作無法復原。與此工作階段相關的所有訊息和資料將被永久刪除。',
     failedToDeleteSession: '刪除工作階段失敗',
     sessionDeleted: '工作階段刪除成功',
+    clearCache: '清除快取',
+    clearCacheSubtitle: '清除此工作階段的本地快取資料',
+    clearCacheConfirm: '清除此工作階段的所有快取資料？訊息將從伺服器重新取得。',
+    clearCacheSuccess: '快取已清除',
+    clearCacheFailed: '清除快取失敗',
   },
 
   components: {
@@ -519,6 +522,20 @@ export const zhHant: TranslationStructure = {
       folderLabel: '資料夾',
     },
     noMachinesAvailable: '無裝置',
+    speechInput: {
+      recording: '正在聆聽...',
+      permissionTitle: '需要麥克風權限',
+      permissionMessage: '請在系統設定中允許存取麥克風和語音辨識。',
+      permissionCancel: '取消',
+      permissionOpenSettings: '前往設定',
+      errorTitle: '語音辨識失敗',
+      errorMessage: ({ error }: { error: string }) => `無法啟動語音辨識（${error}）。`,
+      languageUnavailableTitle: '語音辨識語言套件未安裝',
+      languageUnavailableMessage: '目前語言的語音辨識套件尚未下載。請開啟系統設定安裝，或暫時切換至英文。',
+      languageUnavailableCancel: '取消',
+      languageUnavailableOpenSettings: '前往設定',
+      languageUnavailableUseEnglish: '使用英文',
+    },
   },
 
   machineLauncher: {
@@ -631,20 +648,6 @@ export const zhHant: TranslationStructure = {
     file: '檔案',
     fileEmpty: '檔案為空',
     noChanges: '沒有要顯示的更改',
-  },
-
-  settingsVoice: {
-    // Voice settings screen
-    languageTitle: '語言',
-    languageDescription: '選擇您希望語音助理互動使用的語言。此設定將在您的所有裝置間同步。',
-    preferredLanguage: '偏好語言',
-    preferredLanguageSubtitle: '語音助理回應使用的語言',
-    language: {
-      searchPlaceholder: '搜尋語言...',
-      title: '語言',
-      footer: ({ count }: { count: number }) => `${count} 種可用語言`,
-      autoDetect: '自動偵測',
-    },
   },
 
   settingsAccount: {
@@ -806,6 +809,61 @@ export const zhHant: TranslationStructure = {
   items: {
     // Used by Item component for copy toast
     copiedToClipboard: ({ label }: { label: string }) => `${label} 已複製到剪貼簿`,
+  },
+
+  machineImport: {
+    title: 'Import Existing Agent Sessions',
+    browse: 'Browse existing agent chats',
+    machineSummary: ({ count, imported }: { count: number; imported: number }) =>
+      `Supports Claude · Codex · OpenCode. ${count} chats found, ${imported} imported.`,
+    machineSummarySimple: 'Browse existing chats from supported agents.',
+    machineSummaryCount: ({ count }: { count: number }) => `${count} existing chats available.`,
+    onMachine: ({ machine }: { machine: string }) => `On ${machine}`,
+    discoverableCount: ({ count }: { count: number }) => `${count} discoverable`,
+    agentCount: ({ count }: { count: number }) => `${count} agents`,
+    importedCount: ({ count }: { count: number }) => `${count} imported`,
+    searchPlaceholder: 'Search title, path, or agent',
+    agentLabel: 'Agent',
+    statusLabel: 'Status',
+    existingChats: 'Existing chats',
+    showingCount: ({ shown, total }: { shown: number; total: number }) =>
+      `Showing ${shown} of ${total}`,
+    existing: 'Existing',
+    imported: 'Imported',
+    managed: 'Managed',
+    open: 'Open',
+    continueHere: 'Continue here',
+    continueTitle: 'Continue here?',
+    continueBody: ({ agent }: { agent: string }) =>
+      `This will import the existing ${agent} chat into AgentBridge and continue it here.`,
+    openImportedTitle: 'Open imported session',
+    openImportedBody: 'This chat is already imported into AgentBridge.',
+    prototypeTitle: 'Prototype only',
+    prototypeBody: 'Actual ACP discovery/import is not wired yet.',
+    directoryMissingTitle: 'Create directory?',
+    directoryMissingBody: ({ directory }: { directory: string }) =>
+      `The directory '${directory}' does not exist. Create it and continue?`,
+    emptyTitle: 'No matching sessions',
+    emptyBody: 'Try another filter or search term.',
+    noticeLoading: 'Loading agent histories',
+    noticeLoadFailed: 'Some agents could not be loaded',
+    noticeUnsupported: 'History not available',
+    noticeUpdated: 'Last refresh',
+    loadingProgress: ({ loaded, total }: { loaded: number; total: number }) =>
+      `Loading ${loaded}/${total}`,
+    loadingAgents: ({ loaded, total, agents }: { loaded: number; total: number; agents: string }) =>
+      `Loaded ${loaded} of ${total}. Still loading: ${agents}.`,
+    partialFailure: ({ count, agents }: { count: number; agents: string }) =>
+      `${count} agents could not be loaded: ${agents}.`,
+    unsupportedAgents: ({ agents }: { agents: string }) => `${agents} do not expose session history.`,
+    cachedAt: ({ time }: { time: string }) => `Updated ${time}`,
+    loadMore: 'Load more sessions',
+    filters: {
+      allAgents: 'All agents',
+      all: 'All',
+      available: 'Available',
+      imported: 'Imported',
+    },
   },
 
   machine: {
@@ -1133,5 +1191,14 @@ export const zhHant: TranslationStructure = {
     friendRequestGeneric: '新的好友請求',
     friendAccepted: ({ name }: { name: string }) => `您現在與 ${name} 成為了好友`,
     friendAcceptedGeneric: '好友請求已接受',
+  },
+
+  voiceStatusBar: {
+    connecting: '連接中...',
+    reconnecting: '重新連接中...',
+    active: '語音助手已啟動',
+    error: '連接錯誤',
+    default: '語音助手',
+    tapToEnd: '點擊結束',
   },
 } as const;

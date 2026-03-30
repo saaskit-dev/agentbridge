@@ -148,8 +148,6 @@ export const en: TranslationStructure = {
     accountSubtitle: 'Manage your account details',
     appearance: 'Appearance',
     appearanceSubtitle: 'Customize how the app looks',
-    voiceAssistant: 'Voice Assistant',
-    voiceAssistantSubtitle: 'Configure voice interaction preferences',
     featuresTitle: 'Features',
     featuresSubtitle: 'Enable or disable app features',
     developer: 'Developer',
@@ -487,6 +485,11 @@ export const en: TranslationStructure = {
       'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
     failedToDeleteSession: 'Failed to delete session',
     sessionDeleted: 'Session deleted successfully',
+    clearCache: 'Clear Cache',
+    clearCacheSubtitle: 'Clear local cached data for this session',
+    clearCacheConfirm: 'Clear all cached data for this session? Messages will be re-fetched from the server.',
+    clearCacheSuccess: 'Cache cleared successfully',
+    clearCacheFailed: 'Failed to clear cache',
   },
 
   components: {
@@ -541,6 +544,20 @@ export const en: TranslationStructure = {
       folderLabel: 'FOLDER',
     },
     noMachinesAvailable: 'No machines',
+    speechInput: {
+      recording: 'Listening...',
+      permissionTitle: 'Microphone Access Required',
+      permissionMessage: 'Please allow microphone and speech recognition access in system settings.',
+      permissionCancel: 'Cancel',
+      permissionOpenSettings: 'Open Settings',
+      errorTitle: 'Speech Recognition Failed',
+      errorMessage: ({ error }: { error: string }) => `Could not start speech recognition (${error}).`,
+      languageUnavailableTitle: 'Language Pack Not Installed',
+      languageUnavailableMessage: 'Speech recognition for the selected language needs to be downloaded. Open Settings to install it, or switch to English.',
+      languageUnavailableCancel: 'Cancel',
+      languageUnavailableOpenSettings: 'Open Settings',
+      languageUnavailableUseEnglish: 'Use English',
+    },
   },
 
   machineLauncher: {
@@ -656,20 +673,13 @@ export const en: TranslationStructure = {
     noChanges: 'No changes to display',
   },
 
-  settingsVoice: {
-    // Voice settings screen
-    languageTitle: 'Language',
-    languageDescription:
-      'Choose your preferred language for voice assistant interactions. This setting syncs across all your devices.',
-    preferredLanguage: 'Preferred Language',
-    preferredLanguageSubtitle: 'Language used for voice assistant responses',
-    language: {
-      searchPlaceholder: 'Search languages...',
-      title: 'Languages',
-      footer: ({ count }: { count: number }) =>
-        `${count} ${plural({ count, singular: 'language', plural: 'languages' })} available`,
-      autoDetect: 'Auto-detect',
-    },
+  voiceStatusBar: {
+    connecting: 'Connecting...',
+    reconnecting: 'Reconnecting...',
+    active: 'Voice Assistant Active',
+    error: 'Connection Error',
+    default: 'Voice Assistant',
+    tapToEnd: 'Tap to end',
   },
 
   settingsAccount: {

@@ -185,8 +185,6 @@ export const pl: TranslationStructure = {
     accountSubtitle: 'Zarządzaj szczegółami konta',
     appearance: 'Wygląd',
     appearanceSubtitle: 'Dostosuj wygląd aplikacji',
-    voiceAssistant: 'Asystent głosowy',
-    voiceAssistantSubtitle: 'Konfiguruj preferencje interakcji głosowej',
     featuresTitle: 'Funkcje',
     featuresSubtitle: 'Włącz lub wyłącz funkcje aplikacji',
     developer: 'Deweloper',
@@ -528,6 +526,11 @@ export const pl: TranslationStructure = {
       'Ta operacja jest nieodwracalna. Wszystkie wiadomości i dane powiązane z tą sesją zostaną trwale usunięte.',
     failedToDeleteSession: 'Nie udało się usunąć sesji',
     sessionDeleted: 'Sesja została pomyślnie usunięta',
+    clearCache: 'Wyczyść pamięć podręczną',
+    clearCacheSubtitle: 'Wyczyść lokalne dane w pamięci podręcznej dla tej sesji',
+    clearCacheConfirm: 'Wyczyścić wszystkie dane w pamięci podręcznej dla tej sesji? Wiadomości zostaną ponownie pobrane z serwera.',
+    clearCacheSuccess: 'Pamięć podręczna wyczyszczona',
+    clearCacheFailed: 'Nie udało się wyczyścić pamięci podręcznej',
   },
 
   components: {
@@ -582,6 +585,20 @@ export const pl: TranslationStructure = {
       folderLabel: 'FOLDER',
     },
     noMachinesAvailable: 'Brak maszyn',
+    speechInput: {
+      recording: 'Słucham...',
+      permissionTitle: 'Wymagany dostęp do mikrofonu',
+      permissionMessage: 'Zezwól na dostęp do mikrofonu i rozpoznawania mowy w ustawieniach systemowych.',
+      permissionCancel: 'Anuluj',
+      permissionOpenSettings: 'Otwórz ustawienia',
+      errorTitle: 'Błąd rozpoznawania mowy',
+      errorMessage: ({ error }: { error: string }) => `Nie można uruchomić rozpoznawania mowy (${error}).`,
+      languageUnavailableTitle: 'Pakiet językowy nie jest zainstalowany',
+      languageUnavailableMessage: 'Pakiet rozpoznawania mowy dla wybranego języka nie został pobrany. Otwórz ustawienia, aby go zainstalować, lub przełącz się na angielski.',
+      languageUnavailableCancel: 'Anuluj',
+      languageUnavailableOpenSettings: 'Otwórz ustawienia',
+      languageUnavailableUseEnglish: 'Użyj angielskiego',
+    },
   },
 
   machineLauncher: {
@@ -698,22 +715,6 @@ export const pl: TranslationStructure = {
     file: 'Plik',
     fileEmpty: 'Plik jest pusty',
     noChanges: 'Brak zmian do wyświetlenia',
-  },
-
-  settingsVoice: {
-    // Voice settings screen
-    languageTitle: 'Język',
-    languageDescription:
-      'Wybierz preferowany język dla interakcji z asystentem głosowym. To ustawienie synchronizuje się na wszystkich Twoich urządzeniach.',
-    preferredLanguage: 'Preferowany język',
-    preferredLanguageSubtitle: 'Język używany do odpowiedzi asystenta głosowego',
-    language: {
-      searchPlaceholder: 'Wyszukaj języki...',
-      title: 'Języki',
-      footer: ({ count }: { count: number }) =>
-        `Dostępnych ${count} ${plural({ count, one: 'język', few: 'języki', many: 'języków' })}`,
-      autoDetect: 'Automatyczne wykrywanie',
-    },
   },
 
   settingsAccount: {
@@ -882,6 +883,61 @@ export const pl: TranslationStructure = {
   items: {
     // Used by Item component for copy toast
     copiedToClipboard: ({ label }: { label: string }) => `${label} skopiowano do schowka`,
+  },
+
+  machineImport: {
+    title: 'Import Existing Agent Sessions',
+    browse: 'Browse existing agent chats',
+    machineSummary: ({ count, imported }: { count: number; imported: number }) =>
+      `Supports Claude · Codex · OpenCode. ${count} chats found, ${imported} imported.`,
+    machineSummarySimple: 'Browse existing chats from supported agents.',
+    machineSummaryCount: ({ count }: { count: number }) => `${count} existing chats available.`,
+    onMachine: ({ machine }: { machine: string }) => `On ${machine}`,
+    discoverableCount: ({ count }: { count: number }) => `${count} discoverable`,
+    agentCount: ({ count }: { count: number }) => `${count} agents`,
+    importedCount: ({ count }: { count: number }) => `${count} imported`,
+    searchPlaceholder: 'Search title, path, or agent',
+    agentLabel: 'Agent',
+    statusLabel: 'Status',
+    existingChats: 'Existing chats',
+    showingCount: ({ shown, total }: { shown: number; total: number }) =>
+      `Showing ${shown} of ${total}`,
+    existing: 'Existing',
+    imported: 'Imported',
+    managed: 'Managed',
+    open: 'Open',
+    continueHere: 'Continue here',
+    continueTitle: 'Continue here?',
+    continueBody: ({ agent }: { agent: string }) =>
+      `This will import the existing ${agent} chat into AgentBridge and continue it here.`,
+    openImportedTitle: 'Open imported session',
+    openImportedBody: 'This chat is already imported into AgentBridge.',
+    prototypeTitle: 'Prototype only',
+    prototypeBody: 'Actual ACP discovery/import is not wired yet.',
+    directoryMissingTitle: 'Create directory?',
+    directoryMissingBody: ({ directory }: { directory: string }) =>
+      `The directory '${directory}' does not exist. Create it and continue?`,
+    emptyTitle: 'No matching sessions',
+    emptyBody: 'Try another filter or search term.',
+    noticeLoading: 'Loading agent histories',
+    noticeLoadFailed: 'Some agents could not be loaded',
+    noticeUnsupported: 'History not available',
+    noticeUpdated: 'Last refresh',
+    loadingProgress: ({ loaded, total }: { loaded: number; total: number }) =>
+      `Loading ${loaded}/${total}`,
+    loadingAgents: ({ loaded, total, agents }: { loaded: number; total: number; agents: string }) =>
+      `Loaded ${loaded} of ${total}. Still loading: ${agents}.`,
+    partialFailure: ({ count, agents }: { count: number; agents: string }) =>
+      `${count} agents could not be loaded: ${agents}.`,
+    unsupportedAgents: ({ agents }: { agents: string }) => `${agents} do not expose session history.`,
+    cachedAt: ({ time }: { time: string }) => `Updated ${time}`,
+    loadMore: 'Load more sessions',
+    filters: {
+      allAgents: 'All agents',
+      all: 'All',
+      available: 'Available',
+      imported: 'Imported',
+    },
   },
 
   machine: {
@@ -1191,6 +1247,15 @@ export const pl: TranslationStructure = {
     friendRequestGeneric: 'Nowe zaproszenie do znajomych',
     friendAccepted: ({ name }: { name: string }) => `Jesteś teraz znajomym z ${name}`,
     friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
+  },
+
+  voiceStatusBar: {
+    connecting: 'Łączenie...',
+    reconnecting: 'Ponowne łączenie...',
+    active: 'Asystent głosowy aktywny',
+    error: 'Błąd połączenia',
+    default: 'Asystent głosowy',
+    tapToEnd: 'Dotknij, aby zakończyć',
   },
 } as const;
 

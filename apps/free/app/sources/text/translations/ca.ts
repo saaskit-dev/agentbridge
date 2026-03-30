@@ -170,8 +170,6 @@ export const ca: TranslationStructure = {
     accountSubtitle: 'Gestiona els detalls del teu compte',
     appearance: 'Aparença',
     appearanceSubtitle: "Personalitza l'aspecte de l'aplicació",
-    voiceAssistant: 'Assistent de veu',
-    voiceAssistantSubtitle: "Configura les preferències d'interacció per veu",
     featuresTitle: 'Funcions',
     featuresSubtitle: "Activa o desactiva les funcions de l'aplicació",
     developer: 'Desenvolupador',
@@ -513,6 +511,11 @@ export const ca: TranslationStructure = {
       "Aquesta acció no es pot desfer. Tots els missatges i dades associats amb aquesta sessió s'eliminaran permanentment.",
     failedToDeleteSession: 'Error en eliminar la sessió',
     sessionDeleted: 'Sessió eliminada amb èxit',
+    clearCache: 'Netejar memòria cau',
+    clearCacheSubtitle: "Netejar les dades de memòria cau local d'aquesta sessió",
+    clearCacheConfirm: "Netejar totes les dades de memòria cau d'aquesta sessió? Els missatges es tornaran a obtenir del servidor.",
+    clearCacheSuccess: 'Memòria cau netejada correctament',
+    clearCacheFailed: 'No s\'ha pogut netejar la memòria cau',
   },
 
   components: {
@@ -567,6 +570,20 @@ export const ca: TranslationStructure = {
       folderLabel: 'CARPETA',
     },
     noMachinesAvailable: 'Sense màquines',
+    speechInput: {
+      recording: 'Escoltant...',
+      permissionTitle: 'Cal accés al micròfon',
+      permissionMessage: "Permet l'accés al micròfon i al reconeixement de veu a la configuració del sistema.",
+      permissionCancel: 'Cancel·lar',
+      permissionOpenSettings: 'Obre la configuració',
+      errorTitle: 'Error de reconeixement de veu',
+      errorMessage: ({ error }: { error: string }) => `No s'ha pogut iniciar el reconeixement de veu (${error}).`,
+      languageUnavailableTitle: "Paquet d'idioma no instal·lat",
+      languageUnavailableMessage: "El paquet de reconeixement de veu per a l'idioma seleccionat no s'ha descarregat. Obriu els ajustos per instal·lar-lo o canvieu a l'anglès.",
+      languageUnavailableCancel: 'Cancel·la',
+      languageUnavailableOpenSettings: 'Obre els ajustos',
+      languageUnavailableUseEnglish: "Usa l'anglès",
+    },
   },
 
   machineLauncher: {
@@ -681,22 +698,6 @@ export const ca: TranslationStructure = {
     file: 'Fitxer',
     fileEmpty: 'El fitxer està buit',
     noChanges: 'No hi ha canvis a mostrar',
-  },
-
-  settingsVoice: {
-    // Voice settings screen
-    languageTitle: 'Idioma',
-    languageDescription:
-      "Tria el teu idioma preferit per a les interaccions amb l'assistent de veu. Aquesta configuració es sincronitza a tots els teus dispositius.",
-    preferredLanguage: 'Idioma preferit',
-    preferredLanguageSubtitle: "Idioma utilitzat per a les respostes de l'assistent de veu",
-    language: {
-      searchPlaceholder: 'Cerca idiomes...',
-      title: 'Idiomes',
-      footer: ({ count }: { count: number }) =>
-        `${count} ${plural({ count, singular: 'idioma', plural: 'idiomes' })} disponibles`,
-      autoDetect: 'Detecta automàticament',
-    },
   },
 
   settingsAccount: {
@@ -865,6 +866,61 @@ export const ca: TranslationStructure = {
   items: {
     // Used by Item component for copy toast
     copiedToClipboard: ({ label }: { label: string }) => `${label} copiat al porta-retalls`,
+  },
+
+  machineImport: {
+    title: 'Import Existing Agent Sessions',
+    browse: 'Browse existing agent chats',
+    machineSummary: ({ count, imported }: { count: number; imported: number }) =>
+      `Supports Claude · Codex · OpenCode. ${count} chats found, ${imported} imported.`,
+    machineSummarySimple: 'Browse existing chats from supported agents.',
+    machineSummaryCount: ({ count }: { count: number }) => `${count} existing chats available.`,
+    onMachine: ({ machine }: { machine: string }) => `On ${machine}`,
+    discoverableCount: ({ count }: { count: number }) => `${count} discoverable`,
+    agentCount: ({ count }: { count: number }) => `${count} agents`,
+    importedCount: ({ count }: { count: number }) => `${count} imported`,
+    searchPlaceholder: 'Search title, path, or agent',
+    agentLabel: 'Agent',
+    statusLabel: 'Status',
+    existingChats: 'Existing chats',
+    showingCount: ({ shown, total }: { shown: number; total: number }) =>
+      `Showing ${shown} of ${total}`,
+    existing: 'Existing',
+    imported: 'Imported',
+    managed: 'Managed',
+    open: 'Open',
+    continueHere: 'Continue here',
+    continueTitle: 'Continue here?',
+    continueBody: ({ agent }: { agent: string }) =>
+      `This will import the existing ${agent} chat into AgentBridge and continue it here.`,
+    openImportedTitle: 'Open imported session',
+    openImportedBody: 'This chat is already imported into AgentBridge.',
+    prototypeTitle: 'Prototype only',
+    prototypeBody: 'Actual ACP discovery/import is not wired yet.',
+    directoryMissingTitle: 'Create directory?',
+    directoryMissingBody: ({ directory }: { directory: string }) =>
+      `The directory '${directory}' does not exist. Create it and continue?`,
+    emptyTitle: 'No matching sessions',
+    emptyBody: 'Try another filter or search term.',
+    noticeLoading: 'Loading agent histories',
+    noticeLoadFailed: 'Some agents could not be loaded',
+    noticeUnsupported: 'History not available',
+    noticeUpdated: 'Last refresh',
+    loadingProgress: ({ loaded, total }: { loaded: number; total: number }) =>
+      `Loading ${loaded}/${total}`,
+    loadingAgents: ({ loaded, total, agents }: { loaded: number; total: number; agents: string }) =>
+      `Loaded ${loaded} of ${total}. Still loading: ${agents}.`,
+    partialFailure: ({ count, agents }: { count: number; agents: string }) =>
+      `${count} agents could not be loaded: ${agents}.`,
+    unsupportedAgents: ({ agents }: { agents: string }) => `${agents} do not expose session history.`,
+    cachedAt: ({ time }: { time: string }) => `Updated ${time}`,
+    loadMore: 'Load more sessions',
+    filters: {
+      allAgents: 'All agents',
+      all: 'All',
+      available: 'Available',
+      imported: 'Imported',
+    },
   },
 
   machine: {
@@ -1161,6 +1217,15 @@ export const ca: TranslationStructure = {
     friendRequestGeneric: "Nova sol·licitud d'amistat",
     friendAccepted: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
     friendAcceptedGeneric: "Sol·licitud d'amistat acceptada",
+  },
+
+  voiceStatusBar: {
+    connecting: 'Connectant...',
+    reconnecting: 'Reconnectant...',
+    active: 'Assistent de veu actiu',
+    error: 'Error de connexió',
+    default: 'Assistent de veu',
+    tapToEnd: 'Toca per acabar',
   },
 } as const;
 

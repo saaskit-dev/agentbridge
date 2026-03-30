@@ -102,59 +102,42 @@ const _typeCheck: Record<SupportedLanguage, TranslationStructure> = translations
 
 let currentLanguage: SupportedLanguage = DEFAULT_LANGUAGE;
 
-// Read from settings
-const settings = loadSettings();
-let found = false;
-if (settings.settings.preferredLanguage && settings.settings.preferredLanguage in translations) {
-  currentLanguage = settings.settings.preferredLanguage as SupportedLanguage;
-  found = true;
-  logger.debug(`[i18n] Using preferred language: ${currentLanguage}`);
-}
+/**
+ * Resolve language from a preferred language setting + device locales.
+ * Used both at startup and when the setting changes at runtime.
+ */
+export function resolveLanguage(preferredLanguage: string | null | undefined): SupportedLanguage {
+  if (preferredLanguage && preferredLanguage in translations) {
+    logger.debug(`[i18n] Using preferred language: ${preferredLanguage}`);
+    return preferredLanguage as SupportedLanguage;
+  }
 
-// Read from device
-if (!found) {
   const locales = Localization.getLocales();
-  logger.debug(
-    `[i18n] Device locales:`,
-    locales.map(l => l.languageCode)
-  );
   for (const l of locales) {
     if (l.languageCode) {
-      // Expo added special handling for Chinese variants using script code https://github.com/expo/expo/pull/34984
       if (l.languageCode === 'zh') {
-        let chineseVariant: string | null = null;
-
-        // We only have translations for simplified Chinese right now, but looking for help with traditional Chinese.
-        if (l.languageScriptCode === 'Hans') {
-          chineseVariant = 'zh-Hans';
-        } else if (l.languageScriptCode === 'Hant') {
-          chineseVariant = 'zh-Hant';
-        }
-
-        logger.debug(`[i18n] Chinese script code: ${l.languageScriptCode} -> ${chineseVariant}`);
-
-        if (chineseVariant && chineseVariant in translations) {
-          currentLanguage = chineseVariant as SupportedLanguage;
-          logger.debug(`[i18n] Using Chinese variant: ${currentLanguage}`);
-          break;
-        }
-
-        currentLanguage = 'zh-Hans';
-        logger.debug(`[i18n] Falling back to simplified Chinese: zh-Hans`);
-        break;
+        if (l.languageScriptCode === 'Hans' && 'zh-Hans' in translations) return 'zh-Hans';
+        if (l.languageScriptCode === 'Hant' && 'zh-Hant' in translations) return 'zh-Hant';
+        return 'zh-Hans';
       }
-
-      // Direct match for non-Chinese languages
-      if (l.languageCode in translations) {
-        currentLanguage = l.languageCode as SupportedLanguage;
-        logger.debug(`[i18n] Using device locale: ${currentLanguage}`);
-        break;
-      }
+      if (l.languageCode in translations) return l.languageCode as SupportedLanguage;
     }
   }
+  return DEFAULT_LANGUAGE;
 }
 
-logger.debug(`[i18n] Final language: ${currentLanguage}`);
+/**
+ * Update the active language at runtime.
+ * Call this after KV stores are initialized or when the user changes the language setting.
+ */
+export function setLanguage(lang: SupportedLanguage): void {
+  currentLanguage = lang;
+  logger.debug(`[i18n] Language set to: ${lang}`);
+}
+
+// Initial resolution using device locale only (settings KV store not ready yet at import time)
+currentLanguage = resolveLanguage(null);
+logger.debug(`[i18n] Initial language (device locale): ${currentLanguage}`);
 
 /**
  * Main translation function with strict typing

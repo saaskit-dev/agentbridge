@@ -151,8 +151,6 @@ export const ru: TranslationStructure = {
     accountSubtitle: 'Управление учётной записью',
     appearance: 'Внешний вид',
     appearanceSubtitle: 'Настройка внешнего вида приложения',
-    voiceAssistant: 'Голосовой ассистент',
-    voiceAssistantSubtitle: 'Настройка предпочтений голосового взаимодействия',
     featuresTitle: 'Возможности',
     featuresSubtitle: 'Включить или отключить функции приложения',
     developer: 'Разработчик',
@@ -480,6 +478,11 @@ export const ru: TranslationStructure = {
       'Это действие нельзя отменить. Все сообщения и данные, связанные с этой сессией, будут удалены навсегда.',
     failedToDeleteSession: 'Не удалось удалить сессию',
     sessionDeleted: 'Сессия успешно удалена',
+    clearCache: 'Очистить кэш',
+    clearCacheSubtitle: 'Очистить локальный кэш данных для этой сессии',
+    clearCacheConfirm: 'Очистить все кэшированные данные для этой сессии? Сообщения будут повторно загружены с сервера.',
+    clearCacheSuccess: 'Кэш успешно очищен',
+    clearCacheFailed: 'Не удалось очистить кэш',
   },
 
   components: {
@@ -584,6 +587,20 @@ export const ru: TranslationStructure = {
       folderLabel: 'ПАПКА',
     },
     noMachinesAvailable: 'Нет машин',
+    speechInput: {
+      recording: 'Слушаю...',
+      permissionTitle: 'Требуется доступ к микрофону',
+      permissionMessage: 'Разрешите доступ к микрофону и распознаванию речи в системных настройках.',
+      permissionCancel: 'Отмена',
+      permissionOpenSettings: 'Открыть настройки',
+      errorTitle: 'Ошибка распознавания речи',
+      errorMessage: ({ error }: { error: string }) => `Не удалось запустить распознавание речи (${error}).`,
+      languageUnavailableTitle: 'Языковой пакет не установлен',
+      languageUnavailableMessage: 'Языковой пакет для распознавания речи не загружен. Откройте настройки для установки или переключитесь на английский.',
+      languageUnavailableCancel: 'Отмена',
+      languageUnavailableOpenSettings: 'Открыть настройки',
+      languageUnavailableUseEnglish: 'Английский',
+    },
   },
 
   machineLauncher: {
@@ -700,22 +717,6 @@ export const ru: TranslationStructure = {
     file: 'Файл',
     fileEmpty: 'Файл пустой',
     noChanges: 'Нет изменений для отображения',
-  },
-
-  settingsVoice: {
-    // Voice settings screen
-    languageTitle: 'Язык',
-    languageDescription:
-      'Выберите предпочтительный язык для взаимодействия с голосовым помощником. Эта настройка синхронизируется на всех ваших устройствах.',
-    preferredLanguage: 'Предпочтительный язык',
-    preferredLanguageSubtitle: 'Язык, используемый для ответов голосового помощника',
-    language: {
-      searchPlaceholder: 'Поиск языков...',
-      title: 'Языки',
-      footer: ({ count }: { count: number }) =>
-        `Доступно ${count} ${plural({ count, one: 'язык', few: 'языка', many: 'языков' })}`,
-      autoDetect: 'Автоопределение',
-    },
   },
 
   settingsAccount: {
@@ -870,6 +871,61 @@ export const ru: TranslationStructure = {
   items: {
     // Used by Item component for copy toast
     copiedToClipboard: ({ label }: { label: string }) => `${label} скопировано в буфер обмена`,
+  },
+
+  machineImport: {
+    title: 'Import Existing Agent Sessions',
+    browse: 'Browse existing agent chats',
+    machineSummary: ({ count, imported }: { count: number; imported: number }) =>
+      `Supports Claude · Codex · OpenCode. ${count} chats found, ${imported} imported.`,
+    machineSummarySimple: 'Browse existing chats from supported agents.',
+    machineSummaryCount: ({ count }: { count: number }) => `${count} existing chats available.`,
+    onMachine: ({ machine }: { machine: string }) => `On ${machine}`,
+    discoverableCount: ({ count }: { count: number }) => `${count} discoverable`,
+    agentCount: ({ count }: { count: number }) => `${count} agents`,
+    importedCount: ({ count }: { count: number }) => `${count} imported`,
+    searchPlaceholder: 'Search title, path, or agent',
+    agentLabel: 'Agent',
+    statusLabel: 'Status',
+    existingChats: 'Existing chats',
+    showingCount: ({ shown, total }: { shown: number; total: number }) =>
+      `Showing ${shown} of ${total}`,
+    existing: 'Existing',
+    imported: 'Imported',
+    managed: 'Managed',
+    open: 'Open',
+    continueHere: 'Continue here',
+    continueTitle: 'Continue here?',
+    continueBody: ({ agent }: { agent: string }) =>
+      `This will import the existing ${agent} chat into AgentBridge and continue it here.`,
+    openImportedTitle: 'Open imported session',
+    openImportedBody: 'This chat is already imported into AgentBridge.',
+    prototypeTitle: 'Prototype only',
+    prototypeBody: 'Actual ACP discovery/import is not wired yet.',
+    directoryMissingTitle: 'Create directory?',
+    directoryMissingBody: ({ directory }: { directory: string }) =>
+      `The directory '${directory}' does not exist. Create it and continue?`,
+    emptyTitle: 'No matching sessions',
+    emptyBody: 'Try another filter or search term.',
+    noticeLoading: 'Loading agent histories',
+    noticeLoadFailed: 'Some agents could not be loaded',
+    noticeUnsupported: 'History not available',
+    noticeUpdated: 'Last refresh',
+    loadingProgress: ({ loaded, total }: { loaded: number; total: number }) =>
+      `Loading ${loaded}/${total}`,
+    loadingAgents: ({ loaded, total, agents }: { loaded: number; total: number; agents: string }) =>
+      `Loaded ${loaded} of ${total}. Still loading: ${agents}.`,
+    partialFailure: ({ count, agents }: { count: number; agents: string }) =>
+      `${count} agents could not be loaded: ${agents}.`,
+    unsupportedAgents: ({ agents }: { agents: string }) => `${agents} do not expose session history.`,
+    cachedAt: ({ time }: { time: string }) => `Updated ${time}`,
+    loadMore: 'Load more sessions',
+    filters: {
+      allAgents: 'All agents',
+      all: 'All',
+      available: 'Available',
+      imported: 'Imported',
+    },
   },
 
   machine: {
@@ -1191,6 +1247,15 @@ export const ru: TranslationStructure = {
     friendRequestGeneric: 'Новый запрос в друзья',
     friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
     friendAcceptedGeneric: 'Запрос в друзья принят',
+  },
+
+  voiceStatusBar: {
+    connecting: 'Подключение...',
+    reconnecting: 'Переподключение...',
+    active: 'Голосовой помощник активен',
+    error: 'Ошибка соединения',
+    default: 'Голосовой помощник',
+    tapToEnd: 'Нажмите для завершения',
   },
 } as const;
 

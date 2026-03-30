@@ -172,8 +172,6 @@ export const zhHans: TranslationStructure = {
     accountSubtitle: '管理您的账户详情',
     appearance: '外观',
     appearanceSubtitle: '自定义应用外观',
-    voiceAssistant: '语音助手',
-    voiceAssistantSubtitle: '配置语音交互偏好',
     featuresTitle: '功能',
     featuresSubtitle: '启用或禁用应用功能',
     developer: '开发者',
@@ -502,6 +500,11 @@ export const zhHans: TranslationStructure = {
     deleteSessionWarning: '此操作无法撤销。与此会话相关的所有消息和数据将被永久删除。',
     failedToDeleteSession: '删除会话失败',
     sessionDeleted: '会话删除成功',
+    clearCache: '清除缓存',
+    clearCacheSubtitle: '清除此会话的本地缓存数据',
+    clearCacheConfirm: '清除此会话的所有缓存数据？消息将从服务器重新获取。',
+    clearCacheSuccess: '缓存已清除',
+    clearCacheFailed: '清除缓存失败',
   },
 
   components: {
@@ -556,6 +559,20 @@ export const zhHans: TranslationStructure = {
       folderLabel: '文件夹',
     },
     noMachinesAvailable: '无设备',
+    speechInput: {
+      recording: '正在聆听...',
+      permissionTitle: '需要麦克风权限',
+      permissionMessage: '请在系统设置中允许访问麦克风和语音识别。',
+      permissionCancel: '取消',
+      permissionOpenSettings: '去设置',
+      errorTitle: '语音识别失败',
+      errorMessage: ({ error }: { error: string }) => `无法启动语音识别（${error}）。`,
+      languageUnavailableTitle: '语音识别语言包未安装',
+      languageUnavailableMessage: '当前语言的语音识别包尚未下载。请打开系统设置安装，或暂时切换到英语。',
+      languageUnavailableCancel: '取消',
+      languageUnavailableOpenSettings: '去设置',
+      languageUnavailableUseEnglish: '用英语',
+    },
   },
 
   machineLauncher: {
@@ -670,18 +687,13 @@ export const zhHans: TranslationStructure = {
     noChanges: '没有要显示的更改',
   },
 
-  settingsVoice: {
-    // Voice settings screen
-    languageTitle: '语言',
-    languageDescription: '选择您希望语音助手交互使用的语言。此设置将在您的所有设备间同步。',
-    preferredLanguage: '首选语言',
-    preferredLanguageSubtitle: '语音助手响应使用的语言',
-    language: {
-      searchPlaceholder: '搜索语言...',
-      title: '语言',
-      footer: ({ count }: { count: number }) => `${count} 种可用语言`,
-      autoDetect: '自动检测',
-    },
+  voiceStatusBar: {
+    connecting: '连接中...',
+    reconnecting: '重新连接中...',
+    active: '语音助手已激活',
+    error: '连接错误',
+    default: '语音助手',
+    tapToEnd: '点击结束',
   },
 
   settingsAccount: {

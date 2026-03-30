@@ -136,8 +136,6 @@ export const ja: TranslationStructure = {
     accountSubtitle: 'アカウントの詳細を管理',
     appearance: '外観',
     appearanceSubtitle: 'アプリの見た目をカスタマイズ',
-    voiceAssistant: '音声アシスタント',
-    voiceAssistantSubtitle: '音声操作の設定',
     featuresTitle: '機能',
     featuresSubtitle: 'アプリ機能の有効/無効を切り替え',
     developer: '開発者',
@@ -476,6 +474,11 @@ export const ja: TranslationStructure = {
       'この操作は取り消せません。このセッションに関連するすべてのメッセージとデータが完全に削除されます。',
     failedToDeleteSession: 'セッションの削除に失敗しました',
     sessionDeleted: 'セッションが正常に削除されました',
+    clearCache: 'キャッシュをクリア',
+    clearCacheSubtitle: 'このセッションのローカルキャッシュデータをクリア',
+    clearCacheConfirm: 'このセッションのすべてのキャッシュデータをクリアしますか？メッセージはサーバーから再取得されます。',
+    clearCacheSuccess: 'キャッシュがクリアされました',
+    clearCacheFailed: 'キャッシュのクリアに失敗しました',
   },
 
   components: {
@@ -530,6 +533,20 @@ export const ja: TranslationStructure = {
       folderLabel: 'フォルダ',
     },
     noMachinesAvailable: 'マシンなし',
+    speechInput: {
+      recording: '聞いています...',
+      permissionTitle: 'マイクへのアクセスが必要です',
+      permissionMessage: 'システム設定でマイクと音声認識へのアクセスを許可してください。',
+      permissionCancel: 'キャンセル',
+      permissionOpenSettings: '設定を開く',
+      errorTitle: '音声認識に失敗しました',
+      errorMessage: ({ error }: { error: string }) => `音声認識を開始できませんでした（${error}）。`,
+      languageUnavailableTitle: '音声認識パックが未インストール',
+      languageUnavailableMessage: '選択した言語の音声認識パックがダウンロードされていません。設定を開いてインストールするか、英語に切り替えてください。',
+      languageUnavailableCancel: 'キャンセル',
+      languageUnavailableOpenSettings: '設定を開く',
+      languageUnavailableUseEnglish: '英語を使用',
+    },
   },
 
   machineLauncher: {
@@ -641,21 +658,6 @@ export const ja: TranslationStructure = {
     file: 'ファイル',
     fileEmpty: 'ファイルは空です',
     noChanges: '表示する変更はありません',
-  },
-
-  settingsVoice: {
-    // Voice settings screen
-    languageTitle: '言語',
-    languageDescription:
-      '音声アシスタントの操作に使用する言語を選択します。この設定はすべてのデバイスで同期されます。',
-    preferredLanguage: '優先言語',
-    preferredLanguageSubtitle: '音声アシスタントの応答に使用する言語',
-    language: {
-      searchPlaceholder: '言語を検索...',
-      title: '言語',
-      footer: ({ count }: { count: number }) => `${count}言語が利用可能`,
-      autoDetect: '自動検出',
-    },
   },
 
   settingsAccount: {
@@ -824,6 +826,61 @@ export const ja: TranslationStructure = {
     // Used by Item component for copy toast
     copiedToClipboard: ({ label }: { label: string }) =>
       `${label}がクリップボードにコピーされました`,
+  },
+
+  machineImport: {
+    title: 'Import Existing Agent Sessions',
+    browse: 'Browse existing agent chats',
+    machineSummary: ({ count, imported }: { count: number; imported: number }) =>
+      `Supports Claude · Codex · OpenCode. ${count} chats found, ${imported} imported.`,
+    machineSummarySimple: 'Browse existing chats from supported agents.',
+    machineSummaryCount: ({ count }: { count: number }) => `${count} existing chats available.`,
+    onMachine: ({ machine }: { machine: string }) => `On ${machine}`,
+    discoverableCount: ({ count }: { count: number }) => `${count} discoverable`,
+    agentCount: ({ count }: { count: number }) => `${count} agents`,
+    importedCount: ({ count }: { count: number }) => `${count} imported`,
+    searchPlaceholder: 'Search title, path, or agent',
+    agentLabel: 'Agent',
+    statusLabel: 'Status',
+    existingChats: 'Existing chats',
+    showingCount: ({ shown, total }: { shown: number; total: number }) =>
+      `Showing ${shown} of ${total}`,
+    existing: 'Existing',
+    imported: 'Imported',
+    managed: 'Managed',
+    open: 'Open',
+    continueHere: 'Continue here',
+    continueTitle: 'Continue here?',
+    continueBody: ({ agent }: { agent: string }) =>
+      `This will import the existing ${agent} chat into AgentBridge and continue it here.`,
+    openImportedTitle: 'Open imported session',
+    openImportedBody: 'This chat is already imported into AgentBridge.',
+    prototypeTitle: 'Prototype only',
+    prototypeBody: 'Actual ACP discovery/import is not wired yet.',
+    directoryMissingTitle: 'Create directory?',
+    directoryMissingBody: ({ directory }: { directory: string }) =>
+      `The directory '${directory}' does not exist. Create it and continue?`,
+    emptyTitle: 'No matching sessions',
+    emptyBody: 'Try another filter or search term.',
+    noticeLoading: 'Loading agent histories',
+    noticeLoadFailed: 'Some agents could not be loaded',
+    noticeUnsupported: 'History not available',
+    noticeUpdated: 'Last refresh',
+    loadingProgress: ({ loaded, total }: { loaded: number; total: number }) =>
+      `Loading ${loaded}/${total}`,
+    loadingAgents: ({ loaded, total, agents }: { loaded: number; total: number; agents: string }) =>
+      `Loaded ${loaded} of ${total}. Still loading: ${agents}.`,
+    partialFailure: ({ count, agents }: { count: number; agents: string }) =>
+      `${count} agents could not be loaded: ${agents}.`,
+    unsupportedAgents: ({ agents }: { agents: string }) => `${agents} do not expose session history.`,
+    cachedAt: ({ time }: { time: string }) => `Updated ${time}`,
+    loadMore: 'Load more sessions',
+    filters: {
+      allAgents: 'All agents',
+      all: 'All',
+      available: 'Available',
+      imported: 'Imported',
+    },
   },
 
   machine: {
@@ -1156,5 +1213,14 @@ export const ja: TranslationStructure = {
     friendRequestGeneric: '新しい友達リクエスト',
     friendAccepted: ({ name }: { name: string }) => `${name}さんと友達になりました`,
     friendAcceptedGeneric: '友達リクエストが承認されました',
+  },
+
+  voiceStatusBar: {
+    connecting: '接続中...',
+    reconnecting: '再接続中...',
+    active: 'ボイスアシスタント起動中',
+    error: '接続エラー',
+    default: 'ボイスアシスタント',
+    tapToEnd: 'タップして終了',
   },
 } as const;
