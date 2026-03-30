@@ -20,6 +20,9 @@ import type { ToolCallId, AgentMessage } from '../types/messages';
  */
 export type PromptContentBlock =
   | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mimeType: string }
+  | { type: 'audio'; data: string; mimeType: string }
+  | { type: 'resource'; resource: { uri: string; text?: string; blob?: string; mimeType?: string } }
   | { type: 'resource_link'; uri: string; name?: string; mimeType?: string | null; [key: string]: unknown };
 
 // Re-export types
@@ -52,8 +55,9 @@ export interface IAgentBackend {
   /**
    * Send a prompt to an existing session.
    * Accepts a list of content blocks (text + optional resource_link for image attachments).
+   * Optional `meta._meta` is injected into the ACP PromptRequest for W3C trace context.
    */
-  sendPrompt(sessionId: SessionId, prompt: PromptContentBlock[]): Promise<void>;
+  sendPrompt(sessionId: SessionId, prompt: PromptContentBlock[], meta?: { _meta?: Record<string, unknown> }): Promise<void>;
 
   /**
    * Cancel the current operation in a session.
@@ -79,6 +83,12 @@ export interface IAgentBackend {
    * Wait for the current response to complete.
    */
   waitForResponseComplete?(timeoutMs?: number): Promise<void>;
+
+  /**
+   * Return the StopReason from the last completed prompt turn.
+   * ACP spec values: 'end_turn' | 'max_tokens' | 'max_turn_requests' | 'refusal' | 'cancelled'
+   */
+  getLastStopReason?(): string | null;
 
   /**
    * Check if the agent supports session loading (resume).

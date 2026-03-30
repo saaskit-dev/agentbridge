@@ -28,6 +28,8 @@ export interface NewSessionEvent {
 export interface UpdateSessionEvent {
   type: 'update-session';
   sessionId: string;
+  status?: 'active' | 'offline' | 'archived' | 'deleted';
+  activeAt?: number;
   metadata?: {
     version: number;
     value: string;

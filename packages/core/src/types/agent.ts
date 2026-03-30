@@ -10,12 +10,10 @@ export type AgentStatus = 'starting' | 'running' | 'idle' | 'stopped' | 'error';
 /** Transport type for agent communication */
 export type AgentTransport = 'native-claude' | 'acp';
 
-/** MCP server configuration */
-export interface McpServerConfig {
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-}
+/** MCP server configuration — stdio (default) or HTTP transport per ACP spec. */
+export type McpServerConfig =
+  | { transport?: 'stdio'; command: string; args?: string[]; env?: Record<string, string> }
+  | { transport: 'http'; url: string; headers?: Record<string, string> };
 
 /** Agent backend configuration */
 export interface AgentBackendConfig {

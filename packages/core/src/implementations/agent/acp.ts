@@ -61,12 +61,10 @@ interface InitializeRequest {
 
 interface NewSessionRequest {
   cwd: string;
-  mcpServers?: Array<{
-    name: string;
-    command: string;
-    args?: string[];
-    env?: Array<{ name: string; value: string }>;
-  }>;
+  mcpServers?: Array<
+    | { name: string; command: string; args?: string[]; env?: Array<{ name: string; value: string }> }
+    | { name: string; url: string; headers?: Record<string, string> }
+  >;
 }
 
 interface NewSessionResponse {
@@ -92,6 +90,14 @@ interface SetSessionConfigOptionResponse {
 interface PromptRequest {
   sessionId: string;
   prompt: Array<{ type: string; [key: string]: unknown }>;
+  _meta?: Record<string, unknown>;
+}
+
+/** ACP PromptResponse — returned by session/prompt when the agent turn completes. */
+interface PromptResponse {
+  stopReason: 'end_turn' | 'max_tokens' | 'max_turn_requests' | 'refusal' | 'cancelled';
+  _meta?: Record<string, unknown> | null;
+  usage?: { inputTokens?: number; outputTokens?: number } | null;
 }
 
 /** ContentBlock union matching the ACP protocol schema. */
@@ -107,7 +113,7 @@ interface Client {
 type ClientSideConnectionType = {
   initialize(request: InitializeRequest): Promise<unknown>;
   newSession(request: NewSessionRequest): Promise<{ sessionId: string }>;
-  prompt(request: PromptRequest): Promise<void>;
+  prompt(request: PromptRequest): Promise<PromptResponse>;
   cancel(request: { sessionId: string }): Promise<void>;
   setSessionMode?(request: { sessionId: string; modeId: string }): Promise<SetSessionModeResponse>;
   unstable_setSessionModel?(request: {
@@ -205,6 +211,75 @@ type ExtendedRequestPermissionRequest = RequestPermissionRequest & {
     kind?: string;
   }>;
 };
+
+type PermissionOptionShape = {
+  optionId?: string;
+  name?: string;
+  kind?: string;
+};
+
+function hasPermissionOptionKind(
+  option: PermissionOptionShape,
+  expectedKind: 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always'
+): boolean {
+  return option.kind === expectedKind;
+}
+
+function selectApprovalOption(
+  options: PermissionOptionShape[],
+  decision: 'approved' | 'approved_for_session'
+): string {
+  const proceedOnceOption = options.find(
+    opt =>
+      hasPermissionOptionKind(opt, 'allow_once') ||
+      opt.optionId === 'proceed_once' ||
+      (typeof opt.name === 'string' && opt.name.toLowerCase().includes('once'))
+  );
+  const proceedAlwaysOption = options.find(
+    opt =>
+      hasPermissionOptionKind(opt, 'allow_always') ||
+      opt.optionId === 'proceed_always' ||
+      (typeof opt.name === 'string' && opt.name.toLowerCase().includes('always'))
+  );
+
+  if (decision === 'approved_for_session' && proceedAlwaysOption) {
+    return proceedAlwaysOption.optionId || 'proceed_always';
+  }
+  if (proceedOnceOption) {
+    return proceedOnceOption.optionId || 'proceed_once';
+  }
+  if (options.length > 0) {
+    const firstOpt = options[0] as { optionId?: string };
+    return firstOpt.optionId || 'proceed_once';
+  }
+  return 'proceed_once';
+}
+
+export function selectPermissionOptionId(
+  options: PermissionOptionShape[],
+  decision: 'approved' | 'approved_for_session' | 'denied' | 'abort'
+): string {
+  if (decision === 'approved' || decision === 'approved_for_session') {
+    return selectApprovalOption(options, decision);
+  }
+
+  // For a one-shot deny, prefer reject_once over reject_always to avoid persisting
+  // the rejection beyond the current request. For abort, prefer persistent rejection.
+  if (decision === 'denied') {
+    const onceOption = options.find(opt => hasPermissionOptionKind(opt, 'reject_once'));
+    if (onceOption) return onceOption.optionId;
+  }
+
+  const cancelOption = options.find(
+    opt =>
+      hasPermissionOptionKind(opt, 'reject_always') ||
+      hasPermissionOptionKind(opt, 'reject_once') ||
+      opt.optionId === 'cancel' ||
+      (typeof opt.name === 'string' && opt.name.toLowerCase().includes('cancel'))
+  );
+
+  return cancelOption?.optionId || 'cancel';
+}
 
 /**
  * Extended SessionNotification with additional fields
@@ -397,6 +472,7 @@ export class AcpBackend implements IAgentBackend {
   private acpSessionId: string | null = null;
   private agentCapabilities: { loadSession?: boolean } | null = null;
   private disposed = false;
+  private lastStopReason: string | null = null;
 
   /** Track active tool calls to prevent duplicate events */
   private activeToolCalls = new Set<string>();
@@ -836,29 +912,9 @@ export class AcpBackend implements IAgentBackend {
               );
 
               // Map permission decision to ACP response
-              let optionId = 'cancel'; // Default to cancel/deny
+              const optionId = selectPermissionOptionId(options, result.decision);
 
               if (result.decision === 'approved' || result.decision === 'approved_for_session') {
-                const proceedOnceOption = options.find(
-                  (opt: { optionId?: string; name?: string }) =>
-                    opt.optionId === 'proceed_once' ||
-                    (typeof opt.name === 'string' && opt.name.toLowerCase().includes('once'))
-                );
-                const proceedAlwaysOption = options.find(
-                  (opt: { optionId?: string; name?: string }) =>
-                    opt.optionId === 'proceed_always' ||
-                    (typeof opt.name === 'string' && opt.name.toLowerCase().includes('always'))
-                );
-
-                if (result.decision === 'approved_for_session' && proceedAlwaysOption) {
-                  optionId = proceedAlwaysOption.optionId || 'proceed_always';
-                } else if (proceedOnceOption) {
-                  optionId = proceedOnceOption.optionId || 'proceed_once';
-                } else if (options.length > 0) {
-                  const firstOpt = options[0] as { optionId?: string };
-                  optionId = firstOpt.optionId || 'proceed_once';
-                }
-
                 // Emit tool-result so UI can close the timer
                 this.emit({
                   type: 'tool-result',
@@ -867,15 +923,6 @@ export class AcpBackend implements IAgentBackend {
                   callId: permissionId,
                 });
               } else {
-                const cancelOption = options.find(
-                  (opt: { optionId?: string; name?: string }) =>
-                    opt.optionId === 'cancel' ||
-                    (typeof opt.name === 'string' && opt.name.toLowerCase().includes('cancel'))
-                );
-                if (cancelOption) {
-                  optionId = cancelOption.optionId || 'cancel';
-                }
-
                 this.emit({
                   type: 'tool-result',
                   toolName,
@@ -908,16 +955,8 @@ export class AcpBackend implements IAgentBackend {
             }
           }
 
-          // Auto-approve with 'proceed_once' if no permission handler
-          const proceedOnceOption = options.find(
-            (opt: { optionId?: string; name?: string }) =>
-              opt.optionId === 'proceed_once' ||
-              (typeof opt.name === 'string' && opt.name.toLowerCase().includes('once'))
-          );
-          const firstOpt = options[0] as { optionId?: string } | undefined;
-          const defaultOptionId =
-            proceedOnceOption?.optionId ||
-            (options.length > 0 && firstOpt?.optionId ? firstOpt.optionId : 'proceed_once');
+          // Auto-approve with the ACP-standard one-off allow option if no permission handler
+          const defaultOptionId = selectPermissionOptionId(options, 'approved');
           logger.warn(
             '[AcpBackend] No permission handler attached, auto-approving permission request',
             {
@@ -1014,17 +1053,24 @@ export class AcpBackend implements IAgentBackend {
 
       // Create a new session with retry
       const mcpServers = this.config.mcpServers
-        ? Object.entries(this.config.mcpServers).map(([name, config]) => ({
-            name,
-            command: config.command,
-            args: config.args || [],
-            env: config.env
-              ? Object.entries(config.env).map(([envName, envValue]) => ({
-                  name: envName,
-                  value: envValue,
-                }))
-              : [],
-          }))
+        ? Object.entries(this.config.mcpServers).map(([name, config]) => {
+            if ('url' in config && config.transport === 'http') {
+              return { name, url: config.url, ...(config.headers ? { headers: config.headers } : {}) };
+            }
+            // stdio transport (default)
+            const stdioConfig = config as { command: string; args?: string[]; env?: Record<string, string> };
+            return {
+              name,
+              command: stdioConfig.command,
+              args: stdioConfig.args || [],
+              env: stdioConfig.env
+                ? Object.entries(stdioConfig.env).map(([envName, envValue]) => ({
+                    name: envName,
+                    value: envValue,
+                  }))
+                : [],
+            };
+          })
         : [];
 
       const newSessionRequest: NewSessionRequest = {
@@ -1094,11 +1140,11 @@ export class AcpBackend implements IAgentBackend {
       // no corresponding on-disk session file — using it as a resume ID would always fail.
       return { sessionId: this.acpSessionId };
     } catch (error) {
-      logger.error('[ACP] Session start failed', toError(error), {
+      logger.warn('[ACP] Session start failed', {
         agent: this.transport.agentName,
         error: safeStringify(error),
       });
-      throw error;
+      throw new Error(`[ACP] Session start failed: ${safeStringify(error)}`);
     }
   }
 
@@ -1182,16 +1228,11 @@ export class AcpBackend implements IAgentBackend {
 
       return { sessionId };
     } catch (error) {
-      logger.error('[ACP] Session load failed', toError(error), {
+      logger.warn('[ACP] Session load failed', {
         agent: this.transport.agentName,
         error: safeStringify(error),
       });
-      this.emit({
-        type: 'status',
-        status: 'error',
-        detail: safeStringify(error),
-      });
-      throw error;
+      throw new Error(`[ACP] Session load failed: ${safeStringify(error)}`);
     }
   }
 
@@ -1315,7 +1356,7 @@ export class AcpBackend implements IAgentBackend {
   private responseCompleteTimeout: ReturnType<typeof setTimeout> | null = null;
   private responseCompleteRejecter: ((error: Error) => void) | null = null;
 
-  async sendPrompt(_sessionId: SessionId, prompt: ContentBlock[]): Promise<void> {
+  async sendPrompt(_sessionId: SessionId, prompt: ContentBlock[], meta?: { _meta?: Record<string, unknown> }): Promise<void> {
     // Check if prompt contains change_title instruction (via optional callback)
     const textContent = prompt
       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
@@ -1353,6 +1394,7 @@ export class AcpBackend implements IAgentBackend {
       const promptRequest: PromptRequest = {
         sessionId: this.acpSessionId,
         prompt,
+        ...(meta?._meta ? { _meta: meta._meta } : {}),
       };
 
       this.logAcpRequest('prompt', promptRequest, {
@@ -1368,16 +1410,17 @@ export class AcpBackend implements IAgentBackend {
       // to resolve with StopReason::Cancelled.
       // If the child process dies, the process exit handler calls
       // rejectPendingResponse() which unblocks waitForResponseComplete().
-      await this.connection.prompt(promptRequest);
+      const promptResponse = await this.connection.prompt(promptRequest);
+      this.lastStopReason = promptResponse?.stopReason ?? null;
 
       this.logAcpResponse(
         'prompt',
-        { ok: true },
+        { ok: true, stopReason: this.lastStopReason },
         {
           promptLength: prompt.length,
         }
       );
-      logger.info('[AcpBackend] Prompt turn completed');
+      logger.info('[AcpBackend] Prompt turn completed', { stopReason: this.lastStopReason });
 
       // connection.prompt() resolving means the agent turn is definitively complete.
       // If idle was never emitted (e.g. all tool calls timed out but no new chunks
@@ -1391,7 +1434,11 @@ export class AcpBackend implements IAgentBackend {
         this.emitIdleStatus();
       }
     } catch (error) {
-      logger.error('[ACP] Prompt failed', toError(error), {
+      // Use warn (not error) so DaemonLogSink does not forward this log entry to
+      // the App as a second visible error. The caller (messageLoop) will catch the
+      // re-thrown error and call publishVisibleError(), which is the single
+      // user-facing error path.
+      logger.warn('[ACP] Prompt failed', {
         agent: this.transport.agentName,
         error: safeStringify(error),
       });
@@ -1402,7 +1449,10 @@ export class AcpBackend implements IAgentBackend {
       // catches the throw and calls publishVisibleError().  Emitting AND
       // throwing causes the same error to reach the server twice via two
       // independent paths (onMessage→drainBackendOutput vs catch→publishVisibleError).
-      throw error;
+      //
+      // Wrap with context so publishVisibleError() shows a human-readable message
+      // instead of a raw JSON object.
+      throw new Error(`[ACP] Prompt failed: ${safeStringify(error)}`);
     }
   }
 
@@ -1608,6 +1658,14 @@ export class AcpBackend implements IAgentBackend {
     return response;
   }
 
+  /**
+   * Set the session model via the ACP SDK's unstable_setSessionModel API.
+   *
+   * The `unstable_` prefix comes from the official @agentclientprotocol/sdk — this is not
+   * a non-standard extension. DiscoveredAcpBackendBase.applyModelSelection() tries this first
+   * and falls back to setSessionConfigOption() (the fully standardized session/set_config_option
+   * path) if it fails. Both paths are correct per the ACP spec.
+   */
   async setSessionModel(_sessionId: SessionId, modelId: string): Promise<SetSessionModelResponse> {
     if (!this.connection || !this.acpSessionId) {
       throw new Error('Session not started');
@@ -1670,6 +1728,10 @@ export class AcpBackend implements IAgentBackend {
   async respondToPermission(requestId: string, approved: boolean): Promise<void> {
     logger.debug(`[AcpBackend] Permission response event (UI only): ${requestId} = ${approved}`);
     this.emit({ type: 'permission-response', id: requestId, approved });
+  }
+
+  getLastStopReason(): string | null {
+    return this.lastStopReason;
   }
 
   async dispose(): Promise<void> {

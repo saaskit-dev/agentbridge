@@ -24,7 +24,7 @@ describe('shouldLogUnhandledSessionUpdate', () => {
     expect(
       shouldLogUnhandledSessionUpdate({
         sessionUpdate: 'current_mode_update',
-        modeId: 'plan',
+        currentModeId: 'plan',
       } as SessionUpdate)
     ).toBe(false);
     expect(

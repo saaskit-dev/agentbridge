@@ -4,6 +4,7 @@ import {
   failToolCall,
   handleToolCall,
   handleToolCallUpdate,
+  handlePlanUpdate,
   type HandlerContext,
 } from '../sessionUpdateHandlers.js';
 
@@ -133,6 +134,96 @@ describe('sessionUpdateHandlers', () => {
         status: 'failed',
       },
       callId: 'call-1',
+    });
+  });
+
+  describe('handlePlanUpdate', () => {
+    it('normalizes valid plan entries with content, priority, and status', () => {
+      const { ctx, emitted } = createContext();
+
+      handlePlanUpdate(
+        {
+          plan: [
+            { content: 'Step 1', priority: 'high', status: 'completed' },
+            { content: 'Step 2', priority: 'medium', status: 'in_progress' },
+            { content: 'Step 3', priority: 'low', status: 'pending' },
+          ],
+        },
+        ctx
+      );
+
+      expect(emitted).toEqual([
+        {
+          type: 'event',
+          name: 'plan',
+          payload: [
+            { content: 'Step 1', priority: 'high', status: 'completed' },
+            { content: 'Step 2', priority: 'medium', status: 'in_progress' },
+            { content: 'Step 3', priority: 'low', status: 'pending' },
+          ],
+        },
+      ]);
+    });
+
+    it('strips invalid priority and status values', () => {
+      const { ctx, emitted } = createContext();
+
+      handlePlanUpdate(
+        {
+          plan: [{ content: 'Do something', priority: 'urgent', status: 'blocked' }],
+        },
+        ctx
+      );
+
+      expect(emitted).toEqual([
+        {
+          type: 'event',
+          name: 'plan',
+          payload: [{ content: 'Do something' }],
+        },
+      ]);
+    });
+
+    it('filters out entries without content', () => {
+      const { ctx, emitted } = createContext();
+
+      handlePlanUpdate(
+        {
+          plan: [
+            { content: 'Valid entry', priority: 'high' },
+            { priority: 'low', status: 'pending' },
+            null,
+            42,
+          ],
+        },
+        ctx
+      );
+
+      expect(emitted).toEqual([
+        {
+          type: 'event',
+          name: 'plan',
+          payload: [{ content: 'Valid entry', priority: 'high' }],
+        },
+      ]);
+    });
+
+    it('passes through non-array plan as-is for backward compatibility', () => {
+      const { ctx, emitted } = createContext();
+      const rawPlan = { description: 'some legacy format' };
+
+      handlePlanUpdate({ plan: rawPlan }, ctx);
+
+      expect(emitted).toEqual([{ type: 'event', name: 'plan', payload: rawPlan }]);
+    });
+
+    it('returns unhandled when plan is absent', () => {
+      const { ctx, emitted } = createContext();
+
+      const result = handlePlanUpdate({}, ctx);
+
+      expect(result.handled).toBe(false);
+      expect(emitted).toEqual([]);
     });
   });
 });

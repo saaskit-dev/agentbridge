@@ -360,9 +360,38 @@ export function handleLegacyMessageChunk(
   return { handled: false };
 }
 
+/** ACP plan entry with structured fields per protocol spec. */
+export interface PlanEntry {
+  content: string;
+  priority?: 'high' | 'medium' | 'low';
+  status?: 'pending' | 'in_progress' | 'completed';
+}
+
+const VALID_PRIORITIES = new Set(['high', 'medium', 'low']);
+const VALID_STATUSES = new Set(['pending', 'in_progress', 'completed']);
+
+/**
+ * Normalize raw plan data into structured PlanEntry[].
+ * Returns null if the input is not an array (backward compat: pass through as-is).
+ */
+function normalizePlanEntries(raw: unknown): PlanEntry[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw
+    .filter(
+      (entry): entry is Record<string, unknown> =>
+        entry != null && typeof entry === 'object' && typeof (entry as Record<string, unknown>).content === 'string'
+    )
+    .map(entry => ({
+      content: String(entry.content),
+      ...(VALID_PRIORITIES.has(String(entry.priority)) ? { priority: String(entry.priority) as PlanEntry['priority'] } : {}),
+      ...(VALID_STATUSES.has(String(entry.status)) ? { status: String(entry.status) as PlanEntry['status'] } : {}),
+    }));
+}
+
 export function handlePlanUpdate(update: SessionUpdate, ctx: HandlerContext): HandlerResult {
   if (!update.plan) return { handled: false };
-  ctx.emit({ type: 'event', name: 'plan', payload: update.plan });
+  const entries = normalizePlanEntries(update.plan);
+  ctx.emit({ type: 'event', name: 'plan', payload: entries ?? update.plan });
   return { handled: true };
 }
 
