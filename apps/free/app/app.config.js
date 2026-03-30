@@ -69,6 +69,8 @@ export default {
           'Allow $(PRODUCT_NAME) to attach images to your messages.',
         NSMicrophoneUsageDescription:
           'Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.',
+        NSSpeechRecognitionUsageDescription:
+          'Allow $(PRODUCT_NAME) to transcribe your speech into text.',
         NSLocalNetworkUsageDescription:
           'Allow $(PRODUCT_NAME) to find and connect to local devices on your network.',
         NSBonjourServices: ['_http._tcp', '_https._tcp'],
@@ -145,6 +147,7 @@ export default {
       'expo-sqlite',
       'expo-web-browser',
       'react-native-vision-camera',
+      'expo-speech-recognition',
       '@more-tech/react-native-libsodium',
       'react-native-audio-api',
       '@livekit/react-native-expo-plugin',

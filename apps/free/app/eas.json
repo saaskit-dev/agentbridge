@@ -18,6 +18,8 @@
       "distribution": "store",
       "environment": "production",
       "autoIncrement": true,
+      "autoSubmit": true,
+      "submitProfile": "production",
       "env": {
         "APP_ENV": "production"
       }

@@ -72,6 +72,8 @@
     "check:type-sync": "node scripts/check-normalized-message-sync.cjs",
     "build": "shx rm -rf dist && node scripts/check-normalized-message-sync.cjs && tsc --noEmit && pkgroll && node scripts/generate-build-hash.cjs",
     "test": "$npm_execpath run build && vitest run",
+    "test:acp-sdk-matrix": "FREE_RUN_ACP_SDK_MATRIX=1 vitest run src/__tests__/acpSdkAgentMatrix.test.ts",
+    "sync:acp-real-fixtures": "node scripts/sync-acp-real-fixtures.mjs",
     "test:e2e-lifecycle": "bash scripts/e2e-lifecycle-test.sh",
     "start": "$npm_execpath run build && node ./dist/cli.mjs",
     "cli": "tsx src/index.ts",
