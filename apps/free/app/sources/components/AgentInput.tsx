@@ -2,7 +2,6 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as React from 'react';
 import {
-  Alert,
   View,
   Platform,
   useWindowDimensions,
@@ -47,6 +46,7 @@ import {
   SessionCapabilities,
   usesDiscoveredCapabilitiesOnly,
 } from '@/sync/sessionCapabilities';
+import { Modal } from '@/modal/ModalManager';
 import { t } from '@/text';
 import { Theme } from '@/theme';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
@@ -595,20 +595,13 @@ export const AgentInput = React.memo(
     const handleAbortPress = React.useCallback(() => {
       if (!props.onAbort || isAborting) return;
 
-      Alert.alert(
-        t('agentInput.abortConfirmTitle'),
-        t('agentInput.abortConfirmMessage'),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          {
-            text: t('agentInput.abortConfirmAction'),
-            style: 'destructive',
-            onPress: () => {
-              void performAbort();
-            },
-          },
-        ]
-      );
+      void Modal.confirm(t('agentInput.abortConfirmTitle'), t('agentInput.abortConfirmMessage'), {
+        cancelText: t('common.cancel'),
+        confirmText: t('agentInput.abortConfirmAction'),
+        destructive: true,
+      }).then(confirmed => {
+        if (confirmed) void performAbort();
+      });
     }, [props.onAbort, isAborting, performAbort]);
 
     // Handle keyboard navigation

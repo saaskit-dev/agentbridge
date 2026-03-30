@@ -656,12 +656,25 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
 
     const requestedMode = this.initialMode;
     const availableModes = this.capabilitiesSnapshot.modes?.available ?? [];
+    const currentMode = this.capabilitiesSnapshot.modes?.current ?? null;
     this.logger.info(`[${this.agentType}] evaluating initial mode`, {
       sessionId,
       requestedMode,
-      discoveredCurrentMode: this.capabilitiesSnapshot.modes?.current ?? null,
+      discoveredCurrentMode: currentMode,
       availableModes: availableModes.map(mode => mode.id),
     });
+
+    // Skip if already in the requested mode — avoids "Switching to X (recommended)..."
+    // text messages being emitted as agent output on every resume.
+    if (currentMode === requestedMode) {
+      this.logger.debug(`[${this.agentType}] initial mode already active, skipping`, {
+        sessionId,
+        requestedMode,
+      });
+      this.appliedModeSelection = requestedMode;
+      return;
+    }
+
     if (availableModes.length > 0 && !availableModes.some(mode => mode.id === requestedMode)) {
       this.logger.warn(`[${this.agentType}] initial mode unavailable, keeping discovered default`, {
         requestedMode,

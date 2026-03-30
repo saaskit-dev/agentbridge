@@ -318,6 +318,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     }
 
     if (desiredAgentMode && currentAgentMode && desiredAgentMode !== currentAgentMode) {
+      // Only show "Switching to..." after the initial mode has been confirmed (modes matched
+      // at least once). If capabilities just arrived after mount and haven't settled yet,
+      // suppress the label — otherwise it gets permanently stuck on resume because the
+      // useEffect sync is also guarded by initialModeConfirmedRef.
+      if (!initialModeConfirmedRef.current) return null;
       return `Switching to ${getModeLabel(desiredAgentMode)}...`;
     }
 
