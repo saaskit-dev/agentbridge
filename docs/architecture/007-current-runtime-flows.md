@@ -6,6 +6,8 @@
 This document captures the current single-primary-agent execution flow of the daemon runtime.
 It is intentionally scoped to the current implementation reality.
 
+Future target integration with `acpx sidecar（acpx 侧车）` is described in `010-acpx-sidecar-integration.md`.
+
 ## 1. Scope
 
 This document covers:

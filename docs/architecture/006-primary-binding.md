@@ -108,6 +108,12 @@ The ACP-side execution reference used for:
 
 This must not be treated as the product session identity.
 
+When `acpx sidecar（acpx 侧车）` is used, this reference should prefer `acpx`'s explicit identity model over an opaque ad-hoc string:
+
+- `acpxRecordId`
+- `acpxSessionId`
+- optional `agentSessionId`
+
 ### `effectiveCapabilities`
 
 The capabilities actually available on the active primary execution.
@@ -165,10 +171,10 @@ It does not need to own:
 `AgentSession` should evolve toward a `Runtime Orchestration Host（运行时编排宿主）`.
 It should use `Primary Binding（主绑定）`, not be confused with it.
 
-### `ACP Adapter（ACP 适配层）`
+### `ACP Bridge（ACP 桥接层）`
 
-The ACP adapter performs ACP-specific execution work.
-`Primary Binding（主绑定）` carries the current relationship to that execution.
+The ACP bridge connects agentbridge runtime semantics to `acpx sidecar（acpx 侧车）`.
+`Primary Binding（主绑定）` carries the current relationship to the active ACP execution exposed through that bridge.
 
 ### `ApiSessionClient（会话同步客户端）`
 

@@ -13,6 +13,7 @@ Read in this order:
 7. `007-current-runtime-flows.md`
 8. `008-glossary-and-invariants.md`
 9. `009-open-questions-and-decisions.md`
+10. `010-acpx-sidecar-integration.md`
 
 Use older RFCs in `docs/rfc/` only for legacy context and migration constraints.
 
@@ -37,3 +38,5 @@ Use older RFCs in `docs/rfc/` only for legacy context and migration constraints.
   - fixed terminology and hard interpretation rules
 - `009-open-questions-and-decisions.md`
   - decision log and deferred/open architecture questions
+- `010-acpx-sidecar-integration.md`
+  - preferred reuse boundary for ACP execution through `acpx sidecar`

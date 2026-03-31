@@ -9,7 +9,7 @@ Free targets a three-layer system:
 
 1. `App/UI` is a thin rendering and input shell
 2. `Server` is an agent-agnostic persistence, auth, sync, and relay layer
-3. `CLI/Daemon Runtime` is the only layer that knows vendor agent differences
+3. `CLI/Daemon Runtime` is the product supervision layer and delegates ACP execution to `acpx sidecar（acpx 侧车）`
 
 The product core is the runtime plus the canonical protocol. UI, server, and tests should all
 consume canonical Free entities instead of vendor-native session models.
@@ -22,7 +22,8 @@ The target system is intentionally simple in shape:
 
 - `App/UI` renders canonical data and dispatches canonical commands
 - `Server` persists canonical state, relays canonical events, and enforces agent-agnostic policy
-- `Runtime` owns vendor differences, lifecycle control, capability normalization, and orchestration
+- `Runtime` owns product supervision, lifecycle control, capability normalization, and orchestration
+- `Runtime` should reuse `acpx sidecar（acpx 侧车）` for ACP session/runtime mechanics rather than rebuilding per-agent ACP integration in-repo
 
 This implies the following product model:
 
@@ -51,6 +52,7 @@ The current codebase has useful layers, but the actual responsibility split is n
 - app remains almost entirely free of business and runtime logic
 - server remains ignorant of vendor-specific agent behavior
 - runtime becomes the only home for vendor differences and lifecycle control
+- runtime reuses `acpx sidecar（acpx 侧车）` as the preferred ACP execution substrate
 - all product-facing layers operate on canonical Free protocol types
 - session identity belongs to Free, not to any vendor
 - agent-to-agent invocation is supported without leaking vendor details to app or server
@@ -67,6 +69,7 @@ The current codebase has useful layers, but the actual responsibility split is n
 - perfect lossless migration between all vendor-native sessions
 - erasing all vendor-specific capability differences
 - immediate full rewrite of the repository
+- embedding unstable `acpx` internals directly into the agentbridge daemon process
 
 ## First-phase scope
 
@@ -78,6 +81,7 @@ The first phase should achieve:
 - app as rendering shell plus presentation mapping only
 - server as vendor-agnostic persistence and relay layer
 - runtime as the only owner of vendor adaptation and agent lifecycle
+- `acpx sidecar（acpx 侧车）` introduced as the preferred ACP execution integration path
 - canonical entities defined explicitly in shared protocol types
 - capability differences exposed through structured capability data
 

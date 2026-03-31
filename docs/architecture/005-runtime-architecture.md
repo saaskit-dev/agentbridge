@@ -15,6 +15,8 @@ It must absorb ACP-specific execution differences without leaking them upward in
 - `Server（服务端层）`
 - `Product Semantics（产品语义层）`
 
+The runtime should not reimplement generic ACP session/runtime mechanics that are already available in `acpx sidecar（acpx 侧车）`.
+
 The runtime is therefore designed as four cooperating internal layers.
 
 ## 2. Runtime internal layers
@@ -50,18 +52,17 @@ Every session has one `Primary Binding（主绑定）` for user-facing control a
 
 It answers: which primary execution is currently attached to this Free session.
 
-### 2.3 `ACP Adapter（ACP 适配层）`
+### 2.3 `ACP Bridge（ACP 桥接层）`
 
-This is the ACP isolation layer.
+This is the ACP integration boundary owned by agentbridge.
 It owns:
 
-- starting and stopping ACP execution
-- sending input to ACP execution
-- receiving raw output and raw execution updates
-- discovering raw ACP capabilities
+- talking to `acpx sidecar（acpx 侧车）`
+- mapping `acpx` execution and identity facts into runtime-consumable facts
 - exposing ACP execution references
+- translating `acpx` capability and lifecycle results into runtime-facing signals
 
-It answers: how this specific ACP implementation runs.
+It answers: how agentbridge talks to ACP execution through `acpx`.
 It must not own Free product semantics.
 
 ### 2.4 `Runtime State / Stream Model（运行时状态/流模型层）`
@@ -88,8 +89,10 @@ The runtime layers should cooperate through the following flow:
 Command / trigger
   -> Runtime Orchestration
   -> lookup/create/update SessionBinding
-  -> SessionBinding uses ACP Adapter
-  -> ACP Adapter yields raw execution feedback
+  -> SessionBinding uses ACP Bridge
+  -> ACP Bridge talks to acpx Sidecar
+  -> acpx Sidecar drives ACP execution
+  -> ACP Bridge yields execution feedback
   -> SessionBinding records runtime facts
   -> Runtime Orchestration interprets those facts
   -> canonical outcomes are emitted upward
@@ -99,7 +102,7 @@ Key rule:
 
 - `Runtime Orchestration（运行时编排层）` decides
 - `SessionBinding（会话绑定层）` holds execution reality
-- `ACP Adapter（ACP 适配层）` performs ACP-specific work
+- `ACP Bridge（ACP 桥接层）` connects runtime semantics to `acpx sidecar（acpx 侧车）`
 - `Runtime State / Stream Model（运行时状态/流模型层）` carries internal facts
 
 ## 4. Boundary rules
@@ -119,13 +122,13 @@ Key rule:
 - task semantics
 - server persistence decisions
 
-### 4.3 `ACP Adapter（ACP 适配层）` must not own
+### 4.3 `ACP Bridge（ACP 桥接层）` must not own
 
 - `Session（会话）` product semantics
 - `Invocation（调用）` semantics
 - server sync or IPC broadcasting
 - UI-facing message formats as a final contract
-- policy enforcement beyond reporting ACP constraints
+- policy enforcement beyond reporting ACP and `acpx` constraints
 
 ### 4.4 `Runtime State / Stream Model（运行时状态/流模型层）` must not become
 
@@ -155,11 +158,11 @@ Owns:
 - binding status updates during recovery
 - carrying the current vendor execution reference used for recovery
 
-### 5.3 `ACP Adapter（ACP 适配层）`
+### 5.3 `ACP Bridge（ACP 桥接层）`
 
 Owns:
 
-- performing ACP-specific recovery attempts
+- asking `acpx sidecar（acpx 侧车）` to perform ACP-specific recovery attempts
 - reporting whether recovery succeeded, failed, is unsupported, or requires rebuild-from-context
 
 ### 5.4 `Runtime State / Stream Model（运行时状态/流模型层）`
@@ -213,11 +216,31 @@ This means:
 This architecture maps onto the current repository as follows:
 
 - `apps/free/cli/src/daemon/sessions/*` currently mixes orchestration and binding concerns
-- `apps/free/cli/src/backends/*` is the closest current approximation of the ACP adapter layer
+- `apps/free/cli/src/backends/*` is the closest current approximation of the future `ACP Bridge（ACP 桥接层）`, but today it still contains in-repo ACP implementation details
 - `apps/free/cli/src/agent/*` appears to be a transitional or overlapping abstraction layer
 - `NormalizedMessage（规范消息）` is currently a shared cross-layer payload, but should be treated as an outward projection rather than the sole runtime truth
 
-## 8. Current completion rule
+## 8. Preferred ACP execution substrate
+
+The preferred future ACP execution substrate is:
+
+- `acpx sidecar（acpx 侧车）`
+
+This means:
+
+- agentbridge should stop growing a separate per-agent ACP adapter hierarchy
+- agentbridge should keep a thin `ACP Bridge（ACP 桥接层）` for product/runtime integration
+- agentbridge should not deep-import unstable `acpx` internals as if they were a stable embedded SDK
+
+The preferred integration mode is:
+
+- process boundary or sidecar integration with `acpx`
+
+Not:
+
+- in-process deep import of `acpx/dist/*` runtime internals
+
+## 9. Current completion rule
 
 The current implementation has one verified turn-end signal and one verified sync-settled boundary:
 
@@ -233,7 +256,7 @@ It is not yet the final cross-runtime product contract.
 
 The goal is to evolve the current daemon into this layered runtime shape incrementally.
 
-## 9. Evaluation rule
+## 10. Evaluation rule
 
 Any future runtime proposal should be evaluated against the following question:
 

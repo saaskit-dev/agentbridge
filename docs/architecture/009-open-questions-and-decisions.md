@@ -53,6 +53,15 @@ The runtime must preserve enough facts for:
 - simple default UX
 - optional expanded execution detail
 
+### 1.9 `acpx sidecar（acpx 侧车）` is the preferred ACP execution substrate
+
+agentbridge should reuse `acpx` for ACP session/runtime mechanics instead of continuing to grow an in-repo per-agent ACP adapter/runtime stack.
+
+### 1.10 `acpx` should not be treated as a stable embedded SDK
+
+The preferred integration mode is sidecar / subprocess integration.
+Deep-importing `acpx` runtime internals is treated as a higher-risk fallback, not the default plan.
+
 ## 2. Open questions
 
 ### 2.1 Is `ready` always the last turn-scoped persisted output?
@@ -86,6 +95,16 @@ Current candidates are:
 
 This remains open because implementation order still depends on runtime validation.
 
+### 2.6 How should agentbridge map `acpx` identities into `Primary Binding（主绑定）`?
+
+The likely answer is to preserve:
+
+- `acpxRecordId`
+- `acpxSessionId`
+- optional `agentSessionId`
+
+but the exact binding-facing representation is still open.
+
 ## 3. Deferred questions
 
 These are real architecture questions, but are intentionally deferred.
@@ -105,6 +124,10 @@ This should not be written as a formal protocol document until more current runt
 ### 3.4 Final UI / Server / Runtime protocol boundaries
 
 These should be formalized after the runtime core documents are stable.
+
+### 3.5 Whether `acpx/flows` should later become the default multi-agent orchestration substrate
+
+`acpx/flows` is a credible future option, but it is not a current phase-1 dependency.
 
 ## 4. Use rule
 

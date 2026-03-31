@@ -33,7 +33,16 @@ It is not the long-term name for product session semantics.
 
 ### `ACP Adapter（ACP 适配层）`
 
-The ACP isolation layer that talks to ACP execution and exposes ACP-side facts to the runtime.
+Legacy discussion term for the ACP-facing integration layer.
+The preferred current architecture term is `ACP Bridge（ACP 桥接层）`.
+
+### `ACP Bridge（ACP 桥接层）`
+
+The agentbridge-owned integration layer that talks to `acpx sidecar（acpx 侧车）` and exposes ACP-side execution facts to the runtime.
+
+### `acpx Sidecar（acpx 侧车）`
+
+The preferred external ACP execution substrate reused by agentbridge instead of rebuilding per-agent ACP runtime mechanics in-repo.
 
 ### `ApiSessionClient（会话同步客户端）`
 
@@ -87,6 +96,11 @@ without needing to re-invent execution truth.
 
 The codebase already uses attachment terminology for file and image flows.
 Runtime binding terminology must avoid that word.
+
+### 2.8 `acpx` should be integrated through a stable boundary
+
+The preferred integration mode is sidecar / process-boundary integration.
+Deep-importing unstable `acpx` runtime internals must not become the default architecture.
 
 ## 3. Current phase rule
 
