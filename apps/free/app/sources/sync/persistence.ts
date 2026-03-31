@@ -4,6 +4,7 @@ import { messageDB } from './messageDB';
 import { Profile, profileDefaults, profileParse } from './profile';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { coerceAgentType, type AppAgentFlavor } from './agentFlavor';
+import { parseWorktreeBranchBinding, type WorktreeBranchBinding } from '@/utils/worktreeBranchBinding';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
 import type { PermissionMode } from './sessionCapabilities';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
@@ -22,6 +23,8 @@ export interface NewSessionDraft {
   agentType: NewSessionAgentType;
   permissionMode: PermissionMode;
   sessionType: NewSessionSessionType;
+  /** Optional: how the worktree session should bind to a Git branch (worktree session type only). */
+  worktreeBranchBinding?: WorktreeBranchBinding;
   updatedAt: number;
 }
 
@@ -156,6 +159,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
     const sessionType: NewSessionSessionType =
       parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
     const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
+    const worktreeBranchBinding = parseWorktreeBranchBinding(parsed.worktreeBranchBinding);
 
     return {
       input,
@@ -164,6 +168,8 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
       agentType,
       permissionMode,
       sessionType,
+      worktreeBranchBinding:
+        parsed.worktreeBranchBinding !== undefined ? worktreeBranchBinding : undefined,
       updatedAt,
     };
   } catch (e) {
