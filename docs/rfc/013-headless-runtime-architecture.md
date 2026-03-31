@@ -14,11 +14,11 @@ This RFC defines the target architecture for Free as a three-layer system:
 
 1. **App/UI** is a thin rendering and input shell
 2. **Server** is an agent-agnostic persistence, auth, sync, and relay layer
-3. **CLI/Daemon Runtime** is the only layer that knows vendor agent differences
+3. **CLI/Daemon Runtime** is the only layer that supervises execution and delegates ACP session/runtime mechanics to `acpx sidecar（acpx 侧车）`
 
 The central design goal is to make the product operate on **canonical product entities**
-instead of vendor-native session models. UI, server, and tests must all consume the same
-stable protocol. Agent vendors are adapters behind the runtime boundary.
+instead of vendor-native or ACP-native session models. UI, server, and tests must all consume the same
+stable protocol. ACP execution should sit behind the runtime boundary through a thin bridge.
 
 This RFC also elevates **agent-to-agent invocation** to a first-class runtime capability.
 
@@ -28,6 +28,11 @@ Detailed architecture docs:
 - `docs/architecture/001-overview.md`
 - `docs/architecture/002-principles.md`
 - `docs/architecture/003-entity-model.md`
+- `docs/architecture/005-runtime-architecture.md`
+- `docs/architecture/006-primary-binding.md`
+- `docs/architecture/010-acpx-sidecar-integration.md`
+- `docs/architecture/011-truth-and-projections.md`
+- `docs/architecture/012-phase-1-plan.md`
 
 ## 1.1 Goal Model
 
@@ -36,6 +41,7 @@ The target system is intentionally simple in shape:
 - **App/UI** renders canonical data and dispatches canonical commands
 - **Server** persists canonical state, relays canonical events, and enforces agent-agnostic policy
 - **Runtime** owns vendor differences, lifecycle control, capability normalization, and orchestration
+- **Runtime** should reuse `acpx sidecar（acpx 侧车）` for ACP execution mechanics rather than rebuilding them in-repo
 
 This RFC does not treat the UI as the product core. The product core is the runtime plus the
 canonical protocol.
@@ -64,6 +70,7 @@ The result is familiar:
 - App remains almost entirely free of business and runtime logic
 - Server remains ignorant of vendor-specific agent behavior
 - Runtime becomes the only home for vendor differences and lifecycle control
+- Runtime reuses `acpx sidecar（acpx 侧车）` as the preferred ACP execution substrate
 - All product-facing layers operate on canonical Free protocol types
 - Session identity belongs to Free, not to Claude, Codex, Gemini, or any other vendor
 - Agent-to-agent invocation is supported without leaking vendor details to app or server
@@ -71,7 +78,7 @@ The result is familiar:
 ### 3.2 Secondary goals
 
 - New UI shells should be cheap to add: iOS, Android, Web, TUI, integration test harness
-- New agent vendors should be cheap to add by implementing one driver contract
+- New ACP-backed execution providers should be cheap to add by reusing one thin ACP bridge boundary
 - Session switching between agents should be possible through canonical snapshots
 - Domain logic should be unit-testable without React, sockets, or child processes
 

@@ -14,6 +14,9 @@ Read in this order:
 8. `008-glossary-and-invariants.md`
 9. `009-open-questions-and-decisions.md`
 10. `010-acpx-sidecar-integration.md`
+11. `011-truth-and-projections.md`
+12. `012-phase-1-plan.md`
+13. `013-ui-server-runtime-boundaries.md`
 
 Use older RFCs in `docs/rfc/` only for legacy context and migration constraints.
 
@@ -40,3 +43,9 @@ Use older RFCs in `docs/rfc/` only for legacy context and migration constraints.
   - decision log and deferred/open architecture questions
 - `010-acpx-sidecar-integration.md`
   - preferred reuse boundary for ACP execution through `acpx sidecar`
+- `011-truth-and-projections.md`
+  - authoritative records vs derived views and cached projections
+- `012-phase-1-plan.md`
+  - the recommended first implementation phase and its guardrails
+- `013-ui-server-runtime-boundaries.md`
+  - explicit layer boundaries between UI, server, and daemon runtime

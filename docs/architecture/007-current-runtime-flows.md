@@ -37,7 +37,7 @@ Session created
 User sends message
 -> api/apiSession receives it
 -> AgentSession queues and dequeues it
--> backend / ACP Adapter sends session/prompt
+-> backend / ACP Bridge sends session/prompt
 -> ACP execution emits updates
 -> ready
 -> ApiSessionClient.flush()
@@ -84,7 +84,7 @@ This is the beginning of active turn handling.
 
 ### 4.3 Message enters ACP execution
 
-The active backend / `ACP Adapter（ACP 适配层）` emits `session/prompt` and the ACP execution begins.
+The active backend / `ACP Bridge（ACP 桥接层）` emits `session/prompt` and the ACP execution begins.
 
 ACP may then emit:
 

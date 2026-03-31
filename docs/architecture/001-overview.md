@@ -60,7 +60,7 @@ The current codebase has useful layers, but the actual responsibility split is n
 ### Secondary goals
 
 - new UI shells should be cheap to add
-- new agent vendors should be cheap to add by implementing one driver contract
+- new ACP-backed execution providers should be cheap to add by reusing the `acpx sidecar（acpx 侧车）` substrate through one thin bridge boundary
 - session switching between agents should be possible through canonical snapshots
 - domain logic should be unit-testable without React, sockets, or child processes
 
@@ -98,4 +98,5 @@ The first phase does not need to achieve:
 - `002-principles.md`
 - `003-entity-model.md`
 - `004-current-runtime-analysis.md`
+- `013-ui-server-runtime-boundaries.md`
 - `../rfc/013-headless-runtime-architecture.md`

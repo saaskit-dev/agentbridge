@@ -6,6 +6,13 @@
 This document defines the internal shape of the daemon runtime.
 It is the parent architecture for future protocol, migration, and implementation documents.
 
+Related documents:
+
+- `006-primary-binding.md`
+- `010-acpx-sidecar-integration.md`
+- `011-truth-and-projections.md`
+- `012-phase-1-plan.md`
+
 ## 1. Purpose
 
 The daemon runtime is the primary complexity container of the system.
@@ -37,7 +44,7 @@ It owns:
 It decides what should happen in Free semantics.
 It must not directly own vendor transport details.
 
-### 2.2 `SessionBinding（会话绑定层）`
+### 2.2 `Primary Binding（主绑定层）`
 
 This is the bridge between a Free `Session（会话）` and a concrete execution instance.
 It owns:
@@ -88,12 +95,12 @@ The runtime layers should cooperate through the following flow:
 ```text
 Command / trigger
   -> Runtime Orchestration
-  -> lookup/create/update SessionBinding
-  -> SessionBinding uses ACP Bridge
+  -> lookup/create/update Primary Binding
+  -> Primary Binding uses ACP Bridge
   -> ACP Bridge talks to acpx Sidecar
   -> acpx Sidecar drives ACP execution
   -> ACP Bridge yields execution feedback
-  -> SessionBinding records runtime facts
+  -> Primary Binding records runtime facts
   -> Runtime Orchestration interprets those facts
   -> canonical outcomes are emitted upward
 ```
@@ -101,7 +108,7 @@ Command / trigger
 Key rule:
 
 - `Runtime Orchestration（运行时编排层）` decides
-- `SessionBinding（会话绑定层）` holds execution reality
+- `Primary Binding（主绑定层）` holds execution reality
 - `ACP Bridge（ACP 桥接层）` connects runtime semantics to `acpx sidecar（acpx 侧车）`
 - `Runtime State / Stream Model（运行时状态/流模型层）` carries internal facts
 
@@ -115,7 +122,7 @@ Key rule:
 - UI-facing payload shaping
 - direct server socket mechanics
 
-### 4.2 `SessionBinding（会话绑定层）` must not own
+### 4.2 `Primary Binding（主绑定层）` must not own
 
 - product-level policy decisions
 - invocation policy
@@ -150,7 +157,7 @@ Owns:
 - whether degraded recovery is acceptable
 - how recovery results affect product semantics
 
-### 5.2 `SessionBinding（会话绑定层）`
+### 5.2 `Primary Binding（主绑定层）`
 
 Owns:
 

@@ -129,6 +129,16 @@ These should be formalized after the runtime core documents are stable.
 
 `acpx/flows` is a credible future option, but it is not a current phase-1 dependency.
 
+### 3.6 Final truth/projection persistence strategy
+
+The truth/projection split is now documented, but the exact first code landing shape for:
+
+- daemon-local projection
+- server-synced projection
+- rebuildable projection
+
+remains implementation-sequencing work rather than a settled final design.
+
 ## 4. Use rule
 
 When a future architecture discussion starts from a fresh context, this document should be used to distinguish:
