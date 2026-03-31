@@ -38,7 +38,12 @@ import { claudeCliPath } from '@/claude/claudeLocal';
 import type { EnhancedMode } from '@/claude/sessionTypes';
 import type { ApiSessionClient } from '@/api/apiSession';
 import { PermissionHandler } from '@/claude/utils/permissionHandler';
-import type { AgentBackend, AgentStartOpts, BackendExitInfo, LocalAttachment } from '@/daemon/sessions/AgentBackend';
+import type {
+  AgentBackend,
+  AgentStartOpts,
+  BackendExitInfo,
+  LocalAttachment,
+} from '@/daemon/sessions/AgentBackend';
 import type { NormalizedMessage } from '@/daemon/sessions/types';
 import { createNormalizedEvent } from '@/daemon/sessions/types';
 import {
@@ -193,9 +198,11 @@ export class ClaudeNativeBackend implements AgentBackend {
           // causes the consumer's for-await to throw, which is not user-friendly.
           this.output.push(
             createNormalizedEvent({
-              type: 'error',
+              type: 'daemon-log',
+              level: 'error',
+              component: 'claude-native',
               message: `Agent session failed: ${safeStringify(err)}`,
-              retryable: false,
+              error: `Agent session failed: ${safeStringify(err)}`,
             })
           );
         }
@@ -350,9 +357,11 @@ export class ClaudeNativeBackend implements AgentBackend {
           if (exitCode !== 0 && exitCode !== null) {
             this.output.push(
               createNormalizedEvent({
-                type: 'error',
+                type: 'daemon-log',
+                level: 'error',
+                component: 'claude-native',
                 message: `Agent process exited unexpectedly (code ${exitCode}${signalName ? `, ${signalName}` : ''})`,
-                retryable: false,
+                error: `Agent process exited unexpectedly (code ${exitCode}${signalName ? `, ${signalName}` : ''})`,
               })
             );
           }
@@ -375,11 +384,18 @@ export class ClaudeNativeBackend implements AgentBackend {
   // Message sending
   // ---------------------------------------------------------------------------
 
-  async sendMessage(text: string, permissionMode?: PermissionMode, attachments?: LocalAttachment[]): Promise<void> {
+  async sendMessage(
+    text: string,
+    permissionMode?: PermissionMode,
+    attachments?: LocalAttachment[]
+  ): Promise<void> {
     if (attachments?.length) {
-      logger.warn('[ClaudeNativeBackend] image attachments not supported in native mode, sending text only', {
-        count: attachments.length,
-      });
+      logger.warn(
+        '[ClaudeNativeBackend] image attachments not supported in native mode, sending text only',
+        {
+          count: attachments.length,
+        }
+      );
     }
     // Emit working status when actually starting to process a user message
     this.output.push(createNormalizedEvent({ type: 'status', state: 'working' }));

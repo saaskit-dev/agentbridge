@@ -1,14 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import * as React from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-  Pressable,
-  Platform,
-} from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from './layout';
 import { MarkdownView } from './markdown/MarkdownView';
@@ -166,7 +159,13 @@ function AttachmentThumbnails({
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8, marginBottom: 4 }}>
       {attachments.map(att => (
-        <AttachmentThumb key={att.id} att={att} size={size} onPress={onPress} sessionId={sessionId} />
+        <AttachmentThumb
+          key={att.id}
+          att={att}
+          size={size}
+          onPress={onPress}
+          sessionId={sessionId}
+        />
       ))}
     </View>
   );
@@ -196,18 +195,30 @@ function AttachmentThumb({
     loadAttachmentUri(att.id, att.mimeType, sessionId).then(loaded => {
       if (loaded && !cancelled) setUri(loaded);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [att.id, att.mimeType, sessionId, uri]);
 
   return (
     <Pressable
       onPress={() => uri && onPress(uri)}
-      style={{ width: size, height: size, borderRadius: THUMB_RADIUS, overflow: 'hidden', backgroundColor: '#e8e8e8' }}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: THUMB_RADIUS,
+        overflow: 'hidden',
+        backgroundColor: '#e8e8e8',
+      }}
     >
       {uri ? (
         <Image source={{ uri }} style={{ width: size, height: size }} contentFit="cover" />
       ) : att.thumbhash ? (
-        <Image style={{ width: size, height: size }} placeholder={{ thumbhash: att.thumbhash }} contentFit="cover" />
+        <Image
+          style={{ width: size, height: size }}
+          placeholder={{ thumbhash: att.thumbhash }}
+          contentFit="cover"
+        />
       ) : (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ fontSize: 10, color: '#aaa' }}>IMG</Text>
@@ -244,7 +255,11 @@ function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
         {attachments && attachments.length > 0 && (
-          <AttachmentThumbnails attachments={attachments} onPress={setPreviewUri} sessionId={props.sessionId} />
+          <AttachmentThumbnails
+            attachments={attachments}
+            onPress={setPreviewUri}
+            sessionId={props.sessionId}
+          />
         )}
         {props.message.text ? (
           <MarkdownView
@@ -254,9 +269,7 @@ function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
         ) : null}
       </View>
       <DevTraceBadge traceId={props.message.traceId} id={props.message.id} alignSelf="flex-end" />
-      {previewUri && (
-        <ImagePreviewModal uri={previewUri} onClose={() => setPreviewUri(null)} />
-      )}
+      {previewUri && <ImagePreviewModal uri={previewUri} onClose={() => setPreviewUri(null)} />}
     </View>
   );
 }
@@ -505,9 +518,6 @@ function AgentEventBlock(props: {
       </View>
     );
   }
-  if (props.event.type === 'error') {
-    return <AgentErrorBlock message={props.event.message} />;
-  }
   if (props.event.type === 'daemon-log') {
     return <DaemonLogBlock event={props.event} />;
   }
@@ -518,50 +528,45 @@ function AgentEventBlock(props: {
   );
 }
 
-function AgentErrorBlock(props: { message: string }) {
-  const { theme } = useUnistyles();
-  const [copied, setCopied] = React.useState(false);
-  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
-
-  function handlePress() {
-    Clipboard.setStringAsync(props.message);
-    setCopied(true);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setCopied(false), 1500);
-  }
-
-  return (
-    <Pressable
-      onPress={handlePress}
-      style={({ pressed }) => [styles.agentEventContainer, pressed && { opacity: 0.7 }]}
-    >
-      <Text style={[styles.agentEventText, { color: theme.colors.warningCritical, flex: 1 }]}>
-        {props.message}
-      </Text>
-      {copied && (
-        <Text style={{ position: 'absolute', top: 4, right: 8, color: theme.colors.warningCritical, opacity: 0.7, fontSize: 13, fontWeight: '600' }}>
-          ✓
-        </Text>
-      )}
-    </Pressable>
-  );
-}
-
-function DaemonLogBlock(props: {
-  event: { type: 'daemon-log'; level: 'error' | 'warn'; component: string; message: string; error?: string };
-}) {
+function DaemonLogBlock(props: { event: AgentEvent & { type: 'daemon-log' } }) {
   const { theme } = useUnistyles();
   const { level, component, message, error } = props.event;
   const color = level === 'error' ? theme.colors.warningCritical : theme.colors.warning;
+  const fullText = `${component}: ${message}${error ? `\n${error}` : ''}`;
+  const [copied, setCopied] = React.useState(false);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    []
+  );
+
+  const handlePress = React.useCallback(async () => {
+    await Clipboard.setStringAsync(fullText);
+    setCopied(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 2000);
+  }, [fullText]);
+
   return (
-    <View style={[styles.agentEventContainer, { opacity: 0.8 }]}>
+    <Pressable onPress={handlePress} style={[styles.agentEventContainer, { opacity: 0.8 }]}>
       <Text style={[styles.agentEventText, { color, fontSize: 11 }]}>
         {component}: {message}
         {error ? `\n${error}` : ''}
       </Text>
-    </View>
+      {copied && (
+        <Text
+          style={[
+            styles.agentEventText,
+            { color: theme.colors.success, fontSize: 11, marginLeft: 8 },
+          ]}
+        >
+          ✓
+        </Text>
+      )}
+    </Pressable>
   );
 }
 

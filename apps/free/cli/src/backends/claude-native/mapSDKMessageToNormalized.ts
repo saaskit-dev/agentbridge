@@ -175,9 +175,11 @@ export function mapSDKMessageToNormalized(
         id: createId(),
         role: 'event',
         content: {
-          type: 'error',
+          type: 'daemon-log',
+          level: 'error',
+          component: 'claude-native',
           message: `Maximum turns reached (${msg.num_turns} turns)`,
-          retryable: false,
+          error: `Maximum turns reached (${msg.num_turns} turns)`,
         },
       });
     } else if (msg.subtype === 'error_during_execution') {
@@ -186,9 +188,11 @@ export function mapSDKMessageToNormalized(
         id: createId(),
         role: 'event',
         content: {
-          type: 'error',
+          type: 'daemon-log',
+          level: 'error',
+          component: 'claude-native',
           message: `Error during execution (${msg.num_turns} turns before error)`,
-          retryable: false,
+          error: `Error during execution (${msg.num_turns} turns before error)`,
         },
       });
     }

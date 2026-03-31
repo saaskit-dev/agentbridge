@@ -8,7 +8,12 @@ import { setAcpSessionId } from '@/telemetry';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
-import type { AgentBackend, AgentStartOpts, BackendExitInfo, LocalAttachment } from '@/daemon/sessions/AgentBackend';
+import type {
+  AgentBackend,
+  AgentStartOpts,
+  BackendExitInfo,
+  LocalAttachment,
+} from '@/daemon/sessions/AgentBackend';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
 import type { AgentType, NormalizedMessage } from '@/daemon/sessions/types';
 import { createNormalizedEvent } from '@/daemon/sessions/types';
@@ -25,9 +30,7 @@ import {
 import { createFreeMcpServerConfig } from '@/backends/acp/createFreeMcpServerConfig';
 import { getDefaultDiscoveredModelId, hasDiscoveredModel } from '@/backends/acp/modelSelection';
 import { AcpPermissionHandler } from '@/backends/acp/AcpPermissionHandler';
-import {
-  getAgentModeForPermission,
-} from '@/backends/acp/permissionModeMapping';
+import { getAgentModeForPermission } from '@/backends/acp/permissionModeMapping';
 
 type ProtocolCurrentModeUpdate = {
   sessionUpdate: 'current_mode_update';
@@ -188,8 +191,11 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         // Buffer status:idle — it must be emitted AFTER ready so AgentSession's
         // synthesis guard (emittedReadyThisTurn check) fires on the real ready
         // event and doesn't produce a duplicate synthetic one.
-        if (normalized.role === 'event' && (normalized.content as any).type === 'status' &&
-            (normalized.content as any).state === 'idle') {
+        if (
+          normalized.role === 'event' &&
+          (normalized.content as any).type === 'status' &&
+          (normalized.content as any).state === 'idle'
+        ) {
           this.pendingIdleMessage = normalized;
         } else {
           this.output.push(normalized);
@@ -246,7 +252,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
             : undefined,
       });
       this.publishCapabilities(mergeAcpSessionCapabilities(this.capabilitiesSnapshot, update));
-
     });
 
     this.logger.info(`[${this.agentType}] backend started`, {
@@ -259,7 +264,11 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     });
   }
 
-  async sendMessage(text: string, permissionMode?: PermissionMode, attachments?: LocalAttachment[]): Promise<void> {
+  async sendMessage(
+    text: string,
+    permissionMode?: PermissionMode,
+    attachments?: LocalAttachment[]
+  ): Promise<void> {
     // New turn → new traceId. All messages emitted during this turn share this ID,
     // enabling the App reducer to correctly separate text blocks across turns.
     this.currentTurnTraceId = randomUUID();
@@ -291,6 +300,10 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       return;
     }
 
+    if (this.resumeSessionId && !this.acpSessionId) {
+      this.isFirstMessage = false;
+    }
+
     const prompt = this.buildPrompt(text, attachments);
     this.isFirstMessage = false;
 
@@ -310,10 +323,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         requestedInitialModel: this.initialModel,
         requestedInitialMode: this.initialMode,
       });
-      if (resumed) {
-        // Skip title injection on a resumed session — it already has a title.
-        this.isFirstMessage = false;
-      }
       await this.applyInitialModeIfNeeded(sessionId);
       await this.applyInitialModelIfNeeded(sessionId);
       await this.applyInitialConfigSelectionsIfNeeded(sessionId);
@@ -392,7 +401,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         return { sessionId, resumed: true };
       } catch (err) {
         this.logger.warn(`[${this.agentType}] loadSession failed, keeping fresh session`, {
-
           resumeSessionId: this.resumeSessionId,
           freshSessionId,
           error: safeStringify(err),

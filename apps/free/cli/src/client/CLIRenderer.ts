@@ -172,7 +172,7 @@ export class CLIRenderer {
         }
         break;
 
-      case 'error':
+      case 'daemon-log':
         process.stderr.write(chalk.red(`\n[agent error] ${event.message}\n`));
         break;
     }

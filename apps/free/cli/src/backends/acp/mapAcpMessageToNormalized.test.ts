@@ -24,9 +24,7 @@ describe('mapAcpMessageToNormalized', () => {
     const msg = { type: 'status', status: 'running' } as AgentMessage;
     const result = mapAcpMessageToNormalized(msg);
     expect(result?.role).toBe('event');
-    expect(result?.role === 'event' && (result.content as { state: string }).state).toBe(
-      'working'
-    );
+    expect(result?.role === 'event' && (result.content as { state: string }).state).toBe('working');
   });
 
   it('maps status idle to idle event', () => {
@@ -35,11 +33,12 @@ describe('mapAcpMessageToNormalized', () => {
     expect(result?.role === 'event' && (result.content as { state: string }).state).toBe('idle');
   });
 
-  it('maps status error to error event', () => {
+  it('maps status error to daemon-log event', () => {
     const msg = { type: 'status', status: 'error', detail: 'bad thing' } as AgentMessage;
     const result = mapAcpMessageToNormalized(msg);
     expect(result?.role).toBe('event');
-    expect(result?.role === 'event' && result.content.type).toBe('error');
+    expect(result?.role === 'event' && result.content.type).toBe('daemon-log');
+    expect(result?.role === 'event' && (result.content as { level: string }).level).toBe('error');
     expect(result?.role === 'event' && (result.content as { message: string }).message).toBe(
       'bad thing'
     );

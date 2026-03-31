@@ -5,7 +5,7 @@
  * using a minimal concrete TestAgentSession subclass.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { AgentSession, type AgentSessionOpts } from './AgentSession';
 import type { AgentBackend } from './AgentBackend';
 import type { IPCServerMessage } from '@/daemon/ipc/protocol';
@@ -16,6 +16,7 @@ import type { NormalizedMessage } from './types';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import type { SessionCapabilities } from './capabilities';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
+import { initCliTelemetry } from '@/telemetry';
 
 // ---------------------------------------------------------------------------
 // Minimal concrete subclass for testing
@@ -374,7 +375,11 @@ describe('AgentSession streaming output', () => {
 });
 
 describe('AgentSession visible backend failures', () => {
-  it('publishes an error event when backend.sendMessage throws and keeps session alive', async () => {
+  beforeAll(() => {
+    initCliTelemetry();
+  });
+
+  it('publishes a daemon-log event when backend.sendMessage throws and keeps session alive', async () => {
     const session = new TestAgentSession(makeOpts());
     const apiSession = makeMockSession('sess-error');
     session.injectSession(apiSession);
@@ -404,9 +409,11 @@ describe('AgentSession visible backend failures', () => {
         expect.objectContaining({
           role: 'event',
           content: expect.objectContaining({
-            type: 'error',
-            message: 'Initialize timeout after 30000ms - codex did not respond',
-            retryable: true,
+            type: 'daemon-log',
+            level: 'error',
+            component: 'daemon/sessions/AgentSession',
+            message: '[AgentSession] backend send failed',
+            error: 'Initialize timeout after 30000ms - codex did not respond',
           }),
         })
       );
@@ -461,7 +468,9 @@ describe('AgentSession visible backend failures', () => {
         // Should have published crash error events + dormant mode notification
         const errorCalls = (
           apiSession.sendNormalizedMessage as ReturnType<typeof vi.fn>
-        ).mock.calls.filter((c: any) => c[0]?.role === 'event' && c[0]?.content?.type === 'error');
+        ).mock.calls.filter(
+          (c: any) => c[0]?.role === 'event' && c[0]?.content?.type === 'daemon-log'
+        );
         expect(errorCalls.length).toBeGreaterThanOrEqual(1);
 
         // The dormant mode message should tell user to send a message or archive
@@ -509,13 +518,17 @@ describe('AgentSession visible backend failures', () => {
       // Wait for dormant mode to be entered
       await new Promise(r => setTimeout(r, 500));
 
-      // Should have published an error event with retry instructions
+      // Should have published a daemon-log event with retry instructions
       expect(apiSession.sendNormalizedMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           role: 'event',
           content: expect.objectContaining({
-            type: 'error',
-            retryable: true,
+            type: 'daemon-log',
+            level: 'error',
+            component: 'daemon/sessions/AgentSession',
+            message:
+              '[AgentSession] Agent failed to start. Send a message to retry, or archive this session.',
+            error: 'agent boot failed',
           }),
         })
       );

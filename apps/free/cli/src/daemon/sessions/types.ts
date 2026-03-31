@@ -14,7 +14,7 @@
  *
  * The AgentEvent type here is a SUPERSET of the App's AgentEvent:
  *   - App types: 'switch' | 'message' | 'limit-reached' | 'ready' | 'daemon-log'
- *   - Daemon-only types (ephemeral, not persisted): 'status' | 'token_count' | 'error'
+ *   - Daemon-only types (ephemeral, not persisted): 'status' | 'token_count'
  * The App's normalizeRawMessage() returns null for unknown event types → forward compatible.
  */
 
@@ -108,7 +108,6 @@ export type AgentEvent =
   // ── Daemon-only operational signals (delivered via ephemeral channels, not persisted as messages)
   | { type: 'status'; state: 'working' | 'idle' }
   | { type: 'token_count'; usage: UsageData }
-  | { type: 'error'; message: string; retryable: boolean }
   | {
       type: 'permission_request';
       requestId: string;

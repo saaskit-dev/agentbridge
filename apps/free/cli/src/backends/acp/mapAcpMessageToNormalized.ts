@@ -56,7 +56,17 @@ export function mapAcpMessageToNormalized(
             message = String(detail);
           }
         }
-        return { ...base, role: 'event', content: { type: 'error', message, retryable: false } };
+        return {
+          ...base,
+          role: 'event',
+          content: {
+            type: 'daemon-log',
+            level: 'error',
+            component: 'acp',
+            message,
+            error: message,
+          },
+        };
       }
       return null;
     }

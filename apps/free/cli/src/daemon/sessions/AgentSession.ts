@@ -862,14 +862,13 @@ export abstract class AgentSession<TMode> {
           if (this.pendingExit || this._isShuttingDown) break;
           // Backend failed to start — enter dormant mode rather than dying.
           // The session stays alive so the user can retry or archive.
-          logger.error('[AgentSession] backend start failed, entering dormant mode', toError(err), {
-            sessionId: this.session?.sessionId,
-            agentType: this.agentType,
-          });
-          this.publishVisibleError(
-            new Error(`Agent failed to start. Send a message to retry, or archive this session.`),
-            'backend start failed — waiting for user action',
-            true
+          logger.error(
+            '[AgentSession] Agent failed to start. Send a message to retry, or archive this session.',
+            toError(err),
+            {
+              sessionId: this.session?.sessionId,
+              agentType: this.agentType,
+            }
           );
           this.shouldExit = false;
           this.backendRestartCount = 0;
@@ -962,12 +961,13 @@ export abstract class AgentSession<TMode> {
             agentType: this.agentType,
             restartCount: this.backendRestartCount,
           });
-          this.publishVisibleError(
-            new Error(
-              `Agent process crashed ${this.backendRestartCount} times. Send a message to restart, or archive this session.`
-            ),
-            'backend restart limit reached — waiting for user action',
-            true
+          logger.error(
+            `[AgentSession] Agent process crashed ${this.backendRestartCount} times. Send a message to restart, or archive this session.`,
+            undefined,
+            {
+              sessionId: this.session.sessionId,
+              agentType: this.agentType,
+            }
           );
 
           // Wait for user to send a new message (or kill/archive to arrive)
@@ -1003,12 +1003,13 @@ export abstract class AgentSession<TMode> {
             exitSignal: exitInfo?.signal,
             exitReason: exitInfo?.reason,
           });
-          this.publishVisibleError(
-            new Error(
-              `Agent process crashed — restarting (attempt ${this.backendRestartCount}/${AgentSession.MAX_BACKEND_RESTARTS})`
-            ),
-            'backend crashed',
-            true
+          logger.error(
+            `[AgentSession] Agent process crashed — restarting (attempt ${this.backendRestartCount}/${AgentSession.MAX_BACKEND_RESTARTS})`,
+            undefined,
+            {
+              sessionId: this.session.sessionId,
+              agentType: this.agentType,
+            }
           );
           const cooldownMs = (this.constructor as typeof AgentSession).RESTART_COOLDOWN_MS;
           const elapsed = Date.now() - this.lastBackendStartTime;
@@ -1072,7 +1073,11 @@ export abstract class AgentSession<TMode> {
         this.completeStreamingText();
       } catch (err) {
         this.resetStreamingText();
-        this.publishVisibleError(err, 'backend send failed', true);
+        logger.error('[AgentSession] backend send failed', toError(err), {
+          userId: this.userId,
+          sessionId: this.session?.sessionId,
+          traceId: getProcessTraceContext()?.traceId,
+        });
         if (this.lastStatus === 'working') {
           this.forwardOutputMessage(createNormalizedEvent({ type: 'status', state: 'idle' }));
         }
@@ -1245,9 +1250,8 @@ export abstract class AgentSession<TMode> {
   }
 
   /** Daemon-only event types that don't need server persistence.
-   *  status/token_count are delivered via ephemeral channels (session-alive, usage).
-   *  error is only useful for local IPC clients. */
-  private static readonly DAEMON_ONLY_EVENTS = new Set(['status', 'token_count', 'error']);
+   *  status/token_count are delivered via ephemeral channels (session-alive, usage). */
+  private static readonly DAEMON_ONLY_EVENTS = new Set(['status', 'token_count']);
 
   /** Forward a single NormalizedMessage to the server and broadcast to IPC clients. */
   protected async forwardOutputMessage(msg: NormalizedMessage): Promise<void> {
@@ -1358,45 +1362,6 @@ export abstract class AgentSession<TMode> {
       role: 'event',
       isSidechain: false,
       content: { type: 'message', message },
-    };
-    this.maybeStreamOutputMessage(msg);
-    this.session.sendNormalizedMessage(msg);
-  }
-
-  private publishVisibleError(error: unknown, context: string, retryable = false): void {
-    const message = safeStringify(error);
-    // Suppress this session's DaemonLogSink while logging — this error is
-    // already sent to the App as a user-facing error event.
-    const sid = this.session?.sessionId;
-    if (sid) DaemonLogSink.suppressedSessionIds.add(sid);
-    try {
-      logger.error(`[AgentSession] ${context}`, toError(error), {
-        userId: this.userId,
-        sessionId: this.session?.sessionId,
-        traceId: getProcessTraceContext()?.traceId,
-      });
-    } finally {
-      if (sid) DaemonLogSink.suppressedSessionIds.delete(sid);
-    }
-
-    if (!this.session) {
-      return;
-    }
-
-    // Send directly to server instead of going through forwardOutputMessage,
-    // because forwardOutputMessage filters 'error' events as daemon-only.
-    // Visible errors (crash notices, dormant mode prompts) must reach the App
-    // so the user can see what happened and take action.
-    const msg: NormalizedMessage = {
-      id: randomUUID(),
-      createdAt: Date.now(),
-      role: 'event',
-      isSidechain: false,
-      content: {
-        type: 'error',
-        message,
-        retryable,
-      },
     };
     this.maybeStreamOutputMessage(msg);
     this.session.sendNormalizedMessage(msg);
@@ -1549,21 +1514,19 @@ export abstract class AgentSession<TMode> {
  * Registered per-session in all environments. The App decides whether to
  * render them based on the developer mode toggle.
  *
- * Only entries whose sessionId matches this session are forwarded.
- * Entries with no sessionId (daemon-global errors) are skipped to avoid
- * broadcasting the same error to every active session.
+ * Session routing:
+ *   - If entry has sessionId (from TraceContext or entry.data) → forward to matching session
+ *   - If no sessionId (daemon-global error) → forward to first session only (dedup via static Set)
+ *
+ * This prevents broadcasting the same global error to every active session while
+ * ensuring session-specific errors always reach their intended session.
  */
 class DaemonLogSink implements LogSink {
   readonly name = 'daemon-log-forward';
   private readonly sessionId: string;
   private readonly forward: (entry: LogEntry) => void;
 
-  /**
-   * Session IDs currently inside publishVisibleError — their logger.error()
-   * calls are suppressed to avoid duplicate error + daemon-log events.
-   * Per-session set avoids the concurrency issue of a single boolean flag.
-   */
-  static readonly suppressedSessionIds = new Set<string>();
+  private static readonly forwardedGlobalErrors = new Set<string>();
 
   constructor(sessionId: string, forward: (entry: LogEntry) => void) {
     this.sessionId = sessionId;
@@ -1572,9 +1535,22 @@ class DaemonLogSink implements LogSink {
 
   write(entry: LogEntry): void {
     if (entry.level !== 'error') return;
-    if (entry.sessionId !== this.sessionId) return;
-    if (DaemonLogSink.suppressedSessionIds.has(this.sessionId)) return;
-    this.forward(entry);
+
+    const entrySessionId = entry.sessionId ?? (entry.data?.sessionId as string | undefined);
+
+    if (entrySessionId !== undefined) {
+      if (entrySessionId !== this.sessionId) return;
+      this.forward(entry);
+    } else {
+      const key = `${entry.timestamp}:${entry.message}`;
+      if (DaemonLogSink.forwardedGlobalErrors.has(key)) return;
+      DaemonLogSink.forwardedGlobalErrors.add(key);
+      if (DaemonLogSink.forwardedGlobalErrors.size > 100) {
+        const first = DaemonLogSink.forwardedGlobalErrors.values().next().value;
+        if (first) DaemonLogSink.forwardedGlobalErrors.delete(first);
+      }
+      this.forward(entry);
+    }
   }
 
   async flush(): Promise<void> {}

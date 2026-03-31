@@ -169,7 +169,7 @@ describe('mapSDKMessageToNormalized', () => {
 
     expect(result).toHaveLength(2);
     expect(result[0]?.role).toBe('event');
-    expect(result[0]?.role === 'event' && result[0].content.type).toBe('error');
+    expect(result[0]?.role === 'event' && result[0].content.type).toBe('daemon-log');
     expect(
       result[1]?.role === 'event' && result[1].content.type === 'status'
         ? result[1].content.state

@@ -246,12 +246,18 @@ describe('CLIRenderer', () => {
       expect(out).toContain('50');
     });
 
-    it('renders error event to stderr', () => {
+    it('renders daemon-log event to stderr', () => {
       const renderer = new CLIRenderer();
       renderer.render(
         makeMsg({
           role: 'event',
-          content: { type: 'error', message: 'something broke', retryable: false },
+          content: {
+            type: 'daemon-log',
+            level: 'error',
+            component: 'test',
+            message: 'something broke',
+            error: 'something broke',
+          },
         })
       );
       expect(stderrText()).toContain('something broke');

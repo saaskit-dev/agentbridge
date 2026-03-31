@@ -15,7 +15,9 @@ import { spawnDaemonSession, stopDaemon, stopDaemonSession } from '@/daemon/cont
 
 const runRealAgentSmoke = process.env.FREE_RUN_REAL_AGENT_SMOKE === '1';
 
-type SmokeResult = { kind: 'capabilities'; value: unknown } | { kind: 'error'; value: unknown };
+type SmokeResult =
+  | { kind: 'capabilities'; value: unknown }
+  | { kind: 'daemon-log'; value: unknown };
 
 async function waitForSmokeOutcome(
   appClient: FakeAppClient,
@@ -50,9 +52,11 @@ async function waitForSmokeOutcome(
       if (decrypted?.role !== 'event') {
         continue;
       }
-      const eventContent = decrypted.content as { type?: string; message?: string } | undefined;
-      if (eventContent?.type === 'error') {
-        return { kind: 'error', value: decrypted };
+      const eventContent = decrypted.content as
+        | { type?: string; message?: string; level?: string; component?: string; error?: string }
+        | undefined;
+      if (eventContent?.type === 'daemon-log') {
+        return { kind: 'daemon-log', value: decrypted };
       }
     }
 
@@ -77,13 +81,20 @@ function expectSmokeOutcome(outcome: SmokeResult): void {
     return;
   }
 
-  const visibleError = outcome.value as {
+  const daemonLog = outcome.value as {
     role?: string;
-    content?: { type?: string; message?: string };
+    content?: {
+      type?: string;
+      message?: string;
+      level?: string;
+      component?: string;
+      error?: string;
+    };
   } | null;
-  expect(visibleError?.role).toBe('event');
-  expect(visibleError?.content?.type).toBe('error');
-  expect(visibleError?.content?.message).toBeTruthy();
+  expect(daemonLog?.role).toBe('event');
+  expect(daemonLog?.content?.type).toBe('daemon-log');
+  expect(daemonLog?.content?.level).toBe('error');
+  expect(daemonLog?.content?.message).toBeTruthy();
 }
 
 describe.skipIf(!runRealAgentSmoke)(

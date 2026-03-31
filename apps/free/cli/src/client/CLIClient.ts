@@ -133,7 +133,7 @@ function feedMessageToBuffer(msg: NormalizedMessage, buffer: MessageBuffer): voi
         // Display formatted text from system/init and result/summary+stats
         buffer.addMessage(event.message, 'status');
         break;
-      case 'error':
+      case 'daemon-log':
         buffer.addMessage(`❌ ${event.message}`, 'result');
         break;
     }

@@ -47,11 +47,6 @@ const agentEventSchema = z.discriminatedUnion('type', [
     })
     .passthrough(),
   z.object({
-    type: z.literal('error'),
-    message: z.string(),
-    retryable: z.boolean(),
-  }),
-  z.object({
     type: z.literal('daemon-log'),
     level: z.enum(['error', 'warn']),
     component: z.string(),
@@ -687,7 +682,12 @@ export type NormalizedMessage = (
       content: {
         type: 'text';
         text: string;
-        attachments?: Array<{ id: string; mimeType: string; thumbhash?: string; filename?: string }>;
+        attachments?: Array<{
+          id: string;
+          mimeType: string;
+          thumbhash?: string;
+          filename?: string;
+        }>;
       };
     }
   | {
@@ -767,7 +767,11 @@ export function normalizeRawMessage(
       return null;
     }
     // Handle standard text content
-    const textContent = raw.content as { type: 'text'; text: string; attachments?: Array<{ id: string; mimeType: string; thumbhash?: string; filename?: string }> };
+    const textContent = raw.content as {
+      type: 'text';
+      text: string;
+      attachments?: Array<{ id: string; mimeType: string; thumbhash?: string; filename?: string }>;
+    };
     return {
       id,
 

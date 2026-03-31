@@ -564,7 +564,10 @@ class Sync {
     sessionId: string,
     text: string,
     displayText?: string,
-    opts?: { skipPresenceCheck?: boolean; attachments?: import('./attachmentUpload').AttachmentRef[] }
+    opts?: {
+      skipPresenceCheck?: boolean;
+      attachments?: import('./attachmentUpload').AttachmentRef[];
+    }
   ): Promise<{ ok: true } | { ok: false; reason: 'server_disconnected' | 'daemon_offline' }> {
     // Pre-check: server socket must be connected
     if (apiSocket.getStatus() !== 'connected') {
@@ -921,7 +924,9 @@ class Sync {
     }
 
     const data = await response.json();
-    logger.debug('[sync] fetchSessions: got sessions', { count: Array.isArray(data.sessions) ? data.sessions.length : 0 });
+    logger.debug('[sync] fetchSessions: got sessions', {
+      count: Array.isArray(data.sessions) ? data.sessions.length : 0,
+    });
     const sessions = data.sessions as Array<{
       id: string;
       tag: string | null;
@@ -1013,7 +1018,10 @@ class Sync {
       const fetchedIds = new Set(sessions.map(s => s.id));
       for (const sessionId of Object.keys(storage.getState().sessions)) {
         if (!fetchedIds.has(sessionId)) {
-          logger.info('[sync] purging session absent from server response (deleted while offline)', { sessionId });
+          logger.info(
+            '[sync] purging session absent from server response (deleted while offline)',
+            { sessionId }
+          );
           this.purgeSession(sessionId);
         }
       }
@@ -1776,7 +1784,9 @@ class Sync {
         }
 
         if (!apiKey || apiKey.includes('_here')) {
-          logger.debug(`[RevenueCat] Skipping init: ${!apiKey ? 'no API key' : 'placeholder key'} for platform ${Platform.OS}`);
+          logger.debug(
+            `[RevenueCat] Skipping init: ${!apiKey ? 'no API key' : 'placeholder key'} for platform ${Platform.OS}`
+          );
           return;
         }
 
@@ -2382,7 +2392,9 @@ class Sync {
 
       const encryption = this.encryption.getSessionEncryption(sessionId);
       if (!encryption) {
-        logger.debug('[sync] replay: no encryption for session, deferring to fetchMessages', { sessionId });
+        logger.debug('[sync] replay: no encryption for session, deferring to fetchMessages', {
+          sessionId,
+        });
         this.getMessagesSync(sessionId).invalidate();
         return;
       }
@@ -2393,7 +2405,11 @@ class Sync {
       for (let i = 0; i < decryptedMessages.length; i++) {
         const decrypted = decryptedMessages[i];
         if (!decrypted) continue;
-        const normalized = normalizeRawMessage(decrypted.id, decrypted.createdAt, decrypted.content);
+        const normalized = normalizeRawMessage(
+          decrypted.id,
+          decrypted.createdAt,
+          decrypted.content
+        );
         if (normalized) {
           if (!normalized.traceId && decrypted.traceId) normalized.traceId = decrypted.traceId;
           const msgSeq = messages[i]?.seq;
@@ -2424,7 +2440,9 @@ class Sync {
         });
         messageDB
           .upsertMessagesAndSeq(sessionId, cacheEntries, maxSeq)
-          .catch(e => logger.debug('[sync] replay messageDB upsert failed', { sessionId, error: String(e) }));
+          .catch(e =>
+            logger.debug('[sync] replay messageDB upsert failed', { sessionId, error: String(e) })
+          );
 
         this.sessionLastSeq.set(sessionId, maxSeq);
       }
@@ -2510,11 +2528,13 @@ class Sync {
     log.debug('Update received', { type: updateData.body.t });
 
     if (updateData.body.t === 'new-message') {
+      const sessionId = updateData.body.sid;
+
       // Get encryption
-      const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+      const encryption = this.encryption.getSessionEncryption(sessionId);
       if (!encryption) {
         // Should never happen
-        logger.error(`Session ${updateData.body.sid} not found`);
+        logger.error(`Session ${sessionId} not found`);
         this.fetchSessions(); // Just fetch sessions again
         return;
       }
@@ -2561,7 +2581,7 @@ class Sync {
             dataType === 'task_started' ||
             sessionEventType === 'turn-start' ||
             sessionEventType === 'turn-end' ||
-            (role === 'event' && (contentType === 'status' || contentType === 'error'))
+            (role === 'event' && contentType === 'status')
           ) {
             logger.debug(
               `🔄 [Sync] Lifecycle event detected: role=${role}, contentType=${contentType}, dataType=${dataType}, sessionEventType=${sessionEventType}`
@@ -2569,11 +2589,8 @@ class Sync {
           }
 
           // Agent event: { role: 'event', content: { type: 'status', state: 'idle' } }
-          // or { role: 'event', content: { type: 'error', ... } }
           const isAgentEventIdle =
-            role === 'event' &&
-            ((contentType === 'status' && rawContent?.content?.state === 'idle') ||
-              contentType === 'error');
+            role === 'event' && contentType === 'status' && rawContent?.content?.state === 'idle';
           const isAgentEventWorking =
             role === 'event' &&
             contentType === 'status' &&
@@ -2597,7 +2614,7 @@ class Sync {
           }
 
           // Update session
-          const session = storage.getState().sessions[updateData.body.sid];
+          const session = storage.getState().sessions[sessionId];
           if (session) {
             this.applySessions([
               {
@@ -2618,23 +2635,23 @@ class Sync {
           }
 
           // Fast-path only on consecutive seq values, otherwise fetch from server.
-          const currentLastSeq = this.sessionLastSeq.get(updateData.body.sid);
+          const currentLastSeq = this.sessionLastSeq.get(sessionId);
           const incomingSeq = updateData.body.message.seq;
           if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
             logger.debug('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
-            this.enqueueMessages(updateData.body.sid, [lastMessage]);
-            this.sessionLastSeq.set(updateData.body.sid, incomingSeq);
+            this.enqueueMessages(sessionId, [lastMessage]);
+            this.sessionLastSeq.set(sessionId, incomingSeq);
 
             // Cache fast-path message to SQLite so restarts don't create gaps.
             // Gaps cause toolCallSeenSinceLastText state loss → thinking blocks
             // fail to merge on reload.
             messageDB
               .upsertMessagesAndSeq(
-                updateData.body.sid,
+                sessionId,
                 [
                   {
                     id: lastMessage.id,
-                    session_id: updateData.body.sid,
+                    session_id: sessionId,
                     seq: incomingSeq,
                     content: JSON.stringify(decrypted.content),
                     trace_id: lastMessage.traceId ?? decrypted.traceId ?? null,
@@ -2647,7 +2664,7 @@ class Sync {
               )
               .catch(e =>
                 logger.debug('[sync] fast-path cache failed', {
-                  sessionId: updateData.body.sid,
+                  sessionId,
                   error: String(e),
                 })
               );
@@ -2660,13 +2677,13 @@ class Sync {
             ) {
               hasMutableTool = storage
                 .getState()
-                .isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
+                .isMutableToolCall(sessionId, lastMessage.content[0].tool_use_id);
             }
             if (hasMutableTool) {
-              gitStatusSync.invalidate(updateData.body.sid);
+              gitStatusSync.invalidate(sessionId);
             }
           } else {
-            this.getMessagesSync(updateData.body.sid).invalidate();
+            this.getMessagesSync(sessionId).invalidate();
           }
         }
       }
