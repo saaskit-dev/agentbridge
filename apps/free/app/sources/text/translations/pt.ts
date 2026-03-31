@@ -702,6 +702,12 @@ export const pt: TranslationStructure = {
     file: 'Arquivo',
     fileEmpty: 'Arquivo está vazio',
     noChanges: 'Nenhuma alteração para exibir',
+    browseTitle: 'Browse',
+    browseFolderUp: 'Up',
+    browseEmpty: 'This folder is empty',
+    browseLoadFailed: 'Could not load this folder',
+    browseNoPath:
+      'Project path unavailable. Open this session from a machine where the CLI is connected.',
   },
 
   settingsAccount: {

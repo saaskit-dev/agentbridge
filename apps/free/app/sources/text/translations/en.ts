@@ -674,6 +674,21 @@ export const en: TranslationStructure = {
     file: 'File',
     fileEmpty: 'File is empty',
     noChanges: 'No changes to display',
+    failedToDecodeContent: 'Failed to decode file content',
+    failedToReadFile: 'Failed to read file',
+    failedToLoadFile: 'Failed to load file',
+    pathCopied: 'Path copied',
+    fileSize: ({ bytes }: { bytes: number }) => {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    },
+    browseTitle: 'Browse',
+    browseFolderUp: 'Up',
+    browseEmpty: 'This folder is empty',
+    browseLoadFailed: 'Could not load this folder',
+    browseNoPath:
+      'Project path unavailable. Open this session from a machine where the CLI is connected.',
   },
 
   voiceStatusBar: {

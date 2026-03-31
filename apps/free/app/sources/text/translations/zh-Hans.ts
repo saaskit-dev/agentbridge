@@ -688,6 +688,20 @@ export const zhHans: TranslationStructure = {
     file: '文件',
     fileEmpty: '文件为空',
     noChanges: '没有要显示的更改',
+    failedToDecodeContent: '文件内容解码失败',
+    failedToReadFile: '读取文件失败',
+    failedToLoadFile: '加载文件失败',
+    pathCopied: '路径已复制',
+    fileSize: ({ bytes }: { bytes: number }) => {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    },
+    browseTitle: '浏览',
+    browseFolderUp: '上级',
+    browseEmpty: '此文件夹为空',
+    browseLoadFailed: '无法加载此文件夹',
+    browseNoPath: '无法获取项目路径。请在已连接 CLI 的机器上打开此会话。',
   },
 
   voiceStatusBar: {

@@ -720,6 +720,12 @@ export const ru: TranslationStructure = {
     file: 'Файл',
     fileEmpty: 'Файл пустой',
     noChanges: 'Нет изменений для отображения',
+    browseTitle: 'Browse',
+    browseFolderUp: 'Up',
+    browseEmpty: 'This folder is empty',
+    browseLoadFailed: 'Could not load this folder',
+    browseNoPath:
+      'Project path unavailable. Open this session from a machine where the CLI is connected.',
   },
 
   settingsAccount: {

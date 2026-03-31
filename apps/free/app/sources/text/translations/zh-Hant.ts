@@ -651,6 +651,20 @@ export const zhHant: TranslationStructure = {
     file: '檔案',
     fileEmpty: '檔案為空',
     noChanges: '沒有要顯示的更改',
+    failedToDecodeContent: '檔案內容解碼失敗',
+    failedToReadFile: '讀取檔案失敗',
+    failedToLoadFile: '載入檔案失敗',
+    pathCopied: '路徑已複製',
+    fileSize: ({ bytes }: { bytes: number }) => {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    },
+    browseTitle: '瀏覽',
+    browseFolderUp: '上層',
+    browseEmpty: '此資料夾為空',
+    browseLoadFailed: '無法載入此資料夾',
+    browseNoPath: '無法取得專案路徑。請在已連線 CLI 的裝置上開啟此工作階段。',
   },
 
   settingsAccount: {

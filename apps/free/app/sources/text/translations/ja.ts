@@ -661,6 +661,20 @@ export const ja: TranslationStructure = {
     file: 'ファイル',
     fileEmpty: 'ファイルは空です',
     noChanges: '表示する変更はありません',
+    failedToDecodeContent: 'ファイル内容のデコードに失敗しました',
+    failedToReadFile: 'ファイルの読み取りに失敗しました',
+    failedToLoadFile: 'ファイルの読み込みに失敗しました',
+    pathCopied: 'パスをコピーしました',
+    fileSize: ({ bytes }: { bytes: number }) => {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    },
+    browseTitle: 'ブラウズ',
+    browseFolderUp: '上へ',
+    browseEmpty: 'このフォルダは空です',
+    browseLoadFailed: 'このフォルダを読み込めませんでした',
+    browseNoPath: 'プロジェクトパスを取得できません。CLIが接続されたマシンでこのセッションを開いてください。',
   },
 
   settingsAccount: {

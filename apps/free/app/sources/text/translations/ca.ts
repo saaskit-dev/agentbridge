@@ -701,6 +701,12 @@ export const ca: TranslationStructure = {
     file: 'Fitxer',
     fileEmpty: 'El fitxer està buit',
     noChanges: 'No hi ha canvis a mostrar',
+    browseTitle: 'Browse',
+    browseFolderUp: 'Up',
+    browseEmpty: 'This folder is empty',
+    browseLoadFailed: 'Could not load this folder',
+    browseNoPath:
+      'Project path unavailable. Open this session from a machine where the CLI is connected.',
   },
 
   settingsAccount: {
