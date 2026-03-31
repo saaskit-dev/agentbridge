@@ -47,4 +47,4 @@ used to fix third-party bugs, or dependency version pins for compatibility reaso
 
 改 `packages/core` 的对外类型或导出后，校验 CLI 请用仓库根目录 **`pnpm typecheck`**（Turbo 会先对 `@saaskit-dev/agentbridge` 执行 `build` 再对 CLI 做 `tsc`）。若只单独跑 `apps/free/cli` 的 `pnpm run typecheck`，需先执行 **`pnpm --filter @saaskit-dev/agentbridge run build`**，否则可能读到旧的 `dist` 类型。全仓库含 App 时用 **`pnpm typecheck:all`**（当前 App 若有既有 TS 报错会失败）。
 
-GitHub Actions 里 **Typecheck (core + CLI)** 工作流为 **`workflow_dispatch` 手动触发**，默认不在 push/PR 上自动跑。
+Typecheck（core + CLI）已并入 `Lint & Dependency Guard` 门禁的自动流程（CI 不通过将不会继续构建/部署）。

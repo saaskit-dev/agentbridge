@@ -33,7 +33,7 @@ export default tseslint.config(
     ],
   },
   {
-    files: ['**/*.{ts,tsx,js}'],
+    files: ['**/*.{ts,tsx,js,mjs,cjs}'],
     languageOptions: {
       parserOptions: {
         ecmaVersion: 2022,
