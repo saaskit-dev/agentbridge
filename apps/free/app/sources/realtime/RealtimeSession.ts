@@ -8,6 +8,7 @@ import {
   requestMicrophonePermission,
   showMicrophonePermissionDeniedAlert,
 } from '@/utils/microphonePermissions';
+import { sessionLogger } from '@/sync/appTraceStore';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/RealtimeSession');
 
@@ -21,11 +22,12 @@ let lastInitialContext: string | undefined = undefined;
 const MAX_RECONNECT_ATTEMPTS = 3;
 
 export async function startRealtimeSession(sessionId: string, initialContext?: string) {
+  const log = sessionLogger(logger, sessionId);
   if (initialContext !== undefined) {
     lastInitialContext = initialContext;
   }
   if (!voiceSession) {
-    logger.warn('No voice session registered');
+    log.warn('No voice session registered');
     const { Modal } = require('@/modal');
     Modal.alert(t('common.error'), t('errors.voiceNotInitialized'));
     return;
@@ -34,7 +36,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
   // Request microphone permission before starting voice session
   // Critical for iOS/Android - first session will fail without this
   const permissionResult = await requestMicrophonePermission();
-  logger.debug('[Voice] microphone permission', { granted: permissionResult.granted, sessionId });
+  log.debug('[Voice] microphone permission', { granted: permissionResult.granted });
   if (!permissionResult.granted) {
     showMicrophonePermissionDeniedAlert(permissionResult.canAskAgain);
     return;
@@ -44,7 +46,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
   const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
 
   if (!agentId) {
-    logger.error('Agent ID not configured');
+    log.error('Agent ID not configured');
     const { Modal } = require('@/modal');
     Modal.alert(t('common.error'), t('errors.voiceNotConfigured'));
     return;
@@ -60,7 +62,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         initialContext,
         agentId, // Use agentId directly, no token
       });
-      logger.info('[Voice] session started (simple)', { sessionId });
+      log.info('[Voice] session started (simple)');
       return;
     }
 
@@ -73,19 +75,19 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     }
 
     const response = await fetchVoiceToken(credentials, sessionId);
-    logger.debug('[Voice] fetchVoiceToken response', { sessionId, allowed: response.allowed });
+    log.debug('[Voice] fetchVoiceToken response', { allowed: response.allowed });
 
     if (!response.allowed) {
       if (!response.token) {
-        logger.debug('[Voice] Token not available, server may not support voice', { sessionId });
+        log.debug('[Voice] Token not available, server may not support voice');
         const { Modal } = require('@/modal');
         Modal.alert(t('common.error'), t('errors.voiceTokenRejected'));
         return;
       }
-      logger.debug('[Voice] Not allowed, presenting paywall', { sessionId });
+      log.debug('[Voice] Not allowed, presenting paywall');
       const { sync } = require('@/sync/sync');
       const result = await sync.presentPaywall();
-      logger.debug('[Voice] Paywall result', { sessionId, purchased: result.purchased });
+      log.debug('[Voice] Paywall result', { purchased: result.purchased });
       if (result.purchased) {
         await startRealtimeSession(sessionId, initialContext);
       }
@@ -103,7 +105,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         token: response.token,
         agentId: response.agentId,
       });
-      logger.info('[Voice] session started (with token)', { sessionId });
+      log.info('[Voice] session started (with token)');
     } else {
       // No token (e.g. server not deployed yet) - use agentId directly
       await voiceSession.startSession({
@@ -111,10 +113,10 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         initialContext,
         agentId,
       });
-      logger.info('[Voice] session started (agentId only)', { sessionId });
+      log.info('[Voice] session started (agentId only)');
     }
   } catch (error) {
-    logger.error('Failed to start realtime session', toError(error), { sessionId });
+    log.error('Failed to start realtime session', toError(error));
     currentSessionId = null;
     voiceSessionStarted = false;
     const { Modal } = require('@/modal');
@@ -137,15 +139,15 @@ export async function stopRealtimeSession() {
   try {
     isIntentionalStop = true;
     await voiceSession.endSession();
-    logger.info('[Voice] session stopped', { sessionId: currentSessionId });
+    const stopLog = currentSessionId ? sessionLogger(logger, currentSessionId) : logger;
+    stopLog.info('[Voice] session stopped');
     currentSessionId = null;
     voiceSessionStarted = false;
     reconnectAttempts = 0;
     lastInitialContext = undefined;
   } catch (error) {
-    logger.error('Failed to stop realtime session', toError(error), {
-      sessionId: currentSessionId,
-    });
+    const errLog = currentSessionId ? sessionLogger(logger, currentSessionId) : logger;
+    errLog.error('Failed to stop realtime session', toError(error));
   } finally {
     isIntentionalStop = false;
   }
@@ -156,14 +158,15 @@ export function shouldAutoReconnect(): boolean {
 }
 
 export function scheduleReconnect(sessionId: string): void {
+  const log = sessionLogger(logger, sessionId);
   reconnectAttempts++;
   const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 8000); // 1s, 2s, 4s max 8s
-  logger.info('[Voice] scheduling reconnect', { attempt: reconnectAttempts, delayMs: delay, sessionId });
+  log.info('[Voice] scheduling reconnect', { attempt: reconnectAttempts, delayMs: delay });
   storage.getState().setRealtimeStatus('reconnecting');
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     startRealtimeSession(sessionId, lastInitialContext).catch(e => {
-      logger.error('[Voice] auto-reconnect failed', toError(e), { sessionId });
+      log.error('[Voice] auto-reconnect failed', toError(e));
     });
   }, delay);
 }
@@ -174,7 +177,8 @@ export function resetReconnectAttempts(): void {
 
 /** Switch the active agent session without restarting the ElevenLabs connection. */
 export function switchCurrentSession(sessionId: string): void {
-  logger.info('[Voice] switched current session', { from: currentSessionId, to: sessionId });
+  const log = sessionLogger(logger, sessionId);
+  log.info('[Voice] switched current session', { from: currentSessionId });
   currentSessionId = sessionId;
 }
 

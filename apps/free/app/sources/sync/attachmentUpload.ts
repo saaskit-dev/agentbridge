@@ -5,6 +5,7 @@ import type { ImagePickerAsset } from 'expo-image-picker';
 import { apiSocket } from './apiSocket';
 import { messageDB } from './messageDB';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { sessionLogger } from '@/sync/appTraceStore';
 
 export interface AttachmentRef {
   id: string;
@@ -228,11 +229,11 @@ export async function loadAttachmentUri(
         return blobUrl;
       }
     } catch (err) {
-      logger.error('[loadAttachmentUri] IDB load failed', err, { attachmentId });
+      const log = sessionId ? sessionLogger(logger, sessionId) : logger;
+      log.error('[loadAttachmentUri] IDB load failed', err, { attachmentId });
     }
   }
 
-  // Last resort: download from daemon via server
   if (sessionId) {
     return downloadAttachment(sessionId, attachmentId, mimeType);
   }
@@ -258,9 +259,10 @@ async function downloadAttachment(
   const existing = downloadInflight.get(attachmentId);
   if (existing) return existing;
 
-  // Negative cache: skip if recently failed
   const failedAt = downloadFailed.get(attachmentId);
   if (failedAt && Date.now() - failedAt < DOWNLOAD_RETRY_COOLDOWN_MS) return undefined;
+
+  const log = sessionLogger(logger, sessionId);
 
   const promise = (async () => {
     try {
@@ -276,7 +278,7 @@ async function downloadAttachment(
       );
 
       if (!ack.ok || !ack.data) {
-        logger.debug('[downloadAttachment] server returned not-ok', {
+        log.debug('[downloadAttachment] server returned not-ok', {
           attachmentId,
           error: ack.error,
         });
@@ -284,10 +286,9 @@ async function downloadAttachment(
         return undefined;
       }
 
-      // Socket.IO may return a Buffer (Node polyfill) on native — normalize to ArrayBuffer
       const bytes = ack.data instanceof ArrayBuffer ? ack.data : new Uint8Array(ack.data).buffer;
       const persistedUri = await persistAttachmentFile(
-        '', // compressedUri not used when bytes are provided
+        '',
         attachmentId,
         ack.mimeType ?? mimeType,
         sessionId,
@@ -295,14 +296,13 @@ async function downloadAttachment(
       );
       localUriCache.set(attachmentId, persistedUri);
       downloadFailed.delete(attachmentId);
-      logger.info('[downloadAttachment] attachment downloaded and persisted', {
+      log.info('[downloadAttachment] attachment downloaded and persisted', {
         attachmentId,
-        sessionId,
         bytes: bytes.byteLength,
       });
       return persistedUri;
     } catch (err) {
-      logger.debug('[downloadAttachment] failed', err, { attachmentId, sessionId });
+      log.error('[downloadAttachment] failed', err, { attachmentId });
       downloadFailed.set(attachmentId, Date.now());
       return undefined;
     } finally {
@@ -361,6 +361,7 @@ async function persistAttachmentFile(
  * Called when the session is permanently deleted so disk space is reclaimed.
  */
 export async function deleteSessionAttachments(sessionId: string): Promise<void> {
+  const log = sessionLogger(logger, sessionId);
   const entries = await messageDB.kvGetAll(`session-attachments:${sessionId}`);
   const ids = entries.map(e => e.key);
 
@@ -372,14 +373,14 @@ export async function deleteSessionAttachments(sessionId: string): Promise<void>
         const file = attachmentFile(id, mimeType);
         if (file.exists) file.delete();
       } catch (err) {
-        logger.error('[deleteSessionAttachments] failed to delete file', err, { id });
+        log.error('[deleteSessionAttachments] failed to delete file', err, { id });
       }
     }
   }
 
   for (const id of ids) localUriCache.delete(id);
   await messageDB.kvDeleteAll(`session-attachments:${sessionId}`);
-  logger.debug('[deleteSessionAttachments] done', { sessionId, count: entries.length });
+  log.debug('[deleteSessionAttachments] done', { count: entries.length });
 }
 
 /**
@@ -392,8 +393,9 @@ export async function uploadAttachment(
   asset: ImagePickerAsset,
   sessionId: string
 ): Promise<UploadResult> {
-  logger.info('[uploadAttachment] start', {
-    sessionId,
+  const log = sessionLogger(logger, sessionId);
+
+  log.info('[uploadAttachment] start', {
     assetUri: asset.uri.slice(-40),
     assetMime: asset.mimeType,
     width: asset.width,
@@ -411,12 +413,11 @@ export async function uploadAttachment(
   let persistentUri: string;
   try {
     persistentUri = copyToPersistentUri(asset);
-    logger.info('[uploadAttachment] copied to persistent uri', {
-      sessionId,
+    log.info('[uploadAttachment] copied to persistent uri', {
       persistentUri: persistentUri.slice(-40),
     });
   } catch (err) {
-    logger.error('[uploadAttachment] copy failed', err, { sessionId, assetUri: asset.uri.slice(-40) });
+    log.error('[uploadAttachment] copy failed', err, { assetUri: asset.uri.slice(-40) });
     throw new Error(`Failed to copy image: ${err instanceof Error ? err.message : String(err)}`);
   }
 
@@ -430,22 +431,21 @@ export async function uploadAttachment(
 
   try {
     if (needsResize || assetMime !== 'image/png') {
-      logger.info('[uploadAttachment] compressing', { sessionId, needsResize, assetMime });
+      log.info('[uploadAttachment] compressing', { needsResize, assetMime });
       const result = await compressImage(persistentUri, assetMime);
       compressedUri = result.uri;
       mimeType = result.mimeType;
-      logger.info('[uploadAttachment] compressed', {
-        sessionId,
+      log.info('[uploadAttachment] compressed', {
         compressedUri: compressedUri.slice(-40),
         mimeType,
       });
     } else {
       compressedUri = persistentUri;
       mimeType = assetMime;
-      logger.info('[uploadAttachment] skip compress (small PNG)', { sessionId });
+      log.info('[uploadAttachment] skip compress (small PNG)');
     }
   } catch (err) {
-    logger.error('[uploadAttachment] compress failed', err, { sessionId });
+    log.error('[uploadAttachment] compress failed', err);
     throw new Error(`Failed to compress image: ${err instanceof Error ? err.message : String(err)}`);
   }
 
@@ -456,7 +456,7 @@ export async function uploadAttachment(
       bytes = await readFileBytes(compressedUri);
     } else {
       const size = getFileSize(compressedUri);
-      logger.info('[uploadAttachment] file size', { sessionId, sizeBytes: size });
+      log.info('[uploadAttachment] file size', { sizeBytes: size });
       if (size > MAX_SIZE_BYTES) {
         throw new Error(`Image too large (${(size / 1024 / 1024).toFixed(1)}MB > 8MB limit)`);
       }
@@ -465,17 +465,16 @@ export async function uploadAttachment(
     if (bytes.byteLength > MAX_SIZE_BYTES) {
       throw new Error(`Image too large (${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB > 8MB limit)`);
     }
-    logger.info('[uploadAttachment] bytes read', { sessionId, byteLength: bytes.byteLength });
+    log.info('[uploadAttachment] bytes read', { byteLength: bytes.byteLength });
   } catch (err) {
     if (err instanceof Error && err.message.includes('too large')) throw err;
-    logger.error('[uploadAttachment] read bytes failed', err, { sessionId });
+    log.error('[uploadAttachment] read bytes failed', err);
     throw new Error(`Failed to read image: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // 5. Upload via socket with 30s timeout
   const socketStatus = apiSocket.getStatus();
-  logger.info('[uploadAttachment] emitting upload-attachment', {
-    sessionId,
+  log.info('[uploadAttachment] emitting upload-attachment', {
     mimeType,
     byteLength: bytes.byteLength,
     socketStatus,
@@ -501,8 +500,7 @@ export async function uploadAttachment(
       30_000
     );
 
-    logger.info('[uploadAttachment] ack received', {
-      sessionId,
+    log.info('[uploadAttachment] ack received', {
       ok: ack.ok,
       attachmentId: ack.attachmentId,
       error: ack.error,
@@ -512,7 +510,6 @@ export async function uploadAttachment(
       throw new Error(ack.error ?? 'Upload failed (server returned ok:false)');
     }
 
-    // Persist to a deterministic path so the file survives app/page restarts.
     const persistedUri = await persistAttachmentFile(
       compressedUri,
       ack.attachmentId,
@@ -532,10 +529,8 @@ export async function uploadAttachment(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // Distinguish timeout from other errors
     const isTimeout = msg.includes('timeout') || msg.includes('timed out');
-    logger.error('[uploadAttachment] socket emit failed', err, {
-      sessionId,
+    log.error('[uploadAttachment] socket emit failed', err, {
       isTimeout,
       socketStatus: apiSocket.getStatus(),
     });
@@ -566,8 +561,9 @@ export async function uploadClipboardImage(
   image: ClipboardImageInput,
   sessionId: string
 ): Promise<UploadResult> {
-  logger.info('[uploadClipboardImage] start', {
-    sessionId,
+  const log = sessionLogger(logger, sessionId);
+
+  log.info('[uploadClipboardImage] start', {
     mimeType: image.mimeType,
     width: image.width,
     height: image.height,
@@ -577,9 +573,6 @@ export async function uploadClipboardImage(
   const ext = image.mimeType === 'image/png' ? 'png' : 'jpg';
   let fileUri = image.uri;
 
-  // On native, data-URIs must be persisted to a temp file first so that
-  // compressImage / readFileBytes (which use expo-file-system File) can
-  // access them.
   if (Platform.OS !== 'web' && image.uri.startsWith('data:')) {
     const base64 = image.uri.split(',')[1];
     if (!base64) throw new Error('Invalid clipboard data URI');
@@ -589,14 +582,12 @@ export async function uploadClipboardImage(
     dest.create();
     dest.write(bytes);
     fileUri = dest.uri;
-    logger.info('[uploadClipboardImage] saved data-URI to file', {
-      sessionId,
+    log.info('[uploadClipboardImage] saved data-URI to file', {
       destUri: dest.uri.slice(-40),
       byteLength: bytes.length,
     });
   }
 
-  // Build an ImagePickerAsset-compatible object and delegate
   const asset: ImagePickerAsset = {
     uri: fileUri,
     mimeType: image.mimeType,

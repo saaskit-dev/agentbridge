@@ -58,7 +58,7 @@ import { Session, Machine } from './storageTypes';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { apiSocket } from '@/sync/apiSocket';
-import { setSessionTrace, clearSessionTrace } from '@/sync/appTraceStore';
+import { setSessionTrace, clearSessionTrace, sessionLogger } from '@/sync/appTraceStore';
 import { Encryption } from '@/sync/encryption/encryption';
 import { InvalidateSync } from '@/utils/sync';
 import type { PermissionMode } from './sessionCapabilities';
@@ -275,7 +275,8 @@ class Sync {
   }
 
   onSessionVisible = async (sessionId: string) => {
-    logger.debug('[sync] onSessionVisible', { sessionId });
+    const log = sessionLogger(logger, sessionId);
+    log.debug('[sync] onSessionVisible');
 
     // Load cached messages from local SQLite first (instant render)
     if (!this.sessionLastSeq.has(sessionId)) {
@@ -323,8 +324,7 @@ class Sync {
                 // mergeIntoPreviousRootAgentText requires createdAt >= previous.createdAt.
                 normalized.reverse();
                 this.enqueueMessages(sessionId, normalized);
-                logger.debug('[sync] loaded from SQLite cache', {
-                  sessionId,
+                log.debug('[sync] loaded from SQLite cache', {
                   count: normalized.length,
                   lastSeq: cachedSeq,
                   oldestSeq: minSeq,
@@ -334,8 +334,7 @@ class Sync {
           }
         }
       } catch (error) {
-        logger.debug('[sync] SQLite cache read failed, will fetch from server', {
-          sessionId,
+        log.debug('[sync] SQLite cache read failed, will fetch from server', {
           error: safeStringify(error),
         });
       }
@@ -393,7 +392,8 @@ class Sync {
       return;
     }
 
-    logger.debug('enqueueMessages', { sessionId, count: messages.length });
+    const log = sessionLogger(logger, sessionId);
+    log.debug('enqueueMessages', { count: messages.length });
 
     let queue = this.sessionMessageQueue.get(sessionId);
     if (!queue) {
@@ -421,6 +421,7 @@ class Sync {
   }
 
   private processMessageQueue(sessionId: string) {
+    const log = sessionLogger(logger, sessionId);
     this.sessionQueueProcessing.add(sessionId);
     try {
       while (true) {
@@ -429,7 +430,7 @@ class Sync {
           break;
         }
         const batch = pending.splice(0, pending.length);
-        logger.debug('enqueueMessages: processing batch', { sessionId, batchSize: batch.length });
+        log.debug('enqueueMessages: processing batch', { batchSize: batch.length });
         this.applyMessages(sessionId, batch);
       }
     } finally {
@@ -569,10 +570,10 @@ class Sync {
       attachments?: import('./attachmentUpload').AttachmentRef[];
     }
   ): Promise<{ ok: true } | { ok: false; reason: 'server_disconnected' | 'daemon_offline' }> {
+    const log = sessionLogger(logger, sessionId);
     // Pre-check: server socket must be connected
     if (apiSocket.getStatus() !== 'connected') {
-      logger.info('[App] sendMessage blocked: server socket not connected', {
-        sessionId,
+      log.info('[App] sendMessage blocked: server socket not connected', {
         socketStatus: apiSocket.getStatus(),
       });
       return { ok: false, reason: 'server_disconnected' };
@@ -581,15 +582,14 @@ class Sync {
     // Get session data from storage
     const session = storage.getState().sessions[sessionId];
     if (!session) {
-      logger.error(`Session ${sessionId} not found in storage`);
+      log.error('Session not found in storage');
       return { ok: false, reason: 'server_disconnected' };
     }
 
     // Pre-check: daemon must be online (presence kept alive by keepAlive every 2s)
     // Skip for newly created sessions where keepAlive hasn't arrived yet.
     if (!opts?.skipPresenceCheck && session.presence !== 'online') {
-      logger.info('[App] sendMessage blocked: daemon not online', {
-        sessionId,
+      log.info('[App] sendMessage blocked: daemon not online', {
         presence: session.presence,
       });
       return { ok: false, reason: 'daemon_offline' };
@@ -598,8 +598,7 @@ class Sync {
     // Get encryption
     const encryption = this.encryption.getSessionEncryption(sessionId);
     if (!encryption) {
-      // Should never happen
-      logger.error(`Session ${sessionId} not found`);
+      log.error('Session encryption not found');
       return { ok: false, reason: 'server_disconnected' };
     }
 
@@ -623,11 +622,9 @@ class Sync {
     const trace = makeWireTrace(sessionId);
     // Update session trace store so subsequent RPC calls on this session carry the same trace (RFC §7.1)
     setSessionTrace(sessionId, trace);
-    logger.info('[App] sending message', {
+    log.info('[App] sending message', {
       userId: this.accountId,
-      sessionId,
       id,
-      traceId: trace.tid,
       preview: text.slice(0, 100),
     });
 
@@ -1018,9 +1015,8 @@ class Sync {
       const fetchedIds = new Set(sessions.map(s => s.id));
       for (const sessionId of Object.keys(storage.getState().sessions)) {
         if (!fetchedIds.has(sessionId)) {
-          logger.info(
-            '[sync] purging session absent from server response (deleted while offline)',
-            { sessionId }
+          sessionLogger(logger, sessionId).info(
+            '[sync] purging session absent from server response (deleted while offline)'
           );
           this.purgeSession(sessionId);
         }
@@ -1824,6 +1820,7 @@ class Sync {
   private static readonly FLUSH_BATCH_SIZE = 100;
 
   private flushOutbox = async (sessionId: string) => {
+    const log = sessionLogger(logger, sessionId);
     const pending = this.pendingOutbox.get(sessionId);
     if (!pending || pending.length === 0) {
       if (!this.hasPendingOutboxMessages()) {
@@ -1843,8 +1840,7 @@ class Sync {
     // Drain in batches via WebSocket emitWithAck (RFC-010).
     while (pending.length > 0) {
       const batch = pending.slice(0, Sync.FLUSH_BATCH_SIZE);
-      logger.debug('flushOutbox: sending batch', {
-        sessionId,
+      log.debug('flushOutbox: sending batch', {
         batchSize: batch.length,
         total: pending.length,
       });
@@ -1866,8 +1862,7 @@ class Sync {
           throw new Error(`Failed to send messages for ${sessionId}: ${ack.error}`);
         }
 
-        logger.debug('flushOutbox: batch sent successfully', {
-          sessionId,
+        log.debug('flushOutbox: batch sent successfully', {
           batchSize: batch.length,
           remaining: pending.length - batch.length,
         });
@@ -1891,8 +1886,7 @@ class Sync {
             if (minNewSeq <= currentLastSeq + 1) {
               this.sessionLastSeq.set(sessionId, maxSeq);
             } else {
-              logger.info('flushOutbox: seq gap detected, triggering fetch to fill', {
-                sessionId,
+              log.info('flushOutbox: seq gap detected, triggering fetch to fill', {
                 currentLastSeq,
                 minNewSeq,
                 maxSeq,
@@ -1902,8 +1896,7 @@ class Sync {
           }
         }
       } catch (error) {
-        logger.error('flushOutbox: failed to send batch', toError(error), {
-          sessionId,
+        log.error('flushOutbox: failed to send batch', toError(error), {
           batchSize: batch.length,
         });
         storage.getState().setSessionSendError(sessionId, {
@@ -1932,11 +1925,12 @@ class Sync {
   private static readonly MAX_FETCH_PAGES = 20;
 
   private fetchMessages = async (sessionId: string) => {
-    logger.debug(`💬 fetchMessages starting for session ${sessionId}`);
+    const log = sessionLogger(logger, sessionId);
+    log.debug('fetchMessages starting');
 
     const encryption = this.encryption.getSessionEncryption(sessionId);
     if (!encryption) {
-      logger.debug(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
+      log.debug('fetchMessages: Session encryption not ready, will retry');
       throw new Error(`Session encryption not ready for ${sessionId}`);
     }
 
@@ -2024,31 +2018,30 @@ class Sync {
         messageDB
           .upsertMessagesAndSeq(sessionId, cacheEntries, maxSeq)
           .catch(e =>
-            logger.debug('[sync] messageDB upsertAndSeq failed', { sessionId, error: String(e) })
+            log.debug('[sync] messageDB upsertAndSeq failed', { error: String(e) })
           );
       } else {
         messageDB
           .updateLastSeq(sessionId, maxSeq)
           .catch(e =>
-            logger.debug('[sync] messageDB updateLastSeq failed', { sessionId, error: String(e) })
+            log.debug('[sync] messageDB updateLastSeq failed', { error: String(e) })
           );
       }
 
       this.sessionLastSeq.set(sessionId, maxSeq);
       hasMore = !!ack.hasMore;
       if (hasMore && maxSeq === afterSeq) {
-        logger.debug(
-          `💬 fetchMessages: pagination stalled for ${sessionId}, stopping to avoid infinite loop`
-        );
+        log.debug('fetchMessages: pagination stalled, stopping to avoid infinite loop');
         break;
       }
       afterSeq = maxSeq;
     }
 
     if (hasMore && pageCount >= Sync.MAX_FETCH_PAGES) {
-      logger.info(
-        `💬 fetchMessages: hit page cap (${Sync.MAX_FETCH_PAGES}) for ${sessionId}, stopped at seq ${afterSeq}, scheduling continuation`
-      );
+      log.info('fetchMessages: hit page cap, scheduling continuation', {
+        maxPages: Sync.MAX_FETCH_PAGES,
+        afterSeq,
+      });
       // Schedule another fetch round to continue loading remaining messages.
       // InvalidateSync._invalidatedDouble chains rounds until hasMore === false.
       this.getMessagesSync(sessionId).invalidate();
@@ -2085,9 +2078,7 @@ class Sync {
       }
     }
 
-    logger.debug(
-      `💬 fetchMessages completed for session ${sessionId} - processed ${totalNormalized} messages in ${pageCount} pages`
-    );
+    log.debug('fetchMessages completed', { totalNormalized, pageCount });
   };
 
   /** Tracks the minimum seq loaded per session — used as cursor for "load older" */
@@ -2109,6 +2100,7 @@ class Sync {
     if (!sessionMessages || sessionMessages.isLoadingOlder || !sessionMessages.hasOlderMessages)
       return;
 
+    const log = sessionLogger(logger, sessionId);
     const beforeSeq = this.sessionOldestSeq.get(sessionId);
     if (beforeSeq == null || beforeSeq <= 1) {
       storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: false });
@@ -2210,7 +2202,7 @@ class Sync {
         messageDB
           .upsertMessages(sessionId, cacheEntries)
           .catch(e =>
-            logger.debug('[sync] messageDB upsert failed', { sessionId, error: String(e) })
+            log.debug('[sync] messageDB upsert failed', { error: String(e) })
           );
       }
 
@@ -2219,8 +2211,7 @@ class Sync {
         isLoadingOlder: false,
       });
     } catch (error) {
-      logger.error('[sync] loadOlderMessages failed', undefined, {
-        sessionId,
+      log.error('[sync] loadOlderMessages failed', undefined, {
         error: safeStringify(error),
       });
       storage.getState().setSessionOlderMessagesState(sessionId, { isLoadingOlder: false });
@@ -2269,6 +2260,7 @@ class Sync {
    * send state, and Zustand messages — so the next visit re-fetches from server.
    */
   async clearSessionCache(sessionId: string): Promise<void> {
+    const log = sessionLogger(logger, sessionId);
     // SQLite: messages + session_sync rows
     await messageDB.deleteSession(sessionId);
 
@@ -2319,7 +2311,7 @@ class Sync {
       storage.setState({ sessionMessages: remaining });
     }
 
-    logger.info('[sync] session cache cleared', { sessionId });
+    log.info('[sync] session cache cleared');
 
     // Re-trigger fetch so the session reloads from server immediately.
     // onSessionVisible won't be called again because SessionView is already mounted.
@@ -2382,19 +2374,18 @@ class Sync {
    * Messages are in the same format as fetch-messages responses (encrypted).
    */
   private handleReplay = async (data: unknown) => {
+    const sessionId = (data as Record<string, unknown>)?.sessionId as string | undefined;
     try {
-      const { sessionId, messages, hasMore } = data as {
-        sessionId: string;
+      const { messages, hasMore } = data as {
         messages: ApiMessage[];
         hasMore: boolean;
       };
       if (!sessionId || !Array.isArray(messages) || messages.length === 0) return;
 
+      const log = sessionLogger(logger, sessionId);
       const encryption = this.encryption.getSessionEncryption(sessionId);
       if (!encryption) {
-        logger.debug('[sync] replay: no encryption for session, deferring to fetchMessages', {
-          sessionId,
-        });
+        log.debug('[sync] replay: no encryption for session, deferring to fetchMessages');
         this.getMessagesSync(sessionId).invalidate();
         return;
       }
@@ -2441,7 +2432,7 @@ class Sync {
         messageDB
           .upsertMessagesAndSeq(sessionId, cacheEntries, maxSeq)
           .catch(e =>
-            logger.debug('[sync] replay messageDB upsert failed', { sessionId, error: String(e) })
+            log.debug('[sync] replay messageDB upsert failed', { error: String(e) })
           );
 
         this.sessionLastSeq.set(sessionId, maxSeq);
@@ -2452,13 +2443,13 @@ class Sync {
         this.getMessagesSync(sessionId).invalidate();
       }
 
-      logger.info('[sync] replay: processed missed messages', {
-        sessionId,
+      log.info('[sync] replay: processed missed messages', {
         count: normalizedMessages.length,
         hasMore,
       });
     } catch (e) {
-      logger.error('[sync] replay handler failed', toError(e));
+      const errLog = sessionId ? sessionLogger(logger, sessionId) : logger;
+      errLog.error('[sync] replay handler failed', toError(e));
     }
   };
 
@@ -2533,9 +2524,8 @@ class Sync {
       // Get encryption
       const encryption = this.encryption.getSessionEncryption(sessionId);
       if (!encryption) {
-        // Should never happen
-        logger.error(`Session ${sessionId} not found`);
-        this.fetchSessions(); // Just fetch sessions again
+        log.error('Session encryption not found for new-message');
+        this.fetchSessions();
         return;
       }
 
@@ -2583,7 +2573,7 @@ class Sync {
             sessionEventType === 'turn-end' ||
             (role === 'event' && contentType === 'status')
           ) {
-            logger.debug(
+            log.debug(
               `🔄 [Sync] Lifecycle event detected: role=${role}, contentType=${contentType}, dataType=${dataType}, sessionEventType=${sessionEventType}`
             );
           }
@@ -2608,7 +2598,7 @@ class Sync {
             isAgentEventWorking;
 
           if (isTaskComplete || isTaskStarted) {
-            logger.debug(
+            log.debug(
               `🔄 [Sync] Updating thinking state: isTaskComplete=${isTaskComplete}, isTaskStarted=${isTaskStarted}`
             );
           }
@@ -2638,7 +2628,7 @@ class Sync {
           const currentLastSeq = this.sessionLastSeq.get(sessionId);
           const incomingSeq = updateData.body.message.seq;
           if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-            logger.debug('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
+            log.debug('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
             this.enqueueMessages(sessionId, [lastMessage]);
             this.sessionLastSeq.set(sessionId, incomingSeq);
 
@@ -2663,8 +2653,7 @@ class Sync {
                 incomingSeq
               )
               .catch(e =>
-                logger.debug('[sync] fast-path cache failed', {
-                  sessionId,
+                log.debug('[sync] fast-path cache failed', {
                   error: String(e),
                 })
               );
@@ -2688,22 +2677,20 @@ class Sync {
         }
       }
     } else if (updateData.body.t === 'new-session') {
-      logger.debug('🆕 New session update received');
+      log.debug('New session update received');
       this.sessionsSync.invalidate();
     } else if (updateData.body.t === 'delete-session') {
-      logger.debug('🗑️ Delete session update received');
+      log.debug('Delete session update received');
       const sessionId = updateData.body.sid;
       this.purgeSession(sessionId);
-      logger.debug(`🗑️ Session ${sessionId} deleted from local storage`);
+      log.debug('Session deleted from local storage');
     } else if (updateData.body.t === 'update-session') {
       const session = storage.getState().sessions[updateData.body.id];
       if (session) {
         // Get session encryption
         const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
         if (!sessionEncryption) {
-          logger.error(
-            `Session encryption not found for ${updateData.body.id} - this should never happen`
-          );
+          log.error('Session encryption not found for update-session');
           return;
         }
 
@@ -2757,7 +2744,7 @@ class Sync {
           updateData.body.capabilities &&
           updateData.body.capabilities.version !== session.capabilitiesVersion
         ) {
-          logger.debug('update-session capabilities changed, persisting cache', {
+          log.debug('update-session capabilities changed, persisting cache', {
             sessionId: updateData.body.id,
             machineId: metadata?.machineId,
             agentType: metadata?.flavor,
@@ -2778,7 +2765,7 @@ class Sync {
             updatedAt: updateData.createdAt,
           });
         } else if (updateData.body.capabilities) {
-          logger.debug('update-session capabilities unchanged, skipping cache persist', {
+          log.debug('update-session capabilities unchanged, skipping cache persist', {
             sessionId: updateData.body.id,
             machineId: metadata?.machineId,
             agentType: metadata?.flavor,
@@ -2795,7 +2782,7 @@ class Sync {
           const wasControlledByUser = session.agentState?.controlledByUser;
           const isNowControlledByUser = agentState?.controlledByUser;
           if (!wasControlledByUser && isNowControlledByUser) {
-            logger.debug(
+            log.debug(
               `🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`
             );
             this.onSessionVisible(updateData.body.id);
@@ -2832,18 +2819,18 @@ class Sync {
           // Version compatibility check
           const settingsSchemaVersion = parsedSettings.schemaVersion ?? 1;
           if (settingsSchemaVersion > SUPPORTED_SCHEMA_VERSION) {
-            logger.warn(
-              `⚠️ Received settings schema v${settingsSchemaVersion}, ` +
-                `we support v${SUPPORTED_SCHEMA_VERSION}. Update app for full functionality.`
-            );
+          logger.warn(
+            `Received settings schema v${settingsSchemaVersion}, ` +
+              `we support v${SUPPORTED_SCHEMA_VERSION}. Update app for full functionality.`
+          );
           }
 
           storage.getState().applySettings(parsedSettings, accountUpdate.settings.version);
           logger.debug(
-            `📋 Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`
+            `Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`
           );
         } catch (error) {
-          logger.error('❌ Failed to process settings update:', toError(error));
+          logger.error('Failed to process settings update:', toError(error));
           // Don't crash on settings sync errors, just log
         }
       }
@@ -2906,7 +2893,7 @@ class Sync {
       // Update storage using applyMachines which rebuilds sessionListViewData
       storage.getState().applyMachines([updatedMachine]);
     } else if (updateData.body.t === 'relationship-updated') {
-      logger.debug('👥 Received relationship-updated update');
+      logger.debug('Received relationship-updated update');
       const relationshipUpdate = updateData.body;
 
       // Apply the relationship update to storage
@@ -2925,12 +2912,11 @@ class Sync {
       this.friendRequestsSync.invalidate();
       this.feedSync.invalidate();
     } else if (updateData.body.t === 'new-artifact') {
-      logger.debug('📦 Received new-artifact update');
+      logger.debug('Received new-artifact update');
       const artifactUpdate = updateData.body;
       const artifactId = artifactUpdate.artifactId;
 
       try {
-        // Decrypt the data encryption key
         const decryptedKey = await this.encryption.decryptEncryptionKey(
           artifactUpdate.dataEncryptionKey
         );
@@ -2969,16 +2955,15 @@ class Sync {
         };
 
         storage.getState().addArtifact(decryptedArtifact);
-        logger.debug(`📦 Added new artifact ${artifactId} to storage`);
+        logger.debug(`Added new artifact ${artifactId} to storage`);
       } catch (error) {
         logger.error(`Failed to process new artifact ${artifactId}:`, toError(error));
       }
     } else if (updateData.body.t === 'update-artifact') {
-      logger.debug('📦 Received update-artifact update');
+      logger.debug('Received update-artifact update');
       const artifactUpdate = updateData.body;
       const artifactId = artifactUpdate.artifactId;
 
-      // Get existing artifact
       const existingArtifact = storage.getState().artifacts[artifactId];
       if (!existingArtifact) {
         logger.error(`Artifact ${artifactId} not found in storage`);
@@ -3023,12 +3008,12 @@ class Sync {
         }
 
         storage.getState().updateArtifact(updatedArtifact);
-        logger.debug(`📦 Updated artifact ${artifactId} in storage`);
+        logger.debug(`Updated artifact ${artifactId} in storage`);
       } catch (error) {
         logger.error(`Failed to process artifact update ${artifactId}:`, toError(error));
       }
     } else if (updateData.body.t === 'delete-artifact') {
-      logger.debug('📦 Received delete-artifact update');
+      logger.debug('Received delete-artifact update');
       const artifactUpdate = updateData.body;
       const artifactId = artifactUpdate.artifactId;
 
@@ -3038,7 +3023,7 @@ class Sync {
       // Remove encryption key from memory
       this.artifactDataKeys.delete(artifactId);
     } else if (updateData.body.t === 'new-feed-post') {
-      logger.debug('📰 Received new-feed-post update');
+      logger.debug('Received new-feed-post update');
       const feedUpdate = updateData.body;
 
       // Convert to FeedItem with counter from cursor
@@ -3064,7 +3049,7 @@ class Sync {
         if (userProfile === null || userProfile === undefined) {
           // User was not found or 404, don't store this item
           logger.debug(
-            `📰 Skipping feed item ${feedItem.id} - user ${feedItem.body.uid} not found`
+            `Skipping feed item ${feedItem.id} - user ${feedItem.body.uid} not found`
           );
           return;
         }
@@ -3214,6 +3199,7 @@ class Sync {
    * removed regardless of whether a WS event was received.
    */
   private purgeSession(sessionId: string): void {
+    const log = sessionLogger(logger, sessionId);
     storage.getState().deleteSession(sessionId);
     this.encryption.removeSessionEncryption(sessionId);
     this.sessionDataKeys.delete(sessionId);
@@ -3238,7 +3224,7 @@ class Sync {
     messageDB
       .deleteSession(sessionId)
       .catch(e =>
-        logger.debug('[sync] messageDB deleteSession failed', { sessionId, error: String(e) })
+        log.debug('[sync] messageDB deleteSession failed', { error: String(e) })
       );
   }
 
@@ -3258,13 +3244,13 @@ class Sync {
     const isActive = new Set(newActive.map(s => s.id));
     for (const s of active) {
       if (!isActive.has(s.id)) {
-        logger.info('session offline', { sessionId: s.id });
+        sessionLogger(logger, s.id).info('session offline');
         voiceHooks.onSessionOffline(s.id, s.metadata ?? undefined);
       }
     }
     for (const s of newActive) {
       if (!wasActive.has(s.id)) {
-        logger.info('session online', { sessionId: s.id });
+        sessionLogger(logger, s.id).info('session online');
         voiceHooks.onSessionOnline(s.id, s.metadata ?? undefined);
       }
     }

@@ -7,6 +7,7 @@ import Fuse from 'fuse.js';
 import { sessionRipgrep } from './ops';
 import { AsyncLock } from '@/utils/lock';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { sessionLogger } from '@/sync/appTraceStore';
 
 const logger = new Logger('app/sync/suggestionFile');
 
@@ -89,17 +90,17 @@ class FileSearchCache {
         return;
       }
 
-      logger.debug(`FileSearchCache: Refreshing file cache for session ${sessionId}...`);
+      const log = sessionLogger(logger, sessionId);
+      log.debug('FileSearchCache: Refreshing file cache');
 
-      // Use ripgrep to get all files in the project
       const response = await sessionRipgrep(sessionId, ['--files', '--follow'], undefined);
 
       if (!response.success || !response.stdout) {
-        logger.error(
+        log.error(
           'FileSearchCache: Failed to fetch files',
           response.error ? new Error(response.error) : undefined
         );
-        logger.debug(JSON.stringify(response));
+        log.debug(JSON.stringify(response));
         return;
       }
 

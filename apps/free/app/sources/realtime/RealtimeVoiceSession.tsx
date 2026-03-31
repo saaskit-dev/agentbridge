@@ -11,9 +11,19 @@ import {
 import type { VoiceSession, VoiceSessionConfig } from './types';
 import { getElevenLabsCodeFromLocale } from '@/constants/Languages';
 import { getLocales } from 'expo-localization';
+import { sessionLogger, type SessionLog } from '@/sync/appTraceStore';
 import { storage } from '@/sync/storage';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/realtime/RealtimeVoiceSession');
+
+/**
+ * Returns a logger scoped to the current voice-bound agent session when available,
+ * so ElevenLabs callbacks do not inherit a misleading global trace.
+ */
+function voiceLog(): SessionLog {
+  const sid = getCurrentRealtimeSessionId();
+  return sid ? sessionLogger(logger, sid) : logger;
+}
 
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;
@@ -21,8 +31,9 @@ let conversationInstance: ReturnType<typeof useConversation> | null = null;
 // Global voice session implementation
 class RealtimeVoiceSessionImpl implements VoiceSession {
   async startSession(config: VoiceSessionConfig): Promise<void> {
+    const log = sessionLogger(logger, config.sessionId);
     if (!conversationInstance) {
-      logger.warn('Realtime voice session not initialized');
+      log.warn('Realtime voice session not initialized');
       return;
     }
 
@@ -52,12 +63,13 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 
       await conversationInstance.startSession(sessionConfig);
     } catch (error) {
-      logger.error('Failed to start realtime session:', toError(error));
+      log.error('Failed to start realtime session:', toError(error));
       storage.getState().setRealtimeStatus('error');
     }
   }
 
   async endSession(): Promise<void> {
+    const log = voiceLog();
     if (!conversationInstance) {
       return;
     }
@@ -66,33 +78,35 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
       await conversationInstance.endSession();
       storage.getState().setRealtimeStatus('disconnected');
     } catch (error) {
-      logger.error('Failed to end realtime session:', toError(error));
+      log.error('Failed to end realtime session:', toError(error));
     }
   }
 
   sendTextMessage(message: string): void {
+    const log = voiceLog();
     if (!conversationInstance) {
-      logger.warn('Realtime voice session not initialized');
+      log.warn('Realtime voice session not initialized');
       return;
     }
 
     try {
       conversationInstance.sendUserMessage(message);
     } catch (error) {
-      logger.error('Failed to send text message:', toError(error));
+      log.error('Failed to send text message:', toError(error));
     }
   }
 
   sendContextualUpdate(update: string): void {
+    const log = voiceLog();
     if (!conversationInstance) {
-      logger.warn('Realtime voice session not initialized');
+      log.warn('Realtime voice session not initialized');
       return;
     }
 
     try {
       conversationInstance.sendContextualUpdate(update);
     } catch (error) {
-      logger.error('Failed to send contextual update:', toError(error));
+      log.error('Failed to send contextual update:', toError(error));
     }
   }
 }
@@ -123,7 +137,7 @@ export const RealtimeVoiceSession: React.FC = () => {
     onError: error => {
       logger.warn('Realtime voice not available:', error);
       storage.getState().setRealtimeStatus('error');
-      storage.getState().setRealtimeMode('idle', true); // immediate mode change
+      storage.getState().setRealtimeMode('idle', true);
     },
     onStatusChange: data => {
       logger.debug('Realtime status change:', data);
@@ -131,11 +145,9 @@ export const RealtimeVoiceSession: React.FC = () => {
     onModeChange: data => {
       logger.debug('Realtime mode change:', data);
 
-      // Only animate when speaking
       const mode = data.mode as string;
       const isSpeaking = mode === 'speaking';
 
-      // Use centralized debounce logic from storage
       storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
     },
     onDebug: message => {

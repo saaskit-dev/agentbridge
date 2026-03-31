@@ -1,5 +1,4 @@
 import {
-  getCurrentRealtimeSessionId,
   getVoiceSession,
   isVoiceSessionStarted,
 } from '../RealtimeSession';
@@ -14,6 +13,7 @@ import {
   formatSessionOffline,
   formatSessionOnline,
 } from './contextFormatters';
+import { sessionLogger } from '@/sync/appTraceStore';
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
@@ -34,27 +34,29 @@ interface SessionMetadata {
 const shownSessions = new Set<string>();
 let lastFocusSession: string | null = null;
 
-function reportContextualUpdate(update: string | null | undefined) {
+function reportContextualUpdate(update: string | null | undefined, logSessionId: string) {
+  const log = sessionLogger(logger, logSessionId);
   if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-    logger.debug('🎤 Voice: Reporting contextual update:', update);
+    log.debug('🎤 Voice: Reporting contextual update:', update);
   }
   if (!update) return;
   const voice = getVoiceSession();
   if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-    logger.debug('🎤 Voice: Voice session:', voice);
+    log.debug('🎤 Voice: Voice session:', voice);
   }
   if (!voice || !isVoiceSessionStarted()) return;
   voice.sendContextualUpdate(update);
 }
 
-function reportTextUpdate(update: string | null | undefined) {
+function reportTextUpdate(update: string | null | undefined, logSessionId: string) {
+  const log = sessionLogger(logger, logSessionId);
   if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-    logger.debug('🎤 Voice: Reporting text update:', update);
+    log.debug('🎤 Voice: Reporting text update:', update);
   }
   if (!update) return;
   const voice = getVoiceSession();
   if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-    logger.debug('🎤 Voice: Voice session:', voice);
+    log.debug('🎤 Voice: Voice session:', voice);
   }
   if (!voice || !isVoiceSessionStarted()) return;
   voice.sendTextMessage(update);
@@ -67,7 +69,7 @@ function reportSession(sessionId: string) {
   if (!session) return;
   const messages = storage.getState().sessionMessages[sessionId]?.messages ?? [];
   const contextUpdate = formatSessionFull(session, messages);
-  reportContextualUpdate(contextUpdate);
+  reportContextualUpdate(contextUpdate, sessionId);
 }
 
 export const voiceHooks = {
@@ -79,7 +81,7 @@ export const voiceHooks = {
 
     reportSession(sessionId);
     const contextUpdate = formatSessionOnline(sessionId, metadata);
-    reportContextualUpdate(contextUpdate);
+    reportContextualUpdate(contextUpdate, sessionId);
   },
 
   /**
@@ -90,7 +92,7 @@ export const voiceHooks = {
 
     reportSession(sessionId);
     const contextUpdate = formatSessionOffline(sessionId, metadata);
-    reportContextualUpdate(contextUpdate);
+    reportContextualUpdate(contextUpdate, sessionId);
   },
 
   /**
@@ -101,7 +103,7 @@ export const voiceHooks = {
     if (lastFocusSession === sessionId) return;
     lastFocusSession = sessionId;
     reportSession(sessionId);
-    reportContextualUpdate(formatSessionFocus(sessionId, metadata));
+    reportContextualUpdate(formatSessionFocus(sessionId, metadata), sessionId);
   },
 
   /**
@@ -111,7 +113,7 @@ export const voiceHooks = {
     if (VOICE_CONFIG.DISABLE_MESSAGES) return;
 
     reportSession(sessionId);
-    reportContextualUpdate(formatNewMessages(sessionId, messages));
+    reportContextualUpdate(formatNewMessages(sessionId, messages), sessionId);
   },
 
   /**
@@ -119,7 +121,7 @@ export const voiceHooks = {
    */
   onVoiceStarted(sessionId: string): string {
     if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
-      logger.debug('🎤 Voice session started for:', sessionId);
+      sessionLogger(logger, sessionId).debug('🎤 Voice session started');
     }
     shownSessions.clear();
 
@@ -155,7 +157,7 @@ export const voiceHooks = {
     if (VOICE_CONFIG.DISABLE_READY_EVENTS) return;
 
     reportSession(sessionId);
-    reportTextUpdate(formatReadyEvent(sessionId));
+    reportTextUpdate(formatReadyEvent(sessionId), sessionId);
   },
 
   /**

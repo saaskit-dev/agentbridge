@@ -3,6 +3,7 @@ import { storage } from './storage';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { config } from '@/config';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { sessionLogger } from '@/sync/appTraceStore';
 
 const logger = new Logger('app/sync/apiVoice');
 
@@ -41,7 +42,7 @@ export async function fetchVoiceToken(
 
   if (!response.ok) {
     if (response.status === 400) {
-      logger.warn('[Voice] Server rejected voice token request (400)', { sessionId, serverUrl });
+      sessionLogger(logger, sessionId).warn('[Voice] Server rejected voice token request (400)', { serverUrl });
       return { allowed: false, token: undefined, agentId };
     }
     throw new Error(`Voice token request failed: ${response.status}`);

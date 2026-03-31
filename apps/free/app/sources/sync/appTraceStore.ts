@@ -5,7 +5,7 @@
  * No imports from sync or apiSocket — pure data store.
  */
 
-import type { TraceContext } from '@saaskit-dev/agentbridge/telemetry';
+import { Logger, type TraceContext } from '@saaskit-dev/agentbridge/telemetry';
 
 export type AppWireTrace = { tid: string; ses?: string; mid?: string };
 
@@ -39,4 +39,22 @@ export function wireTraceToContext(trace: AppWireTrace): TraceContext {
     sessionId: trace.ses,
     machineId: trace.mid,
   };
+}
+
+/** Minimal log interface shared by Logger and ScopedLogger. */
+export interface SessionLog {
+  debug(message: string, data?: unknown): void;
+  info(message: string, data?: unknown): void;
+  warn(message: string, data?: unknown): void;
+  error(message: string, err?: Error | unknown, data?: unknown): void;
+}
+
+/**
+ * Return a scoped logger that auto-injects the session's traceId/sessionId/machineId.
+ * Falls back to the base logger if no trace is stored for this session yet.
+ */
+export function sessionLogger(base: Logger, sessionId: string): SessionLog {
+  const trace = _sessionTraces.get(sessionId);
+  if (!trace) return base;
+  return base.withContext(wireTraceToContext(trace));
 }

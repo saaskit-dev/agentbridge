@@ -4,12 +4,13 @@
  */
 
 import { apiSocket } from './apiSocket';
-import { getSessionTrace } from './appTraceStore';
+import { getSessionTrace, sessionLogger } from './appTraceStore';
 import { deleteSessionAttachments } from './attachmentUpload';
 import type { MachineMetadata } from './storageTypes';
 import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/sync/ops');
+const slog = (sid: string) => sessionLogger(logger, sid);
 
 // Callback for getting machine encryption, registered by sync.ts to avoid circular dependency
 let _getMachineEncryption: ((machineId: string) => any) | null = null;
@@ -424,19 +425,19 @@ export async function machineUpdateMetadata(
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-  logger.info('[ops] sessionAbort', { sessionId });
+  slog(sessionId).info('[ops] sessionAbort');
   await apiSocket.sessionRPC(sessionId, 'abort', {
     reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`,
   });
 }
 
 export async function sessionSetModel(sessionId: string, modelId: string): Promise<void> {
-  logger.info('[ops] sessionSetModel', { sessionId, modelId });
+  slog(sessionId).info('[ops] sessionSetModel', { modelId });
   await apiSocket.sessionRPC(sessionId, 'set-model', { modelId });
 }
 
 export async function sessionSetMode(sessionId: string, modeId: string): Promise<void> {
-  logger.info('[ops] sessionSetMode', { sessionId, modeId });
+  slog(sessionId).info('[ops] sessionSetMode', { modeId });
   await apiSocket.sessionRPC(sessionId, 'set-mode', { modeId });
 }
 
@@ -445,12 +446,12 @@ export async function sessionSetConfig(
   optionId: string,
   value: string
 ): Promise<void> {
-  logger.info('[ops] sessionSetConfig', { sessionId, optionId, value });
+  slog(sessionId).info('[ops] sessionSetConfig', { optionId, value });
   await apiSocket.sessionRPC(sessionId, 'set-config', { optionId, value });
 }
 
 export async function sessionRunCommand(sessionId: string, commandId: string): Promise<void> {
-  logger.info('[ops] sessionRunCommand', { sessionId, commandId });
+  slog(sessionId).info('[ops] sessionRunCommand', { commandId });
   await apiSocket.sessionRPC(sessionId, 'run-command', { commandId });
 }
 
@@ -464,7 +465,7 @@ export async function sessionAllow(
   allowedTools?: string[],
   decision?: 'approved' | 'approved_for_session'
 ): Promise<void> {
-  logger.debug('[ops] sessionAllow', { sessionId, id, decision });
+  slog(sessionId).debug('[ops] sessionAllow', { id, decision });
   const request: SessionPermissionRequest = {
     id,
     approved: true,
@@ -485,7 +486,7 @@ export async function sessionDeny(
   allowedTools?: string[],
   decision?: 'denied' | 'abort'
 ): Promise<void> {
-  logger.debug('[ops] sessionDeny', { sessionId, id, decision });
+  slog(sessionId).debug('[ops] sessionDeny', { id, decision });
   const request: SessionPermissionRequest = {
     id,
     approved: false,
@@ -500,14 +501,15 @@ export async function sessionDeny(
  * Request mode change for a session
  */
 export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): Promise<boolean> {
-  logger.info('[ops] sessionSwitch', { sessionId, to });
+  const log = slog(sessionId);
+  log.info('[ops] sessionSwitch', { to });
   const request: SessionModeChangeRequest = { to };
   const response = await apiSocket.sessionRPC<boolean, SessionModeChangeRequest>(
     sessionId,
     'switch',
     request
   );
-  logger.info('[ops] sessionSwitch result', { sessionId, to, success: response });
+  log.info('[ops] sessionSwitch result', { to, success: response });
   return response;
 }
 
@@ -518,7 +520,7 @@ export async function sessionBash(
   sessionId: string,
   request: SessionBashRequest
 ): Promise<SessionBashResponse> {
-  logger.debug('[ops] sessionBash', { sessionId, command: request.command, cwd: request.cwd });
+  slog(sessionId).debug('[ops] sessionBash', { command: request.command, cwd: request.cwd });
   try {
     const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(
       sessionId,
@@ -686,7 +688,7 @@ export async function sessionRipgrep(
 export async function sessionArchiveViaServer(
   sessionId: string
 ): Promise<{ success: boolean; message?: string }> {
-  logger.info('[ops] sessionArchiveViaServer', { sessionId });
+  slog(sessionId).info('[ops] sessionArchiveViaServer');
   try {
     const response = await apiSocket.request(`/v1/sessions/${sessionId}/archive`, {
       method: 'PATCH',
@@ -705,7 +707,7 @@ export async function sessionArchiveViaServer(
  * Kill the session process immediately
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
-  logger.info('[ops] sessionKill', { sessionId });
+  slog(sessionId).info('[ops] sessionKill');
   try {
     const response = await apiSocket.sessionRPC<SessionKillResponse, {}>(
       sessionId,
@@ -731,7 +733,7 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
 export async function sessionRestart(
   sessionId: string
 ): Promise<{ success: boolean; message?: string }> {
-  logger.info('[ops] sessionRestart', { sessionId });
+  slog(sessionId).info('[ops] sessionRestart');
   try {
     const response = await apiSocket.sessionRPC<{ success: boolean; message: string }, {}>(
       sessionId,
@@ -755,14 +757,13 @@ export async function sessionRestart(
 export async function sessionDelete(
   sessionId: string
 ): Promise<{ success: boolean; message?: string }> {
-  logger.info('[ops] sessionDelete', { sessionId });
+  const log = slog(sessionId);
+  log.info('[ops] sessionDelete');
 
-  // Clean up locally cached attachment files before the server record is gone.
-  // Non-fatal: a failure here should not block the server-side deletion.
   try {
     await deleteSessionAttachments(sessionId);
   } catch (err) {
-    logger.error('[ops] sessionDelete: failed to clean attachment files', toError(err), { sessionId });
+    log.error('[ops] sessionDelete: failed to clean attachment files', toError(err));
   }
 
   try {
@@ -771,8 +772,8 @@ export async function sessionDelete(
     });
 
     if (response.ok) {
-      const result = await response.json();
-      logger.info('[ops] sessionDelete success', { sessionId });
+      await response.json();
+      log.info('[ops] sessionDelete success');
       return { success: true };
     } else {
       const error = await response.text();
@@ -782,7 +783,7 @@ export async function sessionDelete(
       };
     }
   } catch (error) {
-    logger.error('[ops] sessionDelete failed', toError(error), { sessionId });
+    log.error('[ops] sessionDelete failed', toError(error));
     return {
       success: false,
       message: safeStringify(error),

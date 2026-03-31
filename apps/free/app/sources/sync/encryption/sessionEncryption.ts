@@ -1,6 +1,7 @@
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 import { wireEncode, wireDecode, wireDecodeBatch } from '@saaskit-dev/agentbridge/encryption';
 import { config } from '@/config';
+import { sessionLogger } from '@/sync/appTraceStore';
 import { ApiMessage } from '../apiTypes';
 import {
   DecryptedMessage,
@@ -31,7 +32,8 @@ export class SessionEncryption {
    * Batch-first API for decrypting messages
    */
   async decryptMessages(messages: ApiMessage[]): Promise<(DecryptedMessage | null)[]> {
-    logger.debug('decryptMessages start', { sessionId: this.sessionId, count: messages.length });
+    const log = sessionLogger(logger, this.sessionId);
+    log.debug('decryptMessages start', { count: messages.length });
     // Check cache for all messages first
     const results: (DecryptedMessage | null)[] = new Array(messages.length);
     const toDecrypt: { index: number; message: ApiMessage }[] = [];
@@ -64,8 +66,7 @@ export class SessionEncryption {
 
     // Batch decrypt uncached messages
     if (toDecrypt.length > 0) {
-      logger.debug('decryptMessages batch', {
-        sessionId: this.sessionId,
+      log.debug('decryptMessages batch', {
         toDecrypt: toDecrypt.length,
         cached: messages.length - toDecrypt.length,
       });
@@ -89,7 +90,7 @@ export class SessionEncryption {
       }
     }
 
-    logger.debug('decryptMessages done', { sessionId: this.sessionId, count: results.length });
+    log.debug('decryptMessages done', { count: results.length });
     return results;
   }
 
@@ -108,7 +109,8 @@ export class SessionEncryption {
    * Encrypt a raw record
    */
   async encryptRawRecord(record: RawRecord): Promise<string> {
-    logger.debug('encryptRawRecord', { sessionId: this.sessionId });
+    const log = sessionLogger(logger, this.sessionId);
+    log.debug('encryptRawRecord');
     return wireEncode(record, this.encryptor, !!config.isDev);
   }
 
@@ -126,7 +128,8 @@ export class SessionEncryption {
     try {
       return await wireDecode(encrypted, this.encryptor);
     } catch (error) {
-      logger.error('decryptRaw failed', toError(error), { sessionId: this.sessionId });
+      const log = sessionLogger(logger, this.sessionId);
+      log.error('decryptRaw failed', toError(error));
       return null;
     }
   }
@@ -154,10 +157,8 @@ export class SessionEncryption {
     }
     const parsed = MetadataSchema.safeParse(decrypted);
     if (!parsed.success) {
-      logger.error('decryptMetadata parse failed', undefined, {
-        sessionId: this.sessionId,
-        version,
-      });
+      const log = sessionLogger(logger, this.sessionId);
+      log.error('decryptMetadata parse failed', undefined, { version });
       return null;
     }
 
@@ -196,10 +197,8 @@ export class SessionEncryption {
     }
     const parsed = AgentStateSchema.safeParse(decrypted);
     if (!parsed.success) {
-      logger.error('decryptAgentState parse failed', undefined, {
-        sessionId: this.sessionId,
-        version,
-      });
+      const log = sessionLogger(logger, this.sessionId);
+      log.error('decryptAgentState parse failed', undefined, { version });
       return {};
     }
 
@@ -228,10 +227,8 @@ export class SessionEncryption {
 
     const parsed = SessionCapabilitiesSchema.safeParse(decrypted);
     if (!parsed.success) {
-      logger.error('decryptCapabilities parse failed', undefined, {
-        sessionId: this.sessionId,
-        version,
-      });
+      const log = sessionLogger(logger, this.sessionId);
+      log.error('decryptCapabilities parse failed', undefined, { version });
       return null;
     }
 

@@ -5,8 +5,9 @@
  * to the server relay which forwards to New Relic. Auth token is set lazily after login.
  * deviceId uses sync.anonId (user-level anonymous identifier) for cross-device tracking.
  *
- * TraceContext: All logs automatically include traceId/sessionId when a session is active,
- * via setGlobalContextProvider() which reads from appTraceStore.
+ * TraceContext: We do NOT use setGlobalContextProvider() in the App — multiple sessions
+ * can run in parallel, so a single "current session" would mis-attribute traces. Session-
+ * scoped code uses sessionLogger() from appTraceStore (per sessionId) or logger.withContext().
  */
 
 import { Platform } from 'react-native';
@@ -16,14 +17,10 @@ import {
   isCollectorReady,
   RemoteSink,
   ServerRelayBackend,
-  setGlobalContextProvider,
-  type TraceContext,
 } from '@saaskit-dev/agentbridge/telemetry';
 import { config } from '@/config';
 import { getServerUrl } from '@/sync/serverConfig';
 import { sync } from '@/sync/sync';
-import { getSessionTrace, wireTraceToContext } from '@/sync/appTraceStore';
-import { getCurrentRealtimeSessionId } from '@/realtime/RealtimeSession';
 
 // Lazily-resolved auth token for RemoteSink — set after login, cleared on logout
 let _telemetryAuthToken: string | undefined;
@@ -54,16 +51,6 @@ export function setAnalyticsEnabled(enabled: boolean, authToken?: string): void 
 }
 
 export function initAppTelemetry(): void {
-  // Set up global trace context provider for Logger
-  // This allows all logs to automatically include traceId/sessionId when available
-  setGlobalContextProvider((): TraceContext | undefined => {
-    const sessionId = getCurrentRealtimeSessionId();
-    if (!sessionId) return undefined;
-    const wireTrace = getSessionTrace(sessionId);
-    if (!wireTrace) return undefined;
-    return wireTraceToContext(wireTrace);
-  });
-
   if (!isCollectorReady()) {
     const serverUrl = getServerUrl();
     const appVersion = Constants.expoConfig?.version ?? '0.0.0';

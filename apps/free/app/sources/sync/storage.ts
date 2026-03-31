@@ -1,6 +1,7 @@
 import React from 'react';
 import { create } from 'zustand';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { sessionLogger } from './appTraceStore';
 import { useShallow } from 'zustand/react/shallow';
 import { DecryptedArtifact } from './artifactTypes';
 import { FeedItem } from './feedTypes';
@@ -602,7 +603,8 @@ export const storage = create<StorageState>()((set, get) => {
         isDataReady: true,
       })),
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
-      logger.debug('applyMessages', { sessionId, messageCount: messages.length });
+      const log = sessionLogger(logger, sessionId);
+      log.debug('applyMessages', { messageCount: messages.length });
       const changed = new Set<string>();
       let hasReadyEvent = false;
       let latestStatus: 'working' | 'idle' | undefined;
@@ -686,8 +688,7 @@ export const storage = create<StorageState>()((set, get) => {
         };
       });
 
-      logger.debug('applyMessages done', {
-        sessionId,
+      log.debug('applyMessages done', {
         changedCount: changed.size,
         hasReadyEvent,
         latestStatus,
@@ -1191,9 +1192,10 @@ export const storage = create<StorageState>()((set, get) => {
       }),
     deleteSession: (sessionId: string) =>
       set(state => {
+        const log = sessionLogger(logger, sessionId);
         const messageCount = state.sessionMessages[sessionId]?.messages.length ?? 0;
         const hasGitStatus = !!state.sessionGitStatus[sessionId];
-        logger.debug('deleteSession', { sessionId, messageCount, hasGitStatus });
+        log.debug('deleteSession', { messageCount, hasGitStatus });
 
         // Remove session from sessions
         const { [sessionId]: deletedSession, ...remainingSessions } = state.sessions;
@@ -1228,8 +1230,7 @@ export const storage = create<StorageState>()((set, get) => {
         // Rebuild sessionListViewData without the deleted session
         const sessionListViewData = buildSessionListViewData(remainingSessions);
 
-        logger.debug('deleteSession done', {
-          sessionId,
+        log.debug('deleteSession done', {
           remainingSessions: Object.keys(remainingSessions).length,
         });
 

@@ -46,22 +46,30 @@ export function getProcessTraceContext(): TraceContext | undefined {
 
 /**
  * Called by apiSession when a new user message arrives carrying a _trace field.
- * All subsequent log calls in this process will use this trace context.
+ * Preserves acpSessionId from the previous context so it is not lost across turns.
  */
 export function setCurrentTurnTrace(ctx: TraceContext | undefined): void {
-  currentTurnTrace = ctx;
+  if (ctx && _acpSessionId) {
+    currentTurnTrace = { ...ctx, acpSessionId: _acpSessionId };
+  } else {
+    currentTurnTrace = ctx;
+  }
 }
+
+/** Sticky acpSessionId — survives turn transitions and multi-turn conversations. */
+let _acpSessionId: string | undefined;
 
 /**
  * Called by ACP backends after createSession/loadSession to inject the ACP protocol
  * session ID into the global trace context. All subsequent logs automatically include it.
  */
 export function setAcpSessionId(id: string | null): void {
+  _acpSessionId = id ?? undefined;
   if (processTraceCtx) {
-    processTraceCtx = { ...processTraceCtx, acpSessionId: id ?? undefined };
+    processTraceCtx = { ...processTraceCtx, acpSessionId: _acpSessionId };
   }
   if (currentTurnTrace) {
-    currentTurnTrace = { ...currentTurnTrace, acpSessionId: id ?? undefined };
+    currentTurnTrace = { ...currentTurnTrace, acpSessionId: _acpSessionId };
   }
 }
 

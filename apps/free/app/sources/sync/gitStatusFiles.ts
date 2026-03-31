@@ -4,6 +4,7 @@
  */
 
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
+import { sessionLogger } from '@/sync/appTraceStore';
 import { parseNumStat, createDiffStatsMap } from './git-parsers/parseDiff';
 import { parseStatusSummaryV2, getCurrentBranchV2 } from './git-parsers/parseStatusV2';
 import { sessionBash } from './ops';
@@ -67,7 +68,7 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
 
     return parseGitStatusFilesV2(statusOutput, diffOutput);
   } catch (error) {
-    logger.error(`Error fetching git status files for session ${sessionId}:`, toError(error));
+    sessionLogger(logger, sessionId).error('Error fetching git status files', toError(error));
     return null;
   }
 }

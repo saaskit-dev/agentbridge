@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { getCurrentRealtimeSessionId, switchCurrentSession } from './RealtimeSession';
 import { formatSessionFull } from './hooks/contextFormatters';
 import { sessionAbort, sessionAllow, sessionDeny } from '@/sync/ops';
+import { sessionLogger } from '@/sync/appTraceStore';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
@@ -26,7 +27,9 @@ function resolveSessionId(): string | null {
 
   if (candidate) {
     switchCurrentSession(candidate.id);
-    logger.debug('resolveSessionId: auto-selected most recent session', { sessionId: candidate.id });
+    sessionLogger(logger, candidate.id).debug(
+      'resolveSessionId: auto-selected most recent session'
+    );
     return candidate.id;
   }
 
@@ -60,7 +63,8 @@ export const realtimeClientTools = {
       return 'error (no active session)';
     }
 
-    logger.debug('messageClaudeCode called with message, sending to session', { sessionId });
+    const log = sessionLogger(logger, sessionId);
+    log.debug('messageClaudeCode called with message, sending to session');
     const result = await sync.sendMessage(sessionId, message);
     if (!result.ok) {
       const reason = result.reason === 'server_disconnected' ? 'server disconnected' : 'session offline';
@@ -92,13 +96,14 @@ export const realtimeClientTools = {
       return 'error (no active session)';
     }
 
-    logger.debug('processPermissionRequest called', { decision });
+    const log = sessionLogger(logger, sessionId);
+    log.debug('processPermissionRequest called', { decision });
 
     const session = storage.getState().sessions[sessionId];
     const requests = session?.agentState?.requests;
 
     if (!requests || Object.keys(requests).length === 0) {
-      logger.error('No active permission request');
+      log.error('No active permission request');
       return 'error (no active permission request)';
     }
 
@@ -116,7 +121,7 @@ export const realtimeClientTools = {
 
     const failed = results.filter(r => r.status === 'rejected').length;
     if (failed > 0) {
-      logger.error('Failed to process permission', { requestId });
+      log.error('Failed to process permission', { requestId });
       return 'error (failed to process permission)';
     }
 
@@ -141,12 +146,12 @@ export const realtimeClientTools = {
     const session = state.sessions[sessionId];
 
     if (!session) {
-      logger.error('Session not found', { sessionId });
+      sessionLogger(logger, sessionId).error('Session not found');
       return 'error (session not found)';
     }
 
     switchCurrentSession(sessionId);
-    logger.debug('switchSession called', { sessionId });
+    sessionLogger(logger, sessionId).debug('switchSession called');
 
     const messages = state.sessionMessages[sessionId]?.messages ?? [];
     const context = formatSessionFull(session, messages);
@@ -164,13 +169,14 @@ export const realtimeClientTools = {
       return 'error (no active session)';
     }
 
-    logger.debug('abortSession called', { sessionId });
+    const log = sessionLogger(logger, sessionId);
+    log.debug('abortSession called');
 
     try {
       await sessionAbort(sessionId);
       return "aborted [DO NOT say anything else, simply say 'aborted']";
     } catch (error) {
-      logger.error('Failed to abort session:', toError(error));
+      log.error('Failed to abort session:', toError(error));
       return 'error (failed to abort session)';
     }
   },

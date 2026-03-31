@@ -19,6 +19,7 @@ import { projectManager, createProjectKey } from './projectManager';
 import { storage } from './storage';
 import { GitStatus } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
+import { sessionLogger } from '@/sync/appTraceStore';
 
 const logger = new Logger('app/sync/gitStatusSync');
 
@@ -111,6 +112,7 @@ export class GitStatusSync {
    * Fetch git status for a project using any session in that project
    */
   private async fetchGitStatusForProject(sessionId: string, projectKey: string): Promise<void> {
+    const log = sessionLogger(logger, sessionId);
     try {
       // Check if we have a session with valid metadata
       const session = storage.getState().sessions[sessionId];
@@ -146,8 +148,7 @@ export class GitStatusSync {
       });
 
       if (!statusResult || !statusResult.success) {
-        logger.error('Failed to get git status', undefined, {
-          sessionId,
+        log.error('Failed to get git status', undefined, {
           error: statusResult?.error || 'No response',
         });
         return;
@@ -183,7 +184,7 @@ export class GitStatusSync {
         projectManager.updateProjectGitStatus(projectKey, gitStatus);
       }
     } catch (error) {
-      logger.error('Error fetching git status for session', toError(error), { sessionId });
+      log.error('Error fetching git status for session', toError(error));
       // Don't apply error state, just skip this update
     }
   }
