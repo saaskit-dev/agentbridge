@@ -96,4 +96,20 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'off',
     },
   },
+  {
+    files: ['apps/free/app/sources/sync/**/*.{ts,tsx}'],
+    rules: {
+      /**
+       * Architecture guard:
+       * sync is a state/business layer and must not statically depend on UI/realtime layers.
+       * Use function-level require() for cross-cutting runtime callbacks when needed.
+       */
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: ['@/components/*', '@/components/**', '@/realtime/*', '@/realtime/**'],
+        },
+      ],
+    },
+  },
 );

@@ -37,10 +37,19 @@ import { NormalizedMessage } from './typesRaw';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from './settings';
 import type { CustomerInfo } from './revenueCat/types';
-import { isMutableTool } from '@/components/tools/knownTools';
 import type { PermissionMode, SessionCapabilities } from './sessionCapabilities';
 
 const logger = new Logger('app/sync/storage');
+
+/**
+ * Whether a tool name is treated as mutable for permission/session logic.
+ * Lazy-loads the known-tools registry (see AGENTS.md: lazy require for cross-cutting UI).
+ * Avoids a static storage → knownTools edge at module init, which can cause TDZ errors during startup.
+ */
+function resolveIsMutableTool(toolName: string): boolean {
+  const { isMutableTool } = require('@/components/tools/knownTools') as typeof import('@/components/tools/knownTools');
+  return isMutableTool(toolName);
+}
 
 /** Sort messages newest-first. seq (server monotonic) is the primary key when both have it; createdAt is the fallback. */
 function sortMessagesDesc(a: Message, b: Message): number {
@@ -385,7 +394,7 @@ export const storage = create<StorageState>()((set, get) => {
       if (!toolCallMessage || toolCallMessage.kind !== 'tool-call') {
         return true;
       }
-      return toolCallMessage.tool?.name ? isMutableTool(toolCallMessage.tool?.name) : true;
+      return toolCallMessage.tool?.name ? resolveIsMutableTool(toolCallMessage.tool?.name) : true;
     },
     getActiveSessions: () => {
       const state = get();

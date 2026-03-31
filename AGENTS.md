@@ -2,7 +2,9 @@
 
 ## No Circular Dependencies
 
-Run `npx madge --circular --extensions ts,tsx sources/` to verify. Zero cycles allowed.
+Run `pnpm run check:deps:madge` to verify circular dependencies. Zero cycles allowed.
+Run `pnpm run check:deps:layers` to verify `sync` layer has no static imports from `@/components/*` or `@/realtime/*`.
+Use `pnpm run check:deps` to run both checks together.
 
 - **Types/constants in separate files** — When a file both exports types and imports its consumers (e.g. a registry that imports components and exports `ToolViewProps`), the types MUST live in a dedicated file (e.g. `types.ts`). Consumers import types from that file, not from the registry.
 - **Unidirectional dependencies** — `storage` (state layer) must NOT import from `sync` (business layer). When reverse communication is needed, use the callback registration pattern: `storage.ts` exposes `registerXxxCallback()`, and `sync.ts` registers at init time.

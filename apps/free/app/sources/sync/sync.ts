@@ -32,7 +32,6 @@ import {
 } from '@saaskit-dev/agentbridge/telemetry';
 import { gitStatusSync } from './gitStatusSync';
 import { projectManager } from './projectManager';
-import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
@@ -65,6 +64,13 @@ import type { PermissionMode } from './sessionCapabilities';
 import { messageDB } from './messageDB';
 
 const logger = new Logger('app/sync');
+
+/**
+ * Get voice hooks via lazy require to avoid static cross-layer init coupling.
+ */
+function getVoiceHooks(): typeof import('@/realtime/hooks/voiceHooks').voiceHooks {
+  return require('@/realtime/hooks/voiceHooks').voiceHooks;
+}
 
 function isSandboxEnabled(metadata: Session['metadata'] | null | undefined): boolean {
   const sandbox = metadata?.sandbox;
@@ -349,7 +355,7 @@ class Sync {
     // Notify voice assistant about session visibility
     const session = storage.getState().sessions[sessionId];
     if (session) {
-      voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
+      getVoiceHooks().onSessionFocus(sessionId, session.metadata || undefined);
     }
   };
 
@@ -3186,10 +3192,10 @@ class Sync {
       }
     }
     if (m.length > 0) {
-      voiceHooks.onMessages(sessionId, m);
+      getVoiceHooks().onMessages(sessionId, m);
     }
     if (result.hasReadyEvent) {
-      voiceHooks.onReady(sessionId);
+      getVoiceHooks().onReady(sessionId);
     }
   };
 
@@ -3245,13 +3251,13 @@ class Sync {
     for (const s of active) {
       if (!isActive.has(s.id)) {
         sessionLogger(logger, s.id).info('session offline');
-        voiceHooks.onSessionOffline(s.id, s.metadata ?? undefined);
+        getVoiceHooks().onSessionOffline(s.id, s.metadata ?? undefined);
       }
     }
     for (const s of newActive) {
       if (!wasActive.has(s.id)) {
         sessionLogger(logger, s.id).info('session online');
-        voiceHooks.onSessionOnline(s.id, s.metadata ?? undefined);
+        getVoiceHooks().onSessionOnline(s.id, s.metadata ?? undefined);
       }
     }
   };
