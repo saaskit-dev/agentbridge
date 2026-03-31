@@ -36,10 +36,18 @@ export type MarkdownBlock =
       type: 'table';
       headers: string[];
       rows: string[][];
+    }
+  | {
+      type: 'blockquote';
+      content: MarkdownSpan[];
+    }
+  | {
+      type: 'checklist';
+      items: { checked: boolean; spans: MarkdownSpan[] }[];
     };
 
 export type MarkdownSpan = {
-  styles: ('italic' | 'bold' | 'semibold' | 'code')[];
+  styles: ('italic' | 'bold' | 'semibold' | 'code' | 'strikethrough')[];
   text: string;
   url: string | null;
 };

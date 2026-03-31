@@ -1,8 +1,8 @@
 import type { MarkdownSpan } from './markdownTypes';
 
-// Updated pattern to handle nested markdown and asterisks
+// Updated pattern: allow optional space between ] and ( for common Markdown variants like `[text] (url)`
 const pattern =
-  /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(([^)]+)\))?)|(`(.*?)(?:`|$))/g;
+  /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\]\s*(?:\(([^)]+)\))?)|(`(.*?)(?:`|$))|(~~(.*?)(?:~~|$))/g;
 
 export function parseMarkdownSpans(markdown: string, header: boolean) {
   const spans: MarkdownSpan[] = [];
@@ -41,6 +41,9 @@ export function parseMarkdownSpans(markdown: string, header: boolean) {
     } else if (match[8]) {
       // Inline code
       spans.push({ styles: ['code'], text: match[9], url: null });
+    } else if (match[10]) {
+      // Strikethrough
+      spans.push({ styles: ['strikethrough'], text: match[11], url: null });
     }
 
     lastIndex = pattern.lastIndex;

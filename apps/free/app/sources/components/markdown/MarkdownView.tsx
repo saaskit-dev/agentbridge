@@ -1,4 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
+import * as Linking from 'expo-linking';
 import { Link } from 'expo-router';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
@@ -16,6 +17,16 @@ import { useLocalSetting } from '@/sync/storage';
 import { t } from '@/text';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/markdown/MarkdownView');
+
+/**
+ * expo-router {@link Link} is for in-app routes and http(s); file/mailto/tel must use {@link Linking}.
+ */
+function shouldUseExpoRouterLink(url: string): boolean {
+  const u = url.trim();
+  if (/^https?:\/\//i.test(u)) return true;
+  if (u.startsWith('/') && !u.startsWith('//')) return true;
+  return false;
+}
 
 // Option type for callback
 export type Option = {
@@ -123,6 +134,26 @@ export const MarkdownView = React.memo(
                   key={index}
                   first={index === 0}
                   last={index === blocks.length - 1}
+                />
+              );
+            } else if (block.type === 'blockquote') {
+              return (
+                <RenderBlockquoteBlock
+                  spans={block.content}
+                  key={index}
+                  first={index === 0}
+                  last={index === blocks.length - 1}
+                  selectable={selectable}
+                />
+              );
+            } else if (block.type === 'checklist') {
+              return (
+                <RenderChecklistBlock
+                  items={block.items}
+                  key={index}
+                  first={index === 0}
+                  last={index === blocks.length - 1}
+                  selectable={selectable}
                 />
               );
             } else {
@@ -342,15 +373,76 @@ function RenderOptionsBlock(props: {
   );
 }
 
+/** Renders a blockquote with a left accent border and inner spans. */
+function RenderBlockquoteBlock(props: {
+  spans: MarkdownSpan[];
+  first: boolean;
+  last: boolean;
+  selectable: boolean;
+}) {
+  const content = (
+    <View style={[style.blockquote, props.first && style.first, props.last && style.last]}>
+      <Text selectable={props.selectable} style={[style.text, style.blockquoteText]}>
+        <RenderSpans spans={props.spans} baseStyle={[style.text, style.blockquoteText]} />
+      </Text>
+    </View>
+  );
+  if (props.selectable && Platform.OS !== 'web') {
+    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
+  }
+  return content;
+}
+
+/** Renders a checklist with checkbox indicators before each item. */
+function RenderChecklistBlock(props: {
+  items: { checked: boolean; spans: MarkdownSpan[] }[];
+  first: boolean;
+  last: boolean;
+  selectable: boolean;
+}) {
+  const listStyle = [style.text, style.list];
+  const content = (
+    <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
+      {props.items.map((item, index) => (
+        <Text selectable={props.selectable} style={listStyle} key={index}>
+          {item.checked ? '\u2611 ' : '\u2610 '}
+          <RenderSpans spans={item.spans} baseStyle={listStyle} />
+        </Text>
+      ))}
+    </View>
+  );
+  if (props.selectable && Platform.OS !== 'web') {
+    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
+  }
+  return content;
+}
+
 function RenderSpans(props: { spans: MarkdownSpan[]; baseStyle?: any }) {
   return (
     <>
       {props.spans.map((span, index) => {
         if (span.url) {
+          const url = span.url;
+          if (!shouldUseExpoRouterLink(url)) {
+            return (
+              <Text
+                key={index}
+                selectable
+                style={[style.link, props.baseStyle, span.styles.map(s => style[s])]}
+                onPress={() => {
+                  void Linking.openURL(url).catch(err => {
+                    logger.debug('markdown link open failed', { url, error: String(err) });
+                  });
+                }}
+              >
+                {span.text}
+              </Text>
+            );
+          }
           return (
             <Link
               key={index}
-              href={span.url as any}
+              href={url as any}
               target="_blank"
               style={[style.link, span.styles.map(s => style[s])]}
             >
@@ -447,6 +539,9 @@ const style = StyleSheet.create(theme => ({
     backgroundColor: theme.colors.surfaceHighest,
     color: theme.colors.text,
   },
+  strikethrough: {
+    textDecorationLine: 'line-through',
+  },
   link: {
     ...Typography.default(),
     color: theme.colors.textLink,
@@ -505,6 +600,22 @@ const style = StyleSheet.create(theme => ({
   list: {
     ...Typography.default(),
     color: theme.colors.text,
+    marginTop: 0,
+    marginBottom: 0,
+  },
+
+  //
+  // Blockquote
+  //
+
+  blockquote: {
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.textSecondary + '4D',
+    paddingLeft: 16,
+    marginVertical: 8,
+  },
+  blockquoteText: {
+    color: theme.colors.textSecondary,
     marginTop: 0,
     marginBottom: 0,
   },

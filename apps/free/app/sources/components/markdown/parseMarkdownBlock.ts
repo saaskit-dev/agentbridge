@@ -167,6 +167,35 @@ export function parseMarkdownBlock(markdown: string) {
       continue;
     }
 
+    // Checklist (must be checked before regular list since `- [ ]` also starts with `- `)
+    const checklistMatch = trimmed.match(/^- \[([ xX])\] /);
+    if (checklistMatch) {
+      const allItems = [
+        {
+          checked: checklistMatch[1].toLowerCase() === 'x',
+          content: trimmed.slice(checklistMatch[0].length),
+        },
+      ];
+      while (index < lines.length) {
+        const nextLine = lines[index].trim();
+        const nextMatch = nextLine.match(/^- \[([ xX])\] /);
+        if (!nextMatch) break;
+        allItems.push({
+          checked: nextMatch[1].toLowerCase() === 'x',
+          content: nextLine.slice(nextMatch[0].length),
+        });
+        index++;
+      }
+      blocks.push({
+        type: 'checklist',
+        items: allItems.map(item => ({
+          checked: item.checked,
+          spans: parseMarkdownSpans(item.content, false),
+        })),
+      });
+      continue;
+    }
+
     // If it is a list
     if (trimmed.startsWith('- ')) {
       const allLines = [trimmed.slice(2)];
@@ -186,6 +215,20 @@ export function parseMarkdownBlock(markdown: string) {
         index = nextIndex;
         continue outer;
       }
+    }
+
+    // Blockquote: collect consecutive `> ` lines into a single block
+    if (trimmed.startsWith('> ')) {
+      const quoteLines = [trimmed.slice(2)];
+      while (index < lines.length && lines[index].trim().startsWith('> ')) {
+        quoteLines.push(lines[index].trim().slice(2));
+        index++;
+      }
+      blocks.push({
+        type: 'blockquote',
+        content: parseMarkdownSpans(quoteLines.join(' '), false),
+      });
+      continue;
     }
 
     // Fallback
