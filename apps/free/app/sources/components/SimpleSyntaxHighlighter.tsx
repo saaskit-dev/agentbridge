@@ -7,6 +7,7 @@ interface SimpleSyntaxHighlighterProps {
   code: string;
   language: string | null;
   selectable: boolean;
+  showLineNumbers?: boolean;
 }
 
 // Get theme-aware colors
@@ -330,10 +331,17 @@ const tokenizeCode = (code: string, language: string | null) => {
   return tokens;
 };
 
+/**
+ * Renders syntax-highlighted code with optional line numbers.
+ * Tokens are produced by a built-in regex tokenizer with bracket-nesting awareness.
+ * When `showLineNumbers` is true, tokens are grouped per line and rendered
+ * beside a right-aligned gutter; otherwise the flat token list is rendered directly.
+ */
 export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = ({
   code,
   language,
   selectable,
+  showLineNumbers,
 }) => {
   const { theme } = useUnistyles();
   const colors = getColors(theme);
@@ -405,32 +413,84 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
     }
   };
 
+  const renderToken = (token: { text: string; type: string; nestLevel?: number }, key: number) => (
+    <Text
+      key={key}
+      selectable={selectable}
+      style={{
+        color: getColorForType(token.type, token.nestLevel),
+        fontFamily: Typography.mono().fontFamily,
+        fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type)
+          ? '600'
+          : '400',
+      }}
+    >
+      {token.text}
+    </Text>
+  );
+
+  if (!showLineNumbers) {
+    return (
+      <View>
+        <Text
+          selectable={selectable}
+          style={{
+            fontFamily: Typography.mono().fontFamily,
+            fontSize: 14,
+            lineHeight: 20,
+          }}
+        >
+          {tokens.map((token, index) => renderToken(token, index))}
+        </Text>
+      </View>
+    );
+  }
+
+  // Group tokens into lines by splitting on '\n' tokens
+  const lines: Array<Array<{ text: string; type: string; nestLevel?: number }>> = [[]];
+  for (const token of tokens) {
+    if (token.text === '\n') {
+      lines.push([]);
+    } else {
+      lines[lines.length - 1].push(token);
+    }
+  }
+
+  const totalLines = lines.length;
+  const gutterWidth = (totalLines.toString().length + 1) * 9;
+
   return (
     <View>
-      <Text
-        selectable={selectable}
-        style={{
-          fontFamily: Typography.mono().fontFamily,
-          fontSize: 14,
-          lineHeight: 20,
-        }}
-      >
-        {tokens.map((token, index) => (
+      {lines.map((lineTokens, lineIndex) => (
+        <View key={lineIndex} style={{ flexDirection: 'row' }}>
           <Text
-            key={index}
-            selectable={selectable}
+            selectable={false}
             style={{
-              color: getColorForType(token.type, token.nestLevel),
               fontFamily: Typography.mono().fontFamily,
-              fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type)
-                ? '600'
-                : '400',
+              fontSize: 14,
+              lineHeight: 20,
+              width: gutterWidth,
+              paddingRight: 12,
+              textAlign: 'right',
+              color: theme.colors.textSecondary,
+              opacity: 0.4,
             }}
           >
-            {token.text}
+            {lineIndex + 1}
           </Text>
-        ))}
-      </Text>
+          <Text
+            selectable={selectable}
+            style={{
+              fontFamily: Typography.mono().fontFamily,
+              fontSize: 14,
+              lineHeight: 20,
+              flex: 1,
+            }}
+          >
+            {lineTokens.map((token, i) => renderToken(token, i))}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 };

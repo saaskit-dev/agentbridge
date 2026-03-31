@@ -1,17 +1,20 @@
-import { useRoute } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { FileIcon } from '@/components/FileIcon';
 import { layout } from '@/components/layout';
+import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { decodeBase64, looksLikeBinaryBytes } from '@/encryption/base64';
 import { Modal } from '@/modal';
 import { sessionReadFile, sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
+import { decodeSessionFilePathFromRoute } from '@/utils/sessionFilePath';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/session/file');
 
@@ -19,6 +22,15 @@ interface FileContent {
   content: string;
   encoding: 'utf8' | 'base64';
   isBinary: boolean;
+}
+
+/**
+ * Whether this path should be shown as rendered Markdown (same pipeline as chat messages)
+ * instead of a syntax-highlighted source block.
+ */
+function isMarkdownPreviewPath(path: string): boolean {
+  const ext = path.split('.').pop()?.toLowerCase();
+  return ext === 'md' || ext === 'mdx' || ext === 'markdown';
 }
 
 // Diff display component
@@ -76,26 +88,38 @@ const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
 };
 
 export default function FileScreen() {
-  const route = useRoute();
   const { theme } = useUnistyles();
   const { id: sessionId } = useLocalSearchParams<{ id: string }>();
   const searchParams = useLocalSearchParams();
-  const encodedPath = searchParams.path as string;
-  let filePath = '';
+  const pathParam = searchParams.path;
+  const pathString = Array.isArray(pathParam) ? pathParam[0] : pathParam;
 
-  // Decode base64 path with error handling
-  try {
-    filePath = encodedPath ? atob(encodedPath) : '';
-  } catch (error) {
-    logger.error('Failed to decode file path:', toError(error));
-    filePath = encodedPath || ''; // Fallback to original path if decoding fails
+  /**
+   * Query may be encodeURIComponent(base64); older links used raw base64 only.
+   */
+  const normalizedBase64 =
+    typeof pathString === 'string' && pathString.length > 0
+      ? (() => {
+          try {
+            return decodeURIComponent(pathString);
+          } catch {
+            return pathString;
+          }
+        })()
+      : '';
+
+  // UTF-8 path from base64 bytes (compatible with legacy ASCII-only btoa paths)
+  const filePath = normalizedBase64 ? decodeSessionFilePathFromRoute(normalizedBase64) : '';
+  if (normalizedBase64 && !filePath) {
+    logger.error('Failed to decode file path from route param');
   }
 
   const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
   const [diffContent, setDiffContent] = React.useState<string | null>(null);
-  const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('diff');
+  const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('file');
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [fileSizeBytes, setFileSizeBytes] = React.useState<number | null>(null);
 
   // Determine file language from extension
   const getFileLanguage = React.useCallback((path: string): string | null => {
@@ -253,13 +277,21 @@ export default function FileScreen() {
         const response = await sessionReadFile(sessionId, filePath);
 
         if (!isCancelled) {
-          if (response.success && response.content) {
-            // Decode base64 content to UTF-8 string
-            let decodedContent: string;
+          // Empty files serialize as base64 `""`; do not treat falsy `content` as a failed read.
+          if (response.success && typeof response.content === 'string') {
+            // Daemon returns raw file bytes as base64; decode to bytes first (whitespace-tolerant), then UTF-8 for display.
+            let bytes: Uint8Array;
             try {
-              decodedContent = atob(response.content);
+              bytes = decodeBase64(response.content);
             } catch (decodeError) {
-              // If base64 decode fails, treat as binary
+              logger.error('base64 decode failed for file', toError(decodeError));
+              setError(t('files.failedToDecodeContent'));
+              return;
+            }
+
+            setFileSizeBytes(bytes.length);
+
+            if (looksLikeBinaryBytes(bytes)) {
               setFileContent({
                 content: '',
                 encoding: 'base64',
@@ -268,27 +300,21 @@ export default function FileScreen() {
               return;
             }
 
-            // Check if content contains binary data (null bytes or too many non-printable chars)
-            const hasNullBytes = decodedContent.includes('\0');
-            const nonPrintableCount = decodedContent.split('').filter(char => {
-              const code = char.charCodeAt(0);
-              return code < 32 && code !== 9 && code !== 10 && code !== 13; // Allow tab, LF, CR
-            }).length;
-            const isBinary = hasNullBytes || nonPrintableCount / decodedContent.length > 0.1;
+            const decodedContent = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
 
             setFileContent({
-              content: isBinary ? '' : decodedContent,
+              content: decodedContent,
               encoding: 'utf8',
-              isBinary,
+              isBinary: false,
             });
           } else {
-            setError(response.error || 'Failed to read file');
+            setError(response.error || t('files.failedToReadFile'));
           }
         }
       } catch (error) {
         logger.error('Failed to load file:', toError(error));
         if (!isCancelled) {
-          setError('Failed to load file');
+          setError(t('files.failedToLoadFile'));
         }
       } finally {
         if (!isCancelled) {
@@ -311,17 +337,25 @@ export default function FileScreen() {
     }
   }, [error]);
 
-  // Set default display mode based on diff availability
+  // Default to file view; user can switch to diff manually if available
   React.useEffect(() => {
-    if (diffContent) {
-      setDisplayMode('diff');
-    } else if (fileContent) {
+    if (!diffContent && fileContent) {
       setDisplayMode('file');
     }
   }, [diffContent, fileContent]);
 
   const fileName = filePath.split('/').pop() || filePath;
   const language = getFileLanguage(filePath);
+
+  /** Copy the full file path to clipboard and show a brief toast. */
+  const copyFilePath = React.useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(filePath);
+      Modal.alert(t('common.success'), t('files.pathCopied'));
+    } catch (e) {
+      logger.error('Failed to copy path', toError(e));
+    }
+  }, [filePath]);
 
   if (isLoading) {
     return (
@@ -433,30 +467,45 @@ export default function FileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
-      {/* File path header */}
-      <View
+      {/* File path header — tap to copy path */}
+      <Pressable
+        onPress={copyFilePath}
         style={{
           padding: 16,
           borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
           borderBottomColor: theme.colors.divider,
           backgroundColor: theme.colors.surfaceHigh,
-          flexDirection: 'row',
-          alignItems: 'center',
         }}
       >
-        <FileIcon fileName={fileName} size={20} />
-        <Text
-          style={{
-            fontSize: 14,
-            color: theme.colors.textSecondary,
-            marginLeft: 8,
-            flex: 1,
-            ...Typography.mono(),
-          }}
-        >
-          {filePath}
-        </Text>
-      </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <FileIcon fileName={fileName} size={20} />
+          <Text
+            style={{
+              fontSize: 14,
+              color: theme.colors.textSecondary,
+              marginLeft: 8,
+              flex: 1,
+              ...Typography.mono(),
+            }}
+            numberOfLines={2}
+          >
+            {filePath}
+          </Text>
+        </View>
+        {fileSizeBytes != null && (
+          <Text
+            style={{
+              fontSize: 12,
+              color: theme.colors.textSecondary,
+              marginTop: 4,
+              marginLeft: 28,
+              ...Typography.default(),
+            }}
+          >
+            {t('files.fileSize', { bytes: fileSizeBytes })}
+          </Text>
+        )}
+      </Pressable>
 
       {/* Toggle buttons for File/Diff view */}
       {diffContent && (
@@ -526,11 +575,16 @@ export default function FileScreen() {
         {displayMode === 'diff' && diffContent ? (
           <DiffDisplay diffContent={diffContent} />
         ) : displayMode === 'file' && fileContent?.content ? (
-          <SimpleSyntaxHighlighter
-            code={fileContent.content}
-            language={language}
-            selectable={true}
-          />
+          isMarkdownPreviewPath(filePath) ? (
+            <MarkdownView markdown={fileContent.content} />
+          ) : (
+            <SimpleSyntaxHighlighter
+              code={fileContent.content}
+              language={language}
+              selectable={true}
+              showLineNumbers={true}
+            />
+          )
         ) : displayMode === 'file' && fileContent && !fileContent.content ? (
           <Text
             style={{

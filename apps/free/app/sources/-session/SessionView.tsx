@@ -351,7 +351,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   const sessionStatus = useSessionStatus(session);
   const sessionUsage = useSessionUsage(sessionId);
   const alwaysShowContextSize = useSetting('alwaysShowContextSize');
-  const experiments = useSetting('experiments');
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
 
   React.useEffect(() => {
@@ -839,9 +838,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
         isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
         onAbort={() => sessionAbort(sessionId)}
         showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-        onFileViewerPress={
-          experiments ? () => router.push(`/session/${sessionId}/files`) : undefined
-        }
+        onFileViewerPress={() => router.push(`/session/${sessionId}/files`)}
         // Autocomplete configuration
         autocompletePrefixes={['@', '/']}
         autocompleteSuggestions={query => getSuggestions(sessionId, query)}

@@ -1,9 +1,7 @@
 import { Octicons } from '@expo/vector-icons';
-import { useRoute } from '@react-navigation/native';
-import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as React from 'react';
-import { View, ActivityIndicator, Platform, TextInput } from 'react-native';
+import { View, ActivityIndicator, Platform, TextInput, Pressable } from 'react-native';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { FileIcon } from '@/components/FileIcon';
 import { Item } from '@/components/Item';
@@ -12,30 +10,123 @@ import { layout } from '@/components/layout';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
-import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
+import { sessionListDirectory, type DirectoryEntry } from '@/sync/ops';
+import { useSession } from '@/sync/storage';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
+import { encodeSessionFilePathForRoute, parentPathWithinRoot } from '@/utils/sessionFilePath';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/session/files');
 
+/** Directory names filtered out of the browse listing to reduce noise. */
+const NOISY_DIR_NAMES = new Set(['node_modules', '__pycache__', 'dist', 'build']);
+
+/**
+ * Joins an absolute directory path with a single entry name (POSIX-style).
+ */
+function joinPathSegment(baseDir: string, name: string): string {
+  const b = baseDir.replace(/\/+$/, '');
+  return `${b}/${name}`;
+}
+
+/**
+ * Relative path from project root for the browse breadcrumb (e.g. "src/app").
+ */
+function relativePathFromRoot(rootPath: string, currentPath: string): string {
+  const r = rootPath.replace(/\/+$/, '');
+  const c = currentPath.replace(/\/+$/, '');
+  if (c === r) return '.';
+  if (c.startsWith(r + '/')) return c.slice(r.length + 1);
+  return c;
+}
+
 export default function FilesScreen() {
-  const route = useRoute();
   const router = useRouter();
-  const sessionId = (route.params! as any).id as string;
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const rawId = params.id;
+  const sessionId = (Array.isArray(rawId) ? rawId[0] : rawId) ?? '';
+  const session = useSession(sessionId);
+  const rootPath = session?.metadata?.path?.replace(/\/+$/, '') ?? '';
 
   const [gitStatusFiles, setGitStatusFiles] = React.useState<GitStatusFiles | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [searchResults, setSearchResults] = React.useState<FileItem[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
+
+  const [browsePath, setBrowsePath] = React.useState('');
+  const [browseEntries, setBrowseEntries] = React.useState<DirectoryEntry[]>([]);
+  const [browseLoading, setBrowseLoading] = React.useState(false);
+  const [browseError, setBrowseError] = React.useState<string | null>(null);
+
   // Use project git status first, fallback to session git status for backward compatibility
-  const projectGitStatus = useSessionProjectGitStatus(sessionId);
-  const sessionGitStatus = useSessionGitStatus(sessionId);
-  const gitStatus = projectGitStatus || sessionGitStatus;
   const { theme } = useUnistyles();
+
+  // Keep browse path inside session cwd when root metadata updates
+  React.useEffect(() => {
+    if (!rootPath) return;
+    setBrowsePath(prev => {
+      if (!prev) return rootPath;
+      const p = prev.replace(/\/+$/, '');
+      if (p === rootPath || p.startsWith(rootPath + '/')) return prev;
+      return rootPath;
+    });
+  }, [rootPath]);
+
+  // Load directory listing from daemon (same sandbox as agent working directory)
+  React.useEffect(() => {
+    if (!sessionId || !browsePath || !rootPath) return;
+    let cancelled = false;
+
+    const load = async () => {
+      setBrowseLoading(true);
+      setBrowseError(null);
+      try {
+        const res = await sessionListDirectory(sessionId, browsePath);
+        if (cancelled) return;
+        if (!res.success) {
+          setBrowseError(res.error || t('files.browseLoadFailed'));
+          setBrowseEntries([]);
+          return;
+        }
+        const raw = res.entries || [];
+        const sorted = [...raw].sort((a, b) => {
+          const rank = (entryType: DirectoryEntry['type']) => (entryType === 'directory' ? 0 : 1);
+          const dr = rank(a.type) - rank(b.type);
+          if (dr !== 0) return dr;
+          return a.name.localeCompare(b.name);
+        });
+        const filtered = sorted.filter(entry => {
+          if (entry.type !== 'directory') return true;
+          if (entry.name.startsWith('.')) return false;
+          if (NOISY_DIR_NAMES.has(entry.name)) return false;
+          return true;
+        });
+        setBrowseEntries(filtered);
+      } catch (error) {
+        if (!cancelled) {
+          logger.error('browse listDirectory failed', toError(error));
+          setBrowseError(t('files.browseLoadFailed'));
+          setBrowseEntries([]);
+        }
+      } finally {
+        if (!cancelled) setBrowseLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, browsePath, rootPath]);
 
   // Load git status files
   const loadGitStatusFiles = React.useCallback(async () => {
+    if (!sessionId) {
+      setGitStatusFiles(null);
+      setIsLoading(false);
+      return;
+    }
     try {
       setIsLoading(true);
       const result = await getGitStatusFiles(sessionId);
@@ -48,12 +139,7 @@ export default function FilesScreen() {
     }
   }, [sessionId]);
 
-  // Load on mount
-  React.useEffect(() => {
-    loadGitStatusFiles();
-  }, [loadGitStatusFiles]);
-
-  // Refresh when screen is focused
+  // Initial load + refresh when returning to this screen
   useFocusEffect(
     React.useCallback(() => {
       loadGitStatusFiles();
@@ -77,12 +163,13 @@ export default function FilesScreen() {
       }
     };
 
-    // Load files when searching or when repo is clean
     const shouldShowAllFiles =
       searchQuery || (gitStatusFiles?.totalStaged === 0 && gitStatusFiles?.totalUnstaged === 0);
 
     if (shouldShowAllFiles && !isLoading) {
-      loadFiles();
+      const delay = searchQuery ? 300 : 0;
+      const timer = setTimeout(() => { loadFiles(); }, delay);
+      return () => clearTimeout(timer);
     } else if (!searchQuery) {
       setSearchResults([]);
       setIsSearching(false);
@@ -91,8 +178,18 @@ export default function FilesScreen() {
 
   const handleFilePress = React.useCallback(
     (file: GitFileStatus | FileItem) => {
-      // Navigate to file viewer with the file path (base64 encoded for special characters)
-      const encodedPath = btoa(file.fullPath);
+      const encodedPath = encodeURIComponent(encodeSessionFilePathForRoute(file.fullPath));
+      router.push(`/session/${sessionId}/file?path=${encodedPath}`);
+    },
+    [router, sessionId]
+  );
+
+  /**
+   * Opens the session file preview screen for an absolute path on the daemon machine.
+   */
+  const openFilePreview = React.useCallback(
+    (absolutePath: string) => {
+      const encodedPath = encodeURIComponent(encodeSessionFilePathForRoute(absolutePath));
       router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     },
     [router, sessionId]
@@ -158,6 +255,28 @@ export default function FilesScreen() {
 
     return <FileIcon fileName={file.fileName} size={29} />;
   };
+
+  const browseParent = rootPath ? parentPathWithinRoot(browsePath, rootPath) : null;
+
+  if (!sessionId) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            flex: 1,
+            backgroundColor: theme.colors.surface,
+            justifyContent: 'center',
+            padding: 24,
+          },
+        ]}
+      >
+        <Text style={{ ...Typography.default(), color: theme.colors.textSecondary, textAlign: 'center' }}>
+          {t('errors.sessionDeleted')}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
@@ -249,15 +368,163 @@ export default function FilesScreen() {
         </View>
       )}
 
-      {/* Git Status List */}
+      {/* Git Status List + directory browse */}
       <ItemList style={{ flex: 1 }}>
+        {/* Drill-down directory tree (daemon working directory); tap file → file preview */}
+        {rootPath ? (
+          <>
+            <View
+              style={{
+                backgroundColor: theme.colors.surfaceHigh,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                borderBottomColor: theme.colors.divider,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: '600',
+                  color: theme.colors.text,
+                  marginBottom: 6,
+                  ...Typography.default(),
+                }}
+              >
+                {t('files.browseTitle')}
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+                {(() => {
+                  const rel = relativePathFromRoot(rootPath, browsePath || rootPath);
+                  const segments = rel === '.' ? [] : rel.split('/');
+                  const allSegments = [{ label: 'root', path: rootPath }, ...segments.map((seg, i) => ({
+                    label: seg,
+                    path: rootPath + '/' + segments.slice(0, i + 1).join('/'),
+                  }))];
+                  return allSegments.map((seg, i) => {
+                    const isLast = i === allSegments.length - 1;
+                    return (
+                      <View key={seg.path} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        {i > 0 && (
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: theme.colors.textSecondary,
+                              marginHorizontal: 4,
+                              ...Typography.mono(),
+                            }}
+                          >
+                            /
+                          </Text>
+                        )}
+                        {isLast ? (
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: theme.colors.text,
+                              ...Typography.mono(),
+                            }}
+                          >
+                            {seg.label}
+                          </Text>
+                        ) : (
+                          <Pressable onPress={() => setBrowsePath(seg.path)} hitSlop={4}>
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                color: theme.colors.textLink,
+                                ...Typography.mono(),
+                              }}
+                            >
+                              {seg.label}
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  });
+                })()}
+              </View>
+            </View>
+            {browseLoading ? (
+              <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+              </View>
+            ) : browseError ? (
+              <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: theme.colors.textDestructive,
+                    ...Typography.default(),
+                  }}
+                >
+                  {browseError}
+                </Text>
+              </View>
+            ) : browseEntries.length === 0 ? (
+              <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: theme.colors.textSecondary,
+                    ...Typography.default(),
+                  }}
+                >
+                  {t('files.browseEmpty')}
+                </Text>
+              </View>
+            ) : (
+              browseEntries.map((entry, index) => {
+                const fullPath = joinPathSegment(browsePath || rootPath, entry.name);
+                const isDir = entry.type === 'directory';
+                const rel = relativePathFromRoot(rootPath, fullPath);
+                return (
+                  <Item
+                    key={`browse-${fullPath}-${entry.type}`}
+                    title={entry.name}
+                    subtitle={rel}
+                    icon={
+                      isDir ? (
+                        <Octicons name="file-directory" size={29} color="#007AFF" />
+                      ) : (
+                        <FileIcon fileName={entry.name} size={29} />
+                      )
+                    }
+                    onPress={() => {
+                      if (isDir) {
+                        setBrowsePath(fullPath);
+                      } else {
+                        openFilePreview(fullPath);
+                      }
+                    }}
+                    showDivider={index < browseEntries.length - 1}
+                  />
+                );
+              })
+            )}
+          </>
+        ) : (
+          <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+            <Text
+              style={{
+                fontSize: 14,
+                color: theme.colors.textSecondary,
+                ...Typography.default(),
+              }}
+            >
+              {t('files.browseNoPath')}
+            </Text>
+          </View>
+        )}
+
         {isLoading ? (
           <View
             style={{
-              flex: 1,
               justifyContent: 'center',
               alignItems: 'center',
-              paddingTop: 40,
+              paddingTop: 32,
+              paddingBottom: 24,
             }}
           >
             <ActivityIndicator size="small" color={theme.colors.textSecondary} />
@@ -265,10 +532,9 @@ export default function FilesScreen() {
         ) : !gitStatusFiles ? (
           <View
             style={{
-              flex: 1,
-              justifyContent: 'center',
               alignItems: 'center',
-              paddingTop: 40,
+              paddingTop: 24,
+              paddingBottom: 32,
               paddingHorizontal: 20,
             }}
           >
@@ -302,7 +568,6 @@ export default function FilesScreen() {
           isSearching ? (
             <View
               style={{
-                flex: 1,
                 justifyContent: 'center',
                 alignItems: 'center',
                 paddingTop: 40,
@@ -324,7 +589,6 @@ export default function FilesScreen() {
           ) : searchResults.length === 0 ? (
             <View
               style={{
-                flex: 1,
                 justifyContent: 'center',
                 alignItems: 'center',
                 paddingTop: 40,
