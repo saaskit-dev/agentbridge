@@ -1,5 +1,9 @@
 # RFC-011: App 稳定性问题清单与修复方案
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 > Status: Completed
 > Created: 2026-03-26
 > Completed: 2026-03-26

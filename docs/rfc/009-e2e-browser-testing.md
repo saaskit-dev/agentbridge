@@ -1,5 +1,9 @@
 # RFC-009: E2E Browser Testing via Metro Module Injection
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 - **Status**: Implemented ✅（测试 harness 完成，CI 自动化待做）
 - **Created**: 2026-03-15
 - **Implemented**: 2026-03-16

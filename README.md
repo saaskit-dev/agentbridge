@@ -21,6 +21,10 @@
 
 ---
 
+> Refactor note: this README describes the product and the current implementation shape.
+> In the `headless-runtime` worktree, use `docs/rfc/013-headless-runtime-architecture.md`
+> as the architecture source of truth.
+
 ## Why AgentBridge?
 
 AI coding agents like Claude Code and Codex are powerful — but they run in a terminal on your machine. When you step away, you lose visibility. Permission requests go unanswered. Sessions hang.

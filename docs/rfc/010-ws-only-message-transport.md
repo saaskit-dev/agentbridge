@@ -1,5 +1,9 @@
 # RFC-010: WebSocket-Only Message Transport + Local SQLite Cache
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 > Status: Implemented
 > Created: 2026-03-18
 > Author: AgentBridge Team

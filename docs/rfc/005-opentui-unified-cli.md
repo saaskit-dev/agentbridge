@@ -1,5 +1,9 @@
 # RFC-005: OpenTUI 统一 CLI 渲染层
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 - **Status**: Partially Implemented（统一渲染已实现，OpenTUI 未引入，Claude local PTY 模式仍在）
 - **Created**: 2026-03-13
 - **Last Updated**: 2026-03-16

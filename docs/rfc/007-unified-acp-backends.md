@@ -1,5 +1,9 @@
 # RFC-007: 统一 ACP Backend — claude-acp / codex-acp
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 - **Status**: Implemented ✅（Phase 1-4 全部完成）
 - **Created**: 2026-03-14
 - **Implemented**: 2026-03-16

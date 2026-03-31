@@ -1,5 +1,9 @@
 # RFC-002: 消息全链路 E2E 集成测试
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 - **Status**: Implemented ✅
 - **Created**: 2026-03-08
 - **Implemented**: 2026-03-14

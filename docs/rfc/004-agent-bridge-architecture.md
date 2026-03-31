@@ -1,5 +1,9 @@
 # RFC-004: Agent 进程生命周期与 Daemon 重启恢复
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 > Status: Implemented（当前方案）/ Deferred（Bridge 架构）
 > Created: 2026-03-13
 > Last Updated: 2026-03-26

@@ -21,6 +21,9 @@
 
 ---
 
+> 重构说明：本 README 主要描述产品和当前实现形态。在 `headless-runtime`
+> worktree 中，架构设计以 `docs/rfc/013-headless-runtime-architecture.md` 为准。
+
 ## 为什么需要 AgentBridge？
 
 Claude Code、Codex 这些 AI 编程助手功能很强 —— 但它们跑在你的终端里。一旦你离开电脑，就看不到进度了。权限请求没人批准，会话就卡在那里。

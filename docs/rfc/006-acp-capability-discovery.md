@@ -1,5 +1,9 @@
 # RFC-006: ACP 能力发现与动态配置
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 - **Status**: Implemented ✅（Phase 1-6 全部完成）
 - **Created**: 2026-03-14
 - **Implemented**: 2026-03-16

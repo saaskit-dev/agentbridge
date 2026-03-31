@@ -1,5 +1,9 @@
 # RFC-012: Image Attachment Support
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 ## Status
 
 Design complete, not yet implemented.
@@ -407,4 +411,3 @@ content: z.object({
 - [ ] 确认 `expo-image-manipulator` 是否自动剥离 EXIF
 - [ ] 确认 RN `socket.io-client` 对 `ArrayBuffer` binary 传输的支持情况
 - [ ] sandbox 模式下 `~/.free/attachments/` 是否在允许路径内，否则改存 session cwd
-

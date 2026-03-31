@@ -1,5 +1,9 @@
 # RFC-008: CLI-Server Testing Strategy
 
+> Historical note for the `headless-runtime` worktree:
+> This RFC documents legacy and current implementation details. It is not the architecture
+> source of truth for the refactor. Use `013-headless-runtime-architecture.md` first.
+
 - **Status**: Partially Implemented（核心基础设施已就绪，覆盖持续扩展中）
 - **Created**: 2026-03-15
 - **Last Updated**: 2026-03-16
