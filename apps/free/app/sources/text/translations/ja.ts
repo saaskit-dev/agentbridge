@@ -319,6 +319,24 @@ export const ja: TranslationStructure = {
       notGitRepo: 'ワークツリーにはGitリポジトリが必要です',
       failed: ({ error }: { error: string }) => `ワークツリーの作成に失敗しました: ${error}`,
       success: 'ワークツリーが正常に作成されました',
+      branchConfigureTitle: 'ワークツリー ブランチ',
+      branchModalTitle: 'ワークツリー ブランチ',
+      branchModalOr: 'または新規ブランチを作成',
+      branchModalPriorityHint: '上で既存ブランチを選ぶと、下の新規ブランチより優先されます。',
+      branchModalEmptyHint: 'すべて空にするとランダムなブランチ名で自動作成します。',
+      branchPickerPlaceholder: '既存ブランチ（任意）',
+      branchPickerHint: 'ローカルブランチ',
+      newBranchNamePlaceholder: '新しいブランチ名（任意）',
+      startPointPlaceholder: '起点（任意、例: main）',
+      branchBindingRefresh: 'ブランチ一覧を更新',
+      branchBindingNoBranches: 'ローカルブランチが見つかりません。',
+      branchBindingLoadFailed: 'ブランチ一覧を読み込めませんでした。',
+      branchSummaryAuto: '自動 — ランダムブランチ',
+      branchSummaryExisting: ({ branch }: { branch: string }) => `既存: ${branch}`,
+      branchSummaryNew: ({ name }: { name: string }) => `新規: ${name}`,
+      branchSummaryNewWithStart: ({ name, start }: { name: string; start: string }) =>
+        `新規: ${name}（${start} から）`,
+      branchSummaryAutoFrom: ({ start }: { start: string }) => `自動（${start} から）`,
     },
     inputPlaceholder: '何に取り組みますか？',
     capabilityDiscoveryNotice:
@@ -383,8 +401,10 @@ export const ja: TranslationStructure = {
     sendBlockedServerDisconnected: 'サーバーが切断されました。メッセージを送信できません',
     sendBlockedDaemonOffline: 'セッションがオフラインです。メッセージを送信できません',
     addImage: '画像を追加',
-    pasteFromClipboard: 'クリップボードから貼り付け',
+    pickLatestPhoto: '最新の写真',
     chooseFromLibrary: 'ライブラリから選択',
+    latestPhotoUnavailable:
+      '写真を読み込めませんでした。ライブラリへのアクセスを許可するか、写真を追加してください。',
   },
 
   commandPalette: {

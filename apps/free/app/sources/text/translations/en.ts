@@ -332,6 +332,25 @@ export const en: TranslationStructure = {
       notGitRepo: 'Worktrees require a git repository',
       failed: ({ error }: { error: string }) => `Failed to create worktree: ${error}`,
       success: 'Worktree created successfully',
+      branchConfigureTitle: 'Worktree branch',
+      branchModalTitle: 'Worktree branch',
+      branchModalOr: 'Or create a new branch',
+      branchModalPriorityHint:
+        'If you select an existing branch above, it takes priority over new branch fields.',
+      branchModalEmptyHint: 'Leave all fields empty to auto-create a random branch.',
+      branchPickerPlaceholder: 'Existing branch (optional)',
+      branchPickerHint: 'Local branches',
+      newBranchNamePlaceholder: 'New branch name (optional)',
+      startPointPlaceholder: 'Start from (optional, e.g. main)',
+      branchBindingRefresh: 'Refresh branch list',
+      branchBindingNoBranches: 'No local branches found.',
+      branchBindingLoadFailed: 'Could not load branches.',
+      branchSummaryAuto: 'Auto — random branch',
+      branchSummaryExisting: ({ branch }: { branch: string }) => `Existing: ${branch}`,
+      branchSummaryNew: ({ name }: { name: string }) => `New branch: ${name}`,
+      branchSummaryNewWithStart: ({ name, start }: { name: string; start: string }) =>
+        `New: ${name} from ${start}`,
+      branchSummaryAutoFrom: ({ start }: { start: string }) => `Auto from ${start}`,
     },
     inputPlaceholder: 'What would you like to work on?',
     capabilityDiscoveryNotice: 'Send your first message to load modes, models, and commands.',
@@ -395,8 +414,10 @@ export const en: TranslationStructure = {
     sendBlockedServerDisconnected: 'Server disconnected, cannot send message',
     sendBlockedDaemonOffline: 'Session offline, cannot send message',
     addImage: 'Add Image',
-    pasteFromClipboard: 'Paste from Clipboard',
+    pickLatestPhoto: 'Latest Photo',
     chooseFromLibrary: 'Choose from Library',
+    latestPhotoUnavailable:
+      'Could not load a photo. Allow library access or add photos to your library.',
   },
 
   commandPalette: {

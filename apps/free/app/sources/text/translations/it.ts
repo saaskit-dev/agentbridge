@@ -358,6 +358,25 @@ export const it: TranslationStructure = {
       notGitRepo: 'Le worktree richiedono un repository git',
       failed: ({ error }: { error: string }) => `Impossibile creare la worktree: ${error}`,
       success: 'Worktree creata con successo',
+      branchConfigureTitle: 'Worktree branch',
+      branchModalTitle: 'Worktree branch',
+      branchModalOr: 'Or create a new branch',
+      branchModalPriorityHint:
+        'If you select an existing branch above, it takes priority over new branch fields.',
+      branchModalEmptyHint: 'Leave all fields empty to auto-create a random branch.',
+      branchPickerPlaceholder: 'Existing branch (optional)',
+      branchPickerHint: 'Local branches',
+      newBranchNamePlaceholder: 'New branch name (optional)',
+      startPointPlaceholder: 'Start from (optional, e.g. main)',
+      branchBindingRefresh: 'Refresh branch list',
+      branchBindingNoBranches: 'No local branches found.',
+      branchBindingLoadFailed: 'Could not load branches.',
+      branchSummaryAuto: 'Auto — random branch',
+      branchSummaryExisting: ({ branch }: { branch: string }) => `Existing: ${branch}`,
+      branchSummaryNew: ({ name }: { name: string }) => `New branch: ${name}`,
+      branchSummaryNewWithStart: ({ name, start }: { name: string; start: string }) =>
+        `New: ${name} from ${start}`,
+      branchSummaryAutoFrom: ({ start }: { start: string }) => `Auto from ${start}`,
     },
     inputPlaceholder: 'Su cosa vorresti lavorare?',
     capabilityDiscoveryNotice:
@@ -422,8 +441,10 @@ export const it: TranslationStructure = {
     sendBlockedServerDisconnected: 'Server disconnesso, impossibile inviare il messaggio',
     sendBlockedDaemonOffline: 'Sessione offline, impossibile inviare il messaggio',
     addImage: 'Aggiungi immagine',
-    pasteFromClipboard: 'Incolla dagli appunti',
+    pickLatestPhoto: 'Ultima foto',
     chooseFromLibrary: 'Scegli dalla libreria',
+    latestPhotoUnavailable:
+      'Impossibile caricare una foto. Consenti l\'accesso alla libreria o aggiungi foto.',
   },
 
   commandPalette: {

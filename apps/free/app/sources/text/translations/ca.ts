@@ -357,6 +357,25 @@ export const ca: TranslationStructure = {
       notGitRepo: 'Els worktrees requereixen un repositori git',
       failed: ({ error }: { error: string }) => `Error en crear el worktree: ${error}`,
       success: 'Worktree creat amb èxit',
+      branchConfigureTitle: 'Worktree branch',
+      branchModalTitle: 'Worktree branch',
+      branchModalOr: 'Or create a new branch',
+      branchModalPriorityHint:
+        'If you select an existing branch above, it takes priority over new branch fields.',
+      branchModalEmptyHint: 'Leave all fields empty to auto-create a random branch.',
+      branchPickerPlaceholder: 'Existing branch (optional)',
+      branchPickerHint: 'Local branches',
+      newBranchNamePlaceholder: 'New branch name (optional)',
+      startPointPlaceholder: 'Start from (optional, e.g. main)',
+      branchBindingRefresh: 'Refresh branch list',
+      branchBindingNoBranches: 'No local branches found.',
+      branchBindingLoadFailed: 'Could not load branches.',
+      branchSummaryAuto: 'Auto — random branch',
+      branchSummaryExisting: ({ branch }: { branch: string }) => `Existing: ${branch}`,
+      branchSummaryNew: ({ name }: { name: string }) => `New branch: ${name}`,
+      branchSummaryNewWithStart: ({ name, start }: { name: string; start: string }) =>
+        `New: ${name} from ${start}`,
+      branchSummaryAutoFrom: ({ start }: { start: string }) => `Auto from ${start}`,
     },
     inputPlaceholder: 'En què voldries treballar?',
     capabilityDiscoveryNotice:
@@ -421,8 +440,10 @@ export const ca: TranslationStructure = {
     sendBlockedServerDisconnected: 'Servidor desconnectat, no es pot enviar el missatge',
     sendBlockedDaemonOffline: 'Sessió fora de línia, no es pot enviar el missatge',
     addImage: 'Afegir imatge',
-    pasteFromClipboard: 'Enganxar del porta-retalls',
+    pickLatestPhoto: 'Última foto',
     chooseFromLibrary: 'Triar de la biblioteca',
+    latestPhotoUnavailable:
+      'No s\'ha pogut carregar cap foto. Permet l\'accés a la biblioteca o afegeix fotos.',
   },
 
   commandPalette: {

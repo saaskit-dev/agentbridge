@@ -2,7 +2,6 @@ import { Platform } from 'react-native';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { File, Directory, Paths } from 'expo-file-system';
 import type { ImagePickerAsset } from 'expo-image-picker';
-import * as Clipboard from 'expo-clipboard';
 import { apiSocket } from './apiSocket';
 import { messageDB } from './messageDB';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
@@ -548,28 +547,8 @@ export async function uploadAttachment(
 }
 
 // ---------------------------------------------------------------------------
-// Clipboard image helpers
+// Clipboard image helpers (images from the composer paste bridge / paste events)
 // ---------------------------------------------------------------------------
-
-/**
- * Check if the system clipboard currently holds an image.
- * On iOS 16+, `hasImageAsync` may return false due to pasteboard privacy
- * even when an image IS present. We always return true on native so the
- * ActionSheet is shown — the actual read in `getClipboardImage` will
- * trigger the system paste prompt and gracefully return null if empty.
- */
-export async function hasClipboardImage(): Promise<boolean> {
-  if (Platform.OS !== 'web') {
-    // Always offer the option on native — getClipboardImage handles the
-    // actual permission prompt and returns null if nothing is there.
-    return true;
-  }
-  try {
-    return await Clipboard.hasImageAsync();
-  } catch {
-    return false;
-  }
-}
 
 export interface ClipboardImageInput {
   uri: string;
@@ -629,37 +608,4 @@ export async function uploadClipboardImage(
   };
 
   return uploadAttachment(asset, sessionId);
-}
-
-/**
- * Read the clipboard image on native via expo-clipboard.
- * Returns a ClipboardImageInput or null if no image is available.
- *
- * On iOS 16+, `hasImageAsync()` can return false due to clipboard privacy
- * restrictions, so we also attempt `getImageAsync()` directly as a fallback.
- */
-export async function getClipboardImage(): Promise<ClipboardImageInput | null> {
-  // Try direct read first — on iOS 16+ the "has" check may lie due to
-  // pasteboard privacy, but getImageAsync triggers the system paste
-  // permission prompt and works.
-  try {
-    const result = await Clipboard.getImageAsync({ format: 'png' });
-    if (result?.data) {
-      logger.info('[getClipboardImage] got image via direct read', {
-        width: result.size.width,
-        height: result.size.height,
-      });
-      return {
-        uri: result.data,
-        mimeType: 'image/png',
-        width: result.size.width,
-        height: result.size.height,
-      };
-    }
-  } catch (err) {
-    logger.debug('[getClipboardImage] direct read failed, no image in clipboard', {
-      error: String(err),
-    });
-  }
-  return null;
 }

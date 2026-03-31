@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import React from 'react';
-import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
@@ -14,6 +14,12 @@ import { layout } from '@/components/layout';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { createWorktree } from '@/utils/createWorktree';
+import {
+  defaultWorktreeBranchBinding,
+  isWorktreeBranchBindingValid,
+  type WorktreeBranchBinding,
+} from '@/utils/worktreeBranchBinding';
+import { WorktreeBranchBindingSelector } from '@/components/WorktreeBranchBindingSelector';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useHeaderHeight } from '@/utils/responsive';
 import { Modal } from '@/modal';
@@ -47,6 +53,8 @@ import {
   uploadClipboardImage,
   type AttachmentRef,
 } from '@/sync/attachmentUpload';
+import { getLatestLibraryPhotoAsset } from '@/utils/getLatestLibraryPhoto';
+import { runImageSourcePicker } from '@/utils/imageSourcePicker';
 import { subscribePasteImage, type PastedImage } from '@/utils/pasteImageBridge';
 const logger = new Logger('app/new');
 
@@ -208,6 +216,9 @@ function NewSessionWizard() {
   }, [agentType]);
 
   const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
+  const [worktreeBranchBinding, setWorktreeBranchBinding] = React.useState<WorktreeBranchBinding>(
+    () => persistedDraft?.worktreeBranchBinding ?? defaultWorktreeBranchBinding()
+  );
   const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
     const validModes: PermissionMode[] = ['read-only', 'accept-edits', 'yolo'];
     if (lastUsedPermissionMode && validModes.includes(lastUsedPermissionMode as PermissionMode)) {
@@ -405,9 +416,9 @@ function NewSessionWizard() {
   >([]);
   const isUploading = pendingAttachments.some(a => a.uploading);
 
+  /** Queue pasted images locally; upload runs after the session is created. */
   const handlePasteImage = React.useCallback((images: PastedImage[]) => {
     if (images.length === 0) return;
-    // Store locally — upload happens after session creation
     setPendingAttachments(prev => [
       ...prev,
       ...images.map(img => ({ localUri: img.uri, uploading: false, pastedImage: img })),
@@ -417,7 +428,8 @@ function NewSessionWizard() {
   // Subscribe to global paste-image bridge (registered in _layout.tsx)
   React.useEffect(() => subscribePasteImage(handlePasteImage), [handlePasteImage]);
 
-  const handlePickImages = React.useCallback(async () => {
+  /** Append images chosen from the system photo library (same flow as SessionView). */
+  const pickFromLibrary = React.useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
@@ -429,6 +441,20 @@ function NewSessionWizard() {
       ...result.assets.map(asset => ({ localUri: asset.uri, uploading: false, asset })),
     ]);
   }, []);
+
+  /** Queue the newest library photo locally; upload runs after the session is created. */
+  const pickLatestFromLibrary = React.useCallback(async () => {
+    const asset = await getLatestLibraryPhotoAsset();
+    if (!asset) {
+      Modal.alert(t('common.error'), t('session.latestPhotoUnavailable'));
+      return;
+    }
+    setPendingAttachments(prev => [...prev, { localUri: asset.uri, uploading: false, asset }]);
+  }, []);
+
+  const handlePickImages = React.useCallback(async () => {
+    await runImageSourcePicker({ pickFromLibrary, pickLatestFromLibrary });
+  }, [pickFromLibrary, pickLatestFromLibrary]);
 
   const handleRemoveAttachment = React.useCallback((index: number) => {
     setPendingAttachments(prev => prev.filter((_, i) => i !== index));
@@ -630,8 +656,19 @@ function NewSessionWizard() {
     if (usesDiscoveredCapabilitiesOnly(agentType) && !capabilitiesLoaded) {
       return false;
     }
+    if (experimentsEnabled && sessionType === 'worktree' && !isWorktreeBranchBindingValid(worktreeBranchBinding)) {
+      return false;
+    }
     return true;
-  }, [selectedMachineId, selectedPath, agentType, capabilitiesLoaded]);
+  }, [
+    selectedMachineId,
+    selectedPath,
+    agentType,
+    capabilitiesLoaded,
+    experimentsEnabled,
+    sessionType,
+    worktreeBranchBinding,
+  ]);
 
   // Permission modes are now unified across all agents - no reset needed on agent type change
 
@@ -692,7 +729,11 @@ function NewSessionWizard() {
 
       // Handle worktree creation
       if (sessionType === 'worktree' && experimentsEnabled) {
-        const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
+        const worktreeResult = await createWorktree(
+          selectedMachineId,
+          selectedPath,
+          worktreeBranchBinding
+        );
 
         if (!worktreeResult.success) {
           if (worktreeResult.error === 'Not a Git repository') {
@@ -810,6 +851,7 @@ function NewSessionWizard() {
     sessionPrompt,
     sessionType,
     experimentsEnabled,
+    worktreeBranchBinding,
     agentType,
     permissionMode,
     modelMode,
@@ -862,6 +904,7 @@ function NewSessionWizard() {
         agentType,
         permissionMode,
         sessionType,
+        worktreeBranchBinding,
         updatedAt: Date.now(),
       });
     }, 250);
@@ -870,7 +913,7 @@ function NewSessionWizard() {
         clearTimeout(draftSaveTimerRef.current);
       }
     };
-  }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
+  }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType, worktreeBranchBinding]);
 
   return (
     <KeyboardAvoidingView
@@ -880,15 +923,32 @@ function NewSessionWizard() {
       }
       style={styles.container}
     >
-      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-        {/* Session type selector only if experiments enabled */}
-        {experimentsEnabled && (
-          <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
-            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-              <SessionTypeSelector value={sessionType} onChange={setSessionType} />
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'flex-end',
+            paddingBottom: 8,
+          }}
+        >
+          {experimentsEnabled && (
+            <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 8 }}>
+              <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                <SessionTypeSelector value={sessionType} onChange={setSessionType} />
+                {sessionType === 'worktree' && (
+                  <WorktreeBranchBindingSelector
+                    value={worktreeBranchBinding}
+                    onChange={setWorktreeBranchBinding}
+                    machineId={selectedMachineId}
+                    basePath={selectedPath}
+                  />
+                )}
+              </View>
             </View>
-          </View>
-        )}
+          )}
+        </ScrollView>
 
         {/* AgentInput with inline chips - sticky at bottom */}
         <View

@@ -358,6 +358,25 @@ export const es: TranslationStructure = {
       notGitRepo: 'Los worktrees requieren un repositorio git',
       failed: ({ error }: { error: string }) => `Error al crear worktree: ${error}`,
       success: 'Worktree creado exitosamente',
+      branchConfigureTitle: 'Worktree branch',
+      branchModalTitle: 'Worktree branch',
+      branchModalOr: 'Or create a new branch',
+      branchModalPriorityHint:
+        'If you select an existing branch above, it takes priority over new branch fields.',
+      branchModalEmptyHint: 'Leave all fields empty to auto-create a random branch.',
+      branchPickerPlaceholder: 'Existing branch (optional)',
+      branchPickerHint: 'Local branches',
+      newBranchNamePlaceholder: 'New branch name (optional)',
+      startPointPlaceholder: 'Start from (optional, e.g. main)',
+      branchBindingRefresh: 'Refresh branch list',
+      branchBindingNoBranches: 'No local branches found.',
+      branchBindingLoadFailed: 'Could not load branches.',
+      branchSummaryAuto: 'Auto — random branch',
+      branchSummaryExisting: ({ branch }: { branch: string }) => `Existing: ${branch}`,
+      branchSummaryNew: ({ name }: { name: string }) => `New branch: ${name}`,
+      branchSummaryNewWithStart: ({ name, start }: { name: string; start: string }) =>
+        `New: ${name} from ${start}`,
+      branchSummaryAutoFrom: ({ start }: { start: string }) => `Auto from ${start}`,
     },
     inputPlaceholder: '¿En qué te gustaría trabajar?',
     capabilityDiscoveryNotice: 'Envía tu primer mensaje para cargar modos, modelos y comandos.',
@@ -421,8 +440,10 @@ export const es: TranslationStructure = {
     sendBlockedServerDisconnected: 'Servidor desconectado, no se puede enviar el mensaje',
     sendBlockedDaemonOffline: 'Sesión sin conexión, no se puede enviar el mensaje',
     addImage: 'Añadir imagen',
-    pasteFromClipboard: 'Pegar del portapapeles',
+    pickLatestPhoto: 'Última foto',
     chooseFromLibrary: 'Elegir de la biblioteca',
+    latestPhotoUnavailable:
+      'No se pudo cargar una foto. Permite el acceso a la biblioteca o añade fotos.',
   },
 
   commandPalette: {

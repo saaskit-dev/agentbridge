@@ -337,6 +337,25 @@ export const ru: TranslationStructure = {
       notGitRepo: 'Worktree требует наличия git репозитория',
       failed: ({ error }: { error: string }) => `Не удалось создать worktree: ${error}`,
       success: 'Worktree успешно создан',
+      branchConfigureTitle: 'Worktree branch',
+      branchModalTitle: 'Worktree branch',
+      branchModalOr: 'Or create a new branch',
+      branchModalPriorityHint:
+        'If you select an existing branch above, it takes priority over new branch fields.',
+      branchModalEmptyHint: 'Leave all fields empty to auto-create a random branch.',
+      branchPickerPlaceholder: 'Existing branch (optional)',
+      branchPickerHint: 'Local branches',
+      newBranchNamePlaceholder: 'New branch name (optional)',
+      startPointPlaceholder: 'Start from (optional, e.g. main)',
+      branchBindingRefresh: 'Refresh branch list',
+      branchBindingNoBranches: 'No local branches found.',
+      branchBindingLoadFailed: 'Could not load branches.',
+      branchSummaryAuto: 'Auto — random branch',
+      branchSummaryExisting: ({ branch }: { branch: string }) => `Existing: ${branch}`,
+      branchSummaryNew: ({ name }: { name: string }) => `New branch: ${name}`,
+      branchSummaryNewWithStart: ({ name, start }: { name: string; start: string }) =>
+        `New: ${name} from ${start}`,
+      branchSummaryAutoFrom: ({ start }: { start: string }) => `Auto from ${start}`,
     },
     inputPlaceholder: 'Над чем вы хотите поработать?',
     capabilityDiscoveryNotice:
@@ -538,8 +557,10 @@ export const ru: TranslationStructure = {
     sendBlockedServerDisconnected: 'Сервер отключён, невозможно отправить сообщение',
     sendBlockedDaemonOffline: 'Сессия офлайн, невозможно отправить сообщение',
     addImage: 'Добавить изображение',
-    pasteFromClipboard: 'Вставить из буфера обмена',
+    pickLatestPhoto: 'Последнее фото',
     chooseFromLibrary: 'Выбрать из библиотеки',
+    latestPhotoUnavailable:
+      'Не удалось загрузить фото. Разрешите доступ к библиотеке или добавьте фото.',
   },
 
   commandPalette: {

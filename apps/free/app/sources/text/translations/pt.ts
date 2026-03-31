@@ -358,6 +358,25 @@ export const pt: TranslationStructure = {
       notGitRepo: 'Worktrees requerem um repositório git',
       failed: ({ error }: { error: string }) => `Falha ao criar worktree: ${error}`,
       success: 'Worktree criado com sucesso',
+      branchConfigureTitle: 'Worktree branch',
+      branchModalTitle: 'Worktree branch',
+      branchModalOr: 'Or create a new branch',
+      branchModalPriorityHint:
+        'If you select an existing branch above, it takes priority over new branch fields.',
+      branchModalEmptyHint: 'Leave all fields empty to auto-create a random branch.',
+      branchPickerPlaceholder: 'Existing branch (optional)',
+      branchPickerHint: 'Local branches',
+      newBranchNamePlaceholder: 'New branch name (optional)',
+      startPointPlaceholder: 'Start from (optional, e.g. main)',
+      branchBindingRefresh: 'Refresh branch list',
+      branchBindingNoBranches: 'No local branches found.',
+      branchBindingLoadFailed: 'Could not load branches.',
+      branchSummaryAuto: 'Auto — random branch',
+      branchSummaryExisting: ({ branch }: { branch: string }) => `Existing: ${branch}`,
+      branchSummaryNew: ({ name }: { name: string }) => `New branch: ${name}`,
+      branchSummaryNewWithStart: ({ name, start }: { name: string; start: string }) =>
+        `New: ${name} from ${start}`,
+      branchSummaryAutoFrom: ({ start }: { start: string }) => `Auto from ${start}`,
     },
     inputPlaceholder: 'No que você gostaria de trabalhar?',
     capabilityDiscoveryNotice:
@@ -422,8 +441,10 @@ export const pt: TranslationStructure = {
     sendBlockedServerDisconnected: 'Servidor desconectado, não é possível enviar mensagem',
     sendBlockedDaemonOffline: 'Sessão offline, não é possível enviar mensagem',
     addImage: 'Adicionar imagem',
-    pasteFromClipboard: 'Colar da área de transferência',
+    pickLatestPhoto: 'Foto mais recente',
     chooseFromLibrary: 'Escolher da biblioteca',
+    latestPhotoUnavailable:
+      'Não foi possível carregar uma foto. Permita o acesso à biblioteca ou adicione fotos.',
   },
 
   commandPalette: {

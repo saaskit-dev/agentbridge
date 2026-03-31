@@ -188,6 +188,12 @@ export default {
         },
       ],
       [
+        'expo-media-library',
+        {
+          photosPermission: 'Allow $(PRODUCT_NAME) to attach images from your photo library.',
+        },
+      ],
+      [
         'expo-notifications',
         {
           enableBackgroundRemoteNotifications: true,

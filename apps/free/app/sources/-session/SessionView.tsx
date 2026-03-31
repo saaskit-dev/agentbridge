@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { AgentContentView } from '@/components/AgentContentView';
@@ -58,10 +58,10 @@ import * as ImagePicker from 'expo-image-picker';
 import {
   uploadAttachment,
   uploadClipboardImage,
-  getClipboardImage,
-  hasClipboardImage,
   type AttachmentRef,
 } from '@/sync/attachmentUpload';
+import { getLatestLibraryPhotoAsset } from '@/utils/getLatestLibraryPhoto';
+import { runImageSourcePicker } from '@/utils/imageSourcePicker';
 import { subscribePasteImage, type PastedImage } from '@/utils/pasteImageBridge';
 const logger = new Logger('app/session/SessionView');
 
@@ -557,46 +557,38 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     }
   }, [sessionId]);
 
-  const pasteFromClipboard = React.useCallback(async () => {
-    const clipImg = await getClipboardImage();
-    if (!clipImg) return;
-    await handlePasteImage([clipImg]);
-  }, [handlePasteImage]);
+  /** Attach the newest photo in the library without opening the picker (same upload path as pickFromLibrary). */
+  const pickLatestFromLibrary = React.useCallback(async () => {
+    const asset = await getLatestLibraryPhotoAsset();
+    if (!asset) {
+      Modal.alert(t('common.error'), t('session.latestPhotoUnavailable'));
+      return;
+    }
+    setPendingAttachments(prev => [...prev, { localUri: asset.uri, uploading: true }]);
+    try {
+      const uploadResult = await uploadAttachment(asset, sessionId);
+      setPendingAttachments(prev =>
+        prev.map(a =>
+          a.localUri === asset.uri
+            ? { localUri: uploadResult.localUri, uploading: false, ref: uploadResult.attachmentRef }
+            : a
+        )
+      );
+    } catch (err) {
+      logger.error('Latest library photo upload failed', toError(err), { sessionId });
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setPendingAttachments(prev =>
+        prev.map(a =>
+          a.localUri === asset.uri ? { ...a, uploading: false, error: errorMsg } : a
+        )
+      );
+      Modal.alert(t('common.error'), `Image upload failed: ${errorMsg}`);
+    }
+  }, [sessionId]);
 
   const handlePickImages = React.useCallback(async () => {
-    // On web, paste is handled by the paste event listener — just open library
-    if (Platform.OS === 'web') {
-      await pickFromLibrary();
-      return;
-    }
-
-    // On native, check if clipboard has an image and offer both options
-    const hasClip = await hasClipboardImage();
-    if (!hasClip) {
-      await pickFromLibrary();
-      return;
-    }
-
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [t('common.cancel'), t('session.pasteFromClipboard'), t('session.chooseFromLibrary')],
-          cancelButtonIndex: 0,
-        },
-        buttonIndex => {
-          if (buttonIndex === 1) void pasteFromClipboard();
-          else if (buttonIndex === 2) void pickFromLibrary();
-        }
-      );
-    } else {
-      // Android: use Modal.alert with buttons
-      Modal.alert(t('session.addImage'), undefined, [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('session.pasteFromClipboard'), onPress: () => void pasteFromClipboard() },
-        { text: t('session.chooseFromLibrary'), onPress: () => void pickFromLibrary() },
-      ]);
-    }
-  }, [pickFromLibrary, pasteFromClipboard]);
+    await runImageSourcePicker({ pickFromLibrary, pickLatestFromLibrary });
+  }, [pickFromLibrary, pickLatestFromLibrary]);
 
   const handleRemoveAttachment = React.useCallback((index: number) => {
     setPendingAttachments(prev => prev.filter((_, i) => i !== index));

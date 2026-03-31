@@ -371,6 +371,25 @@ export const pl: TranslationStructure = {
       notGitRepo: 'Worktree wymaga repozytorium git',
       failed: ({ error }: { error: string }) => `Nie udało się utworzyć worktree: ${error}`,
       success: 'Worktree został utworzony pomyślnie',
+      branchConfigureTitle: 'Worktree branch',
+      branchModalTitle: 'Worktree branch',
+      branchModalOr: 'Or create a new branch',
+      branchModalPriorityHint:
+        'If you select an existing branch above, it takes priority over new branch fields.',
+      branchModalEmptyHint: 'Leave all fields empty to auto-create a random branch.',
+      branchPickerPlaceholder: 'Existing branch (optional)',
+      branchPickerHint: 'Local branches',
+      newBranchNamePlaceholder: 'New branch name (optional)',
+      startPointPlaceholder: 'Start from (optional, e.g. main)',
+      branchBindingRefresh: 'Refresh branch list',
+      branchBindingNoBranches: 'No local branches found.',
+      branchBindingLoadFailed: 'Could not load branches.',
+      branchSummaryAuto: 'Auto — random branch',
+      branchSummaryExisting: ({ branch }: { branch: string }) => `Existing: ${branch}`,
+      branchSummaryNew: ({ name }: { name: string }) => `New branch: ${name}`,
+      branchSummaryNewWithStart: ({ name, start }: { name: string; start: string }) =>
+        `New: ${name} from ${start}`,
+      branchSummaryAutoFrom: ({ start }: { start: string }) => `Auto from ${start}`,
     },
     inputPlaceholder: 'Nad czym chciałbyś pracować?',
     capabilityDiscoveryNotice:
@@ -436,8 +455,10 @@ export const pl: TranslationStructure = {
     sendBlockedServerDisconnected: 'Serwer rozłączony, nie można wysłać wiadomości',
     sendBlockedDaemonOffline: 'Sesja offline, nie można wysłać wiadomości',
     addImage: 'Dodaj zdjęcie',
-    pasteFromClipboard: 'Wklej ze schowka',
+    pickLatestPhoto: 'Ostatnie zdjęcie',
     chooseFromLibrary: 'Wybierz z biblioteki',
+    latestPhotoUnavailable:
+      'Nie udało się wczytać zdjęcia. Zezwól na dostęp do biblioteki lub dodaj zdjęcia.',
   },
 
   commandPalette: {
