@@ -64,7 +64,7 @@ Runtime should own:
 
 - execution supervision
 - `Primary Binding（主绑定）`
-- interaction with `acpx sidecar（acpx 侧车）` through `ACP Bridge（ACP 桥接层）`
+- interaction with `acpx flow sdk（acpx 流程 SDK）` through `Flow Runtime Bridge（Flow 运行时桥接层）`
 - turn coordination
 - recovery decisions
 - execution-side and sync-side completion composition
@@ -141,7 +141,7 @@ Runtime should consume:
 
 - canonical commands from app/server-facing layers
 - current session and binding state
-- ACP execution feedback from `acpx sidecar`
+- ACP execution feedback from `acpx flow sdk`
 - sync-side facts from `ApiSessionClient（会话同步客户端）`
 
 Runtime should combine those into:
@@ -189,13 +189,13 @@ This means runtime must keep:
 
 It must not collapse everything into a single opaque transport envelope.
 
-## 8. Relationship to `acpx sidecar`
+## 8. Relationship to `acpx flow sdk`
 
 The boundary to ACP execution should be:
 
 - `Daemon Runtime`
-- `ACP Bridge（ACP 桥接层）`
-- `acpx sidecar（acpx 侧车）`
+- `Flow Runtime Bridge（Flow 运行时桥接层）`
+- `acpx flow sdk（acpx 流程 SDK）`
 
 Not:
 
@@ -203,7 +203,7 @@ Not:
 - `Server -> acpx`
 - `UI -> raw ACP`
 
-This keeps ACP execution reusable and keeps product semantics inside agentbridge.
+This keeps ACP execution reusable and keeps product semantics inside Free.
 
 ## 9. First-phase application
 

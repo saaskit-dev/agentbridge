@@ -15,6 +15,18 @@ If a feature cannot be expressed through the protocol, the protocol is incomplet
 All vendor-specific complexity, process lifecycle handling, permission differences,
 capability discovery, and switching logic must be trapped inside the runtime layer.
 
+## Implement from runtime upward
+
+Implementation should proceed from the daemon runtime upward, not from the app downward.
+
+This means:
+
+- define and test runtime facts first
+- define and test binding and completion semantics next
+- expose projections to server and UI only after runtime behavior is stable
+
+Product flows must not be validated primarily by manually clicking through the app.
+
 ## UI is a shell
 
 UI may format, sort, group, and stage input, but it must not own:
@@ -41,6 +53,18 @@ Server must remain unaware of vendor-specific agent semantics. It should only op
 
 A Free session is not a vendor-native session. Vendor-native identifiers are implementation
 details stored under runtime state.
+
+## Test every flow as code
+
+Every important flow should become executable test coverage, not only product walkthrough knowledge.
+
+At minimum, the architecture should support:
+
+- unit tests for runtime decisions and boundary logic
+- integration tests for end-to-end runtime flows
+- deterministic verification of completion semantics and failure handling
+
+The target is that product-critical flow behavior can be locked down by tests instead of relying on repeated manual product runs.
 
 ## Enforced boundaries
 

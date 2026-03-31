@@ -1,4 +1,4 @@
-# RFC-013: Headless Runtime Architecture
+# RFC-013: Free Headless Runtime Architecture
 
 - **Status**: Proposed
 - **Created**: 2026-03-30
@@ -14,10 +14,10 @@ This RFC defines the target architecture for Free as a three-layer system:
 
 1. **App/UI** is a thin rendering and input shell
 2. **Server** is an agent-agnostic persistence, auth, sync, and relay layer
-3. **CLI/Daemon Runtime** is the only layer that supervises execution and delegates ACP session/runtime mechanics to `acpx sidecar（acpx 侧车）`
+3. **CLI/Daemon Runtime** is the only layer that supervises execution and delegates ACP session/runtime mechanics to `acpx flow sdk（acpx 流程 SDK）`
 
 The central design goal is to make the product operate on **canonical product entities**
-instead of vendor-native or ACP-native session models. UI, server, and tests must all consume the same
+instead of vendor-native, ACP-native, or flow-run-native session models. UI, server, and tests must all consume the same
 stable protocol. ACP execution should sit behind the runtime boundary through a thin bridge.
 
 This RFC also elevates **agent-to-agent invocation** to a first-class runtime capability.
@@ -30,9 +30,11 @@ Detailed architecture docs:
 - `docs/architecture/003-entity-model.md`
 - `docs/architecture/005-runtime-architecture.md`
 - `docs/architecture/006-primary-binding.md`
-- `docs/architecture/010-acpx-sidecar-integration.md`
+- `docs/architecture/010-acpx-flow-sdk-integration.md`
 - `docs/architecture/011-truth-and-projections.md`
 - `docs/architecture/012-phase-1-plan.md`
+- `docs/architecture/013-ui-server-runtime-boundaries.md`
+- `docs/architecture/014-target-repo-structure.md`
 
 ## 1.1 Goal Model
 
@@ -41,7 +43,7 @@ The target system is intentionally simple in shape:
 - **App/UI** renders canonical data and dispatches canonical commands
 - **Server** persists canonical state, relays canonical events, and enforces agent-agnostic policy
 - **Runtime** owns vendor differences, lifecycle control, capability normalization, and orchestration
-- **Runtime** should reuse `acpx sidecar（acpx 侧车）` for ACP execution mechanics rather than rebuilding them in-repo
+- **Runtime** should reuse `acpx flow sdk（acpx 流程 SDK）` as the sole ACP execution substrate rather than rebuilding ACP mechanics in-repo
 
 This RFC does not treat the UI as the product core. The product core is the runtime plus the
 canonical protocol.
@@ -70,7 +72,7 @@ The result is familiar:
 - App remains almost entirely free of business and runtime logic
 - Server remains ignorant of vendor-specific agent behavior
 - Runtime becomes the only home for vendor differences and lifecycle control
-- Runtime reuses `acpx sidecar（acpx 侧车）` as the preferred ACP execution substrate
+- Runtime reuses `acpx flow sdk（acpx 流程 SDK）` as the sole ACP execution substrate
 - All product-facing layers operate on canonical Free protocol types
 - Session identity belongs to Free, not to Claude, Codex, Gemini, or any other vendor
 - Agent-to-agent invocation is supported without leaking vendor details to app or server
@@ -78,7 +80,7 @@ The result is familiar:
 ### 3.2 Secondary goals
 
 - New UI shells should be cheap to add: iOS, Android, Web, TUI, integration test harness
-- New ACP-backed execution providers should be cheap to add by reusing one thin ACP bridge boundary
+- New ACP-backed execution providers should be cheap to add by reusing one thin flow-runtime bridge boundary
 - Session switching between agents should be possible through canonical snapshots
 - Domain logic should be unit-testable without React, sockets, or child processes
 
@@ -107,7 +109,7 @@ The first phase does **not** need to achieve:
 - a full workflow engine
 - full multi-agent collaborative orchestration
 - zero local runtime in app processes
-- immediate extraction of `packages/runtime`
+- immediate extraction of `packages/free-runtime`
 
 ## 4. Architecture Principles
 
@@ -159,7 +161,9 @@ Explicitly out of scope:
 
 Responsibilities:
 
-- vendor driver management
+- product execution supervision
+- primary binding supervision
+- interaction with `acpx flow sdk（acpx 流程 SDK）` through a thin Free-owned bridge
 - agent lifecycle
 - attach, detach, resume, interrupt
 - capability discovery and normalization
@@ -169,6 +173,7 @@ Responsibilities:
 - agent-to-agent invocation
 
 This is the core product kernel.
+It should not grow a second ACP execution path beside `acpx flow sdk（acpx 流程 SDK）`.
 
 ## 6. Core Product Entities
 
@@ -178,7 +183,7 @@ Detailed canonical entities are maintained in:
 
 ## 7. Protocol Boundaries
 
-The target system uses three protocol surfaces.
+The target system uses three product-facing protocol surfaces plus one execution integration boundary.
 
 ### 7.1 UI Protocol
 
@@ -222,28 +227,23 @@ Server protocol examples:
 The server must not need to know whether the runtime is speaking to Claude ACP,
 Codex MCP, Gemini ACP, or any future provider.
 
-### 7.3 Runtime Driver Protocol
+### 7.3 Runtime Execution Boundary
 
-Used inside the runtime between the canonical runtime and each vendor driver.
+Used inside the runtime between Free supervision and `acpx flow sdk（acpx 流程 SDK）`.
 
-This is where vendor-specific translation is allowed.
+This is where ACP execution integration is allowed.
 
-Driver inputs:
+It should stay thin and should not redefine product entities.
 
-- `startSession`
-- `resumeSession`
-- `sendInput`
-- `interrupt`
-- `approveToolCall`
-- `denyToolCall`
-- `exportSnapshot`
+Typical concerns include:
 
-Driver outputs:
+- starting or resuming the main execution path
+- mapping `flow run（流程运行）` and ACP identities into Free runtime facts
+- surfacing capability and lifecycle results upward
+- exposing execution references to `Primary Binding（主绑定）`
 
-- capability reports
-- canonicalized events
-- vendor-state references
-- snapshot fragments
+This boundary is not a general per-vendor driver protocol.
+The intended architecture has one ACP execution substrate: `acpx flow sdk（acpx 流程 SDK）`.
 
 ## 8. Agent-to-Agent Invocation
 
@@ -300,16 +300,20 @@ This is a product-level continuity guarantee, not a vendor-native session guaran
 The repository should move toward the following conceptual structure:
 
 ```text
-packages/core
-  canonical protocol, shared types, event schema, capability model
+packages/protocol
+  canonical protocol, shared types, entity schema, event schema
 
-packages/runtime
-  headless multi-agent runtime kernel
-  driver registry
-  orchestration and invocation
+packages/free-runtime
+  Free daemon runtime
+  orchestration, binding supervision, projections, completion semantics
+
+packages/acpx-flow-bridge
+  integration with acpx flow sdk
+  flow/session identity mapping
+  execution bridge only
 
 apps/free/cli
-  runtime host / daemon host / shell entrypoint
+  optional shell around runtime, not the architectural home of runtime semantics
 
 apps/free/server
   auth, persistence, sync, relay, policy
@@ -320,8 +324,8 @@ apps/free/app
 
 Notes:
 
-- `packages/runtime` may begin life inside `apps/free/cli` and be extracted later
-- `packages/core` must avoid drifting into runtime implementation details
+- `packages/free-runtime` may begin life inside `apps/free/cli` and be extracted later
+- `packages/protocol` must avoid drifting into runtime implementation details
 - `apps/free/app` should eventually depend on presentation facades only
 
 ## 11. Enforced Boundaries
@@ -344,8 +348,8 @@ Expected test distribution:
 - UI tests: rendering and interaction mapping only
 - presentation tests: view-model shaping from canonical state
 - application tests: use case behavior with fake runtime/server boundaries
-- runtime tests: orchestration, switching, invocation, capability routing
-- driver tests: vendor dialect translation
+- runtime tests: orchestration, switching, invocation, capability routing, completion semantics
+- flow-bridge tests: `acpx flow sdk` lifecycle and identity translation
 - server tests: auth, persistence, replay, relay, policy
 
 The majority of business behavior should be testable without React, sockets, or real child processes.
@@ -358,7 +362,7 @@ Recommended order:
 
 1. make app a rendering shell
 2. define canonical protocol types explicitly
-3. collect agent-specific behavior behind runtime driver interfaces
+3. collect ACP execution behind a single `acpx flow sdk（acpx 流程 SDK）` bridge
 4. move orchestration out of app and into runtime/application services
 5. strip vendor-specific branching from server routes and storage semantics
 6. introduce canonical session snapshot and invocation models
@@ -367,8 +371,8 @@ Recommended order:
 
 - Which subset of canonical snapshot is required for the first usable `switchAgent()`?
 - Which agent-to-agent invocation mode ships first: capability invocation or collaborative participation?
-- Does runtime live permanently in `apps/free/cli`, or graduate into `packages/runtime` once the protocol stabilizes?
-- Which parts of current `packages/core` belong to canonical protocol versus runtime implementation?
+- Does runtime live permanently in `apps/free/cli`, or graduate into `packages/free-runtime` once the protocol stabilizes?
+- Which parts of current `packages/core` belong to `packages/protocol` versus `packages/free-runtime` / `packages/acpx-flow-bridge`?
 
 ## 15. Decision
 

@@ -7,12 +7,12 @@ This document defines `Primary Binding（主绑定）` for the current and futur
 
 ## 1. Definition
 
-`Primary Binding（主绑定）` is the runtime-owned binding between a Free `Session（会话）` and the primary ACP execution currently responsible for user-facing conversation and control.
+`Primary Binding（主绑定）` is the runtime-owned binding between a Free `Session（会话）` and the primary execution currently responsible for user-facing conversation and control.
 
 It is the answer to:
 
 - which primary execution is currently attached to this session
-- which ACP execution reference is active
+- which `acpx flow sdk（acpx 流程 SDK）` execution identity is active
 - what the current binding status is
 - what effective capabilities are available on this active execution
 
@@ -52,7 +52,7 @@ The main purpose of `Primary Binding（主绑定）` is to make this boundary ex
 Today, `Primary Binding（主绑定）` exists only implicitly across:
 
 - `AgentSession（会话执行协调器）`
-- the active backend / ACP adapter instance
+- the active flow-facing execution path
 - ACP resume or session reference state
 - selected execution status fields
 
@@ -108,7 +108,7 @@ The ACP-side execution reference used for:
 
 This must not be treated as the product session identity.
 
-When `acpx sidecar（acpx 侧车）` is used, this reference should prefer `acpx`'s explicit identity model over an opaque ad-hoc string:
+Because Free now targets `acpx flow sdk（acpx 流程 SDK）` as its sole execution substrate, this reference should prefer `acpx`'s explicit identity model over an opaque ad-hoc string:
 
 - `acpxRecordId`
 - `acpxSessionId`
@@ -171,10 +171,10 @@ It does not need to own:
 `AgentSession` should evolve toward a `Runtime Orchestration Host（运行时编排宿主）`.
 It should use `Primary Binding（主绑定）`, not be confused with it.
 
-### `ACP Bridge（ACP 桥接层）`
+### `Flow Runtime Bridge（Flow 运行时桥接层）`
 
-The ACP bridge connects agentbridge runtime semantics to `acpx sidecar（acpx 侧车）`.
-`Primary Binding（主绑定）` carries the current relationship to the active ACP execution exposed through that bridge.
+The flow runtime bridge connects Free runtime semantics to `acpx flow sdk（acpx 流程 SDK）`.
+`Primary Binding（主绑定）` carries the current relationship to the active execution exposed through that bridge.
 
 ### `ApiSessionClient（会话同步客户端）`
 

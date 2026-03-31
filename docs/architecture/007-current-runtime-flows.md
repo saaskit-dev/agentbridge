@@ -6,7 +6,7 @@
 This document captures the current single-primary-agent execution flow of the daemon runtime.
 It is intentionally scoped to the current implementation reality.
 
-Future target integration with `acpx sidecar（acpx 侧车）` is described in `010-acpx-sidecar-integration.md`.
+Future target integration with `acpx flow sdk（acpx 流程 SDK）` is described in `010-acpx-flow-sdk-integration.md`.
 
 ## 1. Scope
 
@@ -37,7 +37,7 @@ Session created
 User sends message
 -> api/apiSession receives it
 -> AgentSession queues and dequeues it
--> backend / ACP Bridge sends session/prompt
+-> active execution path / Flow Runtime Bridge sends session/prompt
 -> ACP execution emits updates
 -> ready
 -> ApiSessionClient.flush()
@@ -84,7 +84,7 @@ This is the beginning of active turn handling.
 
 ### 4.3 Message enters ACP execution
 
-The active backend / `ACP Bridge（ACP 桥接层）` emits `session/prompt` and the ACP execution begins.
+The active execution path / `Flow Runtime Bridge（Flow 运行时桥接层）` emits `session/prompt` and the ACP execution begins.
 
 ACP may then emit:
 

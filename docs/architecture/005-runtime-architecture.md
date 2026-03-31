@@ -9,7 +9,7 @@ It is the parent architecture for future protocol, migration, and implementation
 Related documents:
 
 - `006-primary-binding.md`
-- `010-acpx-sidecar-integration.md`
+- `010-acpx-flow-sdk-integration.md`
 - `011-truth-and-projections.md`
 - `012-phase-1-plan.md`
 
@@ -22,7 +22,7 @@ It must absorb ACP-specific execution differences without leaking them upward in
 - `Server（服务端层）`
 - `Product Semantics（产品语义层）`
 
-The runtime should not reimplement generic ACP session/runtime mechanics that are already available in `acpx sidecar（acpx 侧车）`.
+The runtime should not reimplement generic ACP session/runtime mechanics that are already available in `acpx flow sdk（acpx 流程 SDK）`.
 
 The runtime is therefore designed as four cooperating internal layers.
 
@@ -59,17 +59,17 @@ Every session has one `Primary Binding（主绑定）` for user-facing control a
 
 It answers: which primary execution is currently attached to this Free session.
 
-### 2.3 `ACP Bridge（ACP 桥接层）`
+### 2.3 `Flow Runtime Bridge（Flow 运行时桥接层）`
 
-This is the ACP integration boundary owned by agentbridge.
+This is the `acpx flow sdk` integration boundary owned by Free.
 It owns:
 
-- talking to `acpx sidecar（acpx 侧车）`
-- mapping `acpx` execution and identity facts into runtime-consumable facts
-- exposing ACP execution references
-- translating `acpx` capability and lifecycle results into runtime-facing signals
+- creating or resuming the product-facing main `flow run（流程运行）`
+- mapping `acpx` flow and session identities into runtime-consumable facts
+- exposing ACP execution references derived from `FlowSessionBinding（流程会话绑定）`
+- translating `acpx flow sdk` lifecycle and capability results into runtime-facing signals
 
-It answers: how agentbridge talks to ACP execution through `acpx`.
+It answers: how Free talks to ACP execution through `acpx flow sdk`.
 It must not own Free product semantics.
 
 ### 2.4 `Runtime State / Stream Model（运行时状态/流模型层）`
@@ -96,10 +96,10 @@ The runtime layers should cooperate through the following flow:
 Command / trigger
   -> Runtime Orchestration
   -> lookup/create/update Primary Binding
-  -> Primary Binding uses ACP Bridge
-  -> ACP Bridge talks to acpx Sidecar
-  -> acpx Sidecar drives ACP execution
-  -> ACP Bridge yields execution feedback
+  -> Primary Binding uses Flow Runtime Bridge
+  -> Flow Runtime Bridge talks to acpx Flow SDK
+  -> acpx Flow SDK drives ACP execution
+  -> Flow Runtime Bridge yields execution feedback
   -> Primary Binding records runtime facts
   -> Runtime Orchestration interprets those facts
   -> canonical outcomes are emitted upward
@@ -109,7 +109,7 @@ Key rule:
 
 - `Runtime Orchestration（运行时编排层）` decides
 - `Primary Binding（主绑定层）` holds execution reality
-- `ACP Bridge（ACP 桥接层）` connects runtime semantics to `acpx sidecar（acpx 侧车）`
+- `Flow Runtime Bridge（Flow 运行时桥接层）` connects runtime semantics to `acpx flow sdk（acpx 流程 SDK）`
 - `Runtime State / Stream Model（运行时状态/流模型层）` carries internal facts
 
 ## 4. Boundary rules
@@ -129,13 +129,13 @@ Key rule:
 - task semantics
 - server persistence decisions
 
-### 4.3 `ACP Bridge（ACP 桥接层）` must not own
+### 4.3 `Flow Runtime Bridge（Flow 运行时桥接层）` must not own
 
 - `Session（会话）` product semantics
 - `Invocation（调用）` semantics
 - server sync or IPC broadcasting
 - UI-facing message formats as a final contract
-- policy enforcement beyond reporting ACP and `acpx` constraints
+- policy enforcement beyond reporting `acpx flow sdk` constraints
 
 ### 4.4 `Runtime State / Stream Model（运行时状态/流模型层）` must not become
 
@@ -165,11 +165,11 @@ Owns:
 - binding status updates during recovery
 - carrying the current vendor execution reference used for recovery
 
-### 5.3 `ACP Bridge（ACP 桥接层）`
+### 5.3 `Flow Runtime Bridge（Flow 运行时桥接层）`
 
 Owns:
 
-- asking `acpx sidecar（acpx 侧车）` to perform ACP-specific recovery attempts
+- asking `acpx flow sdk（acpx 流程 SDK）` to perform ACP-specific recovery attempts
 - reporting whether recovery succeeded, failed, is unsupported, or requires rebuild-from-context
 
 ### 5.4 `Runtime State / Stream Model（运行时状态/流模型层）`
@@ -223,29 +223,30 @@ This means:
 This architecture maps onto the current repository as follows:
 
 - `apps/free/cli/src/daemon/sessions/*` currently mixes orchestration and binding concerns
-- `apps/free/cli/src/backends/*` is the closest current approximation of the future `ACP Bridge（ACP 桥接层）`, but today it still contains in-repo ACP implementation details
+- `apps/free/cli/src/backends/*` is transitional code that should shrink as `acpx flow sdk（acpx 流程 SDK）` becomes the sole execution substrate
 - `apps/free/cli/src/agent/*` appears to be a transitional or overlapping abstraction layer
 - `NormalizedMessage（规范消息）` is currently a shared cross-layer payload, but should be treated as an outward projection rather than the sole runtime truth
 
 ## 8. Preferred ACP execution substrate
 
-The preferred future ACP execution substrate is:
+The preferred and intended ACP execution substrate is:
 
-- `acpx sidecar（acpx 侧车）`
+- `acpx flow sdk（acpx 流程 SDK）`
 
 This means:
 
-- agentbridge should stop growing a separate per-agent ACP adapter hierarchy
-- agentbridge should keep a thin `ACP Bridge（ACP 桥接层）` for product/runtime integration
-- agentbridge should not deep-import unstable `acpx` internals as if they were a stable embedded SDK
+- Free should stop growing a separate per-agent ACP adapter hierarchy
+- Free should keep a thin `Flow Runtime Bridge（Flow 运行时桥接层）` for product/runtime integration
+- Free should not maintain a second non-flow ACP execution path in parallel
 
 The preferred integration mode is:
 
-- process boundary or sidecar integration with `acpx`
+- process-boundary integration with `acpx`, while treating `flow sdk` as the only product-facing execution entry
 
 Not:
 
 - in-process deep import of `acpx/dist/*` runtime internals
+- dual execution integration paths for the same product runtime
 
 ## 9. Current completion rule
 
@@ -267,8 +268,8 @@ The goal is to evolve the current daemon into this layered runtime shape increme
 
 Any future runtime proposal should be evaluated against the following question:
 
-- does it strengthen the four-layer runtime structure,
-- or does it collapse orchestration, binding, vendor adaptation, and runtime facts back into one object?
+- does it strengthen the four-layer runtime structure while keeping `acpx flow sdk` as the only ACP execution entry,
+- or does it reintroduce parallel ACP paths and duplicated runtime mechanics?
 
 ## Further reading
 

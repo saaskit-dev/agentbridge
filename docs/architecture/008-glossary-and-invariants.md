@@ -33,16 +33,21 @@ It is not the long-term name for product session semantics.
 
 ### `ACP Adapter（ACP 适配层）`
 
-Legacy discussion term for the ACP-facing integration layer.
-The preferred current architecture term is `ACP Bridge（ACP 桥接层）`.
+Legacy discussion term.
+It should not define the current architecture.
 
 ### `ACP Bridge（ACP 桥接层）`
 
-The agentbridge-owned integration layer that talks to `acpx sidecar（acpx 侧车）` and exposes ACP-side execution facts to the runtime.
+Legacy intermediate discussion term for the ACP-facing integration layer.
+It is now superseded by `Flow Runtime Bridge（Flow 运行时桥接层）`.
 
-### `acpx Sidecar（acpx 侧车）`
+### `Flow Runtime Bridge（Flow 运行时桥接层）`
 
-The preferred external ACP execution substrate reused by agentbridge instead of rebuilding per-agent ACP runtime mechanics in-repo.
+The Free-owned integration layer that talks to `acpx flow sdk（acpx 流程 SDK）` and exposes execution facts to the runtime.
+
+### `acpx Flow SDK（acpx 流程 SDK）`
+
+The preferred and sole ACP execution substrate reused by Free instead of rebuilding ACP runtime mechanics in-repo.
 
 ### `ApiSessionClient（会话同步客户端）`
 
@@ -97,10 +102,14 @@ without needing to re-invent execution truth.
 The codebase already uses attachment terminology for file and image flows.
 Runtime binding terminology must avoid that word.
 
-### 2.8 `acpx` should be integrated through a stable boundary
+### 2.8 `acpx flow sdk` is the sole ACP execution path
 
-The preferred integration mode is sidecar / process-boundary integration.
-Deep-importing unstable `acpx` runtime internals must not become the default architecture.
+Free should not maintain both:
+
+- a direct ACP runtime path
+- and a `flow sdk` path
+
+The intended architecture uses `acpx flow sdk（acpx 流程 SDK）` as the single ACP execution substrate.
 
 ## 3. Current phase rule
 

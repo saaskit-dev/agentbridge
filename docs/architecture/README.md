@@ -1,6 +1,6 @@
 # Architecture Index
 
-This directory is the architecture source of truth for the `headless-runtime` worktree.
+This directory is the architecture source of truth for the Free runtime architecture worktree.
 
 Read in this order:
 
@@ -13,10 +13,11 @@ Read in this order:
 7. `007-current-runtime-flows.md`
 8. `008-glossary-and-invariants.md`
 9. `009-open-questions-and-decisions.md`
-10. `010-acpx-sidecar-integration.md`
+10. `010-acpx-flow-sdk-integration.md`
 11. `011-truth-and-projections.md`
 12. `012-phase-1-plan.md`
 13. `013-ui-server-runtime-boundaries.md`
+14. `014-target-repo-structure.md`
 
 Use older RFCs in `docs/rfc/` only for legacy context and migration constraints.
 
@@ -41,11 +42,13 @@ Use older RFCs in `docs/rfc/` only for legacy context and migration constraints.
   - fixed terminology and hard interpretation rules
 - `009-open-questions-and-decisions.md`
   - decision log and deferred/open architecture questions
-- `010-acpx-sidecar-integration.md`
-  - preferred reuse boundary for ACP execution through `acpx sidecar`
+- `010-acpx-flow-sdk-integration.md`
+  - `acpx flow sdk` as the sole ACP execution substrate
 - `011-truth-and-projections.md`
   - authoritative records vs derived views and cached projections
 - `012-phase-1-plan.md`
   - the recommended first implementation phase and its guardrails
 - `013-ui-server-runtime-boundaries.md`
   - explicit layer boundaries between UI, server, and daemon runtime
+- `014-target-repo-structure.md`
+  - target repository/package structure after the runtime rewrite

@@ -53,14 +53,19 @@ The runtime must preserve enough facts for:
 - simple default UX
 - optional expanded execution detail
 
-### 1.9 `acpx sidecar（acpx 侧车）` is the preferred ACP execution substrate
+### 1.9 `acpx flow sdk（acpx 流程 SDK）` is the sole ACP execution substrate
 
-agentbridge should reuse `acpx` for ACP session/runtime mechanics instead of continuing to grow an in-repo per-agent ACP adapter/runtime stack.
+Free should reuse `acpx flow sdk` for ACP execution instead of continuing to grow an in-repo per-agent ACP adapter/runtime stack or keeping dual ACP execution paths.
 
-### 1.10 `acpx` should not be treated as a stable embedded SDK
+### 1.10 `acpx` should still sit behind a Free-owned product/runtime boundary
 
-The preferred integration mode is sidecar / subprocess integration.
-Deep-importing `acpx` runtime internals is treated as a higher-risk fallback, not the default plan.
+Even when `flow sdk` is the sole execution substrate, Free still owns:
+
+- product `Session（会话）`
+- `Primary Binding（主绑定）`
+- daemon-to-server sync
+- user-visible completion semantics
+- app/server-facing canonical state
 
 ## 2. Open questions
 
@@ -95,7 +100,7 @@ Current candidates are:
 
 This remains open because implementation order still depends on runtime validation.
 
-### 2.6 How should agentbridge map `acpx` identities into `Primary Binding（主绑定）`?
+### 2.6 How should Free map `acpx` identities into `Primary Binding（主绑定）`?
 
 The likely answer is to preserve:
 
@@ -125,9 +130,9 @@ This should not be written as a formal protocol document until more current runt
 
 These should be formalized after the runtime core documents are stable.
 
-### 3.5 Whether `acpx/flows` should later become the default multi-agent orchestration substrate
+### 3.5 How far should Free align product lifecycle with `flow run（流程运行）` lifecycle?
 
-`acpx/flows` is a credible future option, but it is not a current phase-1 dependency.
+Free should not collapse product `Session（会话）` into `flow run`, but the exact lifecycle mapping still needs to be made explicit.
 
 ### 3.6 Final truth/projection persistence strategy
 

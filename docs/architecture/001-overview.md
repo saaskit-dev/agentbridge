@@ -1,4 +1,4 @@
-# Headless Runtime Architecture Overview
+# Free Runtime Architecture Overview
 
 - **Status**: Proposed
 - **Created**: 2026-03-30
@@ -9,10 +9,10 @@ Free targets a three-layer system:
 
 1. `App/UI` is a thin rendering and input shell
 2. `Server` is an agent-agnostic persistence, auth, sync, and relay layer
-3. `CLI/Daemon Runtime` is the product supervision layer and delegates ACP execution to `acpx sidecar（acpx 侧车）`
+3. `Daemon Runtime` is the product supervision layer and delegates ACP execution to `acpx flow sdk（acpx 流程 SDK）`
 
 The product core is the runtime plus the canonical protocol. UI, server, and tests should all
-consume canonical Free entities instead of vendor-native session models.
+consume canonical Free entities instead of ACP-native session or flow-run models.
 
 Agent-to-agent invocation is a first-class runtime capability.
 
@@ -23,7 +23,7 @@ The target system is intentionally simple in shape:
 - `App/UI` renders canonical data and dispatches canonical commands
 - `Server` persists canonical state, relays canonical events, and enforces agent-agnostic policy
 - `Runtime` owns product supervision, lifecycle control, capability normalization, and orchestration
-- `Runtime` should reuse `acpx sidecar（acpx 侧车）` for ACP session/runtime mechanics rather than rebuilding per-agent ACP integration in-repo
+- `Runtime` should reuse `acpx flow sdk（acpx 流程 SDK）` as the sole ACP execution substrate rather than keeping multiple ACP integration paths in-repo
 
 This implies the following product model:
 
@@ -52,7 +52,7 @@ The current codebase has useful layers, but the actual responsibility split is n
 - app remains almost entirely free of business and runtime logic
 - server remains ignorant of vendor-specific agent behavior
 - runtime becomes the only home for vendor differences and lifecycle control
-- runtime reuses `acpx sidecar（acpx 侧车）` as the preferred ACP execution substrate
+- runtime reuses `acpx flow sdk（acpx 流程 SDK）` as the sole ACP execution substrate
 - all product-facing layers operate on canonical Free protocol types
 - session identity belongs to Free, not to any vendor
 - agent-to-agent invocation is supported without leaking vendor details to app or server
@@ -60,7 +60,7 @@ The current codebase has useful layers, but the actual responsibility split is n
 ### Secondary goals
 
 - new UI shells should be cheap to add
-- new ACP-backed execution providers should be cheap to add by reusing the `acpx sidecar（acpx 侧车）` substrate through one thin bridge boundary
+- new ACP-backed execution providers should be cheap to add by reusing the `acpx flow sdk（acpx 流程 SDK）` substrate through one thin bridge boundary
 - session switching between agents should be possible through canonical snapshots
 - domain logic should be unit-testable without React, sockets, or child processes
 
@@ -69,7 +69,7 @@ The current codebase has useful layers, but the actual responsibility split is n
 - perfect lossless migration between all vendor-native sessions
 - erasing all vendor-specific capability differences
 - immediate full rewrite of the repository
-- embedding unstable `acpx` internals directly into the agentbridge daemon process
+- treating `Free Session（Free 会话）` as identical to `acpx flow run（acpx 流程运行）`
 
 ## First-phase scope
 
@@ -81,7 +81,7 @@ The first phase should achieve:
 - app as rendering shell plus presentation mapping only
 - server as vendor-agnostic persistence and relay layer
 - runtime as the only owner of vendor adaptation and agent lifecycle
-- `acpx sidecar（acpx 侧车）` introduced as the preferred ACP execution integration path
+- `acpx flow sdk（acpx 流程 SDK）` established as the sole ACP execution integration path
 - canonical entities defined explicitly in shared protocol types
 - capability differences exposed through structured capability data
 
@@ -91,12 +91,15 @@ The first phase does not need to achieve:
 - a full workflow engine
 - full multi-agent collaborative orchestration
 - zero local runtime in app processes
-- immediate extraction of `packages/runtime`
+- immediate extraction of `packages/free-runtime`
 
 ## Further reading
 
 - `002-principles.md`
 - `003-entity-model.md`
 - `004-current-runtime-analysis.md`
+- `005-runtime-architecture.md`
+- `010-acpx-flow-sdk-integration.md`
 - `013-ui-server-runtime-boundaries.md`
-- `../rfc/013-headless-runtime-architecture.md`
+- `014-target-repo-structure.md`
+- `../rfc/013-free-headless-runtime-architecture.md`
