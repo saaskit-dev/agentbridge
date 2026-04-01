@@ -303,6 +303,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
       currentAgentMode
     );
   }, [currentAgentMode, displayCapabilities?.modes?.available]);
+  // Track whether the initial requested mode has been confirmed by the backend.
+  // Only after confirmation, agent-driven mode changes (e.g. ExitPlanMode) sync back.
+  //
+  // Initialize to true if capabilities are already loaded at mount time (cached from server).
+  // This prevents "Switching to..." from showing permanently when desiredAgentMode (from
+  // localStorage) diverges from currentAgentMode (from cached capabilities) — the modes
+  // have already settled; they just need a one-time sync rather than waiting for a match
+  // that will never happen.
+  const initialModeConfirmedRef = React.useRef(currentAgentMode !== null);
   const pendingCapabilityLabel = React.useMemo(() => {
     const getModeLabel = (modeId: string) =>
       displayCapabilities?.modes?.available?.find(mode => mode.id === modeId)?.name ?? modeId;
@@ -393,15 +402,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     }
   }, [desiredModelSelection, modelConfigOption, session.capabilities, sessionId]);
 
-  // Track whether the initial requested mode has been confirmed by the backend.
-  // Only after confirmation, agent-driven mode changes (e.g. ExitPlanMode) sync back.
-  //
-  // Initialize to true if capabilities are already loaded at mount time (cached from server).
-  // This prevents "Switching to..." from showing permanently when desiredAgentMode (from
-  // localStorage) diverges from currentAgentMode (from cached capabilities) — the modes
-  // have already settled; they just need a one-time sync rather than waiting for a match
-  // that will never happen.
-  const initialModeConfirmedRef = React.useRef(currentAgentMode !== null);
   React.useEffect(() => {
     if (!currentAgentMode || !desiredAgentMode) return;
     if (currentAgentMode === desiredAgentMode) {
