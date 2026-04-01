@@ -18,6 +18,7 @@ import {
   savePendingSettings,
   loadPendingOutbox,
   savePendingOutbox,
+  saveCachedSessions,
 } from './persistence';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
@@ -308,34 +309,31 @@ class Sync {
                 .setSessionOlderMessagesState(sessionId, { hasOlderMessages: true });
             }
 
-            const encryption = this.encryption.getSessionEncryption(sessionId);
-            if (encryption) {
-              const normalized: NormalizedMessage[] = [];
-              for (const msg of cached) {
-                try {
-                  const raw = JSON.parse(msg.content);
-                  const n = normalizeRawMessage(msg.id, msg.created_at, raw);
-                  if (n) {
-                    if (msg.seq) n.seq = msg.seq;
-                    if (!n.traceId && msg.trace_id) n.traceId = msg.trace_id;
-                    normalized.push(n);
-                  }
-                } catch {
-                  /* skip corrupt cache entries */
+            const normalized: NormalizedMessage[] = [];
+            for (const msg of cached) {
+              try {
+                const raw = JSON.parse(msg.content);
+                const n = normalizeRawMessage(msg.id, msg.created_at, raw);
+                if (n) {
+                  if (msg.seq) n.seq = msg.seq;
+                  if (!n.traceId && msg.trace_id) n.traceId = msg.trace_id;
+                  normalized.push(n);
                 }
+              } catch {
+                /* skip corrupt cache entries */
               }
-              if (normalized.length > 0) {
-                // Cache loads with ORDER BY seq DESC (to get latest N rows).
-                // Reverse to ASC so the reducer processes messages chronologically —
-                // mergeIntoPreviousRootAgentText requires createdAt >= previous.createdAt.
-                normalized.reverse();
-                this.enqueueMessages(sessionId, normalized);
-                log.debug('[sync] loaded from SQLite cache', {
-                  count: normalized.length,
-                  lastSeq: cachedSeq,
-                  oldestSeq: minSeq,
-                });
-              }
+            }
+            if (normalized.length > 0) {
+              // Cache loads with ORDER BY seq DESC (to get latest N rows).
+              // Reverse to ASC so the reducer processes messages chronologically —
+              // mergeIntoPreviousRootAgentText requires createdAt >= previous.createdAt.
+              normalized.reverse();
+              this.enqueueMessages(sessionId, normalized);
+              log.debug('[sync] loaded from SQLite cache', {
+                count: normalized.length,
+                lastSeq: cachedSeq,
+                oldestSeq: minSeq,
+              });
             }
           }
         }
@@ -1929,6 +1927,8 @@ class Sync {
 
   /** Maximum pages to fetch in a single paginated run (safety cap). */
   private static readonly MAX_FETCH_PAGES = 20;
+  /** Cold start without cache: render only the newest page; older history stays manual-only. */
+  private static readonly INITIAL_LATEST_MESSAGES_LIMIT = 5000;
 
   private fetchMessages = async (sessionId: string) => {
     const log = sessionLogger(logger, sessionId);
@@ -1941,11 +1941,13 @@ class Sync {
     }
 
     const startAfterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+    const useLatestBootstrap = startAfterSeq === 0;
     let afterSeq = startAfterSeq;
     let hasMore = true;
     let totalNormalized = 0;
     let pageCount = 0;
     let minSeqSeen: number | undefined;
+    let latestBootstrapHasOlderMessages = false;
 
     while (hasMore && pageCount < Sync.MAX_FETCH_PAGES) {
       pageCount++;
@@ -1953,11 +1955,13 @@ class Sync {
         ok: boolean;
         messages?: ApiMessage[];
         hasMore?: boolean;
+        hasOlderMessages?: boolean;
         error?: string;
       }>('fetch-messages', {
         sessionId,
-        after_seq: afterSeq,
-        limit: 1000,
+        ...(useLatestBootstrap
+          ? { latest: true, limit: Sync.INITIAL_LATEST_MESSAGES_LIMIT }
+          : { after_seq: afterSeq, limit: 1000 }),
       });
 
       if (!ack.ok) {
@@ -1973,11 +1977,14 @@ class Sync {
         }
       }
 
-      if (startAfterSeq === 0 && messages.length > 0) {
+      if (useLatestBootstrap && messages.length > 0) {
         const pageMin = Math.min(...messages.map(m => m.seq));
         if (minSeqSeen === undefined || pageMin < minSeqSeen) {
           minSeqSeen = pageMin;
         }
+      }
+      if (useLatestBootstrap) {
+        latestBootstrapHasOlderMessages = ack.hasOlderMessages === true;
       }
 
       const decryptedMessages = await encryption.decryptMessages(messages);
@@ -2035,7 +2042,7 @@ class Sync {
       }
 
       this.sessionLastSeq.set(sessionId, maxSeq);
-      hasMore = !!ack.hasMore;
+      hasMore = useLatestBootstrap ? false : !!ack.hasMore;
       if (hasMore && maxSeq === afterSeq) {
         log.debug('fetchMessages: pagination stalled, stopping to avoid infinite loop');
         break;
@@ -2053,12 +2060,16 @@ class Sync {
       this.getMessagesSync(sessionId).invalidate();
     }
 
-    if (startAfterSeq === 0 && minSeqSeen !== undefined) {
+    if (useLatestBootstrap && minSeqSeen !== undefined) {
       if (!this.sessionOldestSeq.has(sessionId)) {
         this.sessionOldestSeq.set(sessionId, minSeqSeen);
       }
       const existingOlderState = storage.getState().sessionMessages[sessionId];
-      if (existingOlderState && !existingOlderState.hasOlderMessages && minSeqSeen > 1) {
+      if (
+        existingOlderState &&
+        !existingOlderState.hasOlderMessages &&
+        (latestBootstrapHasOlderMessages || minSeqSeen > 1)
+      ) {
         storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: true });
       }
     }
@@ -2077,7 +2088,10 @@ class Sync {
     // skips the minSeqSeen block. After applyMessagesLoaded the state is guaranteed
     // to exist, so we can safely set it here.
     const oldestSeq = this.sessionOldestSeq.get(sessionId);
-    if (oldestSeq != null && oldestSeq > 1) {
+    if (
+      oldestSeq != null &&
+      (oldestSeq > 1 || (useLatestBootstrap && latestBootstrapHasOlderMessages))
+    ) {
       const sm = storage.getState().sessionMessages[sessionId];
       if (sm && !sm.hasOlderMessages) {
         storage.getState().setSessionOlderMessagesState(sessionId, { hasOlderMessages: true });
@@ -3241,6 +3255,9 @@ class Sync {
   ) => {
     const active = storage.getState().getActiveSessions();
     storage.getState().applySessions(sessions);
+    saveCachedSessions(
+      Object.values(storage.getState().sessions).filter(session => session.status !== 'deleted')
+    );
     const newActive = storage.getState().getActiveSessions();
     this.applySessionDiff(active, newActive);
   };

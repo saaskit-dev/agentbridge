@@ -595,7 +595,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
   socket.on('fetch-messages', async (data: any, callback: (response: any) => void) => {
     try {
       websocketEventsCounter.inc({ event_type: 'fetch-messages' });
-      const { sessionId: sid, after_seq, before_seq, limit: rawLimit } = data ?? {};
+      const { sessionId: sid, after_seq, before_seq, limit: rawLimit, latest } = data ?? {};
 
       if (!sid || typeof sid !== 'string') {
         callback({ ok: false, error: 'Missing sessionId' });
@@ -615,6 +615,57 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       });
       if (!session) {
         callback({ ok: false, error: 'Session not found' });
+        return;
+      }
+
+      // Latest-page bootstrap: fetch the newest N messages only (DESC then reversed to ASC).
+      // Used by the app for cold-start initial paint so history remains manual-only.
+      if (latest === true) {
+        const messages = await db.sessionMessage.findMany({
+          where: { sessionId: sid },
+          orderBy: { seq: 'desc' },
+          take: limit + 1,
+          select: {
+            id: true,
+            seq: true,
+            content: true,
+            traceId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+        const hasOlderMessages = messages.length > limit;
+        const page = hasOlderMessages ? messages.slice(0, limit) : messages;
+        page.reverse();
+
+        let totalChars = 0;
+        const safeLatestPage = page.filter(m => {
+          totalChars += m.content == null ? 0 : JSON.stringify(m.content).length;
+          return totalChars <= MAX_RESPONSE_CHARS;
+        });
+        const hasOlderMessagesFinal = hasOlderMessages || safeLatestPage.length < page.length;
+
+        log.debug('[fetch-messages] latest', {
+          sessionId: sid,
+          userId,
+          count: safeLatestPage.length,
+          hasOlderMessages: hasOlderMessagesFinal,
+          truncated: safeLatestPage.length < page.length,
+        });
+
+        callback({
+          ok: true,
+          messages: safeLatestPage.map(m => ({
+            id: m.id,
+            seq: m.seq,
+            content: m.content,
+            ...(m.traceId ? { traceId: m.traceId } : {}),
+            createdAt: m.createdAt.getTime(),
+            updatedAt: m.updatedAt.getTime(),
+          })),
+          hasMore: false,
+          hasOlderMessages: hasOlderMessagesFinal,
+        });
         return;
       }
 

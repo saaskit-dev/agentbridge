@@ -6,12 +6,14 @@ import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { coerceAgentType, type AppAgentFlavor } from './agentFlavor';
 import { parseWorktreeBranchBinding, type WorktreeBranchBinding } from '@/utils/worktreeBranchBinding';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
-import type { PermissionMode } from './sessionCapabilities';
+import { SessionCapabilitiesSchema, type PermissionMode } from './sessionCapabilities';
+import { AgentStateSchema, MetadataSchema, type Session } from './storageTypes';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/persistence');
 
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
+const SESSION_CACHE_KEY = 'session-cache-v1';
 
 export type NewSessionAgentType = AppAgentFlavor;
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -84,6 +86,141 @@ export function loadLocalSettings(): LocalSettings {
 
 export function saveLocalSettings(settings: LocalSettings) {
   kvStore.set('local-settings', JSON.stringify(settings));
+}
+
+function parseCachedSession(raw: unknown): Session | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const session = raw as Record<string, unknown>;
+  const id = typeof session.id === 'string' ? session.id : null;
+  const status =
+    session.status === 'active' ||
+    session.status === 'offline' ||
+    session.status === 'archived' ||
+    session.status === 'deleted'
+      ? session.status
+      : null;
+
+  if (!id || !status) {
+    return null;
+  }
+
+  const metadataResult = MetadataSchema.nullable().safeParse(session.metadata ?? null);
+  const agentStateResult = AgentStateSchema.nullable().safeParse(session.agentState ?? null);
+  const capabilitiesResult = SessionCapabilitiesSchema.nullable().safeParse(
+    session.capabilities ?? null
+  );
+
+  if (!metadataResult.success || !agentStateResult.success || !capabilitiesResult.success) {
+    return null;
+  }
+
+  const latestUsageRaw = session.latestUsage;
+  const latestUsage =
+    latestUsageRaw &&
+    typeof latestUsageRaw === 'object' &&
+    typeof (latestUsageRaw as Record<string, unknown>).inputTokens === 'number' &&
+    typeof (latestUsageRaw as Record<string, unknown>).outputTokens === 'number' &&
+    typeof (latestUsageRaw as Record<string, unknown>).cacheCreation === 'number' &&
+    typeof (latestUsageRaw as Record<string, unknown>).cacheRead === 'number' &&
+    typeof (latestUsageRaw as Record<string, unknown>).contextSize === 'number' &&
+    typeof (latestUsageRaw as Record<string, unknown>).timestamp === 'number'
+      ? {
+          inputTokens: (latestUsageRaw as Record<string, number>).inputTokens,
+          outputTokens: (latestUsageRaw as Record<string, number>).outputTokens,
+          cacheCreation: (latestUsageRaw as Record<string, number>).cacheCreation,
+          cacheRead: (latestUsageRaw as Record<string, number>).cacheRead,
+          contextSize: (latestUsageRaw as Record<string, number>).contextSize,
+          timestamp: (latestUsageRaw as Record<string, number>).timestamp,
+        }
+      : null;
+
+  return {
+    id,
+    seq: typeof session.seq === 'number' ? session.seq : 0,
+    createdAt: typeof session.createdAt === 'number' ? session.createdAt : 0,
+    updatedAt: typeof session.updatedAt === 'number' ? session.updatedAt : 0,
+    status,
+    activeAt: typeof session.activeAt === 'number' ? session.activeAt : 0,
+    metadata: metadataResult.data,
+    metadataVersion: typeof session.metadataVersion === 'number' ? session.metadataVersion : 0,
+    agentState: agentStateResult.data,
+    agentStateVersion:
+      typeof session.agentStateVersion === 'number' ? session.agentStateVersion : 0,
+    capabilities: capabilitiesResult.data,
+    capabilitiesVersion:
+      typeof session.capabilitiesVersion === 'number' ? session.capabilitiesVersion : 0,
+    thinking: session.thinking === true,
+    thinkingAt: typeof session.thinkingAt === 'number' ? session.thinkingAt : 0,
+    presence:
+      session.presence === 'online'
+        ? 'online'
+        : typeof session.presence === 'number'
+          ? session.presence
+          : typeof session.activeAt === 'number'
+            ? session.activeAt
+            : 0,
+    todos: Array.isArray(session.todos) ? (session.todos as Session['todos']) : undefined,
+    draft:
+      typeof session.draft === 'string' || session.draft === null
+        ? (session.draft as string | null)
+        : null,
+    permissionMode:
+      session.permissionMode === 'read-only' ||
+      session.permissionMode === 'accept-edits' ||
+      session.permissionMode === 'yolo'
+        ? session.permissionMode
+        : null,
+    desiredAgentMode:
+      typeof session.desiredAgentMode === 'string' || session.desiredAgentMode === null
+        ? (session.desiredAgentMode as string | null)
+        : null,
+    modelMode:
+      typeof session.modelMode === 'string' || session.modelMode === null
+        ? (session.modelMode as string | null)
+        : null,
+    desiredConfigOptions:
+      session.desiredConfigOptions &&
+      typeof session.desiredConfigOptions === 'object' &&
+      !Array.isArray(session.desiredConfigOptions)
+        ? (session.desiredConfigOptions as Record<string, string>)
+        : null,
+    latestUsage,
+  };
+}
+
+export function loadCachedSessions(): Session[] {
+  const raw = kvStore.getString(SESSION_CACHE_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { sessions?: unknown[] } | unknown[];
+    const sessions = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed.sessions)
+        ? parsed.sessions
+        : [];
+    return sessions
+      .map(parseCachedSession)
+      .filter((session): session is Session => session !== null);
+  } catch (e) {
+    logger.error('Failed to parse cached sessions', toError(e));
+    return [];
+  }
+}
+
+export function saveCachedSessions(sessions: Session[]) {
+  kvStore.set(
+    SESSION_CACHE_KEY,
+    JSON.stringify({
+      savedAt: Date.now(),
+      sessions,
+    })
+  );
 }
 
 export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {

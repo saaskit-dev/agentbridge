@@ -32,7 +32,7 @@ import { ModalProvider } from '@/modal';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { initKVStores } from '@/sync/cachedKVStore';
 import { syncRestore } from '@/sync/sync';
-import { loadSettings } from '@/sync/persistence';
+import { loadCachedSessions, loadSettings } from '@/sync/persistence';
 import { storage, useSetting } from '@/sync/storage';
 import { getCurrentLanguage, resolveLanguage, setLanguage } from '@/text';
 // import * as SystemUI from 'expo-system-ui';
@@ -226,6 +226,14 @@ export default function RootLayout() {
         setLanguage(resolveLanguage(settings.preferredLanguage));
         languageInitialized.current = true;
         if (credentials) {
+          const cachedSessions = loadCachedSessions();
+          if (cachedSessions.length > 0) {
+            storage.getState().applySessions(cachedSessions);
+            storage.getState().applyReady();
+            logger.debug('Hydrated cached sessions from local SQLite', {
+              count: cachedSessions.length,
+            });
+          }
           try {
             await syncRestore(credentials);
           } catch (syncError) {

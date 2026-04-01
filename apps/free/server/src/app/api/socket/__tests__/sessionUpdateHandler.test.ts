@@ -683,6 +683,81 @@ describe('fetch-messages', () => {
     expect(result.hasMore).toBe(false);
   });
 
+  it('latest bootstrap: fetches newest messages only', async () => {
+    const socket = setupHandler();
+    setupFetchSession();
+    const now = new Date();
+    mocks.dbMessageFindMany.mockResolvedValue([
+      {
+        id: 'm9',
+        seq: 9,
+        content: { t: 'encrypted', c: 'nine' },
+        traceId: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'm8',
+        seq: 8,
+        content: { t: 'encrypted', c: 'eight' },
+        traceId: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      latest: true,
+      limit: 2,
+    });
+
+    expect(mocks.dbMessageFindMany).toHaveBeenCalledWith({
+      where: { sessionId: SESSION_ID },
+      orderBy: { seq: 'desc' },
+      take: 3,
+      select: {
+        id: true,
+        seq: true,
+        content: true,
+        traceId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.messages.map((m: any) => m.seq)).toEqual([8, 9]);
+    expect(result.hasMore).toBe(false);
+    expect(result.hasOlderMessages).toBe(false);
+  });
+
+  it('latest bootstrap: reports older history and takes priority over after_seq', async () => {
+    const socket = setupHandler();
+    setupFetchSession();
+    const now = new Date();
+    mocks.dbMessageFindMany.mockResolvedValue([
+      { id: 'm9', seq: 9, content: {}, traceId: null, createdAt: now, updatedAt: now },
+      { id: 'm8', seq: 8, content: {}, traceId: null, createdAt: now, updatedAt: now },
+      { id: 'm7', seq: 7, content: {}, traceId: null, createdAt: now, updatedAt: now },
+    ]);
+
+    const result = await socket.triggerWithAck('fetch-messages', {
+      sessionId: SESSION_ID,
+      latest: true,
+      after_seq: 5,
+      limit: 2,
+    });
+
+    expect(mocks.dbMessageFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { sessionId: SESSION_ID },
+        orderBy: { seq: 'desc' },
+      })
+    );
+    expect(result.hasOlderMessages).toBe(true);
+    expect(result.messages.map((m: any) => m.seq)).toEqual([8, 9]);
+  });
+
   it('forward pagination: default after_seq=0', async () => {
     const socket = setupHandler();
     setupFetchSession();
