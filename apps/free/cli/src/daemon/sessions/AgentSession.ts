@@ -1532,6 +1532,13 @@ export abstract class AgentSession<TMode> {
       lifecycleState: 'running',
       lifecycleStateSince: Date.now(),
       flavor: this.agentType,
+      // Store agent session opts so corrupted local persistence files can be reconstructed
+      // from the server. All fields are optional — absent = use backend defaults on recovery.
+      ...(this.opts.model ? { agentModel: this.opts.model } : {}),
+      ...(this.opts.mode ? { agentMode: this.opts.mode } : {}),
+      ...(this.opts.permissionMode ? { agentPermissionMode: this.opts.permissionMode } : {}),
+      ...(this.opts.startingMode ? { agentStartingMode: this.opts.startingMode } : {}),
+      ...(this.opts.env && Object.keys(this.opts.env).length > 0 ? { agentEnv: this.opts.env } : {}),
     };
     return { metadata, state };
   }

@@ -610,6 +610,15 @@ export async function startDaemon(): Promise<void> {
               // (loop skips sessions where daemonInstanceId === current daemonInstanceId).
               daemonInstanceId: 'repaired-from-server',
               lastSeq: serverData.seq,
+              // agentSessionId is the agent's internal session ID (e.g. Claude Code --resume ID).
+              resumeSessionId:
+                serverData.metadata.agentSessionId ?? serverData.metadata.claudeSessionId,
+              // Restore agent session opts stored in server metadata at session creation.
+              model: serverData.metadata.agentModel,
+              mode: serverData.metadata.agentMode,
+              permissionMode: serverData.metadata.agentPermissionMode,
+              startingMode: serverData.metadata.agentStartingMode,
+              env: serverData.metadata.agentEnv,
             };
             await persistSession(repaired).catch(err =>
               logger.warn('[DAEMON] Failed to write repaired session file', { sessionId, error: String(err) })

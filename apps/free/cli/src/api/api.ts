@@ -547,8 +547,9 @@ export class ApiClient {
   }
 
   /**
-   * Fetch offline sessions by ID from the server and decrypt their metadata.
+   * Fetch sessions by ID from the server and decrypt their metadata.
    * Used to repair corrupted local persistence files — the server is the source of truth.
+   * Makes a single GET /v1/sessions call and filters client-side by the requested IDs.
    * Returns a map of sessionId → decrypted data for sessions that could be recovered.
    */
   async fetchOfflineSessions(

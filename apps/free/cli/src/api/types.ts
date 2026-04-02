@@ -472,6 +472,13 @@ export type Metadata = {
   flavor?: string;
   sandbox?: SandboxConfig | null;
   dangerouslySkipPermissions?: boolean | null;
+  // Agent session opts — persisted to server so corrupted local files can be reconstructed.
+  // All encrypted end-to-end; server never sees plaintext.
+  agentModel?: string;
+  agentMode?: string;
+  agentPermissionMode?: PermissionMode;
+  agentStartingMode?: 'local' | 'remote';
+  agentEnv?: Record<string, string>;
 };
 
 export type AgentState = {
