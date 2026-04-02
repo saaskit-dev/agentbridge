@@ -140,6 +140,13 @@ export abstract class AgentSession<TMode> {
   /** Set only by handleSigterm/handleSigint — tells shutdown() to keep persisted state for crash recovery. */
   private _keepStateForRecovery = false;
   private _isShuttingDown = false;
+  /**
+   * Reject callback for the currently-active sendMessage turn.
+   * Set by messageLoop before awaiting sendMessage, cleared after sendMessage settles.
+   * When pipeBackendOutput detects backend death, it calls this to unblock messageLoop
+   * regardless of whether sendMessage's internal promise has settled.
+   */
+  private rejectActiveTurn: ((err: Error) => void) | null = null;
   protected lastStatus: 'working' | 'idle' = 'idle';
   /**
    * Whether the backend emitted a { type: 'ready' } event during the current turn.
@@ -1065,11 +1072,17 @@ export abstract class AgentSession<TMode> {
       this.resetStreamingText();
       try {
         this.onModeChange(item.mode);
-        await this.backend.sendMessage(
+        const sendPromise = this.backend.sendMessage(
           item.message,
           (item.mode as { permissionMode?: PermissionMode }).permissionMode,
           attachments.length > 0 ? attachments : undefined
         );
+        await new Promise<void>((resolve, reject) => {
+          this.rejectActiveTurn = reject;
+          sendPromise.then(resolve, reject).finally(() => {
+            this.rejectActiveTurn = null;
+          });
+        });
         this.completeStreamingText();
       } catch (err) {
         this.resetStreamingText();
@@ -1405,7 +1418,11 @@ export abstract class AgentSession<TMode> {
           exitSignal: exitInfo?.signal,
           exitReason: exitInfo?.reason,
         });
+        if (this.lastStatus === 'working') {
+          this.forwardOutputMessage(createNormalizedEvent({ type: 'status', state: 'idle' }));
+        }
         this.shouldExit = true;
+        this.rejectActiveTurn?.(new Error('[AgentSession] backend exited'));
         this.messageQueue?.close();
       } catch (err) {
         logger.error('[AgentSession] output pipe broken, triggering shutdown', toError(err), {
@@ -1413,7 +1430,11 @@ export abstract class AgentSession<TMode> {
           sessionId: this.session?.sessionId,
           traceId: getProcessTraceContext()?.traceId,
         });
+        if (this.lastStatus === 'working') {
+          this.forwardOutputMessage(createNormalizedEvent({ type: 'status', state: 'idle' }));
+        }
         this.shouldExit = true;
+        this.rejectActiveTurn?.(toError(err));
         this.messageQueue?.close();
       }
     })();

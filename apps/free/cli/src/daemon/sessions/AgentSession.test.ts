@@ -538,4 +538,65 @@ describe('AgentSession visible backend failures', () => {
       await runPromise;
     }
   );
+
+  it(
+    'recovers from zombie state when backend dies mid-turn (sendMessage hangs)',
+    { timeout: 10_000 },
+    async () => {
+      const origCooldown = TestAgentSession.RESTART_COOLDOWN_MS;
+      TestAgentSession.RESTART_COOLDOWN_MS = 100;
+
+      try {
+        const session = new TestAgentSession(makeOpts());
+        const apiSession = makeMockSession('sess-zombie');
+        session.injectSession(apiSession);
+        session.injectMessageQueue();
+
+        let startCount = 0;
+        vi.spyOn(session, 'createBackend').mockImplementation(() => {
+          startCount++;
+          const output = new PushableAsyncIterable<NormalizedMessage>();
+          return {
+            agentType: 'claude' as const,
+            output,
+            start: vi.fn().mockImplementation(async () => {
+              // Backend dies 50ms after start — simulates process exit mid-turn
+              setTimeout(() => output.end(), 50);
+            }),
+            // sendMessage never resolves — simulates the exact bug scenario where
+            // the backend process dies while the sendPrompt promise is pending
+            sendMessage: vi.fn().mockImplementation(() => new Promise(() => {})),
+            abort: vi.fn().mockResolvedValue(undefined),
+            stop: vi.fn().mockImplementation(async () => {
+              output.end();
+            }),
+          } satisfies AgentBackend;
+        });
+
+        const runPromise = session.run();
+        session.sendInput('trigger send');
+
+        // Wait for restart attempts to exhaust and enter dormant mode.
+        // Without the Promise.race fix, messageLoop would hang forever on
+        // the pending sendMessage promise, and this timeout would expire.
+        await new Promise(r => setTimeout(r, 3000));
+
+        // If startCount > 1, the messageLoop exited and restart logic fired.
+        expect(startCount).toBeGreaterThanOrEqual(2);
+
+        // Should have published error events including dormant mode message
+        const errorCalls = (
+          apiSession.sendNormalizedMessage as ReturnType<typeof vi.fn>
+        ).mock.calls.filter(
+          (c: any) => c[0]?.role === 'event' && c[0]?.content?.type === 'daemon-log'
+        );
+        expect(errorCalls.length).toBeGreaterThanOrEqual(1);
+
+        session.handleSigint();
+        await runPromise;
+      } finally {
+        TestAgentSession.RESTART_COOLDOWN_MS = origCooldown;
+      }
+    }
+  );
 });

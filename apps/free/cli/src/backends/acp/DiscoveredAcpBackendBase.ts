@@ -700,6 +700,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       });
       await this.applyModeSelection(sessionId, requestedMode);
       this.appliedModeSelection = requestedMode;
+      this.modeSetByUser = true;
     } catch (error) {
       this.logger.warn(
         `[${this.agentType}] failed to apply initial mode, keeping discovered default`,

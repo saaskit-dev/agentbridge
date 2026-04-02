@@ -1,7 +1,6 @@
 name: Deploy Web (Cloudflare Pages)
 
 on:
-  workflow_dispatch:
   workflow_run:
     workflows: ["Lint & Dependency Guard"]
     types: [completed]
@@ -9,12 +8,12 @@ on:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.head_sha) || github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 2
 
       - name: Detect relevant changes
@@ -23,10 +22,15 @@ jobs:
           set -e
           SHOULD_DEPLOY=true
           if git rev-parse HEAD^ >/dev/null 2>&1; then
-            CHANGED="$(git diff --name-only HEAD^..HEAD | rg -n '^(apps/free/app/|packages/core/)' || true)"
-            if [ -z "$CHANGED" ]; then
-              SHOULD_DEPLOY=false
-            fi
+            SHOULD_DEPLOY=false
+            while IFS= read -r file; do
+              case "$file" in
+                apps/free/app/*|packages/core/*)
+                  SHOULD_DEPLOY=true
+                  break
+                  ;;
+              esac
+            done < <(git diff --name-only HEAD^..HEAD)
           fi
           echo "should_deploy=$SHOULD_DEPLOY" >> "$GITHUB_OUTPUT"
 

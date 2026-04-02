@@ -22,7 +22,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "check:deps:madge": "bash -lc 'npx madge --circular --extensions ts,tsx apps/free/app/sources/ && npx madge --circular --extensions ts,tsx apps/free/cli/src/ && npx madge --circular --extensions ts,tsx packages/core/src/'",
+    "check:deps:madge": "bash -lc 'env -u npm_config_package npx madge --circular --extensions ts,tsx apps/free/app/sources/ && env -u npm_config_package npx madge --circular --extensions ts,tsx apps/free/cli/src/ && env -u npm_config_package npx madge --circular --extensions ts,tsx packages/core/src/'",
     "check:deps:layers": "node ./scripts/check-deps-layers.cjs",
     "check:deps": "pnpm run check:deps:madge && pnpm run check:deps:layers",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
