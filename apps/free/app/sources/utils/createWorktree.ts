@@ -151,6 +151,8 @@ export async function createWorktree(
     };
   }
 
+  await machineBash(machineId, 'git worktree prune', basePath);
+
   if (!isWorktreeBranchBindingValid(binding)) {
     return {
       success: false,
@@ -165,8 +167,11 @@ export async function createWorktree(
   const start = binding.startPoint.trim();
 
   if (existing) {
-    const outcome = await runWorktreeAddWithPathRetries(machineId, basePath, relativePath =>
-      `git worktree add ${bashSingleQuoted(relativePath)} ${bashSingleQuoted(existing)}`
+    const outcome = await runWorktreeAddWithPathRetries(
+      machineId,
+      basePath,
+      relativePath =>
+        `git worktree add ${bashSingleQuoted(relativePath)} ${bashSingleQuoted(existing)}`
     );
 
     if (outcome.success) {
@@ -178,11 +183,16 @@ export async function createWorktree(
       };
     }
 
+    const usedMatch = outcome.stderr.match(/is already used by worktree at '([^']+)'/);
+    const hint = usedMatch
+      ? ` Branch '${existing}' is in use by worktree at ${usedMatch[1]}. Remove it first or pick a different branch.`
+      : '';
+
     return {
       success: false,
       worktreePath: '',
       branchName: '',
-      error: outcome.stderr || 'Failed to create worktree',
+      error: (outcome.stderr || 'Failed to create worktree') + hint,
     };
   }
 
