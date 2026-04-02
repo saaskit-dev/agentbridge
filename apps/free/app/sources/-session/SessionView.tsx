@@ -473,6 +473,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   >([]);
   const isUploading = pendingAttachments.some(a => a.uploading);
 
+  /** True while `sendMessage` is in flight — locks the composer (see AgentInput). */
+  const [isSendingMessage, setIsSendingMessage] = React.useState(false);
+
   // Handle image paste from clipboard (web paste event or native clipboard)
   const handlePasteImage = React.useCallback(
     async (images: PastedImage[]) => {
@@ -766,6 +769,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
         onConfigOptionChange={updateConfigOption}
         isSettingsBusy={isSettingsBusy}
         onRunCommand={commandId => {
+          setIsSendingMessage(true);
           void sync
             .sendMessage(sessionId, `/${commandId}`)
             .then(result => {
@@ -777,6 +781,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
                     : t('session.sendBlockedDaemonOffline')
                 );
               }
+            })
+            .finally(() => {
+              setIsSendingMessage(false);
             });
         }}
         metadata={session.metadata}
@@ -797,6 +804,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
             const attachmentRefs = pendingAttachments
               .filter(a => a.ref && !a.error)
               .map(a => a.ref!);
+            setIsSendingMessage(true);
             void sync
               .sendMessage(sessionId, trimmedMessage, undefined, {
                 ...(attachmentRefs.length > 0 && { attachments: attachmentRefs }),
@@ -816,9 +824,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
                 clearDraft();
                 setFooterNotice(null);
                 setPendingAttachments([]);
+              })
+              .finally(() => {
+                setIsSendingMessage(false);
               });
           }
         }}
+        isSending={isSendingMessage}
         onPickImages={handlePickImages}
         pendingAttachments={pendingAttachments}
         onRemoveAttachment={handleRemoveAttachment}

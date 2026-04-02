@@ -544,6 +544,7 @@ export const zhHant: TranslationStructure = {
     abortConfirmTitle: '停止目前回覆？',
     abortConfirmMessage: '將中斷智慧助理對目前回覆的處理。',
     abortConfirmAction: '停止',
+    abortTimedOut: '停止請求逾時，請檢查網路後再試。',
     speechInput: {
       recording: '正在聆聽...',
       permissionTitle: '需要麥克風權限',

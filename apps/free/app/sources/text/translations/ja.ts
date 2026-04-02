@@ -556,6 +556,7 @@ export const ja: TranslationStructure = {
     abortConfirmTitle: '現在の応答を停止しますか？',
     abortConfirmMessage: 'エージェントはこの応答の処理を中断します。',
     abortConfirmAction: '停止',
+    abortTimedOut: '停止リクエストがタイムアウトしました。接続を確認して再試行してください。',
     speechInput: {
       recording: '聞いています...',
       permissionTitle: 'マイクへのアクセスが必要です',

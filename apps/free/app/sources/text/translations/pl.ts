@@ -609,6 +609,8 @@ export const pl: TranslationStructure = {
     abortConfirmTitle: 'Zatrzymać bieżącą odpowiedź?',
     abortConfirmMessage: 'Agent przestanie pracować nad tą odpowiedzią.',
     abortConfirmAction: 'Zatrzymaj',
+    abortTimedOut:
+      'Żądanie zatrzymania przekroczyło limit czasu. Sprawdź połączenie i spróbuj ponownie.',
     speechInput: {
       recording: 'Słucham...',
       permissionTitle: 'Wymagany dostęp do mikrofonu',

@@ -568,6 +568,7 @@ export const en: TranslationStructure = {
     abortConfirmTitle: 'Stop current response?',
     abortConfirmMessage: 'The agent will stop working on this reply.',
     abortConfirmAction: 'Stop',
+    abortTimedOut: 'Stop request timed out. Check your connection and try again.',
     speechInput: {
       recording: 'Listening...',
       permissionTitle: 'Microphone Access Required',

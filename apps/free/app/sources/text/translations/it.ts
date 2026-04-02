@@ -595,6 +595,8 @@ export const it: TranslationStructure = {
     abortConfirmTitle: 'Interrompere la risposta corrente?',
     abortConfirmMessage: "L'agente smetterà di lavorare su questa risposta.",
     abortConfirmAction: 'Interrompi',
+    abortTimedOut:
+      'Richiesta di interruzione scaduta. Controlla la connessione e riprova.',
     speechInput: {
       recording: 'In ascolto...',
       permissionTitle: 'Accesso al microfono richiesto',

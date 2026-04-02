@@ -124,6 +124,9 @@ interface AgentInputProps {
 
 const MAX_CONTEXT_SIZE = 190000;
 
+/** Max wait for `sessionAbort` RPC before showing timeout (stuck network / daemon). */
+const ABORT_RPC_TIMEOUT_MS = 25_000;
+
 const stylesheet = StyleSheet.create((theme, runtime) => ({
   container: {
     alignItems: 'center',
@@ -461,6 +464,11 @@ export const AgentInput = React.memo(
 
     // Abort button state
     const [isAborting, setIsAborting] = React.useState(false);
+    /**
+     * True while the outbound message RPC is in flight or abort RPC is running — disables text, attachments,
+     * and toolbar controls. Abort stays tappable while sending (see toolbar layout); only `isAborting` disables it.
+     */
+    const composerChromeLocked = Boolean(props.isSending) || isAborting;
     const shakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
 
@@ -478,6 +486,21 @@ export const AgentInput = React.memo(
       // logger.debug('📝 Input state changed:', JSON.stringify(newState));
       setInputState(newState);
     }, []);
+
+    /**
+     * When the parent clears or replaces the composer value (e.g. after a successful send),
+     * the controlled `TextInput` updates from props but does not emit `onStateChange`.
+     * Without this sync, `inputState` stays on `/…` and the slash/@ menu stays visible.
+     */
+    React.useEffect(() => {
+      setInputState(prev => {
+        if (prev.text === props.value) {
+          return prev;
+        }
+        const len = props.value.length;
+        return { text: props.value, selection: { start: len, end: len } };
+      });
+    }, [props.value]);
 
     // Use the tracked selection from inputState
     const activeWord = useActiveWord(
@@ -535,21 +558,45 @@ export const AgentInput = React.memo(
       [suggestions, inputState, props.autocompletePrefixes]
     );
 
+    /**
+     * Dismisses the autocomplete sheet when the user taps outside (same idea as settings overlays).
+     * Inserts a space at the cursor so the `/` or `@` token is no longer "active" per `findActiveWord`.
+     */
+    const handleDismissAutocompleteBackdrop = React.useCallback(() => {
+      if (composerChromeLocked || suggestions.length === 0 || !inputRef.current) {
+        return;
+      }
+      const { text, selection } = inputState;
+      const pos = selection.start;
+      const newText = text.slice(0, pos) + ' ' + text.slice(pos);
+      inputRef.current.setTextAndSelection(newText, { start: pos + 1, end: pos + 1 });
+      hapticsLight();
+    }, [composerChromeLocked, suggestions.length, inputState]);
+
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
 
     // Agent picker overlay state
     const [showAgentPicker, setShowAgentPicker] = React.useState(false);
 
+    // Close settings overlays and dismiss keyboard while the composer chrome is locked (send in flight or abort).
+    React.useEffect(() => {
+      if (composerChromeLocked) {
+        setShowSettings(false);
+        setShowAgentPicker(false);
+        inputRef.current?.blur();
+      }
+    }, [composerChromeLocked]);
+
     // Handle settings button press
     const handleSettingsPress = React.useCallback(() => {
-      if (props.isSettingsBusy) {
+      if (props.isSettingsBusy || composerChromeLocked) {
         return;
       }
       inputRef.current?.blur();
       hapticsLight();
       setShowSettings(prev => !prev);
-    }, [props.isSettingsBusy]);
+    }, [props.isSettingsBusy, composerChromeLocked]);
 
     // Handle settings selection
     const handleSettingsSelect = React.useCallback(
@@ -562,7 +609,7 @@ export const AgentInput = React.memo(
     );
 
     /**
-     * Executes the abort RPC after the user confirms (haptics, loading state, min visible duration).
+     * Runs the abort RPC after confirmation: haptics, loading state, min visible duration, and a hard timeout.
      */
     const performAbort = React.useCallback(async () => {
       if (!props.onAbort) return;
@@ -571,20 +618,36 @@ export const AgentInput = React.memo(
       hapticsError();
       setIsAborting(true);
       const startTime = Date.now();
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
       try {
-        await props.onAbort?.();
+        await Promise.race([
+          props.onAbort(),
+          new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(
+              () => reject(new Error('abort_rpc_timeout')),
+              ABORT_RPC_TIMEOUT_MS
+            );
+          }),
+        ]);
 
-        // Ensure minimum 300ms loading time
         const elapsed = Date.now() - startTime;
         if (elapsed < 300) {
           await new Promise(resolve => setTimeout(resolve, 300 - elapsed));
         }
       } catch (error) {
-        // Shake on error
         shakerRef.current?.shake();
-        logger.error('Abort RPC call failed:', toError(error));
+        const err = toError(error);
+        if (err.message === 'abort_rpc_timeout') {
+          logger.error('Abort RPC timed out', err);
+          void Modal.alert(t('common.error'), t('agentInput.abortTimedOut'));
+        } else {
+          logger.error('Abort RPC call failed:', err);
+        }
       } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
         setIsAborting(false);
       }
     }, [props.onAbort]);
@@ -607,6 +670,22 @@ export const AgentInput = React.memo(
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback(
       (event: KeyPressEvent): boolean => {
+        if (isAborting) {
+          return false;
+        }
+        // While sending, only Escape may trigger abort (typing and other keys are blocked via editable={false}).
+        if (props.isSending) {
+          if (
+            event.key === 'Escape' &&
+            props.showAbortButton &&
+            props.onAbort &&
+            suggestions.length === 0
+          ) {
+            handleAbortPress();
+            return true;
+          }
+          return false;
+        }
         // Handle autocomplete navigation first
         if (suggestions.length > 0) {
           if (event.key === 'ArrowUp') {
@@ -700,27 +779,37 @@ export const AgentInput = React.memo(
         props.onPermissionModeChange,
         props.isSettingsBusy,
         showLocalPermissionModeControls,
+        props.isSending,
       ]
     );
 
     return (
       <View style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 8 }]}>
         <View style={[styles.innerContainer, { maxWidth: layout.maxWidth }]}>
-          {/* Autocomplete suggestions overlay */}
+          {/* Autocomplete suggestions overlay + tap-outside to dismiss */}
           {suggestions.length > 0 && (
-            <View
-              style={[styles.autocompleteOverlay, { paddingHorizontal: screenWidth > 700 ? 0 : 8 }]}
-            >
-              <AgentInputAutocomplete
-                suggestions={suggestions.map(s => {
-                  const Component = s.component;
-                  return <Component key={s.key} />;
-                })}
-                selectedIndex={selected}
-                onSelect={handleSuggestionSelect}
-                itemHeight={48}
-              />
-            </View>
+            <>
+              <TouchableWithoutFeedback onPress={handleDismissAutocompleteBackdrop}>
+                <View
+                  pointerEvents={composerChromeLocked ? 'none' : 'auto'}
+                  style={styles.overlayBackdrop}
+                />
+              </TouchableWithoutFeedback>
+              <View
+                pointerEvents={composerChromeLocked ? 'none' : 'auto'}
+                style={[styles.autocompleteOverlay, { paddingHorizontal: screenWidth > 700 ? 0 : 8 }]}
+              >
+                <AgentInputAutocomplete
+                  suggestions={suggestions.map(s => {
+                    const Component = s.component;
+                    return <Component key={s.key} />;
+                  })}
+                  selectedIndex={selected}
+                  onSelect={handleSuggestionSelect}
+                  itemHeight={48}
+                />
+              </View>
+            </>
           )}
 
           {/* Settings overlay */}
@@ -1341,6 +1430,7 @@ export const AgentInput = React.memo(
           {/* Box 1: Context Information (Machine + Path) - Only show if either exists */}
           {(props.machineName !== undefined || props.currentPath) && (
             <View
+              pointerEvents={composerChromeLocked ? 'none' : 'auto'}
               style={{
                 backgroundColor: theme.colors.surfacePressed,
                 borderRadius: 12,
@@ -1435,6 +1525,7 @@ export const AgentInput = React.memo(
                 paddingBottom={Platform.OS === 'web' ? 10 : 8}
                 onChangeText={props.onChangeText}
                 placeholder={props.placeholder}
+                editable={!composerChromeLocked}
                 onKeyPress={handleKeyPress}
                 onStateChange={handleInputStateChange}
                 maxHeight={120}
@@ -1444,6 +1535,7 @@ export const AgentInput = React.memo(
             {/* Attachment preview strip */}
             {props.pendingAttachments && props.pendingAttachments.length > 0 && (
               <View
+                pointerEvents={composerChromeLocked ? 'none' : 'auto'}
                 style={{
                   flexDirection: 'row',
                   paddingHorizontal: 8,
@@ -1592,127 +1684,140 @@ export const AgentInput = React.memo(
                   }}
                 >
                   <View style={styles.actionButtonsLeft}>
-                    {/* Image picker button */}
-                    {props.onPickImages && (
-                      <Pressable
-                        onPress={() => {
-                          inputRef.current?.blur();
-                          hapticsLight();
-                          props.onPickImages?.();
-                        }}
-                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                        style={p => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          borderRadius: Platform.select({ default: 16, android: 20 }),
-                          paddingHorizontal: 8,
-                          paddingVertical: 6,
-                          justifyContent: 'center',
-                          height: 32,
-                          opacity: p.pressed ? 0.7 : 1,
-                        })}
-                      >
-                        <Ionicons
-                          name="image-outline"
-                          size={18}
-                          color={theme.colors.button.secondary.tint}
-                        />
-                      </Pressable>
-                    )}
-
-                    {/* Speech-to-text button */}
-                    {props.onSpeechInputPress && (
-                      <Pressable
-                        onPress={() => {
-                          hapticsLight();
-                          props.onSpeechInputPress?.();
-                        }}
-                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                        style={p => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          borderRadius: Platform.select({ default: 16, android: 20 }),
-                          paddingHorizontal: 8,
-                          paddingVertical: 6,
-                          justifyContent: 'center',
-                          height: 32,
-                          opacity: p.pressed ? 0.7 : 1,
-                        })}
-                      >
-                        <Ionicons
-                          name="mic-outline"
-                          size={18}
-                          color={theme.colors.button.secondary.tint}
-                        />
-                      </Pressable>
-                    )}
-
-                    {/* Settings button */}
-                    {(showLocalPermissionModeControls || hasDiscoveredCapabilities) && (
-                      <Pressable
-                        onPress={handleSettingsPress}
-                        disabled={props.isSettingsBusy}
-                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                        style={p => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          borderRadius: Platform.select({ default: 16, android: 20 }),
-                          paddingHorizontal: 8,
-                          paddingVertical: 6,
-                          justifyContent: 'center',
-                          height: 32,
-                          opacity: props.isSettingsBusy ? 0.4 : p.pressed ? 0.7 : 1,
-                        })}
-                      >
-                        <Octicons
-                          name={'gear'}
-                          size={16}
-                          color={theme.colors.button.secondary.tint}
-                        />
-                      </Pressable>
-                    )}
-
-                    {/* Agent selector button */}
-                    {props.agentType && (props.onAgentChange || props.onAgentClick) && (
-                      <Pressable
-                        onPress={() => {
-                          inputRef.current?.blur();
-                          hapticsLight();
-                          if (props.availableAgentTypes && props.onAgentChange) {
-                            setShowAgentPicker(prev => !prev);
-                            setShowSettings(false);
-                          } else {
-                            props.onAgentClick?.();
-                          }
-                        }}
-                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                        style={p => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          borderRadius: Platform.select({ default: 16, android: 20 }),
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          justifyContent: 'center',
-                          height: 32,
-                          opacity: p.pressed ? 0.7 : 1,
-                          gap: 6,
-                        })}
-                      >
-                        <AgentFlavorIcon flavor={props.agentType} size={14} />
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            color: theme.colors.button.secondary.tint,
-                            fontWeight: '600',
-                            ...Typography.default('semiBold'),
+                    {/* Locked while sending or aborting; abort is a sibling so it stays tappable while sending. */}
+                    <View
+                      pointerEvents={composerChromeLocked ? 'none' : 'auto'}
+                      style={{
+                        flexDirection: 'row',
+                        gap: 8,
+                        flex: 1,
+                        minWidth: 0,
+                        alignItems: 'center',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {/* Image picker button */}
+                      {props.onPickImages && (
+                        <Pressable
+                          onPress={() => {
+                            inputRef.current?.blur();
+                            hapticsLight();
+                            props.onPickImages?.();
                           }}
+                          hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                          style={p => ({
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                            paddingHorizontal: 8,
+                            paddingVertical: 6,
+                            justifyContent: 'center',
+                            height: 32,
+                            opacity: p.pressed ? 0.7 : 1,
+                          })}
                         >
-                          {getAgentDisplayName(props.agentType)}
-                        </Text>
-                      </Pressable>
-                    )}
+                          <Ionicons
+                            name="image-outline"
+                            size={18}
+                            color={theme.colors.button.secondary.tint}
+                          />
+                        </Pressable>
+                      )}
 
-                    {/* Abort button */}
+                      {/* Speech-to-text button */}
+                      {props.onSpeechInputPress && (
+                        <Pressable
+                          onPress={() => {
+                            hapticsLight();
+                            props.onSpeechInputPress?.();
+                          }}
+                          hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                          style={p => ({
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                            paddingHorizontal: 8,
+                            paddingVertical: 6,
+                            justifyContent: 'center',
+                            height: 32,
+                            opacity: p.pressed ? 0.7 : 1,
+                          })}
+                        >
+                          <Ionicons
+                            name="mic-outline"
+                            size={18}
+                            color={theme.colors.button.secondary.tint}
+                          />
+                        </Pressable>
+                      )}
+
+                      {/* Settings button */}
+                      {(showLocalPermissionModeControls || hasDiscoveredCapabilities) && (
+                        <Pressable
+                          onPress={handleSettingsPress}
+                          disabled={props.isSettingsBusy || composerChromeLocked}
+                          hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                          style={p => ({
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                            paddingHorizontal: 8,
+                            paddingVertical: 6,
+                            justifyContent: 'center',
+                            height: 32,
+                            opacity: props.isSettingsBusy ? 0.4 : p.pressed ? 0.7 : 1,
+                          })}
+                        >
+                          <Octicons
+                            name={'gear'}
+                            size={16}
+                            color={theme.colors.button.secondary.tint}
+                          />
+                        </Pressable>
+                      )}
+
+                      {/* Agent selector button */}
+                      {props.agentType && (props.onAgentChange || props.onAgentClick) && (
+                        <Pressable
+                          onPress={() => {
+                            inputRef.current?.blur();
+                            hapticsLight();
+                            if (props.availableAgentTypes && props.onAgentChange) {
+                              setShowAgentPicker(prev => !prev);
+                              setShowSettings(false);
+                            } else {
+                              props.onAgentClick?.();
+                            }
+                          }}
+                          hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                          style={p => ({
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            justifyContent: 'center',
+                            height: 32,
+                            opacity: p.pressed ? 0.7 : 1,
+                            gap: 6,
+                          })}
+                        >
+                          <AgentFlavorIcon flavor={props.agentType} size={14} />
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              color: theme.colors.button.secondary.tint,
+                              fontWeight: '600',
+                              ...Typography.default('semiBold'),
+                            }}
+                          >
+                            {getAgentDisplayName(props.agentType)}
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+
+                    {/* Abort: outside pointer lock so it remains available while a message is sending. */}
                     {props.onAbort && (
                       <Shaker ref={shakerRef}>
                         <Pressable
@@ -1746,14 +1851,18 @@ export const AgentInput = React.memo(
                       </Shaker>
                     )}
 
-                    {/* Git Status Badge */}
-                    <GitStatusButton
-                      sessionId={props.sessionId}
-                      onPress={() => {
-                        inputRef.current?.blur();
-                        props.onFileViewerPress?.();
-                      }}
-                    />
+                    <View
+                      pointerEvents={composerChromeLocked ? 'none' : 'auto'}
+                      style={{ flexShrink: 0 }}
+                    >
+                      <GitStatusButton
+                        sessionId={props.sessionId}
+                        onPress={() => {
+                          inputRef.current?.blur();
+                          props.onFileViewerPress?.();
+                        }}
+                      />
+                    </View>
                   </View>
 
                   {/* Send/Voice button */}
@@ -1783,7 +1892,9 @@ export const AgentInput = React.memo(
                         }
                       }}
                       disabled={
-                        props.isSendDisabled || props.isSending || (!canSend && !props.onMicPress)
+                        props.isSendDisabled ||
+                        composerChromeLocked ||
+                        (!canSend && !props.onMicPress)
                       }
                     >
                       {props.isSending ? (

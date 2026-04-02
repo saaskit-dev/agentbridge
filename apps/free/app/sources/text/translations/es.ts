@@ -594,6 +594,8 @@ export const es: TranslationStructure = {
     abortConfirmTitle: '¿Detener la respuesta actual?',
     abortConfirmMessage: 'El agente dejará de trabajar en esta respuesta.',
     abortConfirmAction: 'Detener',
+    abortTimedOut:
+      'La solicitud de detención ha superado el tiempo de espera. Comprueba la conexión e inténtalo de nuevo.',
     speechInput: {
       recording: 'Escuchando...',
       permissionTitle: 'Se requiere acceso al micrófono',

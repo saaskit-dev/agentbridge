@@ -51,6 +51,8 @@ interface MultiTextInputProps {
   paddingBottom?: number;
   paddingLeft?: number;
   paddingRight?: number;
+  /** When false, the field does not accept focus or edits (e.g. while sending or aborting). */
+  editable?: boolean;
   onKeyPress?: OnKeyPressCallback;
   onSelectionChange?: (selection: { start: number; end: number }) => void;
   onStateChange?: (state: TextInputState) => void;
@@ -63,6 +65,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
       onChangeText,
       placeholder,
       maxHeight = 120,
+      editable = true,
       onKeyPress,
       onSelectionChange,
       onStateChange,
@@ -245,6 +248,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
           autoComplete="off"
           textContentType="none"
           submitBehavior="newline"
+          editable={editable}
         />
       </View>
     );

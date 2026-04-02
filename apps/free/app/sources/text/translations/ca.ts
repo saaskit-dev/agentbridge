@@ -594,6 +594,8 @@ export const ca: TranslationStructure = {
     abortConfirmTitle: 'Aturar la resposta actual?',
     abortConfirmMessage: "L'agent deixarà de treballar en aquesta resposta.",
     abortConfirmAction: 'Aturar',
+    abortTimedOut:
+      "La sol·licitud d'aturada ha esgotat el temps. Comproveu la connexió i torneu-ho a provar.",
     speechInput: {
       recording: 'Escoltant...',
       permissionTitle: 'Cal accés al micròfon',
