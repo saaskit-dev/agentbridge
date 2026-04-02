@@ -2,13 +2,10 @@ import type { ImagePickerAsset } from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { Platform } from 'react-native';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { ensureLocalUri } from './ensureLocalUri';
 
 const logger = new Logger('utils/getLatestLibraryPhoto');
 
-/**
- * Loads the single newest photo from the device library (by creation time descending).
- * Used for the "quick latest" attach action without opening the full picker UI.
- */
 export async function getLatestLibraryPhotoAsset(): Promise<ImagePickerAsset | null> {
   if (Platform.OS === 'web') {
     return null;
@@ -45,8 +42,14 @@ export async function getLatestLibraryPhotoAsset(): Promise<ImagePickerAsset | n
     }
 
     const a = assets[0];
+    const localUri = await ensureLocalUri(a.uri, a.id);
+    if (!localUri) {
+      logger.warn('[getLatestLibraryPhotoAsset] could not get local URI');
+      return null;
+    }
+
     return {
-      uri: a.uri,
+      uri: localUri,
       width: a.width,
       height: a.height,
       mimeType: 'image/jpeg',

@@ -6,6 +6,7 @@ import { apiSocket } from './apiSocket';
 import { messageDB } from './messageDB';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { sessionLogger } from '@/sync/appTraceStore';
+import { ensureLocalUri } from '@/utils/ensureLocalUri';
 
 export interface AttachmentRef {
   id: string;
@@ -33,14 +34,10 @@ async function compressImage(
   const format = isPng ? SaveFormat.PNG : SaveFormat.JPEG;
   const mimeType = isPng ? 'image/png' : 'image/jpeg';
 
-  const result = await manipulateAsync(
-    uri,
-    [{ resize: { width: MAX_DIMENSION } }],
-    {
-      compress: isPng ? 1 : JPEG_QUALITY,
-      format,
-    }
-  );
+  const result = await manipulateAsync(uri, [{ resize: { width: MAX_DIMENSION } }], {
+    compress: isPng ? 1 : JPEG_QUALITY,
+    format,
+  });
 
   return { uri: result.uri, mimeType };
 }
@@ -72,13 +69,19 @@ function getFileSize(uri: string): number {
 /**
  * Copy asset URI to a persistent cache location to prevent iOS from reclaiming it.
  */
-function copyToPersistentUri(asset: ImagePickerAsset): string {
+async function copyToPersistentUri(asset: ImagePickerAsset): Promise<string> {
   if (Platform.OS === 'web') {
     return asset.uri;
   }
-  const ext = asset.uri.split('.').pop() || 'jpg';
+
+  const localUri = await ensureLocalUri(asset.uri, asset.assetId);
+  if (!localUri) {
+    throw new Error('Image not available locally. iCloud photos must be downloaded first.');
+  }
+
+  const ext = localUri.split('.').pop() || 'jpg';
   const destName = `attachment_${Date.now()}.${ext}`;
-  const src = new File(asset.uri);
+  const src = new File(localUri);
   const dest = new File(Paths.cache, destName);
   if (dest.exists) dest.delete();
   src.copy(dest);
@@ -134,7 +137,10 @@ function getWebBlobDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(WEB_IDB_NAME, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(WEB_IDB_STORE);
-    req.onsuccess = () => { _webDB = req.result; resolve(req.result); };
+    req.onsuccess = () => {
+      _webDB = req.result;
+      resolve(req.result);
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -271,11 +277,7 @@ async function downloadAttachment(
         data?: ArrayBuffer;
         mimeType?: string;
         error?: string;
-      }>(
-        'download-attachment',
-        { sessionId, attachmentId, mimeType },
-        30_000
-      );
+      }>('download-attachment', { sessionId, attachmentId, mimeType }, 30_000);
 
       if (!ack.ok || !ack.data) {
         log.debug('[downloadAttachment] server returned not-ok', {
@@ -366,7 +368,11 @@ export async function deleteSessionAttachments(sessionId: string): Promise<void>
   const ids = entries.map(e => e.key);
 
   if (Platform.OS === 'web') {
-    try { await deleteWebBlobs(ids); } catch { /* non-critical on web */ }
+    try {
+      await deleteWebBlobs(ids);
+    } catch {
+      /* non-critical on web */
+    }
   } else {
     for (const { key: id, value: mimeType } of entries) {
       try {
@@ -412,7 +418,7 @@ export async function uploadAttachment(
   // 2. Copy to persistent location (iOS temp URIs get reclaimed)
   let persistentUri: string;
   try {
-    persistentUri = copyToPersistentUri(asset);
+    persistentUri = await copyToPersistentUri(asset);
     log.info('[uploadAttachment] copied to persistent uri', {
       persistentUri: persistentUri.slice(-40),
     });
@@ -423,8 +429,7 @@ export async function uploadAttachment(
 
   // 3. Compress
   const needsResize =
-    (asset.width && asset.width > MAX_DIMENSION) ||
-    (asset.height && asset.height > MAX_DIMENSION);
+    (asset.width && asset.width > MAX_DIMENSION) || (asset.height && asset.height > MAX_DIMENSION);
 
   let compressedUri: string;
   let mimeType: string;
@@ -446,7 +451,9 @@ export async function uploadAttachment(
     }
   } catch (err) {
     log.error('[uploadAttachment] compress failed', err);
-    throw new Error(`Failed to compress image: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `Failed to compress image: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 
   // 4. Check size & read bytes
@@ -463,7 +470,9 @@ export async function uploadAttachment(
       bytes = await readFileBytes(compressedUri);
     }
     if (bytes.byteLength > MAX_SIZE_BYTES) {
-      throw new Error(`Image too large (${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB > 8MB limit)`);
+      throw new Error(
+        `Image too large (${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB > 8MB limit)`
+      );
     }
     log.info('[uploadAttachment] bytes read', { byteLength: bytes.byteLength });
   } catch (err) {
@@ -534,9 +543,10 @@ export async function uploadAttachment(
       isTimeout,
       socketStatus: apiSocket.getStatus(),
     });
-    throw new Error(isTimeout
-      ? 'Upload timed out — server may not have received the event. Is the server running latest code?'
-      : `Upload failed: ${msg}`
+    throw new Error(
+      isTimeout
+        ? 'Upload timed out — server may not have received the event. Is the server running latest code?'
+        : `Upload failed: ${msg}`
     );
   }
 }
