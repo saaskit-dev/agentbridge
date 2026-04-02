@@ -909,28 +909,11 @@ class Sync {
   // Private
   //
 
-  private fetchSessions = async () => {
-    if (!this.credentials) return;
-
-    const API_ENDPOINT = getServerUrl();
-    const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
-      headers: {
-        Authorization: `Bearer ${this.credentials.token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch sessions: ${response.status}`);
-    }
-
-    const data = await response.json();
-    logger.debug('[sync] fetchSessions: got sessions', {
-      count: Array.isArray(data.sessions) ? data.sessions.length : 0,
-    });
-    const sessions = data.sessions as Array<{
+  /** Wire-format session row from GET /v1/sessions or GET /v1/sessions/:id. */
+  private mergeSessionsFromApiRows = async (
+    sessions: Array<{
       id: string;
-      tag: string | null;
+      tag?: string | null;
       seq: number;
       metadata: string;
       metadataVersion: number;
@@ -943,9 +926,9 @@ class Sync {
       activeAt: number;
       createdAt: number;
       updatedAt: number;
-      lastMessage: ApiMessage | null;
-    }>;
-
+      lastMessage?: ApiMessage | null;
+    }>
+  ): Promise<void> => {
     // Initialize all session encryptions first
     const sessionKeys = new Map<string, Uint8Array | null>();
     for (const session of sessions) {
@@ -1010,6 +993,122 @@ class Sync {
 
     // Apply to storage
     this.applySessions(decryptedSessions);
+  };
+
+  /**
+   * Loads one session by id when it is missing from the first page of GET /v1/sessions
+   * (e.g. user has >150 sessions). Initializes encryption and merges into storage.
+   */
+  private hydrateSessionFromServerById = async (sessionId: string): Promise<boolean> => {
+    if (!this.credentials) {
+      return false;
+    }
+    const API_ENDPOINT = getServerUrl();
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+      headers: {
+        Authorization: `Bearer ${this.credentials.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (response.status === 404) {
+      logger.debug('[sync] hydrateSessionFromServerById: not found', { sessionId });
+      return false;
+    }
+    if (!response.ok) {
+      logger.warn('[sync] hydrateSessionFromServerById: request failed', {
+        sessionId,
+        status: response.status,
+      });
+      return false;
+    }
+    const data = await response.json();
+    const session = data.session as
+      | {
+          id: string;
+          seq: number;
+          metadata: string;
+          metadataVersion: number;
+          agentState: string | null;
+          agentStateVersion: number;
+          capabilities?: string | null;
+          capabilitiesVersion?: number;
+          dataEncryptionKey: string | null;
+          status: 'active' | 'offline' | 'archived' | 'deleted';
+          activeAt: number;
+          createdAt: number;
+          updatedAt: number;
+          lastMessage?: ApiMessage | null;
+        }
+      | undefined;
+    if (!session || session.id !== sessionId) {
+      logger.warn('[sync] hydrateSessionFromServerById: invalid response', { sessionId });
+      return false;
+    }
+    await this.mergeSessionsFromApiRows([session]);
+    return !!this.encryption.getSessionEncryption(sessionId);
+  };
+
+  /**
+   * Structured telemetry when session encryption is missing after sync — helps NR distinguish
+   * list truncation (>150), missing row, and cross-session races.
+   */
+  /**
+   * Accepts root `Logger` or trace-scoped loggers from `withContext` (NR correlation).
+   */
+  private logEncryptionGapDiagnostics(
+    log: Pick<Logger, 'error'>,
+    sessionId: string,
+    stage: 'after_list_sync' | 'final_failure'
+  ): void {
+    const sessions = storage.getState().sessions;
+    const keys = Object.keys(sessions);
+    log.error('Session encryption gap', undefined, {
+      sessionId,
+      stage,
+      localSessionCount: keys.length,
+      hasLocalSessionRow: !!sessions[sessionId],
+      listPageLikelyTruncated: keys.length >= 150,
+    });
+  };
+
+  private fetchSessions = async () => {
+    if (!this.credentials) return;
+
+    const API_ENDPOINT = getServerUrl();
+    const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
+      headers: {
+        Authorization: `Bearer ${this.credentials.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch sessions: ${response.status}`);
+    }
+
+    const data = await response.json();
+    logger.debug('[sync] fetchSessions: got sessions', {
+      count: Array.isArray(data.sessions) ? data.sessions.length : 0,
+    });
+    const sessions = data.sessions as Array<{
+      id: string;
+      tag: string | null;
+      seq: number;
+      metadata: string;
+      metadataVersion: number;
+      agentState: string | null;
+      agentStateVersion: number;
+      capabilities?: string | null;
+      capabilitiesVersion?: number;
+      dataEncryptionKey: string | null;
+      status: 'active' | 'offline' | 'archived' | 'deleted';
+      activeAt: number;
+      createdAt: number;
+      updatedAt: number;
+      lastMessage: ApiMessage | null;
+    }>;
+
+    await this.mergeSessionsFromApiRows(sessions);
 
     // Reconcile deletions: the server returns all non-deleted sessions (up to 150).
     // When the count is under the limit, we have the full picture — any local session
@@ -1028,8 +1127,12 @@ class Sync {
     }
 
     void Promise.allSettled(
-      decryptedSessions.map(session =>
-        persistCachedCapabilities({
+      sessions.map(s => {
+        const session = storage.getState().sessions[s.id];
+        if (!session) {
+          return Promise.resolve();
+        }
+        return persistCachedCapabilities({
           machineId: session.metadata?.machineId,
           agentType:
             session.metadata?.flavor === 'claude' ||
@@ -1041,10 +1144,10 @@ class Sync {
           capabilities: session.capabilities,
           updatedAt: session.updatedAt,
           persistRemote: false,
-        })
-      )
+        });
+      })
     );
-    logger.debug(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
+    logger.debug(`📥 fetchSessions completed - processed ${sessions.length} sessions`);
   };
 
   public refreshMachines = async () => {
@@ -1932,7 +2035,11 @@ class Sync {
     const log = sessionLogger(logger, sessionId);
     log.debug('fetchMessages starting');
 
-    const encryption = this.encryption.getSessionEncryption(sessionId);
+    let encryption = this.encryption.getSessionEncryption(sessionId);
+    if (!encryption) {
+      await this.hydrateSessionFromServerById(sessionId);
+      encryption = this.encryption.getSessionEncryption(sessionId);
+    }
     if (!encryption) {
       log.debug('fetchMessages: Session encryption not ready, will retry');
       throw new Error(`Session encryption not ready for ${sessionId}`);
@@ -2525,11 +2632,27 @@ class Sync {
     if (updateData.body.t === 'new-message') {
       const sessionId = updateData.body.sid;
 
-      // Get encryption
-      const encryption = this.encryption.getSessionEncryption(sessionId);
+      /**
+       * Session keys come from `fetchSessions` → `initializeSessions`. A `new-message` push can
+       * be processed before that finishes (e.g. `new-session` only called `invalidate()` without
+       * awaiting, or message ordering). Wait for session sync once, then fall back to message refetch.
+       */
+      let encryption = this.encryption.getSessionEncryption(sessionId);
       if (!encryption) {
-        log.error('Session encryption not found for new-message');
-        this.fetchSessions();
+        log.warn('Session encryption not ready for new-message, awaiting session sync', {
+          sessionId,
+        });
+        await this.sessionsSync.invalidateAndAwait();
+        encryption = this.encryption.getSessionEncryption(sessionId);
+      }
+      if (!encryption) {
+        this.logEncryptionGapDiagnostics(log, sessionId, 'after_list_sync');
+        await this.hydrateSessionFromServerById(sessionId);
+        encryption = this.encryption.getSessionEncryption(sessionId);
+      }
+      if (!encryption) {
+        this.logEncryptionGapDiagnostics(log, sessionId, 'final_failure');
+        this.getMessagesSync(sessionId).invalidate();
         return;
       }
 
@@ -2624,8 +2747,8 @@ class Sync {
               },
             ]);
           } else {
-            // Fetch sessions again if we don't have this session
-            this.fetchSessions();
+            // Local session list missing this id; wait for list + keys before continuing.
+            await this.sessionsSync.invalidateAndAwait();
           }
 
           // Fast-path only on consecutive seq values, otherwise fetch from server.
@@ -2682,19 +2805,34 @@ class Sync {
       }
     } else if (updateData.body.t === 'new-session') {
       log.debug('New session update received');
-      this.sessionsSync.invalidate();
+      /** Must await so a following `new-message` in the queue sees initialized session encryption. */
+      await this.sessionsSync.invalidateAndAwait();
     } else if (updateData.body.t === 'delete-session') {
       log.debug('Delete session update received');
       const sessionId = updateData.body.sid;
       this.purgeSession(sessionId);
       log.debug('Session deleted from local storage');
     } else if (updateData.body.t === 'update-session') {
-      const session = storage.getState().sessions[updateData.body.id];
+      let session = storage.getState().sessions[updateData.body.id];
       if (session) {
-        // Get session encryption
-        const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+        let sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
         if (!sessionEncryption) {
-          log.error('Session encryption not found for update-session');
+          log.warn('Session encryption not ready for update-session, awaiting session sync', {
+            sessionId: updateData.body.id,
+          });
+          await this.sessionsSync.invalidateAndAwait();
+          sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+          session = storage.getState().sessions[updateData.body.id] ?? session;
+        }
+        if (!sessionEncryption) {
+          this.logEncryptionGapDiagnostics(log, updateData.body.id, 'after_list_sync');
+          await this.hydrateSessionFromServerById(updateData.body.id);
+          sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+          session = storage.getState().sessions[updateData.body.id] ?? session;
+        }
+        if (!sessionEncryption) {
+          this.logEncryptionGapDiagnostics(log, updateData.body.id, 'final_failure');
+          log.error('Session encryption not found for update-session after refresh and hydrate');
           return;
         }
 
