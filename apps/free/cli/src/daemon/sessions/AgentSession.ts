@@ -599,7 +599,12 @@ export abstract class AgentSession<TMode> {
     }
     const { metadata, state } = this.buildSessionMetadata();
 
-    const response = await this.api.getOrCreateSession({ id: sid, metadata, state });
+    const response = await this.api.getOrCreateSession({
+      id: sid,
+      metadata,
+      state,
+      machineId: this.opts.machineId,
+    });
 
     // Restore lastSeq from persistence so replay/fetch starts from the right point
     if (response && this.opts.lastSeq != null && this.opts.lastSeq > 0) {
@@ -955,9 +960,15 @@ export abstract class AgentSession<TMode> {
       });
       if (this.pendingExit || this._isShuttingDown) break; // graceful — don't restart
       if (this.shouldExit) {
-        // Backend died unexpectedly — try to restart
-        await this.outputPipeFinished;
-        await this.capabilitiesPipeFinished;
+        // Backend died unexpectedly — try to restart.
+        // Add a 15s safety timeout: if backend.stop() timed out in forceRestart (10s),
+        // outputPipeFinished may never resolve because the process is still running.
+        // Rather than blocking forever, proceed with restart after the timeout.
+        const PIPE_DRAIN_TIMEOUT_MS = 15_000;
+        await Promise.race([
+          Promise.all([this.outputPipeFinished, this.capabilitiesPipeFinished]),
+          new Promise<void>(r => setTimeout(r, PIPE_DRAIN_TIMEOUT_MS)),
+        ]);
 
         if (!this.canRestartBackend()) {
           // Exhausted fast restarts — enter "dormant" mode.

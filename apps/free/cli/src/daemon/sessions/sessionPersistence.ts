@@ -93,25 +93,39 @@ export async function eraseSession(sessionId: string): Promise<void> {
   }
 }
 
-export async function readAllPersistedSessions(): Promise<PersistedSession[]> {
+export interface ReadPersistedSessionsResult {
+  sessions: PersistedSession[];
+  /** Session IDs extracted from filenames of files that could not be parsed. */
+  corruptedSessionIds: string[];
+}
+
+export async function readAllPersistedSessions(): Promise<ReadPersistedSessionsResult> {
   const dir = sessionsDir();
   let entries: string[];
   try {
     entries = await readdir(dir);
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { sessions: [], corruptedSessionIds: [] };
     throw err;
   }
 
-  const results: PersistedSession[] = [];
+  const sessions: PersistedSession[] = [];
+  const corruptedSessionIds: string[] = [];
   for (const name of entries) {
     if (!name.endsWith('.json')) continue;
     try {
       const raw = await readFile(join(dir, name), 'utf-8');
-      results.push(JSON.parse(raw) as PersistedSession);
+      sessions.push(JSON.parse(raw) as PersistedSession);
     } catch (err) {
-      logger.warn('[sessionPersistence] skipping corrupted file', { name, error: String(err) });
+      // Extract sessionId from filename (format: <sessionId>.json)
+      const sessionId = name.slice(0, -5); // strip ".json"
+      logger.warn('[sessionPersistence] skipping corrupted file', {
+        name,
+        sessionId,
+        error: String(err),
+      });
+      corruptedSessionIds.push(sessionId);
     }
   }
-  return results;
+  return { sessions, corruptedSessionIds };
 }

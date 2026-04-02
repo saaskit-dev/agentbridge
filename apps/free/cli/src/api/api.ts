@@ -78,6 +78,7 @@ export class ApiClient {
     id: string;
     metadata: Metadata;
     state: AgentState | null;
+    machineId?: string;
   }): Promise<Session | null> {
     // Resolve encryption key
     let dataEncryptionKey: Uint8Array | null = null;
@@ -131,6 +132,7 @@ export class ApiClient {
             metadata: encryptedMetadata,
             agentState: encryptedState,
             dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : null,
+            ...(opts.machineId ? { machineId: opts.machineId } : {}),
           },
           {
             headers: {
@@ -542,6 +544,63 @@ export class ApiClient {
       logger.debug(`[API] [ERROR] Failed to get vendor token:`, error);
       return null;
     }
+  }
+
+  /**
+   * Fetch offline sessions by ID from the server and decrypt their metadata.
+   * Used to repair corrupted local persistence files — the server is the source of truth.
+   * Returns a map of sessionId → decrypted data for sessions that could be recovered.
+   */
+  async fetchOfflineSessions(
+    sessionIds: string[]
+  ): Promise<Map<string, { metadata: Metadata; seq: number; createdAt: number }>> {
+    const result = new Map<string, { metadata: Metadata; seq: number; createdAt: number }>();
+    if (sessionIds.length === 0) return result;
+
+    try {
+      const response = await axios.get<{
+        sessions: Array<{
+          id: string;
+          seq: number;
+          status: string;
+          metadata: string | null;
+          dataEncryptionKey: string | null;
+          createdAt: number;
+        }>;
+      }>(`${configuration.serverUrl}/v1/sessions`, {
+        headers: { Authorization: `Bearer ${this.credential.token}` },
+        timeout: 15000,
+      });
+
+      const targetIds = new Set(sessionIds);
+      for (const raw of response.data.sessions) {
+        if (!targetIds.has(raw.id) || raw.status !== 'offline' || !raw.metadata) continue;
+        try {
+          let encryptionKey: Uint8Array;
+          const encryptionVariant: 'legacy' | 'dataKey' =
+            this.credential.encryption.type === 'dataKey' ? 'dataKey' : 'legacy';
+          if (this.credential.encryption.type === 'dataKey') {
+            if (!raw.dataEncryptionKey) continue;
+            const recovered = tryRecoverSessionKey(
+              raw.dataEncryptionKey,
+              this.credential.encryption.machineKey
+            );
+            if (!recovered) continue;
+            encryptionKey = recovered;
+          } else {
+            encryptionKey = this.credential.encryption.secret;
+          }
+          const metadata = await decryptFromWireString(encryptionKey, encryptionVariant, raw.metadata);
+          result.set(raw.id, { metadata, seq: raw.seq, createdAt: raw.createdAt });
+        } catch {
+          // Skip sessions we can't decrypt
+        }
+      }
+    } catch (err) {
+      logger.warn('[API] fetchOfflineSessions failed', { error: String(err) });
+    }
+
+    return result;
   }
 
   /**

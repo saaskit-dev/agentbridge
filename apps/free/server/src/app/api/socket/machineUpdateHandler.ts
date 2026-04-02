@@ -2,6 +2,8 @@ import { Socket } from 'socket.io';
 import {
   buildMachineActivityEphemeral,
   buildUpdateMachineUpdate,
+  buildUpdateSessionUpdate,
+  buildSessionActivityEphemeral,
   eventRouter,
 } from '@/app/events/eventRouter';
 import { machineAliveEventsCounter, websocketEventsCounter } from '@/app/monitoring/metrics2';
@@ -11,6 +13,7 @@ import { allocateUserSeq } from '@/storage/seq';
 import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
+import { activityBroadcaster } from '@/app/api/socket/activityBroadcaster';
 
 const log = new Logger('app/api/socket/machineUpdateHandler');
 export function machineUpdateHandler(userId: string, socket: Socket) {
@@ -159,6 +162,86 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
       }
     }
   });
+
+  /**
+   * Daemon sends this after its recovery scan completes.
+   * Server archives any session for this machine that is still 'offline' but was NOT recovered —
+   * these are orphaned sessions (no persistence file remained after crash) that would otherwise
+   * stay offline forever.
+   */
+  socket.on(
+    'machine-recovery-done',
+    async (data: { machineId: string; recoveredSessionIds: string[] }) => {
+      try {
+        const { machineId: mid, recoveredSessionIds } = data;
+        if (!mid || !Array.isArray(recoveredSessionIds)) return;
+
+        // Find offline sessions for this machine not in the recovered set
+        const orphaned = await db.session.findMany({
+          where: {
+            accountId: userId,
+            machineId: mid,
+            status: 'offline',
+            id: { notIn: recoveredSessionIds },
+          },
+          select: { id: true },
+        });
+
+        if (orphaned.length === 0) return;
+
+        const now = Date.now();
+        log.info('[machine-recovery-done] archiving orphaned sessions', {
+          userId,
+          machineId: mid,
+          orphanedCount: orphaned.length,
+          orphanedIds: orphaned.map(s => s.id),
+        });
+
+        const archivedAt = new Date(now);
+        await db.session.updateMany({
+          where: {
+            accountId: userId,
+            id: { in: orphaned.map(s => s.id) },
+            status: 'offline', // guard: only touch offline sessions
+          },
+          data: { status: 'archived', archivedAt, lastActiveAt: archivedAt },
+        });
+
+        // Broadcast status updates so App reflects archived state immediately
+        for (const { id: sid } of orphaned) {
+          activityBroadcaster.remove(userId, sid);
+          const activityUpdate = buildSessionActivityEphemeral(sid, false, now, false);
+          eventRouter.emitEphemeral({
+            userId,
+            payload: activityUpdate,
+            recipientFilter: { type: 'user-scoped-only' },
+          });
+          const updateSeq = await allocateUserSeq(userId);
+          const updatePayload = buildUpdateSessionUpdate(
+            sid,
+            updateSeq,
+            randomKeyNaked(12),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'archived',
+            now
+          );
+          eventRouter.emitUpdate({
+            userId,
+            payload: updatePayload,
+            recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
+          });
+        }
+      } catch (error) {
+        log.error('Error in machine-recovery-done', undefined, {
+          userId,
+          error: safeStringify(error),
+        });
+      }
+    }
+  );
 
   // Machine daemon state update with optimistic concurrency control
   socket.on('machine-update-state', async (data: any, callback: (response: any) => void) => {

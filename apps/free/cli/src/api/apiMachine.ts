@@ -108,6 +108,10 @@ interface DaemonToServerEvents {
     data: { method: string; params: any },
     callback: (response: { ok: boolean; result?: any; error?: string }) => void
   ) => void;
+  'machine-recovery-done': (data: {
+    machineId: string;
+    recoveredSessionIds: string[];
+  }) => void;
 }
 
 type MachineRpcHandlers = {
@@ -127,6 +131,8 @@ export class ApiMachineClient {
   private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
   private keepAliveInterval: NodeJS.Timeout | null = null;
   private rpcHandlerManager: RpcHandlerManager;
+  /** Pending recovery-done payload — sent on first connect, then cleared. */
+  private pendingRecoveryDone: string[] | null = null;
 
   constructor(
     private token: string,
@@ -407,6 +413,22 @@ export class ApiMachineClient {
         });
       });
 
+      // Flush pending recovery-done (set before first connect by emitRecoveryDone).
+      // Only sent once — on reconnect we don't re-archive because live sessions that
+      // recovered successfully are still in sessionManager.
+      if (this.pendingRecoveryDone !== null) {
+        const ids = this.pendingRecoveryDone;
+        this.pendingRecoveryDone = null;
+        logger.info('[API MACHINE] flushing machine-recovery-done on connect', {
+          machineId: this.machine.id,
+          recoveredCount: ids.length,
+        });
+        this.socket.emit('machine-recovery-done', {
+          machineId: this.machine.id,
+          recoveredSessionIds: ids,
+        });
+      }
+
       // Register all handlers
       this.rpcHandlerManager.onSocketConnect(this.socket);
 
@@ -506,6 +528,34 @@ export class ApiMachineClient {
       clearInterval(this.keepAliveInterval);
       this.keepAliveInterval = null;
       logger.debug('[API MACHINE] Keep-alive stopped', { machineId: this.machine.id });
+    }
+  }
+
+  /**
+   * Notify the server that daemon recovery is complete.
+   * The server will archive any offline sessions for this machine that were NOT recovered,
+   * preventing orphaned sessions from staying in the 'offline' state indefinitely.
+   *
+   * If the socket is not yet connected, the payload is queued and sent on first connect.
+   * This is fire-and-forget: called once per daemon startup, not on reconnect.
+   */
+  emitRecoveryDone(recoveredSessionIds: string[]): void {
+    if (this.socket?.connected) {
+      logger.info('[API MACHINE] emitting machine-recovery-done (immediate)', {
+        machineId: this.machine.id,
+        recoveredCount: recoveredSessionIds.length,
+      });
+      this.socket.emit('machine-recovery-done', {
+        machineId: this.machine.id,
+        recoveredSessionIds,
+      });
+    } else {
+      // Socket not yet connected — queue for first connect event
+      logger.info('[API MACHINE] queuing machine-recovery-done for first connect', {
+        machineId: this.machine.id,
+        recoveredCount: recoveredSessionIds.length,
+      });
+      this.pendingRecoveryDone = recoveredSessionIds;
     }
   }
 

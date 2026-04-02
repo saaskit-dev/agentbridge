@@ -106,6 +106,7 @@ model Session {
   dataEncryptionKey   String?       // Base64 encoded, changed from Bytes for PGlite compatibility
   seq                 Int           @default(0)
   status              SessionStatus @default(active)
+  machineId           String?       // Daemon machine that owns this session (plaintext for orphan cleanup)
   lastActiveAt        DateTime      @default(now())
   archivedAt          DateTime?
   createdAt           DateTime      @default(now())
@@ -115,6 +116,7 @@ model Session {
   accessKeys          AccessKey[]
 
   @@index([accountId, updatedAt(sort: Desc)])
+  @@index([accountId, machineId, status])
 }
 
 model SessionMessage {

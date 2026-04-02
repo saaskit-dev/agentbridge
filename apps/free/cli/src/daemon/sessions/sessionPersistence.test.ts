@@ -39,30 +39,32 @@ describe('sessionPersistence', () => {
     const data = makeSession({ sessionId: 'lifecycle-1' });
     await persistSession(data);
 
-    const all = await readAllPersistedSessions();
-    expect(all).toHaveLength(1);
-    expect(all[0].sessionId).toBe('lifecycle-1');
-    expect(all[0].agentType).toBe('claude');
-    expect(all[0].startedBy).toBe('cli');
+    const { sessions } = await readAllPersistedSessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].sessionId).toBe('lifecycle-1');
+    expect(sessions[0].agentType).toBe('claude');
+    expect(sessions[0].startedBy).toBe('cli');
 
     await eraseSession('lifecycle-1');
-    expect(await readAllPersistedSessions()).toHaveLength(0);
+    const { sessions: empty } = await readAllPersistedSessions();
+    expect(empty).toHaveLength(0);
   });
 
   it('readAll returns empty for nonexistent directory', async () => {
-    const all = await readAllPersistedSessions();
-    expect(all).toHaveLength(0);
+    const { sessions } = await readAllPersistedSessions();
+    expect(sessions).toHaveLength(0);
   });
 
-  it('skips corrupted JSON files gracefully', async () => {
+  it('skips corrupted JSON files gracefully and reports their sessionIds', async () => {
     await persistSession(makeSession({ sessionId: 'valid' }));
 
     const dir = join(tempDir, 'daemon-sessions');
-    await writeFile(join(dir, 'corrupted.json'), 'NOT VALID JSON', 'utf-8');
+    await writeFile(join(dir, 'corrupted-sess.json'), 'NOT VALID JSON', 'utf-8');
 
-    const all = await readAllPersistedSessions();
-    expect(all).toHaveLength(1);
-    expect(all[0].sessionId).toBe('valid');
+    const { sessions, corruptedSessionIds } = await readAllPersistedSessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].sessionId).toBe('valid');
+    expect(corruptedSessionIds).toEqual(['corrupted-sess']);
   });
 
   it('erase is idempotent for missing session', async () => {
@@ -76,9 +78,9 @@ describe('sessionPersistence', () => {
     const updated = { ...data, model: 'v2' };
     await persistSession(updated);
 
-    const all = await readAllPersistedSessions();
-    expect(all).toHaveLength(1);
-    expect(all[0].model).toBe('v2');
+    const { sessions } = await readAllPersistedSessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].model).toBe('v2');
   });
 
   it('persists all fields correctly', async () => {
@@ -98,7 +100,8 @@ describe('sessionPersistence', () => {
     });
     await persistSession(data);
 
-    const [read] = await readAllPersistedSessions();
+    const { sessions } = await readAllPersistedSessions();
+    const [read] = sessions;
     expect(read).toEqual(data);
   });
 
@@ -107,9 +110,9 @@ describe('sessionPersistence', () => {
     await persistSession(makeSession({ sessionId: 'b' }));
     await persistSession(makeSession({ sessionId: 'c' }));
 
-    const all = await readAllPersistedSessions();
-    expect(all).toHaveLength(3);
-    const ids = all.map(s => s.sessionId).sort();
+    const { sessions } = await readAllPersistedSessions();
+    expect(sessions).toHaveLength(3);
+    const ids = sessions.map(s => s.sessionId).sort();
     expect(ids).toEqual(['a', 'b', 'c']);
   });
 
@@ -118,7 +121,7 @@ describe('sessionPersistence', () => {
     const dir = join(tempDir, 'daemon-sessions');
     await writeFile(join(dir, 'README.md'), '# not a session', 'utf-8');
 
-    const all = await readAllPersistedSessions();
-    expect(all).toHaveLength(1);
+    const { sessions } = await readAllPersistedSessions();
+    expect(sessions).toHaveLength(1);
   });
 });

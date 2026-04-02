@@ -245,13 +245,14 @@ export function sessionRoutes(app: Fastify) {
           metadata: z.string(),
           agentState: z.string().nullish(),
           dataEncryptionKey: z.string().nullish(),
+          machineId: z.string().nullish(),
         }),
       },
       preHandler: app.authenticate,
     },
     async (request, reply) => {
       const userId = request.userId;
-      const { id, metadata, dataEncryptionKey } = request.body;
+      const { id, metadata, dataEncryptionKey, machineId } = request.body;
       const traceId = request.headers['x-trace-id'] as string | undefined;
 
       // Look up existing active/offline session by client-provided ID
@@ -280,6 +281,9 @@ export function sessionRoutes(app: Fastify) {
             data: {
               status: 'active',
               lastActiveAt: new Date(),
+              // Track which machine is now owning this session (may differ from original creator
+              // if the user moved to a different machine, or after daemon crash recovery).
+              ...(machineId ? { machineId } : {}),
               // Clear agentState to remove stale pending requests from previous daemon instance.
               // The new daemon will rebuild fresh state. This prevents UI showing old permission
               // requests that the new daemon's memory doesn't know about.
@@ -331,6 +335,7 @@ export function sessionRoutes(app: Fastify) {
             accountId: userId,
             metadata: metadata,
             dataEncryptionKey: dataEncryptionKey || undefined,
+            machineId: machineId || undefined,
           },
         });
       } catch (err: unknown) {
@@ -367,6 +372,73 @@ export function sessionRoutes(app: Fastify) {
           activeAt: newSession.lastActiveAt.getTime(),
           createdAt: newSession.createdAt.getTime(),
           updatedAt: newSession.updatedAt.getTime(),
+          lastMessage: null,
+        },
+      });
+    }
+  );
+
+  /**
+   * Single-session metadata (including dataEncryptionKey) for clients whose session is not in
+   * the first page of GET /v1/sessions (take 150).
+   */
+  app.get(
+    '/v1/sessions/:sessionId',
+    {
+      preHandler: app.authenticate,
+      schema: {
+        params: z.object({
+          sessionId: z.string(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const userId = request.userId;
+      const { sessionId } = request.params;
+
+      const session = await db.session.findFirst({
+        where: {
+          id: sessionId,
+          accountId: userId,
+          status: { not: 'deleted' },
+        },
+        select: {
+          id: true,
+          seq: true,
+          createdAt: true,
+          updatedAt: true,
+          metadata: true,
+          metadataVersion: true,
+          agentState: true,
+          agentStateVersion: true,
+          capabilities: true,
+          capabilitiesVersion: true,
+          dataEncryptionKey: true,
+          status: true,
+          lastActiveAt: true,
+        },
+      });
+
+      if (!session) {
+        log.debug('[sessions] get one: not found', { userId, sessionId });
+        return reply.code(404).send({ error: 'Session not found' });
+      }
+
+      return reply.send({
+        session: {
+          id: session.id,
+          seq: session.seq,
+          createdAt: session.createdAt.getTime(),
+          updatedAt: session.updatedAt.getTime(),
+          status: session.status,
+          activeAt: session.lastActiveAt.getTime(),
+          metadata: session.metadata,
+          metadataVersion: session.metadataVersion,
+          agentState: session.agentState,
+          agentStateVersion: session.agentStateVersion,
+          capabilities: session.capabilities,
+          capabilitiesVersion: session.capabilitiesVersion,
+          dataEncryptionKey: session.dataEncryptionKey,
           lastMessage: null,
         },
       });

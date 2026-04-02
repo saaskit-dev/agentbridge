@@ -53,8 +53,11 @@ import { isAnalyticsEnabledSync } from '@/api/analyticsHeaderSync';
 import { getChildProcStats } from '@/utils/childProcessUtils';
 import {
   readAllPersistedSessions,
+  persistSession,
   eraseSession as erasePersistedSession,
+  type PersistedSession,
 } from './sessions/sessionPersistence';
+import type { AgentType } from './sessions/types';
 import { cleanStaleAttachments } from './sessions/cleanAttachments';
 
 // Register all agent session types at module load time
@@ -586,19 +589,74 @@ export async function startDaemon(): Promise<void> {
     // Session recovery — restore sessions persisted by a previous daemon instance
     // ---------------------------------------------------------------------------
     {
-      const persisted = await readAllPersistedSessions();
+      const { sessions: persisted, corruptedSessionIds } = await readAllPersistedSessions();
+
+      // Try to repair corrupted files by fetching session metadata from the server.
+      // The local file is just a cache — the server Session table is the source of truth.
+      const repairedIds = new Set<string>();
+      if (corruptedSessionIds.length > 0) {
+        const serverSessions = await api.fetchOfflineSessions(corruptedSessionIds);
+        for (const sessionId of corruptedSessionIds) {
+          const serverData = serverSessions.get(sessionId);
+          const flavor = serverData?.metadata.flavor;
+          if (serverData?.metadata.path && flavor && AgentSessionFactory.isRegistered(flavor as AgentType)) {
+            const repaired: PersistedSession = {
+              sessionId,
+              agentType: flavor as AgentType,
+              cwd: serverData.metadata.path,
+              startedBy: (serverData.metadata.startedBy as PersistedSession['startedBy']) ?? 'daemon',
+              createdAt: serverData.createdAt,
+              // Use a sentinel value so the recovery loop below picks this session up
+              // (loop skips sessions where daemonInstanceId === current daemonInstanceId).
+              daemonInstanceId: 'repaired-from-server',
+              lastSeq: serverData.seq,
+            };
+            await persistSession(repaired).catch(err =>
+              logger.warn('[DAEMON] Failed to write repaired session file', { sessionId, error: String(err) })
+            );
+            persisted.push(repaired);
+            repairedIds.add(sessionId);
+            logger.info('[DAEMON] Repaired corrupted session from server metadata', {
+              sessionId,
+              agentType: repaired.agentType,
+              cwd: repaired.cwd,
+            });
+          }
+        }
+      }
+
       // Recover sessions from any previous daemon instance.
       // daemonInstanceId is a UUID — no PID reuse ambiguity.
       const hasRecoverable = persisted.some(d => d.daemonInstanceId !== daemonInstanceId);
       logger.info('[DAEMON] Session recovery scan', {
         persistedTotal: persisted.length,
+        corruptedFiles: corruptedSessionIds.length,
+        repairedFromServer: repairedIds.size,
         hasRecoverable,
         daemonInstanceId,
         sessionIds: persisted.map(d => d.sessionId),
       });
       if (hasRecoverable) ipcServer!.beginRecovery();
       let recoveredCount = 0;
+      const recoveredSessionIds: string[] = [];
       const failedRecoveries: { sessionId: string; error: string; failedAt: number }[] = [];
+      // Sessions that couldn't be repaired: delete the garbage file locally and keep the
+      // server session as 'offline' (do NOT archive — App shows it as failed so user can decide).
+      for (const sessionId of corruptedSessionIds) {
+        if (repairedIds.has(sessionId)) continue;
+        await erasePersistedSession(sessionId).catch(err =>
+          logger.warn('[DAEMON] Failed to erase corrupted session file', {
+            sessionId,
+            error: String(err),
+          })
+        );
+        recoveredSessionIds.push(sessionId); // tell server: don't archive, leave as offline
+        failedRecoveries.push({
+          sessionId,
+          error: 'Persistence file corrupted (could not parse or repair from server)',
+          failedAt: Date.now(),
+        });
+      }
       for (const data of persisted) {
         if (data.daemonInstanceId === daemonInstanceId) continue; // ours, skip
 
@@ -652,6 +710,7 @@ export async function startDaemon(): Promise<void> {
             )
             .finally(() => sessionManager?.unregister(session.sessionId));
 
+          recoveredSessionIds.push(session.sessionId);
           recoveredCount++;
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err);
@@ -667,10 +726,12 @@ export async function startDaemon(): Promise<void> {
         }
       }
       if (hasRecoverable) ipcServer!.endRecovery();
-      if (recoveredCount > 0) {
+      if (recoveredCount > 0 || corruptedSessionIds.length > 0) {
         logger.info('[DAEMON] Session recovery complete', {
           recovered: recoveredCount,
           failed: failedRecoveries.length,
+          corruptedRepaired: repairedIds.size,
+          corruptedUnrepaired: corruptedSessionIds.length - repairedIds.size,
           total: persisted.length,
         });
       }
@@ -687,6 +748,12 @@ export async function startDaemon(): Promise<void> {
           });
         });
       }
+
+      // Tell server which sessions were successfully recovered.
+      // Server will archive any session for this machine that is still 'offline' but NOT in this
+      // list — these are orphaned sessions whose persistence files were missing after a crash.
+      // Fire-and-forget: logged inside emitRecoveryDone; failure is non-critical.
+      apiMachine.emitRecoveryDone(recoveredSessionIds);
     }
 
     // Fallback sync: poll account settings every 5 minutes as backup for header sync
