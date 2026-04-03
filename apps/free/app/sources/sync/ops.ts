@@ -136,6 +136,9 @@ interface SessionKillRequest {
 interface SessionKillResponse {
   success: boolean;
   message: string;
+  /** 'daemon_unreachable': communication failure (timeout/offline) — caller may fallback to HTTP.
+   *  'daemon_error': daemon responded but reported a failure — show error as-is. */
+  reason?: 'daemon_unreachable' | 'daemon_error';
 }
 
 // Response types for spawn session
@@ -719,9 +722,19 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
     }
     return response;
   } catch (error) {
+    const message = safeStringify(error);
+    // Classify: communication failures (timeout, offline, flash-reconnect) vs daemon-side errors
+    const isUnreachable =
+      message.includes('daemon_ready_timeout') ||
+      message.includes('timed out') ||
+      message.includes('Session offline') ||
+      message.includes('Session archived') ||
+      message.includes('Session deleted') ||
+      message.includes('not connected');
     return {
       success: false,
-      message: safeStringify(error),
+      message,
+      reason: isUnreachable ? 'daemon_unreachable' : 'daemon_error',
     };
   }
 }

@@ -174,7 +174,16 @@ function SessionInfoContent({ session }: { session: Session }) {
   const [archivingSession, performArchive] = useFreeAction(async () => {
     const result = await sessionKill(session.id);
     if (!result.success) {
-      throw new FreeError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+      if (result.reason === 'daemon_unreachable') {
+        // Daemon is unreachable (timeout / flash-reconnect / offline) — fallback to HTTP archive
+        const httpResult = await sessionArchiveViaServer(session.id);
+        if (!httpResult.success) {
+          throw new FreeError(httpResult.message || t('sessionInfo.failedToArchiveSession'), false);
+        }
+      } else {
+        // Daemon responded but reported a failure — show the error as-is
+        throw new FreeError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+      }
     }
     // Success - navigate back
     router.back();

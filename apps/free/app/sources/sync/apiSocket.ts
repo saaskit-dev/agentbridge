@@ -215,7 +215,21 @@ class ApiSocket {
       };
       this.socket?.on('disconnect', onSocketDisconnect);
 
+      // Safety timeout: daemon-rpc-ready may never arrive if the daemon is stuck in a
+      // flash-reconnect loop. Reject after 15s so the caller can decide to fallback.
+      const timeoutHandle = setTimeout(() => {
+        cleanup();
+        log.error('[apiSocket] waitForDaemonReady: timed out waiting for daemon', undefined, {
+          method,
+          waitMs: Date.now() - waitStart,
+          socketConnectedAtWaitStart: socketWasConnected,
+          socketConnectedNow: this.socket?.connected,
+        });
+        reject(new Error('daemon_ready_timeout'));
+      }, 15000);
+
       function cleanup() {
+        clearTimeout(timeoutHandle);
         listeners.delete(onReady);
         unsubStatus();
         // onSocketDisconnect is intentionally not removed — it's informational only
