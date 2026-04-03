@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
 import { authGetToken } from '@/auth/authGetToken';
@@ -109,7 +109,7 @@ export default function Restore() {
   };
 
   return (
-    <ScrollView style={styles.scrollView}>
+    <ScrollView style={styles.scrollView} automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
       <View style={styles.container}>
         <View style={styles.contentWrapper}>
           <Text style={styles.instructionText}>

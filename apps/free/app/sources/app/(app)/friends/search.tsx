@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   FlatList,
 } from 'react-native';
@@ -80,11 +79,11 @@ export default function SearchFriendsScreen() {
   const hasSearched = searchQuery.trim().length > 0;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <ItemList
+      style={[styles.container, { paddingTop: 0 }]}
+      keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
     >
-      <ItemList style={{ paddingTop: 0 }} keyboardShouldPersistTaps="handled">
         <ItemGroup title={t('friends.searchInstructions')} style={styles.searchSection}>
           <View style={styles.searchContainer}>
             <TextInput
@@ -136,8 +135,7 @@ export default function SearchFriendsScreen() {
             )}
           </View>
         </ItemGroup>
-      </ItemList>
-    </KeyboardAvoidingView>
+    </ItemList>
   );
 }
 

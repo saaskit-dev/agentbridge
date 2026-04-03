@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView } from 'react-native';
@@ -21,7 +20,6 @@ import {
 } from '@/utils/worktreeBranchBinding';
 import { WorktreeBranchBindingSelector } from '@/components/WorktreeBranchBindingSelector';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { useHeaderHeight } from '@/utils/responsive';
 import { Modal } from '@/modal';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
@@ -918,9 +916,6 @@ function NewSessionWizard() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={
-        Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0
-      }
       style={styles.container}
     >
       <View style={{ flex: 1 }}>

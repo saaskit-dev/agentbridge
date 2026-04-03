@@ -1,6 +1,6 @@
 import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { View, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, TextInput, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
@@ -13,9 +13,6 @@ import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/
 import { t } from '@/text';
 
 const stylesheet = StyleSheet.create(theme => ({
-  keyboardAvoidingView: {
-    flex: 1,
-  },
   itemListContainer: {
     flex: 1,
   },
@@ -168,11 +165,10 @@ export default function ServerConfigScreen() {
         }}
       />
 
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidingView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        <ItemList
+        style={styles.itemListContainer}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
-        <ItemList style={styles.itemListContainer}>
           <ItemGroup footer={t('server.advancedFeatureFooter')}>
             <View style={styles.contentContainer}>
               <Text style={styles.labelText}>{t('server.customServerUrlLabel').toUpperCase()}</Text>
@@ -218,7 +214,6 @@ export default function ServerConfigScreen() {
             </View>
           </ItemGroup>
         </ItemList>
-      </KeyboardAvoidingView>
     </>
   );
 }

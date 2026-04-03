@@ -355,6 +355,7 @@ export default function MachineDetailScreen() {
       <ItemList
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
         {/* Launch section */}
         {machine && (

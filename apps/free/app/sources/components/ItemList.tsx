@@ -42,6 +42,7 @@ export const ItemList = React.memo<ItemListProps>(props => {
           : true
       }
       contentInsetAdjustmentBehavior={isIOS && !isWeb ? 'automatic' : undefined}
+      automaticallyAdjustKeyboardInsets={isIOS && !isWeb ? true : undefined}
       {...scrollViewProps}
     >
       {children}

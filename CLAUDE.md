@@ -39,6 +39,16 @@ logger.error('message', { error: String(e) });
 - Logs are written to JSONL files with automatic `traceId` correlation across App → Server → CLI → Agent
 - Verification: `grep -r "sources/log\|ui/logger\|DANGEROUSLY_LOG" . --include="*.ts"` must return zero results
 
+# Keyboard Avoidance Convention
+
+所有包含 `TextInput` / `MultiTextInput` 的页面必须处理键盘适配：
+
+- **`ItemList`（推荐）**：已内置 `automaticallyAdjustKeyboardInsets`，直接使用无需额外配置。
+- **裸 `ScrollView`**：手动加 `automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}`。
+- **底部固定输入框**（如 AgentInput）：使用 `KeyboardAvoidingView` from `react-native-keyboard-controller`，`behavior="padding"`，`keyboardVerticalOffset` **不传**（库会自动测量 view 位置）。
+- **禁止**使用 RN 原生 `KeyboardAvoidingView`（from `react-native`），在 iOS 上动画不可靠。
+- `editable={false}` 的只读 TextInput 不需要处理。
+
 # Workarounds
 
 When adding any workaround — pnpm patches, Metro/Babel config hacks, Expo config plugins
