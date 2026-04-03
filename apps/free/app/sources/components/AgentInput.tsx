@@ -1941,7 +1941,6 @@ export const AgentInput = React.memo(
 // Git Status Button Component
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string; onPress?: () => void }) {
   const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
-  const styles = stylesheet;
   const { theme } = useUnistyles();
 
   if (!sessionId || !onPress) {
@@ -1953,12 +1952,15 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string; onPress?:
       style={p => ({
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         borderRadius: Platform.select({ default: 16, android: 20 }),
         paddingHorizontal: 8,
         paddingVertical: 6,
         height: 32,
         opacity: p.pressed ? 0.7 : 1,
-        flex: 1,
+        flexShrink: 0,
+        minWidth: 32,
+        maxWidth: 88,
         overflow: 'hidden',
       })}
       hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
