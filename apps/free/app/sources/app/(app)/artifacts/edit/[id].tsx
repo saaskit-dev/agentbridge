@@ -7,10 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
-  KeyboardAvoidingView as RNKeyboardAvoidingView,
 } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { Text } from '@/components/StyledText';
@@ -108,6 +105,7 @@ export default function EditArtifactScreen() {
   const [titleFocused, setTitleFocused] = React.useState(false);
   const [bodyFocused, setBodyFocused] = React.useState(false);
 
+
   // Load full artifact with body if needed
   React.useEffect(() => {
     if (!artifact) {
@@ -194,19 +192,6 @@ export default function EditArtifactScreen() {
     [handleSave, hasChanges, isSaving, styles]
   );
 
-  const KeyboardWrapper = Platform.select({
-    ios: KeyboardAvoidingView,
-    default: React.Fragment,
-  });
-
-  const keyboardProps = Platform.select({
-    ios: {
-      behavior: 'padding' as const,
-      keyboardVerticalOffset: 0,
-    },
-    default: {},
-  });
-
   if (isLoading) {
     return (
       <View style={styles.container}>
@@ -249,15 +234,15 @@ export default function EditArtifactScreen() {
         }}
       />
       <View style={styles.container}>
-        <KeyboardWrapper {...keyboardProps}>
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={[
-              styles.contentContainer,
-              { maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' },
-            ]}
-            keyboardShouldPersistTaps="handled"
-          >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.contentContainer,
+            { maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+        >
             <View style={styles.inputGroup}>
               <Text style={styles.label}>{t('artifacts.titleLabel')}</Text>
               <TextInput
@@ -312,7 +297,6 @@ export default function EditArtifactScreen() {
               />
             </View>
           </ScrollView>
-        </KeyboardWrapper>
       </View>
     </>
   );

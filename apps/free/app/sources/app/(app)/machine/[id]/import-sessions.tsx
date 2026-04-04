@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { AgentFlavorIcon } from '@/components/AgentFlavorIcon';
 import { Item } from '@/components/Item';
@@ -423,6 +423,7 @@ export default function ImportSessionsScreen() {
           keyExtractor={item => `${item.agentType}:${item.sessionId}`}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
           initialNumToRender={16}
           maxToRenderPerBatch={16}
           windowSize={8}

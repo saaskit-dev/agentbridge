@@ -1,7 +1,8 @@
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { AgentInput } from '@/components/AgentInput';
@@ -144,6 +145,13 @@ function NewSessionWizard() {
   const { theme, rt } = useUnistyles();
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
+  const { height: kbHeight, progress: kbProgress } = useReanimatedKeyboardAnimation();
+  const animatedInputStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateY: kbHeight.value + safeArea.bottom * kbProgress.value }],
+    }),
+    [safeArea.bottom]
+  );
   const {
     prompt,
     dataId,
@@ -914,10 +922,7 @@ function NewSessionWizard() {
   }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType, worktreeBranchBinding]);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
+    <View style={styles.container}>
       <View style={{ flex: 1 }}>
         <ScrollView
           style={{ flex: 1 }}
@@ -946,11 +951,14 @@ function NewSessionWizard() {
         </ScrollView>
 
         {/* AgentInput with inline chips - sticky at bottom */}
-        <View
-          style={{
-            paddingHorizontal: screenWidth > 700 ? 16 : 8,
-            paddingBottom: Math.max(16, safeArea.bottom),
-          }}
+        <Animated.View
+          style={[
+            {
+              paddingHorizontal: screenWidth > 700 ? 16 : 8,
+              paddingBottom: safeArea.bottom || 16,
+            },
+            animatedInputStyle,
+          ]}
         >
           <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
             {shouldShowCapabilityDiscoveryNotice && (
@@ -989,9 +997,9 @@ function NewSessionWizard() {
               onPathClick={handlePathClick}
             />
           </View>
-        </View>
+        </Animated.View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

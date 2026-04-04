@@ -383,7 +383,6 @@ const UserMessageNavPanel = React.memo(
                 onChangeText={setQuery}
                 placeholder={`Search ${items.length} messages…`}
                 placeholderTextColor={theme.colors.textSecondary}
-                autoFocus
                 autoCorrect={false}
                 autoCapitalize="none"
                 returnKeyType="done"
