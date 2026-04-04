@@ -723,6 +723,34 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
   }, [sessionId]);
 
   const shouldRenderChatList = messages.length > 0 || hasRenderedMessagesRef.current;
+  const previousRenderStateRef = React.useRef<{
+    shouldRenderChatList: boolean;
+    messageCount: number;
+    isLoaded: boolean;
+  } | null>(null);
+  React.useEffect(() => {
+    const previous = previousRenderStateRef.current;
+    if (
+      !previous ||
+      previous.shouldRenderChatList !== shouldRenderChatList ||
+      previous.messageCount !== messages.length ||
+      previous.isLoaded !== isLoaded
+    ) {
+      logger.debug('[chat-render] session content state changed', {
+        sessionId,
+        shouldRenderChatList,
+        messageCount: messages.length,
+        isLoaded,
+        hadRenderedMessages: hasRenderedMessagesRef.current,
+      });
+      previousRenderStateRef.current = {
+        shouldRenderChatList,
+        messageCount: messages.length,
+        isLoaded,
+      };
+    }
+  }, [isLoaded, messages.length, sessionId, shouldRenderChatList]);
+
   const content = <>{shouldRenderChatList && <ChatList session={session} footerNotice={footerNotice} />}</>;
   const placeholder =
     !shouldRenderChatList ? (

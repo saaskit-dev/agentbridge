@@ -22,6 +22,7 @@ import { Message } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -40,6 +41,7 @@ const TIME_GAP_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 type UserNavItem = { listIndex: number; seq: number; preview: string; time: string };
 const FAB_SIZE = 40;
 const FAB_GAP = 12;
+const logger = new Logger('app/components/ChatList');
 
 // ---------------------------------------------------------------------------
 // Date / time helpers
@@ -616,6 +618,13 @@ const ChatListInternal = React.memo(
     footerNotice?: string | null;
   }) => {
     const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.sessionId);
+    useEffect(() => {
+      logger.debug('[chat-list] mounted', { sessionId: props.sessionId });
+      return () => {
+        logger.debug('[chat-list] unmounted', { sessionId: props.sessionId });
+      };
+    }, [props.sessionId]);
+
     // ----- pull states -----
     const [refreshPull, setRefreshPull] = useState<PullState>('idle');
     const [olderPull, setOlderPull] = useState<PullState>('idle');
@@ -795,6 +804,38 @@ const ChatListInternal = React.memo(
 
     // ----- build list items with separators -----
     const listItems = useMemo(() => buildListItems(messages), [messages]);
+    const previousListStateRef = useRef<{
+      messageCount: number;
+      itemCount: number;
+      hasOlderMessages: boolean;
+      isLoadingOlder: boolean;
+    } | null>(null);
+    useEffect(() => {
+      const previous = previousListStateRef.current;
+      if (
+        !previous ||
+        previous.messageCount !== messages.length ||
+        previous.itemCount !== listItems.length ||
+        previous.hasOlderMessages !== hasOlderMessages ||
+        previous.isLoadingOlder !== isLoadingOlder
+      ) {
+        logger.debug('[chat-list] data state changed', {
+          sessionId: props.sessionId,
+          messageCount: messages.length,
+          itemCount: listItems.length,
+          hasOlderMessages,
+          isLoadingOlder,
+          newestMessageId: messages[0]?.id ?? null,
+          newestSeq: messages[0]?.seq ?? null,
+        });
+        previousListStateRef.current = {
+          messageCount: messages.length,
+          itemCount: listItems.length,
+          hasOlderMessages,
+          isLoadingOlder,
+        };
+      }
+    }, [hasOlderMessages, isLoadingOlder, listItems.length, messages, props.sessionId]);
 
     // ----- user message nav items (chronological: oldest first) -----
     const userNavItems = useMemo(() => {
