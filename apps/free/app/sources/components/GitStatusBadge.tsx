@@ -34,7 +34,13 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
 
   return (
     <View
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, overflow: 'hidden' }}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        flexShrink: 1,
+        overflow: 'hidden',
+      }}
     >
       {/* Git icon - always shown */}
       <Octicons name="git-branch" size={16} color={theme.colors.button.secondary.tint} />
