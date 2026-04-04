@@ -62,7 +62,12 @@ interface InitializeRequest {
 interface NewSessionRequest {
   cwd: string;
   mcpServers?: Array<
-    | { name: string; command: string; args?: string[]; env?: Array<{ name: string; value: string }> }
+    | {
+        name: string;
+        command: string;
+        args?: string[];
+        env?: Array<{ name: string; value: string }>;
+      }
     | { name: string; url: string; headers?: Record<string, string> }
   >;
 }
@@ -1055,10 +1060,18 @@ export class AcpBackend implements IAgentBackend {
       const mcpServers = this.config.mcpServers
         ? Object.entries(this.config.mcpServers).map(([name, config]) => {
             if ('url' in config && config.transport === 'http') {
-              return { name, url: config.url, ...(config.headers ? { headers: config.headers } : {}) };
+              return {
+                name,
+                url: config.url,
+                ...(config.headers ? { headers: config.headers } : {}),
+              };
             }
             // stdio transport (default)
-            const stdioConfig = config as { command: string; args?: string[]; env?: Record<string, string> };
+            const stdioConfig = config as {
+              command: string;
+              args?: string[];
+              env?: Record<string, string>;
+            };
             return {
               name,
               command: stdioConfig.command,
@@ -1302,7 +1315,18 @@ export class AcpBackend implements IAgentBackend {
 
     // Dispatch to appropriate handler based on update type
     if (sessionUpdateType === 'agent_message_chunk') {
-      handleAgentMessageChunk(update as SessionUpdate, ctx);
+      const result = handleAgentMessageChunk(update as SessionUpdate, ctx);
+      if (!result.handled) {
+        logger.warn('[AcpBackend] agent_message_chunk handler returned unhandled', {
+          contentType: typeof update.content,
+          contentPreview:
+            typeof update.content === 'string'
+              ? update.content.slice(0, 100)
+              : update.content != null && typeof update.content === 'object'
+                ? Object.keys(update.content).join(',')
+                : String(update.content),
+        });
+      }
       return;
     }
 
@@ -1356,7 +1380,11 @@ export class AcpBackend implements IAgentBackend {
   private responseCompleteTimeout: ReturnType<typeof setTimeout> | null = null;
   private responseCompleteRejecter: ((error: Error) => void) | null = null;
 
-  async sendPrompt(_sessionId: SessionId, prompt: ContentBlock[], meta?: { _meta?: Record<string, unknown> }): Promise<void> {
+  async sendPrompt(
+    _sessionId: SessionId,
+    prompt: ContentBlock[],
+    meta?: { _meta?: Record<string, unknown> }
+  ): Promise<void> {
     // Check if prompt contains change_title instruction (via optional callback)
     const textContent = prompt
       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')

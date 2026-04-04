@@ -92,6 +92,8 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
    * conversation history to appear again after every resume.
    */
   private isLoadingSession = false;
+  /** True when at least one model-output was emitted during the current turn. */
+  private hadModelOutputThisTurn = false;
   /**
    * Buffered `status: idle` message waiting to be flushed after `ready`.
    * ACP backends emit `status: idle` before `ready` (because idle triggers
@@ -178,6 +180,10 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       // historical messages as notifications during session load — forwarding them
       // would cause the entire conversation history to re-appear in the App.
       if (this.isLoadingSession) return;
+
+      if (msg.type === 'model-output') {
+        this.hadModelOutputThisTurn = true;
+      }
 
       if (process.env.APP_ENV === 'development') {
         this.logger.debug(`[${this.agentType}] raw message`, { raw: msg });
@@ -272,6 +278,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     // New turn → new traceId. All messages emitted during this turn share this ID,
     // enabling the App reducer to correctly separate text blocks across turns.
     this.currentTurnTraceId = randomUUID();
+    this.hadModelOutputThisTurn = false;
 
     const newPermissionMode = permissionMode ?? this.requestedPermissionMode;
     // When the App explicitly sends a new permission mode, it takes precedence over
@@ -360,6 +367,12 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     }
     const stopReason = this.acpBackend.getLastStopReason?.() ?? undefined;
     this.logger.debug(`[${this.agentType}] response complete`, { stopReason });
+    if (!this.hadModelOutputThisTurn) {
+      this.logger.warn(`[${this.agentType}] response complete with no model-output emitted`, {
+        stopReason,
+        turnTraceId: this.currentTurnTraceId,
+      });
+    }
     // Push ready FIRST so AgentSession sees it before status:idle (which was buffered
     // in onMessage). This prevents AgentSession from emitting a duplicate synthetic ready.
     this.output.push(createNormalizedEvent({ type: 'ready', stopReason }));
