@@ -247,6 +247,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     }
   }, [realtimeStatus, sessionId]);
   const { messages, isLoaded } = useSessionMessages(sessionId);
+  const hasRenderedMessagesRef = React.useRef(messages.length > 0);
+  if (messages.length > 0) {
+    hasRenderedMessagesRef.current = true;
+  }
   const sendError = useSessionSendError(sessionId);
   const [isSettingsBusy, setIsSettingsBusy] = React.useState(false);
   const [pendingCapabilityChange, setPendingCapabilityChange] = React.useState<{
@@ -718,11 +722,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     gitStatusSync.getSync(sessionId);
   }, [sessionId]);
 
-  const content = (
-    <>{messages.length > 0 && <ChatList session={session} footerNotice={footerNotice} />}</>
-  );
+  const shouldRenderChatList = messages.length > 0 || hasRenderedMessagesRef.current;
+  const content = <>{shouldRenderChatList && <ChatList session={session} footerNotice={footerNotice} />}</>;
   const placeholder =
-    messages.length === 0 ? (
+    !shouldRenderChatList ? (
       <>
         {isLoaded ? (
           <EmptyMessages session={session} />
