@@ -190,6 +190,14 @@ class Sync {
           this.sendAbortControllers.clear();
         }
         logger.debug('📱 App became active');
+        if (apiSocket.getStatus() !== 'connected' && apiSocket.getStatus() !== 'connecting') {
+          logger.info('[sync] App became active: resuming socket connection', {
+            socketStatus: apiSocket.getStatus(),
+          });
+          apiSocket.resume();
+        } else {
+          apiSocket.refreshReconnectAuth();
+        }
         // Re-trigger send sync for any sessions with pending outbox messages
         for (const sessionId of this.pendingOutbox.keys()) {
           this.getSendSync(sessionId).invalidate();
@@ -290,7 +298,7 @@ class Sync {
       try {
         const cachedSeq = await messageDB.getLastSeq(sessionId);
         if (cachedSeq > 0) {
-          this.sessionLastSeq.set(sessionId, cachedSeq);
+          this.setSessionLastSeq(sessionId, cachedSeq);
           // Load latest messages for fast initial render; older messages are
           // fetched on demand via loadOlderMessages (triggered by ChatList scroll).
           // Use a generous limit (500) to avoid splitting streaming text chunks
@@ -390,6 +398,21 @@ class Sync {
   }
 
   private readonly BATCH_WINDOW_MS = 50;
+
+  private setSessionLastSeq(sessionId: string, seq: number) {
+    this.sessionLastSeq.set(sessionId, seq);
+    apiSocket.refreshReconnectAuth();
+  }
+
+  private deleteSessionLastSeq(sessionId: string) {
+    this.sessionLastSeq.delete(sessionId);
+    apiSocket.refreshReconnectAuth();
+  }
+
+  private clearSessionLastSeqs() {
+    this.sessionLastSeq.clear();
+    apiSocket.refreshReconnectAuth();
+  }
 
   private enqueueMessages(sessionId: string, messages: NormalizedMessage[]) {
     if (messages.length === 0) {
@@ -1991,7 +2014,7 @@ class Sync {
             const minNewSeq =
               newMsgs.length > 0 ? Math.min(...newMsgs.map(m => m.seq)) : currentLastSeq + 1;
             if (minNewSeq <= currentLastSeq + 1) {
-              this.sessionLastSeq.set(sessionId, maxSeq);
+              this.setSessionLastSeq(sessionId, maxSeq);
             } else {
               log.info('flushOutbox: seq gap detected, triggering fetch to fill', {
                 currentLastSeq,
@@ -2139,7 +2162,7 @@ class Sync {
           );
       }
 
-      this.sessionLastSeq.set(sessionId, maxSeq);
+      this.setSessionLastSeq(sessionId, maxSeq);
       hasMore = !!ack.hasMore;
       if (hasMore && maxSeq === afterSeq) {
         log.debug('fetchMessages: pagination stalled, stopping to avoid infinite loop');
@@ -2336,7 +2359,7 @@ class Sync {
    */
   async clearMessageCache(): Promise<void> {
     await messageDB.deleteAll();
-    this.sessionLastSeq.clear();
+    this.clearSessionLastSeqs();
     this.sessionOldestSeq.clear();
 
     // Flush any pending message batch timers
@@ -2376,7 +2399,7 @@ class Sync {
     await messageDB.deleteSession(sessionId);
 
     // Seq tracking
-    this.sessionLastSeq.delete(sessionId);
+    this.deleteSessionLastSeq(sessionId);
     this.sessionOldestSeq.delete(sessionId);
 
     // Flush pending message batch timer
@@ -2546,7 +2569,7 @@ class Sync {
             log.debug('[sync] replay messageDB upsert failed', { error: String(e) })
           );
 
-        this.sessionLastSeq.set(sessionId, maxSeq);
+        this.setSessionLastSeq(sessionId, maxSeq);
       }
 
       // If server indicated more messages remain, fall back to paginated fetch
@@ -2577,6 +2600,7 @@ class Sync {
     // Subscribe to connection state changes
     apiSocket.onReconnected(() => {
       logger.debug('🔌 Socket reconnected');
+      apiSocket.refreshReconnectAuth();
       this.sessionsSync.invalidate();
       this.machinesSync.invalidate();
       logger.debug('🔌 Socket reconnected: Invalidating artifacts sync');
@@ -2584,10 +2608,7 @@ class Sync {
       this.friendsSync.invalidate();
       this.friendRequestsSync.invalidate();
       this.feedSync.invalidate();
-      // Only re-fetch messages for sessions that were already loaded (have a lastSeq).
-      // Unloaded sessions will fetch on demand when the user navigates to them.
       for (const [sessionId] of this.sessionLastSeq) {
-        this.getMessagesSync(sessionId).invalidate();
         gitStatusSync.invalidate(sessionId);
       }
       for (const sync of this.sendSync.values()) {
@@ -2757,7 +2778,7 @@ class Sync {
           if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
             log.debug('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
             this.enqueueMessages(sessionId, [lastMessage]);
-            this.sessionLastSeq.set(sessionId, incomingSeq);
+            this.setSessionLastSeq(sessionId, incomingSeq);
 
             // Cache fast-path message to SQLite so restarts don't create gaps.
             // Gaps cause toolCallSeenSinceLastText state loss → thinking blocks
@@ -3353,7 +3374,7 @@ class Sync {
     this.sendSync.delete(sessionId);
     this.pendingOutbox.delete(sessionId);
     this.persistOutbox();
-    this.sessionLastSeq.delete(sessionId);
+    this.deleteSessionLastSeq(sessionId);
     this.sessionOldestSeq.delete(sessionId);
     this.sessionMessageQueue.delete(sessionId);
     this.sessionQueueProcessing.delete(sessionId);

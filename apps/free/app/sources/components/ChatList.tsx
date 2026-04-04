@@ -87,17 +87,6 @@ function buildListItems(messages: Message[]): ListItem[] {
   // Messages are sorted newest-first. In the inverted FlatList, data[0] = visual bottom.
   // We iterate from oldest (end) to newest (start) to insert separators correctly.
 
-  // Diagnostic: dump message order as received by ChatList (K=thinking, X=text, T=tool, U=user)
-  if (messages.length > 20) {
-    const preview = messages.slice(0, 40).map(m => {
-      if (m.kind === 'tool-call') return `T:${m.seq ?? '-'}`;
-      if (m.kind === 'user-text') return `U:${m.seq ?? '-'}`;
-      if (m.kind === 'agent-text') return `${m.isThinking ? 'K' : 'X'}:${m.seq ?? '-'}`;
-      return `E:${m.seq ?? '-'}`;
-    }).join(' ');
-    console.log(`[ChatList] msgs(${messages.length}) desc: ${preview}`);
-  }
-
   const items: ListItem[] = [];
 
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -747,21 +736,29 @@ const ChatListInternal = React.memo(
     }, [props.sessionId, isLoadingOlder, triggerLoad]);
 
     // ----- auto-scroll / unread tracking -----
-    const prevMessageCount = useRef(messages.length);
+    const prevMessageIdsRef = useRef(new Set<string>(messages.map(message => message.id)));
     useEffect(() => {
-      const count = messages.length;
-      const added = count - prevMessageCount.current;
-      if (added > 0) {
+      const prevIds = prevMessageIdsRef.current;
+      const relevantNewMessages: Message[] = [];
+      for (const message of messages) {
+        if (prevIds.has(message.id)) {
+          break;
+        }
+        relevantNewMessages.push(message);
+      }
+
+      if (relevantNewMessages.length > 0) {
         if (isAtBottom.current) {
           requestAnimationFrame(() => {
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           });
         } else {
-          updateUnreadCount(prev => prev + added);
+          updateUnreadCount(prev => prev + relevantNewMessages.length);
         }
       }
-      prevMessageCount.current = count;
-    }, [messages.length, updateUnreadCount]);
+
+      prevMessageIdsRef.current = new Set(messages.map(message => message.id));
+    }, [messages, updateUnreadCount]);
 
     const handleScrollToBottom = useCallback(() => {
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -868,7 +865,7 @@ const ChatListInternal = React.memo(
           initialNumToRender={50}
           maxToRenderPerBatch={10}
           windowSize={7}
-          removeClippedSubviews={true}
+          removeClippedSubviews={Platform.OS !== 'ios'}
           scrollEventThrottle={16}
           onScroll={handleScroll}
           onScrollEndDrag={handleScrollEndDrag}

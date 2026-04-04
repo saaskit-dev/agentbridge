@@ -102,6 +102,32 @@ class ApiSocket {
     this.setupEventHandlers();
   }
 
+  resume() {
+    if (!this.config) {
+      return;
+    }
+
+    if (!this.socket) {
+      this.connect();
+      return;
+    }
+
+    this.refreshReconnectAuth();
+
+    if (this.socket.connected) {
+      this.updateStatus('connected');
+      return;
+    }
+
+    this.updateStatus('connecting');
+    logger.info('[SyncSocket] Resuming socket connection', {
+      socketId: this.socket.id,
+      lastDisconnectReason: this.lastDisconnectReason,
+      lastDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
+    });
+    this.socket.connect();
+  }
+
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
@@ -437,6 +463,18 @@ class ApiSocket {
     }
   }
 
+  refreshReconnectAuth() {
+    if (!this.socket || !this.lastSeqsProvider) {
+      return;
+    }
+    const freshSeqs = this.lastSeqsProvider();
+    if (Object.keys(freshSeqs).length > 0) {
+      (this.socket.auth as Record<string, unknown>).lastSeqs = freshSeqs;
+    } else {
+      delete (this.socket.auth as Record<string, unknown>).lastSeqs;
+    }
+  }
+
   //
   // Private Methods
   //
@@ -462,14 +500,7 @@ class ApiSocket {
       });
       // RFC-010 §3.3: Update lastSeqs for next reconnection attempt so the
       // server replays only messages missed since the most recent seq we know.
-      if (this.socket && this.lastSeqsProvider) {
-        const freshSeqs = this.lastSeqsProvider();
-        if (Object.keys(freshSeqs).length > 0) {
-          (this.socket.auth as Record<string, unknown>).lastSeqs = freshSeqs;
-        } else {
-          delete (this.socket.auth as Record<string, unknown>).lastSeqs;
-        }
-      }
+      this.refreshReconnectAuth();
       // Daemon re-registers its RPC methods on every connect — stale ready signals are invalid
       this.daemonReadySessions.clear();
       this.updateStatus('connected');
