@@ -54,12 +54,17 @@ interface SessionBashResponse {
 // Read file operation types
 interface SessionReadFileRequest {
   path: string;
+  maxBytes?: number;
 }
 
 interface SessionReadFileResponse {
   success: boolean;
   content?: string; // base64 encoded
   error?: string;
+  errorCode?: string;
+  size?: number;
+  truncated?: boolean;
+  fileType?: 'file' | 'directory' | 'symlink' | 'other';
 }
 
 // Write file operation types
@@ -82,15 +87,19 @@ interface SessionListDirectoryRequest {
 
 interface DirectoryEntry {
   name: string;
-  type: 'file' | 'directory' | 'other';
+  type: 'file' | 'directory' | 'symlink' | 'other';
   size?: number;
   modified?: number;
+  symlinkTarget?: string;
+  symlinkTargetType?: 'file' | 'directory' | 'other' | 'missing';
+  isBrokenSymlink?: boolean;
 }
 
 interface SessionListDirectoryResponse {
   success: boolean;
   entries?: DirectoryEntry[];
   error?: string;
+  errorCode?: string;
 }
 
 // Directory tree operation types
@@ -557,10 +566,11 @@ export async function sessionBash(
  */
 export async function sessionReadFile(
   sessionId: string,
-  path: string
+  path: string,
+  maxBytes?: number
 ): Promise<SessionReadFileResponse> {
   try {
-    const request: SessionReadFileRequest = { path };
+    const request: SessionReadFileRequest = { path, maxBytes };
     const response = await apiSocket.sessionRPC<SessionReadFileResponse, SessionReadFileRequest>(
       sessionId,
       'readFile',

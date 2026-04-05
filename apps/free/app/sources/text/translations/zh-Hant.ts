@@ -686,6 +686,13 @@ export const zhHant: TranslationStructure = {
     browseEmpty: '此資料夾為空',
     browseLoadFailed: '無法載入此資料夾',
     browseNoPath: '無法取得專案路徑。請在已連線 CLI 的裝置上開啟此工作階段。',
+    brokenSymlink: '這個符號連結指向的目標不存在',
+    specialFile: '這種特殊檔案類型無法預覽',
+    permissionDenied: '沒有存取此檔案或資料夾的權限',
+    directoryCannotPreview: '目錄不能當作檔案預覽',
+    imageTooLargeToPreview: '這張圖片太大，無法內嵌預覽',
+    largeFilePreviewTruncated: '檔案過大，只顯示前面一部分內容',
+    symlinkTo: ({ target }: { target: string }) => `符號連結到 ${target}`,
   },
 
   settingsAccount: {

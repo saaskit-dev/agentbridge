@@ -723,6 +723,13 @@ export const zhHans: TranslationStructure = {
     browseEmpty: '此文件夹为空',
     browseLoadFailed: '无法加载此文件夹',
     browseNoPath: '无法获取项目路径。请在已连接 CLI 的机器上打开此会话。',
+    brokenSymlink: '这个符号链接指向的目标不存在',
+    specialFile: '这种特殊文件类型无法预览',
+    permissionDenied: '没有访问此文件或文件夹的权限',
+    directoryCannotPreview: '目录不能按文件预览',
+    imageTooLargeToPreview: '这张图片太大，无法内联预览',
+    largeFilePreviewTruncated: '文件较大，仅显示前面一部分内容',
+    symlinkTo: ({ target }: { target: string }) => `符号链接到 ${target}`,
   },
 
   voiceStatusBar: {

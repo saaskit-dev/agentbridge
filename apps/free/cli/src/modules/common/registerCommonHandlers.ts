@@ -1,6 +1,6 @@
 import { exec, ExecOptions } from 'child_process';
 import { createHash } from 'crypto';
-import { readFile, writeFile, readdir, stat } from 'fs/promises';
+import { readFile, writeFile, readdir, stat, lstat, realpath, readlink, open } from 'fs/promises';
 import { join } from 'path';
 import { promisify } from 'util';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
@@ -29,12 +29,17 @@ interface BashResponse {
 
 interface ReadFileRequest {
   path: string;
+  maxBytes?: number;
 }
 
 interface ReadFileResponse {
   success: boolean;
   content?: string; // base64 encoded
   error?: string;
+  errorCode?: string;
+  size?: number;
+  truncated?: boolean;
+  fileType?: 'file' | 'directory' | 'symlink' | 'other';
 }
 
 interface WriteFileRequest {
@@ -55,15 +60,19 @@ interface ListDirectoryRequest {
 
 interface DirectoryEntry {
   name: string;
-  type: 'file' | 'directory' | 'other';
+  type: 'file' | 'directory' | 'symlink' | 'other';
   size?: number;
   modified?: number; // timestamp
+  symlinkTarget?: string;
+  symlinkTargetType?: 'file' | 'directory' | 'other' | 'missing';
+  isBrokenSymlink?: boolean;
 }
 
 interface ListDirectoryResponse {
   success: boolean;
   entries?: DirectoryEntry[];
   error?: string;
+  errorCode?: string;
 }
 
 interface GetDirectoryTreeRequest {
@@ -246,14 +255,95 @@ export function registerCommonHandlers(
     }
 
     try {
-      const buffer = await readFile(validation.resolvedPath);
+      const fileStats = await lstat(validation.resolvedPath);
+      const isSymlink = fileStats.isSymbolicLink();
+
+      if (fileStats.isDirectory()) {
+        return {
+          success: false,
+          error: 'Path is a directory',
+          errorCode: 'EISDIR',
+          fileType: 'directory',
+        };
+      }
+
+      if (!fileStats.isFile() && !isSymlink) {
+        return {
+          success: false,
+          error: 'Path is not a regular file',
+          errorCode: 'ESPECIAL',
+          fileType: 'other',
+        };
+      }
+
+      let resolvedStats = fileStats;
+      if (isSymlink) {
+        try {
+          resolvedStats = await stat(validation.resolvedPath);
+        } catch (error) {
+          const nodeError = error as NodeJS.ErrnoException;
+          return {
+            success: false,
+            error: safeStringify(error),
+            errorCode: nodeError.code,
+            fileType: 'symlink',
+          };
+        }
+        if (resolvedStats.isDirectory()) {
+          return {
+            success: false,
+            error: 'Path is a directory',
+            errorCode: 'EISDIR',
+            fileType: 'directory',
+          };
+        }
+        if (!resolvedStats.isFile()) {
+          return {
+            success: false,
+            error: 'Path is not a regular file',
+            errorCode: 'ESPECIAL',
+            fileType: 'other',
+          };
+        }
+      }
+
+      const totalSize = resolvedStats.size;
+      const maxBytes =
+        typeof data.maxBytes === 'number' && Number.isFinite(data.maxBytes) && data.maxBytes > 0
+          ? Math.floor(data.maxBytes)
+          : undefined;
+
+      let buffer: Buffer;
+      let truncated = false;
+      if (maxBytes !== undefined && totalSize > maxBytes) {
+        const fileHandle = await open(validation.resolvedPath, 'r');
+        try {
+          buffer = Buffer.allocUnsafe(maxBytes);
+          const { bytesRead } = await fileHandle.read(buffer, 0, maxBytes, 0);
+          buffer = buffer.subarray(0, bytesRead);
+          truncated = bytesRead < totalSize;
+        } finally {
+          await fileHandle.close();
+        }
+      } else {
+        buffer = await readFile(validation.resolvedPath);
+      }
+
       const content = buffer.toString('base64');
-      return { success: true, content };
+      return {
+        success: true,
+        content,
+        size: totalSize,
+        truncated,
+        fileType: isSymlink ? 'symlink' : 'file',
+      };
     } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException;
       log.debug('Failed to read file', { path: validation.resolvedPath, error: safeStringify(error) });
       return {
         success: false,
         error: safeStringify(error),
+        errorCode: nodeError.code,
       };
     }
   });
@@ -350,18 +440,23 @@ export function registerCommonHandlers(
         const directoryEntries: DirectoryEntry[] = await Promise.all(
           entries.map(async entry => {
             const fullPath = join(validation.resolvedPath, entry.name);
-            let type: 'file' | 'directory' | 'other' = 'other';
+            let type: 'file' | 'directory' | 'symlink' | 'other' = 'other';
             let size: number | undefined;
             let modified: number | undefined;
+            let symlinkTarget: string | undefined;
+            let symlinkTargetType: DirectoryEntry['symlinkTargetType'];
+            let isBrokenSymlink = false;
 
             if (entry.isDirectory()) {
               type = 'directory';
             } else if (entry.isFile()) {
               type = 'file';
+            } else if (entry.isSymbolicLink()) {
+              type = 'symlink';
             }
 
             try {
-              const stats = await stat(fullPath);
+              const stats = entry.isSymbolicLink() ? await lstat(fullPath) : await stat(fullPath);
               size = stats.size;
               modified = stats.mtime.getTime();
             } catch (error) {
@@ -369,28 +464,74 @@ export function registerCommonHandlers(
               log.debug('Failed to stat entry', { path: fullPath, error: safeStringify(error) });
             }
 
+            if (entry.isSymbolicLink()) {
+              try {
+                symlinkTarget = await readlink(fullPath);
+              } catch (error) {
+                log.debug('Failed to read symlink target', {
+                  path: fullPath,
+                  error: safeStringify(error),
+                });
+              }
+
+              try {
+                const resolvedPath = await realpath(fullPath);
+                const targetStats = await stat(fullPath);
+                modified = targetStats.mtime.getTime();
+                size = targetStats.size;
+                if (targetStats.isDirectory()) {
+                  symlinkTargetType = 'directory';
+                } else if (targetStats.isFile()) {
+                  symlinkTargetType = 'file';
+                } else {
+                  symlinkTargetType = 'other';
+                }
+                symlinkTarget = resolvedPath;
+              } catch (error) {
+                const nodeError = error as NodeJS.ErrnoException;
+                isBrokenSymlink = nodeError.code === 'ENOENT';
+                symlinkTargetType = isBrokenSymlink ? 'missing' : 'other';
+                log.debug('Failed to resolve symlink target', {
+                  path: fullPath,
+                  error: safeStringify(error),
+                });
+              }
+            }
+
             return {
               name: entry.name,
               type,
               size,
               modified,
+              symlinkTarget,
+              symlinkTargetType,
+              isBrokenSymlink,
             };
           })
         );
 
         // Sort entries: directories first, then files, alphabetically
         directoryEntries.sort((a, b) => {
-          if (a.type === 'directory' && b.type !== 'directory') return -1;
-          if (a.type !== 'directory' && b.type === 'directory') return 1;
+          const rank = (entry: DirectoryEntry) => {
+            if (entry.type === 'directory') return 0;
+            if (entry.type === 'symlink' && entry.symlinkTargetType === 'directory') return 1;
+            if (entry.type === 'file') return 2;
+            if (entry.type === 'symlink') return 3;
+            return 4;
+          };
+          const diff = rank(a) - rank(b);
+          if (diff !== 0) return diff;
           return a.name.localeCompare(b.name);
         });
 
         return { success: true, entries: directoryEntries };
       } catch (error) {
+        const nodeError = error as NodeJS.ErrnoException;
         log.debug('Failed to list directory', { path: validation.resolvedPath, error: safeStringify(error) });
         return {
           success: false,
           error: safeStringify(error),
+          errorCode: nodeError.code,
         };
       }
     }

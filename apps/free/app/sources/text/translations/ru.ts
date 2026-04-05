@@ -759,6 +759,13 @@ export const ru: TranslationStructure = {
     browseLoadFailed: 'Could not load this folder',
     browseNoPath:
       'Project path unavailable. Open this session from a machine where the CLI is connected.',
+    brokenSymlink: 'This symbolic link points to a missing target',
+    specialFile: 'This special file type cannot be previewed',
+    permissionDenied: 'Permission denied for this file or folder',
+    directoryCannotPreview: 'Directories cannot be previewed as files',
+    imageTooLargeToPreview: 'This image is too large to preview inline',
+    largeFilePreviewTruncated: 'Large file: only the first portion is shown',
+    symlinkTo: ({ target }: { target: string }) => `Symlink to ${target}`,
   },
 
   settingsAccount: {

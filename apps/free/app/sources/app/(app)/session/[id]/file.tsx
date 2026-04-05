@@ -24,9 +24,25 @@ interface FileContent {
   content: string;
   encoding: 'utf8' | 'base64';
   isBinary: boolean;
+  truncated?: boolean;
 }
 
 type PreviewKind = 'text' | 'image' | 'table' | 'binary';
+type FileErrorKind =
+  | 'permission'
+  | 'directory'
+  | 'too-large'
+  | 'special'
+  | 'broken-symlink'
+  | 'generic';
+
+const MAX_TEXT_PREVIEW_BYTES = 256 * 1024;
+const MAX_IMAGE_PREVIEW_BYTES = 12 * 1024 * 1024;
+
+interface FileErrorState {
+  kind: FileErrorKind;
+  message: string;
+}
 
 /**
  * Whether this path should be shown as rendered Markdown (same pipeline as chat messages)
@@ -120,6 +136,27 @@ function getPreviewKind(path: string): PreviewKind {
   if (getImageMimeType(path)) return 'image';
   if (isDelimitedTablePath(path)) return 'table';
   return isOpaqueBinaryFile(path) ? 'binary' : 'text';
+}
+
+function mapFileError(
+  errorCode: string | undefined,
+  fallback: string | undefined,
+  responseFileType?: 'file' | 'directory' | 'symlink' | 'other'
+): FileErrorState {
+  const code = (errorCode || '').toUpperCase();
+  if (code === 'EACCES' || code === 'EPERM') {
+    return { kind: 'permission', message: t('files.permissionDenied') };
+  }
+  if (code === 'EISDIR' || responseFileType === 'directory') {
+    return { kind: 'directory', message: t('files.directoryCannotPreview') };
+  }
+  if (code === 'ENOENT') {
+    return { kind: 'broken-symlink', message: t('files.brokenSymlink') };
+  }
+  if (code === 'ESPECIAL') {
+    return { kind: 'special', message: t('files.specialFile') };
+  }
+  return { kind: 'generic', message: fallback || t('files.failedToReadFile') };
 }
 
 function parseDelimitedTable(input: string, delimiter: ',' | '\t'): string[][] {
@@ -336,7 +373,7 @@ export default function FileScreen() {
   const [diffContent, setDiffContent] = React.useState<string | null>(null);
   const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('file');
   const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<FileErrorState | null>(null);
   const [fileSizeBytes, setFileSizeBytes] = React.useState<number | null>(null);
   const [imagePreviewUri, setImagePreviewUri] = React.useState<string | null>(null);
 
@@ -405,6 +442,9 @@ export default function FileScreen() {
       try {
         setIsLoading(true);
         setError(null);
+        setFileContent(null);
+        setDiffContent(null);
+        setFileSizeBytes(null);
 
         // Get session metadata for git commands
         const session = storage.getState().sessions[sessionId!];
@@ -412,18 +452,12 @@ export default function FileScreen() {
 
         const previewKind = getPreviewKind(filePath);
 
-        // Skip content decoding for opaque binary formats we cannot render yet.
-        if (previewKind === 'binary') {
-          if (!isCancelled) {
-            setFileContent({
-              content: '',
-              encoding: 'base64',
-              isBinary: true,
-            });
-            setIsLoading(false);
-          }
-          return;
-        }
+        const readLimit =
+          previewKind === 'image'
+            ? MAX_IMAGE_PREVIEW_BYTES
+            : previewKind === 'binary'
+              ? 1
+              : MAX_TEXT_PREVIEW_BYTES;
 
         // Fetch git diff for the file (if in git repo)
         if (sessionPath && sessionId) {
@@ -446,22 +480,38 @@ export default function FileScreen() {
           }
         }
 
-        const response = await sessionReadFile(sessionId, filePath);
+        const response = await sessionReadFile(sessionId, filePath, readLimit);
 
         if (!isCancelled) {
           // Empty files serialize as base64 `""`; do not treat falsy `content` as a failed read.
           if (response.success && typeof response.content === 'string') {
+            if (typeof response.size === 'number') {
+              setFileSizeBytes(response.size);
+            }
+
+            if (previewKind === 'binary') {
+              setFileContent({
+                content: '',
+                encoding: 'base64',
+                isBinary: true,
+              });
+              return;
+            }
+
+            if (previewKind === 'image' && response.truncated) {
+              setError({ kind: 'too-large', message: t('files.imageTooLargeToPreview') });
+              return;
+            }
+
             // Daemon returns raw file bytes as base64; decode to bytes first (whitespace-tolerant), then UTF-8 for display.
             let bytes: Uint8Array;
             try {
               bytes = decodeBase64(response.content);
             } catch (decodeError) {
               logger.error('base64 decode failed for file', toError(decodeError));
-              setError(t('files.failedToDecodeContent'));
+              setError({ kind: 'generic', message: t('files.failedToDecodeContent') });
               return;
             }
-
-            setFileSizeBytes(bytes.length);
 
             if (previewKind === 'image') {
               const mimeType = getImageMimeType(filePath) ?? 'application/octet-stream';
@@ -469,6 +519,7 @@ export default function FileScreen() {
                 content: `data:${mimeType};base64,${response.content}`,
                 encoding: 'base64',
                 isBinary: false,
+                truncated: response.truncated,
               });
               return;
             }
@@ -488,15 +539,16 @@ export default function FileScreen() {
               content: decodedContent,
               encoding: 'utf8',
               isBinary: false,
+              truncated: response.truncated,
             });
           } else {
-            setError(response.error || t('files.failedToReadFile'));
+            setError(mapFileError(response.errorCode, response.error, response.fileType));
           }
         }
       } catch (error) {
         logger.error('Failed to load file:', toError(error));
         if (!isCancelled) {
-          setError(t('files.failedToLoadFile'));
+          setError({ kind: 'generic', message: t('files.failedToLoadFile') });
         }
       } finally {
         if (!isCancelled) {
@@ -515,7 +567,7 @@ export default function FileScreen() {
   // Show error modal if there's an error
   React.useEffect(() => {
     if (error) {
-      Modal.alert(t('common.error'), error);
+      Modal.alert(t('common.error'), error.message);
     }
   }, [error]);
 
@@ -595,7 +647,7 @@ export default function FileScreen() {
             ...Typography.default(),
           }}
         >
-          {error}
+          {error.message}
         </Text>
       </View>
     );
@@ -758,6 +810,29 @@ export default function FileScreen() {
         contentContainerStyle={{ padding: 16 }}
         showsVerticalScrollIndicator={true}
       >
+        {displayMode === 'file' && fileContent?.truncated && (
+          <View
+            style={{
+              marginBottom: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderRadius: 10,
+              backgroundColor: theme.colors.warning + '20',
+              borderWidth: 1,
+              borderColor: theme.colors.warning + '55',
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                color: theme.colors.text,
+                ...Typography.default(),
+              }}
+            >
+              {t('files.largeFilePreviewTruncated')}
+            </Text>
+          </View>
+        )}
         {displayMode === 'diff' && diffContent ? (
           <DiffDisplay diffContent={diffContent} />
         ) : displayMode === 'file' && fileContent?.content ? (

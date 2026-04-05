@@ -697,6 +697,13 @@ export const ja: TranslationStructure = {
     browseEmpty: 'このフォルダは空です',
     browseLoadFailed: 'このフォルダを読み込めませんでした',
     browseNoPath: 'プロジェクトパスを取得できません。CLIが接続されたマシンでこのセッションを開いてください。',
+    brokenSymlink: 'このシンボリックリンクの参照先は存在しません',
+    specialFile: 'この特殊ファイル種別はプレビューできません',
+    permissionDenied: 'このファイルまたはフォルダにアクセスする権限がありません',
+    directoryCannotPreview: 'ディレクトリはファイルとしてプレビューできません',
+    imageTooLargeToPreview: 'この画像は大きすぎてインライン表示できません',
+    largeFilePreviewTruncated: 'ファイルが大きいため、先頭部分のみ表示しています',
+    symlinkTo: ({ target }: { target: string }) => `${target} へのシンボリックリンク`,
   },
 
   settingsAccount: {

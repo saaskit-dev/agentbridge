@@ -9,6 +9,7 @@ import { ItemList } from '@/components/ItemList';
 import { layout } from '@/components/layout';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
 import { sessionListDirectory, type DirectoryEntry } from '@/sync/ops';
 import { useSession } from '@/sync/storage';
 import { invalidateSessionFileSearchCache, searchFiles, FileItem } from '@/sync/suggestionFile';
@@ -34,6 +35,21 @@ function relativePathFromRoot(rootPath: string, currentPath: string): string {
   if (c === r) return '.';
   if (c.startsWith(r + '/')) return c.slice(r.length + 1);
   return c;
+}
+
+function getBrowseEntryKind(entry: DirectoryEntry): 'directory' | 'file' | 'broken-symlink' | 'special' {
+  if (entry.type === 'directory') return 'directory';
+  if (entry.type === 'symlink' && entry.symlinkTargetType === 'directory') return 'directory';
+  if (entry.type === 'file') return 'file';
+  if (entry.type === 'symlink' && entry.symlinkTargetType === 'file') return 'file';
+  if (entry.type === 'symlink' && entry.isBrokenSymlink) return 'broken-symlink';
+  return 'special';
+}
+
+function mapBrowseErrorMessage(errorCode?: string, fallback?: string): string {
+  const code = (errorCode || '').toUpperCase();
+  if (code === 'EACCES' || code === 'EPERM') return t('files.permissionDenied');
+  return fallback || t('files.browseLoadFailed');
 }
 
 export default function FilesScreen() {
@@ -91,7 +107,7 @@ export default function FilesScreen() {
       const res = await sessionListDirectory(sessionId, browsePath);
       if (browseRequestIdRef.current !== requestId) return;
       if (!res.success) {
-        setBrowseError(res.error || t('files.browseLoadFailed'));
+        setBrowseError(mapBrowseErrorMessage(res.errorCode, res.error));
         setBrowseEntries([]);
         return;
       }
@@ -197,6 +213,46 @@ export default function FilesScreen() {
 
     return <FileIcon fileName={file.fileName} size={29} />;
   };
+
+  const renderBrowseEntryIcon = React.useCallback(
+    (entry: DirectoryEntry) => {
+      const kind = getBrowseEntryKind(entry);
+      if (entry.type === 'symlink') {
+        if (kind === 'directory') {
+          return <Octicons name="file-directory" size={29} color="#007AFF" />;
+        }
+        if (kind === 'file') {
+          return <Octicons name="file" size={29} color={theme.colors.textSecondary} />;
+        }
+        if (kind === 'broken-symlink') {
+          return <Octicons name="alert" size={29} color={theme.colors.warning} />;
+        }
+      }
+      if (kind === 'directory') {
+        return <Octicons name="file-directory" size={29} color="#007AFF" />;
+      }
+      if (kind === 'special') {
+        return <Octicons name="file" size={29} color={theme.colors.textSecondary} />;
+      }
+      return <FileIcon fileName={entry.name} size={29} />;
+    },
+    [theme.colors.textSecondary, theme.colors.warning]
+  );
+
+  const getBrowseEntrySubtitle = React.useCallback(
+    (entry: DirectoryEntry, fullPath: string) => {
+      const rel = relativePathFromRoot(rootPath, fullPath);
+      if (entry.type !== 'symlink') return rel;
+      if (entry.isBrokenSymlink) {
+        return `${rel} • ${t('files.brokenSymlink')}`;
+      }
+      if (entry.symlinkTargetType === 'directory' || entry.symlinkTargetType === 'file') {
+        return `${rel} • ${t('files.symlinkTo', { target: entry.symlinkTarget || '' })}`;
+      }
+      return `${rel} • ${t('files.specialFile')}`;
+    },
+    [rootPath]
+  );
 
   const resolveSearchResultPath = React.useCallback(
     (path: string) => {
@@ -469,25 +525,22 @@ export default function FilesScreen() {
                 ) : (
                   browseEntries.map((entry, index) => {
                     const fullPath = joinPathSegment(browsePath || rootPath, entry.name);
-                    const isDir = entry.type === 'directory';
-                    const rel = relativePathFromRoot(rootPath, fullPath);
+                    const entryKind = getBrowseEntryKind(entry);
                     return (
                       <Item
                         key={`browse-${fullPath}-${entry.type}`}
                         title={entry.name}
-                        subtitle={rel}
-                        icon={
-                          isDir ? (
-                            <Octicons name="file-directory" size={29} color="#007AFF" />
-                          ) : (
-                            <FileIcon fileName={entry.name} size={29} />
-                          )
-                        }
+                        subtitle={getBrowseEntrySubtitle(entry, fullPath)}
+                        icon={renderBrowseEntryIcon(entry)}
                         onPress={() => {
-                          if (isDir) {
+                          if (entryKind === 'directory') {
                             setBrowsePath(fullPath);
-                          } else {
+                          } else if (entryKind === 'file') {
                             openFilePreview(fullPath);
+                          } else if (entryKind === 'broken-symlink') {
+                            Modal.alert(t('common.error'), t('files.brokenSymlink'));
+                          } else {
+                            Modal.alert(t('common.error'), t('files.specialFile'));
                           }
                         }}
                         showDivider={index < browseEntries.length - 1}
