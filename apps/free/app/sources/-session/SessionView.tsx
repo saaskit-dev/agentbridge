@@ -869,8 +869,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
         onSpeechInputPress={handleSpeechInputPress}
         onSpeechInputCancel={handleSpeechInputCancel}
         isSpeechInputActive={isSpeechActive}
-        onMicPress={handleMicrophonePress}
-        isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
         onAbort={() => sessionAbort(sessionId)}
         showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
         onFileViewerPress={() => router.push(`/session/${sessionId}/files`)}

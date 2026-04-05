@@ -62,8 +62,6 @@ interface AgentInputProps {
   onSpeechInputPress?: () => void;
   onSpeechInputCancel?: () => void;
   isSpeechInputActive?: boolean;
-  onMicPress?: () => void;
-  isMicActive?: boolean;
   permissionMode?: PermissionMode;
   onPermissionModeChange?: (mode: PermissionMode) => void;
   modelMode?: ModelMode;
@@ -1823,41 +1821,12 @@ export const AgentInput = React.memo(
                       </Shaker>
                     )}
 
-                    {props.onSpeechInputPress && (
-                      <Pressable
-                        onPress={() => {
-                          if (composerChromeLocked) {
-                            return;
-                          }
-                          hapticsLight();
-                          props.onSpeechInputPress?.();
-                        }}
-                        disabled={composerChromeLocked}
-                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                        style={p => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          borderRadius: Platform.select({ default: 16, android: 20 }),
-                          paddingHorizontal: 8,
-                          paddingVertical: 6,
-                          justifyContent: 'center',
-                          height: 32,
-                          opacity: composerChromeLocked ? 0.4 : p.pressed ? 0.7 : 1,
-                        })}
-                      >
-                        <Ionicons
-                          name="mic-outline"
-                          size={18}
-                          color={theme.colors.button.secondary.tint}
-                        />
-                      </Pressable>
-                    )}
                   </View>
 
                   <View
                     style={[
                       styles.sendButton,
-                      canSend || props.isSending || (props.onMicPress && !props.isMicActive)
+                      canSend || props.isSending || props.onSpeechInputPress
                         ? styles.sendButtonActive
                         : styles.sendButtonInactive,
                     ]}
@@ -1876,13 +1845,13 @@ export const AgentInput = React.memo(
                         if (canSend) {
                           props.onSend();
                         } else {
-                          props.onMicPress?.();
+                          props.onSpeechInputPress?.();
                         }
                       }}
                       disabled={
                         props.isSendDisabled ||
                         composerChromeLocked ||
-                        (!canSend && !props.onMicPress)
+                        (!canSend && !props.onSpeechInputPress)
                       }
                     >
                       {props.isSending ? (
@@ -1897,9 +1866,9 @@ export const AgentInput = React.memo(
                             { marginTop: Platform.OS === 'web' ? 2 : 0 },
                           ]}
                         />
-                      ) : props.onMicPress ? (
+                      ) : props.onSpeechInputPress ? (
                         <Ionicons
-                          name={props.isMicActive ? 'stop' : 'mic'}
+                          name={props.isSpeechInputActive ? 'stop' : 'mic'}
                           size={16}
                           color={theme.colors.button.primary.tint}
                         />

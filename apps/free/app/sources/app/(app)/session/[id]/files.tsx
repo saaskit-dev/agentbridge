@@ -177,9 +177,13 @@ export default function FilesScreen() {
     }
   }, [loadSearchResults, refreshKey, searchQuery]);
 
+  const hasMountedRef = React.useRef(false);
   useFocusEffect(
     React.useCallback(() => {
-      refreshFileState({ clearSearchCache: true });
+      if (!hasMountedRef.current) {
+        hasMountedRef.current = true;
+        refreshFileState({ clearSearchCache: true });
+      }
     }, [refreshFileState])
   );
 
