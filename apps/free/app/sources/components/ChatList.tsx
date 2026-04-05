@@ -38,7 +38,7 @@ const AT_BOTTOM_THRESHOLD = 80;
 /** Minimum time gap (ms) between consecutive messages to show a timestamp separator. */
 const TIME_GAP_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
-type UserNavItem = { listIndex: number; seq: number; preview: string; time: string };
+type UserNavItem = { listIndex: number; messageId: string; seq: number; preview: string; time: string };
 const FAB_SIZE = 40;
 const FAB_GAP = 12;
 const logger = new Logger('app/components/ChatList');
@@ -287,11 +287,12 @@ const UnreadBadge = React.memo((props: { count: number }) => {
 const UserMessageNavPanel = React.memo(
   (props: {
     items: UserNavItem[];
-    onJumpTo: (index: number) => void;
+    onJumpTo: (messageId: string) => void;
     onClose: () => void;
+    hasMoreMessages: boolean;
   }) => {
     const { theme } = useUnistyles();
-    const { items, onJumpTo, onClose } = props;
+    const { items, onJumpTo, onClose, hasMoreMessages } = props;
     const [query, setQuery] = useState('');
     const hasSearch = items.length > 8;
     const borderColor = theme.dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
@@ -416,6 +417,29 @@ const UserMessageNavPanel = React.memo(
             </Pressable>
           </View>
 
+          {/* Incomplete-load hint */}
+          {hasMoreMessages && !query && (
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 6,
+                backgroundColor: theme.dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+                borderBottomWidth: 1,
+                borderBottomColor: borderColor,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: theme.colors.textSecondary,
+                  ...Typography.default(),
+                }}
+              >
+                {t('chatList.navPanelPartialHint')}
+              </Text>
+            </View>
+          )}
+
           {/* Message list */}
           <ScrollView
             keyboardShouldPersistTaps="handled"
@@ -437,7 +461,7 @@ const UserMessageNavPanel = React.memo(
               filtered.map((item, i) => (
                 <Pressable
                   key={`unav-${item.listIndex}`}
-                  onPress={() => onJumpTo(item.listIndex)}
+                  onPress={() => onJumpTo(item.messageId)}
                   style={({ pressed }) => ({
                     paddingHorizontal: 16,
                     paddingVertical: 10,
@@ -663,6 +687,10 @@ const ChatListInternal = React.memo(
     const prevY = useRef(-1);
     const flatListRef = useRef<FlatList>(null);
     const isAtBottom = useRef(true);
+    /** Set during programmatic scrollToIndex to suppress onEndReached. */
+    const isProgrammaticScrollRef = useRef(false);
+    /** Always reflects the latest listItems for jump-by-messageId. */
+    const listItemsRef = useRef<ListItem[]>([]);
     const [showScrollFab, setShowScrollFab] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
     const [navOpen, setNavOpen] = useState(false);
@@ -697,10 +725,10 @@ const ChatListInternal = React.memo(
         isAtBottom.current = y <= AT_BOTTOM_THRESHOLD;
 
         // Show/hide scroll-to-bottom FAB
-        if (isAtBottom.current && !wasAtBottom) {
+        if (isAtBottom.current) {
           updateShowScrollFab(false);
-          updateUnreadCount(0);
-        } else if (!isAtBottom.current && wasAtBottom) {
+          if (!wasAtBottom) updateUnreadCount(0);
+        } else {
           updateShowScrollFab(true);
         }
 
@@ -735,6 +763,8 @@ const ChatListInternal = React.memo(
     );
 
     const handleScrollEndDrag = useCallback(() => {
+      // User manually dragged — cancel any programmatic scroll suppression
+      isProgrammaticScrollRef.current = false;
       if (refreshRef.current === 'ready') {
         triggerLoad('refresh', () => sync.refreshMessages(props.sessionId));
       }
@@ -774,28 +804,47 @@ const ChatListInternal = React.memo(
       updateUnreadCount(0);
     }, [updateShowScrollFab, updateUnreadCount]);
 
-    /** Jump to a specific list item index (used by edge-nav dots). */
-    const handleJumpToUserMessage = useCallback((listIndex: number) => {
-      flatListRef.current?.scrollToIndex({
-        index: listIndex,
-        animated: true,
-        viewPosition: 0.5,
-      });
+    /** Jump to a message by id. Looks up the current index to avoid stale-index bugs. */
+    const handleJumpToUserMessage = useCallback((messageId: string) => {
+      const index = listItemsRef.current.findIndex(
+        (item) => item.type === 'message' && item.messageId === messageId
+      );
+      if (index === -1) return;
+      isProgrammaticScrollRef.current = true;
+      flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 500);
     }, []);
 
     /** Fallback when scrollToIndex targets an unmeasured item. */
     const handleScrollToIndexFailed = useCallback(
       (info: { index: number; highestMeasuredFrameIndex: number; averageItemLength: number }) => {
+        isProgrammaticScrollRef.current = true;
         flatListRef.current?.scrollToOffset({
           offset: info.averageItemLength * info.index,
           animated: false,
         });
         setTimeout(() => {
+          // Re-lookup the target item in case listItems changed during the scroll
+          const targetItem = listItemsRef.current[info.index];
+          if (!targetItem) {
+            isProgrammaticScrollRef.current = false;
+            return;
+          }
+          // Find the item's current index (it may have shifted if older messages were loaded)
+          const currentIndex =
+            targetItem.type === 'message'
+              ? listItemsRef.current.findIndex(
+                  (item) => item.type === 'message' && item.messageId === targetItem.messageId
+                )
+              : info.index;
           flatListRef.current?.scrollToIndex({
-            index: info.index,
+            index: currentIndex >= 0 ? currentIndex : info.index,
             animated: true,
             viewPosition: 0.5,
           });
+          setTimeout(() => { isProgrammaticScrollRef.current = false; }, 500);
         }, 200);
       },
       []
@@ -803,6 +852,7 @@ const ChatListInternal = React.memo(
 
     // ----- build list items with separators -----
     const listItems = useMemo(() => buildListItems(messages), [messages]);
+    listItemsRef.current = listItems;
     const previousListStateRef = useRef<{
       messageCount: number;
       itemCount: number;
@@ -851,7 +901,7 @@ const ChatListInternal = React.memo(
         if (item.type === 'message' && infoById.has(item.messageId)) {
           const { text, createdAt } = infoById.get(item.messageId)!;
           const preview = text.split('\n').slice(0, 2).join(' ').trim() || '…';
-          items.push({ listIndex: i, seq: seq++, preview, time: formatTime(createdAt) });
+          items.push({ listIndex: i, messageId: item.messageId, seq: seq++, preview, time: formatTime(createdAt) });
         }
       }
       return items;
@@ -880,6 +930,7 @@ const ChatListInternal = React.memo(
 
     // onEndReached: load older (fires on both platforms when near visual top)
     const handleEndReached = useCallback(() => {
+      if (isProgrammaticScrollRef.current) return;
       if (!hasOlderMessages || isLoadingOlder) return;
       if (olderRef.current === 'loading') return;
       triggerLoad('older', () => sync.loadOlderMessages(props.sessionId));
@@ -940,11 +991,12 @@ const ChatListInternal = React.memo(
         {navOpen && (
           <UserMessageNavPanel
             items={userNavItems}
-            onJumpTo={(index) => {
-              handleJumpToUserMessage(index);
+            onJumpTo={(messageId) => {
+              handleJumpToUserMessage(messageId);
               setNavOpen(false);
             }}
             onClose={() => setNavOpen(false)}
+            hasMoreMessages={hasOlderMessages}
           />
         )}
 

@@ -279,9 +279,30 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
   },
   actionButtonsLeft: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 6,
     flex: 1,
-    overflow: 'hidden',
+  },
+  actionButtonsTrailing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
+  agentChipButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: Platform.select({ default: 16, android: 20 }),
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    height: 32,
+    gap: 6,
+  },
+  agentChipLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    ...Typography.default('semiBold'),
   },
   actionButton: {
     flexDirection: 'row',
@@ -1670,154 +1691,105 @@ export const AgentInput = React.memo(
                 pointerEvents={props.isSpeechInputActive ? 'none' : 'auto'}
                 style={{
                   opacity: recordingAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
-                  flexDirection: 'column',
+                  flexDirection: 'row',
                   flex: 1,
-                  gap: 2,
+                  alignItems: 'center',
                 }}
               >
-                {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <View style={styles.actionButtonsLeft}>
-                    {/* Locked while sending or aborting; abort is a sibling so it stays tappable while sending. */}
+                <View style={styles.actionButtonsContainer}>
+                  <View
+                    pointerEvents={composerChromeLocked ? 'none' : 'auto'}
+                    style={styles.actionButtonsLeft}
+                  >
+                    {props.agentType && (props.onAgentChange || props.onAgentClick) && (
+                      <Pressable
+                        onPress={() => {
+                          inputRef.current?.blur();
+                          hapticsLight();
+                          if (props.availableAgentTypes && props.onAgentChange) {
+                            setShowAgentPicker(prev => !prev);
+                            setShowSettings(false);
+                          } else {
+                            props.onAgentClick?.();
+                          }
+                        }}
+                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                        style={p => [styles.agentChipButton, { opacity: p.pressed ? 0.7 : 1 }]}
+                      >
+                        <AgentFlavorIcon flavor={props.agentType} size={14} />
+                        <Text style={[styles.agentChipLabel, { color: theme.colors.button.secondary.tint }]}>
+                          {getAgentDisplayName(props.agentType)}
+                        </Text>
+                      </Pressable>
+                    )}
+
+                    {(showLocalPermissionModeControls || hasDiscoveredCapabilities) && (
+                      <Pressable
+                        onPress={handleSettingsPress}
+                        disabled={props.isSettingsBusy || composerChromeLocked}
+                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                        style={p => ({
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          borderRadius: Platform.select({ default: 16, android: 20 }),
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          justifyContent: 'center',
+                          height: 32,
+                          opacity: props.isSettingsBusy ? 0.4 : p.pressed ? 0.7 : 1,
+                          flexShrink: 0,
+                        })}
+                      >
+                        <Octicons
+                          name={'gear'}
+                          size={16}
+                          color={theme.colors.button.secondary.tint}
+                        />
+                      </Pressable>
+                    )}
+
+                    {props.onPickImages && (
+                      <Pressable
+                        onPress={() => {
+                          inputRef.current?.blur();
+                          hapticsLight();
+                          props.onPickImages?.();
+                        }}
+                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                        style={p => ({
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          borderRadius: Platform.select({ default: 16, android: 20 }),
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                          justifyContent: 'center',
+                          height: 32,
+                          opacity: p.pressed ? 0.7 : 1,
+                        })}
+                      >
+                        <Ionicons
+                          name="image-outline"
+                          size={18}
+                          color={theme.colors.button.secondary.tint}
+                        />
+                      </Pressable>
+                    )}
+
                     <View
                       pointerEvents={composerChromeLocked ? 'none' : 'auto'}
-                      style={{
-                        flexDirection: 'row',
-                        gap: 8,
-                        flex: 1,
-                        minWidth: 0,
-                        alignItems: 'center',
-                        overflow: 'hidden',
-                      }}
+                      style={{ flexShrink: 0 }}
                     >
-                      {/* Image picker button */}
-                      {props.onPickImages && (
-                        <Pressable
-                          onPress={() => {
-                            inputRef.current?.blur();
-                            hapticsLight();
-                            props.onPickImages?.();
-                          }}
-                          hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                          style={p => ({
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                            paddingHorizontal: 8,
-                            paddingVertical: 6,
-                            justifyContent: 'center',
-                            height: 32,
-                            opacity: p.pressed ? 0.7 : 1,
-                          })}
-                        >
-                          <Ionicons
-                            name="image-outline"
-                            size={18}
-                            color={theme.colors.button.secondary.tint}
-                          />
-                        </Pressable>
-                      )}
-
-                      {/* Speech-to-text button */}
-                      {props.onSpeechInputPress && (
-                        <Pressable
-                          onPress={() => {
-                            hapticsLight();
-                            props.onSpeechInputPress?.();
-                          }}
-                          hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                          style={p => ({
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                            paddingHorizontal: 8,
-                            paddingVertical: 6,
-                            justifyContent: 'center',
-                            height: 32,
-                            opacity: p.pressed ? 0.7 : 1,
-                          })}
-                        >
-                          <Ionicons
-                            name="mic-outline"
-                            size={18}
-                            color={theme.colors.button.secondary.tint}
-                          />
-                        </Pressable>
-                      )}
-
-                      {/* Settings button */}
-                      {(showLocalPermissionModeControls || hasDiscoveredCapabilities) && (
-                        <Pressable
-                          onPress={handleSettingsPress}
-                          disabled={props.isSettingsBusy || composerChromeLocked}
-                          hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                          style={p => ({
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                            paddingHorizontal: 8,
-                            paddingVertical: 6,
-                            justifyContent: 'center',
-                            height: 32,
-                            opacity: props.isSettingsBusy ? 0.4 : p.pressed ? 0.7 : 1,
-                          })}
-                        >
-                          <Octicons
-                            name={'gear'}
-                            size={16}
-                            color={theme.colors.button.secondary.tint}
-                          />
-                        </Pressable>
-                      )}
-
-                      {/* Agent selector button */}
-                      {props.agentType && (props.onAgentChange || props.onAgentClick) && (
-                        <Pressable
-                          onPress={() => {
-                            inputRef.current?.blur();
-                            hapticsLight();
-                            if (props.availableAgentTypes && props.onAgentChange) {
-                              setShowAgentPicker(prev => !prev);
-                              setShowSettings(false);
-                            } else {
-                              props.onAgentClick?.();
-                            }
-                          }}
-                          hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                          style={p => ({
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                            paddingHorizontal: 10,
-                            paddingVertical: 6,
-                            justifyContent: 'center',
-                            height: 32,
-                            opacity: p.pressed ? 0.7 : 1,
-                            gap: 6,
-                          })}
-                        >
-                          <AgentFlavorIcon flavor={props.agentType} size={14} />
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              color: theme.colors.button.secondary.tint,
-                              fontWeight: '600',
-                              ...Typography.default('semiBold'),
-                            }}
-                          >
-                            {getAgentDisplayName(props.agentType)}
-                          </Text>
-                        </Pressable>
-                      )}
+                      <GitStatusButton
+                        sessionId={props.sessionId}
+                        onPress={() => {
+                          inputRef.current?.blur();
+                          props.onFileViewerPress?.();
+                        }}
+                      />
                     </View>
+                  </View>
 
-                    {/* Abort: outside pointer lock so it remains available while a message is sending. */}
+                  <View style={styles.actionButtonsTrailing}>
                     {props.onAbort && (
                       <Shaker ref={shakerRef}>
                         <Pressable
@@ -1851,21 +1823,37 @@ export const AgentInput = React.memo(
                       </Shaker>
                     )}
 
-                    <View
-                      pointerEvents={composerChromeLocked ? 'none' : 'auto'}
-                      style={{ flexShrink: 0 }}
-                    >
-                      <GitStatusButton
-                        sessionId={props.sessionId}
+                    {props.onSpeechInputPress && (
+                      <Pressable
                         onPress={() => {
-                          inputRef.current?.blur();
-                          props.onFileViewerPress?.();
+                          if (composerChromeLocked) {
+                            return;
+                          }
+                          hapticsLight();
+                          props.onSpeechInputPress?.();
                         }}
-                      />
-                    </View>
+                        disabled={composerChromeLocked}
+                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                        style={p => ({
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          borderRadius: Platform.select({ default: 16, android: 20 }),
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                          justifyContent: 'center',
+                          height: 32,
+                          opacity: composerChromeLocked ? 0.4 : p.pressed ? 0.7 : 1,
+                        })}
+                      >
+                        <Ionicons
+                          name="mic-outline"
+                          size={18}
+                          color={theme.colors.button.secondary.tint}
+                        />
+                      </Pressable>
+                    )}
                   </View>
 
-                  {/* Send/Voice button */}
                   <View
                     style={[
                       styles.sendButton,

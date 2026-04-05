@@ -1030,6 +1030,7 @@ export const en = {
     releaseToLoadEarlier: 'Release to load earlier',
     loadingEarlier: 'Loading...',
     scrollToBottom: 'Scroll to bottom',
+    navPanelPartialHint: 'Showing loaded messages only. Scroll up to load earlier ones.',
     newMessages: ({ count }: { count: number }) =>
       `${count} new ${count === 1 ? 'message' : 'messages'}`,
     today: 'Today',

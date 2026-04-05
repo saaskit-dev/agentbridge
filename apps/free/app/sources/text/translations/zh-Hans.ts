@@ -1008,6 +1008,7 @@ export const zhHans: TranslationStructure = {
     releaseToLoadEarlier: '释放以加载更早消息',
     loadingEarlier: '加载中...',
     scrollToBottom: '回到底部',
+    navPanelPartialHint: '仅显示已加载的消息，向上滚动可加载更早的消息。',
     newMessages: ({ count }: { count: number }) => `${count} 条新消息`,
     today: '今天',
     yesterday: '昨天',
