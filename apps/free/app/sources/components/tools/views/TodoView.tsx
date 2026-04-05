@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, type StyleProp, type TextStyle } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { knownTools } from '../../tools/knownTools';
 import { ToolSectionView } from '../../tools/ToolSectionView';
 import { ToolViewProps } from './types';
@@ -36,7 +37,7 @@ export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
             const isInProgress = todo.status === 'in_progress';
             const isPending = todo.status === 'pending';
 
-            let textStyle: any = styles.todoText;
+            let textStyle: StyleProp<TextStyle> = styles.todoText;
             let icon = '☐';
 
             if (isCompleted) {

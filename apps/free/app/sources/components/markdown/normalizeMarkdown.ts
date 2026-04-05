@@ -8,10 +8,12 @@
  *   [1127c3e....png](file:///Users/dev/.free/attachments/1127c3e....png)
  */
 export function normalizeAcpResourceLinks(markdown: string): string {
-  return markdown.replace(
+  let s = markdown.replace(
     /\[ACP resource_link\]\s+([^\s(]+)\s+\((file:\/\/[^)]+)\)/g,
     '[$1]($2)'
   );
+  s = normalizeLooseLocalFileReferences(s);
+  return s;
 }
 
 /**
@@ -109,4 +111,65 @@ function decodeHtmlEntities(s: string): string {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/&nbsp;/gi, ' ');
+}
+
+function normalizeLooseLocalFileReferences(markdown: string): string {
+  const lines = markdown.split('\n');
+  const out: string[] = [];
+  let inFence = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^```/.test(trimmed)) {
+      inFence = !inFence;
+      out.push(line);
+      continue;
+    }
+
+    if (inFence || /^(?: {4}|\t)/.test(line)) {
+      out.push(line);
+      continue;
+    }
+
+    if (!trimmed) {
+      out.push(line);
+      continue;
+    }
+
+    const directFileUrl = trimmed.match(/^<?(file:\/\/[^\s>]+)>?$/i);
+    if (directFileUrl) {
+      const target = stripWrappingPunctuation(directFileUrl[1]);
+      out.push(isImagePath(target) ? `![](${target})` : `[${basename(target)}](${target})`);
+      continue;
+    }
+
+    const directPath = trimmed.match(
+      /^(?:['"`<([])?((?:\/|\.{1,2}\/|~\/|[A-Za-z0-9_.-]+\/)[^\s'"`)>]+?\.[A-Za-z0-9]+)(?:[>"'`)\]])?$/
+    );
+    if (directPath) {
+      const target = stripWrappingPunctuation(
+        directPath[1] ? `${directPath[1]}${directPath[2]}` : directPath[2]
+      );
+      out.push(isImagePath(target) ? `![](${target})` : `[${basename(target)}](${target})`);
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  return out.join('\n');
+}
+
+function stripWrappingPunctuation(input: string): string {
+  return input.trim().replace(/^['"`<(\[]+/, '').replace(/[>)}\]"'`,.;:!?]+$/, '');
+}
+
+function basename(pathOrUrl: string): string {
+  const clean = pathOrUrl.split('/').filter(Boolean);
+  return clean[clean.length - 1] || pathOrUrl;
+}
+
+function isImagePath(pathOrUrl: string): boolean {
+  const clean = pathOrUrl.split('?')[0]?.split('#')[0] ?? pathOrUrl;
+  return /\.(png|jpe?g|gif|webp|bmp|svg|ico|heic|heif|avif)$/i.test(clean);
 }

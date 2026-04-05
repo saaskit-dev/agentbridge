@@ -720,10 +720,20 @@ export const ca: TranslationStructure = {
     loadingFile: ({ fileName }: { fileName: string }) => `Carregant ${fileName}...`,
     binaryFile: 'Fitxer binari',
     cannotDisplayBinary: 'No es pot mostrar el contingut del fitxer binari',
+    tapImageToZoom: 'Toca la imatge per ampliar-la',
     diff: 'Diferències',
     file: 'Fitxer',
     fileEmpty: 'El fitxer està buit',
     noChanges: 'No hi ha canvis a mostrar',
+    failedToDecodeContent: 'No s ha pogut descodificar el contingut del fitxer',
+    failedToReadFile: 'No s ha pogut llegir el fitxer',
+    failedToLoadFile: 'No s ha pogut carregar el fitxer',
+    pathCopied: 'Ruta copiada',
+    fileSize: ({ bytes }: { bytes: number }) => {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    },
     browseTitle: 'Browse',
     browseFolderUp: 'Up',
     browseEmpty: 'This folder is empty',
@@ -1013,6 +1023,8 @@ export const ca: TranslationStructure = {
     pullToLoadEarlier: 'Estira per carregar anteriors',
     releaseToLoadEarlier: 'Deixa anar per carregar anteriors',
     loadingEarlier: 'Carregant...',
+    navPanelPartialHint:
+      'Mostrant només els missatges carregats. Desplaça cap amunt per carregar els anteriors.',
     scrollToBottom: 'Anar a baix',
     newMessages: ({ count }: { count: number }) =>
       `${count} ${count === 1 ? 'missatge nou' : 'missatges nous'}`,

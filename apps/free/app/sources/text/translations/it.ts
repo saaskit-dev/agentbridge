@@ -721,10 +721,20 @@ export const it: TranslationStructure = {
     loadingFile: ({ fileName }: { fileName: string }) => `Caricamento ${fileName}...`,
     binaryFile: 'File binario',
     cannotDisplayBinary: 'Impossibile mostrare il contenuto del file binario',
+    tapImageToZoom: "Tocca l'immagine per ingrandirla",
     diff: 'Diff',
     file: 'File',
     fileEmpty: 'File vuoto',
     noChanges: 'Nessuna modifica da mostrare',
+    failedToDecodeContent: 'Impossibile decodificare il contenuto del file',
+    failedToReadFile: 'Impossibile leggere il file',
+    failedToLoadFile: 'Impossibile caricare il file',
+    pathCopied: 'Percorso copiato',
+    fileSize: ({ bytes }: { bytes: number }) => {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    },
     browseTitle: 'Browse',
     browseFolderUp: 'Up',
     browseEmpty: 'This folder is empty',
@@ -1014,6 +1024,8 @@ export const it: TranslationStructure = {
     pullToLoadEarlier: 'Scorri per caricare i precedenti',
     releaseToLoadEarlier: 'Rilascia per caricare i precedenti',
     loadingEarlier: 'Caricamento...',
+    navPanelPartialHint:
+      'Mostra solo i messaggi caricati. Scorri verso l alto per caricare i precedenti.',
     scrollToBottom: 'Vai in fondo',
     newMessages: ({ count }: { count: number }) =>
       `${count} ${count === 1 ? 'nuovo messaggio' : 'nuovi messaggi'}`,

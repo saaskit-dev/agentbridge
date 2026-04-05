@@ -26,6 +26,8 @@ export function useDemoMessages(messages: Message[]) {
           messagesMap: messagesMap,
           reducerState: createReducer(),
           isLoaded: true,
+          hasOlderMessages: false,
+          isLoadingOlder: false,
         },
       },
     }));

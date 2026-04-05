@@ -44,10 +44,22 @@ export type MarkdownBlock =
   | {
       type: 'checklist';
       items: { checked: boolean; spans: MarkdownSpan[] }[];
+    }
+  | {
+      type: 'image';
+      alt: string;
+      source: string;
     };
 
-export type MarkdownSpan = {
-  styles: ('italic' | 'bold' | 'semibold' | 'code' | 'strikethrough')[];
-  text: string;
-  url: string | null;
-};
+export type MarkdownSpan =
+  | {
+      type: 'text';
+      styles: ('italic' | 'bold' | 'semibold' | 'code' | 'strikethrough')[];
+      text: string;
+      url: string | null;
+    }
+  | {
+      type: 'image';
+      alt: string;
+      source: string;
+    };

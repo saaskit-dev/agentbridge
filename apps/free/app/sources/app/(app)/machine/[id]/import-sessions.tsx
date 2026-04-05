@@ -24,6 +24,12 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 type AgentFilter = 'all' | string;
 type DisplaySession = ExternalAgentSessionSummary & { importedSessionId?: string | null };
 type AgentLoadState = 'idle' | 'loading' | 'ready' | 'unsupported' | 'error';
+type AgentOption = {
+  id: string;
+  label: string;
+  count: number;
+  state?: AgentLoadState;
+};
 
 type ScreenCacheEntry = {
   sessions: ExternalAgentSessionSummary[];
@@ -270,7 +276,7 @@ export default function ImportSessionsScreen() {
 
   const importedSessionMap = React.useMemo(() => {
     const map = new Map<string, string>();
-    for (const item of allSessions) {
+    for (const item of allSessions ?? []) {
       if (typeof item === 'string') continue;
       const session = item as Session;
       if (!sessionBelongsToMachine(session, machineId!)) continue;
@@ -308,14 +314,19 @@ export default function ImportSessionsScreen() {
     }
     const allAgents = candidateAgents.length > 0 ? candidateAgents : Object.keys(agentStates);
     return [
-      { id: 'all', label: t('machineImport.filters.allAgents'), count: displaySessions.length },
+      {
+        id: 'all',
+        label: t('machineImport.filters.allAgents'),
+        count: displaySessions.length,
+        state: undefined,
+      },
       ...allAgents.map(agent => ({
         id: agent,
         label: formatAgentLabel(agent),
         count: counts.get(agent) ?? 0,
         state: agentStates[agent],
       })),
-    ];
+    ] satisfies AgentOption[];
   }, [agentStates, candidateAgents, displaySessions]);
 
   const unsupportedAgents = React.useMemo(

@@ -692,6 +692,7 @@ export const en: TranslationStructure = {
     loadingFile: ({ fileName }: { fileName: string }) => `Loading ${fileName}...`,
     binaryFile: 'Binary File',
     cannotDisplayBinary: 'Cannot display binary file content',
+    tapImageToZoom: 'Tap image to zoom',
     diff: 'Diff',
     file: 'File',
     fileEmpty: 'File is empty',
@@ -888,6 +889,62 @@ export const en: TranslationStructure = {
     copiedToClipboard: ({ label }: { label: string }) => `${label} copied to clipboard`,
   },
 
+  machineImport: {
+    title: 'Import Existing Agent Sessions',
+    browse: 'Browse existing agent chats',
+    machineSummary: ({ count, imported }: { count: number; imported: number }) =>
+      `Supports Claude · Codex · OpenCode. ${count} chats found, ${imported} imported.`,
+    machineSummarySimple: 'Browse existing chats from supported agents.',
+    machineSummaryCount: ({ count }: { count: number }) => `${count} existing chats available.`,
+    onMachine: ({ machine }: { machine: string }) => `On ${machine}`,
+    discoverableCount: ({ count }: { count: number }) => `${count} discoverable`,
+    agentCount: ({ count }: { count: number }) => `${count} agents`,
+    importedCount: ({ count }: { count: number }) => `${count} imported`,
+    searchPlaceholder: 'Search title, path, or agent',
+    agentLabel: 'Agent',
+    statusLabel: 'Status',
+    existingChats: 'Existing chats',
+    showingCount: ({ shown, total }: { shown: number; total: number }) =>
+      `Showing ${shown} of ${total}`,
+    existing: 'Existing',
+    imported: 'Imported',
+    managed: 'Managed',
+    open: 'Open',
+    continueHere: 'Continue here',
+    continueTitle: 'Continue here?',
+    continueBody: ({ agent }: { agent: string }) =>
+      `This will import the existing ${agent} chat into AgentBridge and continue it here.`,
+    openImportedTitle: 'Open imported session',
+    openImportedBody: 'This chat is already imported into AgentBridge.',
+    prototypeTitle: 'Prototype only',
+    prototypeBody: 'Actual ACP discovery/import is not wired yet.',
+    directoryMissingTitle: 'Create directory?',
+    directoryMissingBody: ({ directory }: { directory: string }) =>
+      `The directory '${directory}' does not exist. Create it and continue?`,
+    emptyTitle: 'No matching sessions',
+    emptyBody: 'Try another filter or search term.',
+    noticeLoading: 'Loading agent histories',
+    noticeLoadFailed: 'Some agents could not be loaded',
+    noticeUnsupported: 'History not available',
+    noticeUpdated: 'Last refresh',
+    loadingProgress: ({ loaded, total }: { loaded: number; total: number }) =>
+      `Loading ${loaded}/${total}`,
+    loadingAgents: ({ loaded, total, agents }: { loaded: number; total: number; agents: string }) =>
+      `Loaded ${loaded} of ${total}. Still loading: ${agents}.`,
+    partialFailure: ({ count, agents }: { count: number; agents: string }) =>
+      `${count} agents could not be loaded: ${agents}.`,
+    unsupportedAgents: ({ agents }: { agents: string }) =>
+      `${agents} do not expose session history.`,
+    cachedAt: ({ time }: { time: string }) => `Updated ${time}`,
+    loadMore: 'Load more sessions',
+    filters: {
+      allAgents: 'All agents',
+      all: 'All',
+      available: 'Available',
+      imported: 'Imported',
+    },
+  },
+
   machine: {
     launchNewSessionInDirectory: 'Launch New Session in Directory',
     offlineUnableToSpawn: 'Launcher disabled while machine is offline',
@@ -946,6 +1003,7 @@ export const en: TranslationStructure = {
     pullToLoadEarlier: 'Pull to load earlier',
     releaseToLoadEarlier: 'Release to load earlier',
     loadingEarlier: 'Loading...',
+    navPanelPartialHint: 'Showing loaded messages only. Scroll up to load earlier ones.',
     scrollToBottom: 'Scroll to bottom',
     newMessages: ({ count }: { count: number }) =>
       `${count} new ${count === 1 ? 'message' : 'messages'}`,

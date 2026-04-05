@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { requireOptionalNativeModule } from 'expo-modules-core';
+import { NativeModules } from 'react-native';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/appConfig');
@@ -11,6 +11,28 @@ export interface AppConfig {
   revenueCatStripeKey?: string;
   elevenLabsAgentIdDev?: string;
   elevenLabsAgentIdProd?: string;
+}
+
+type ExpoManifestModule = {
+  manifest?: unknown;
+};
+
+function getAppConfigFromManifest(manifest: unknown): Partial<AppConfig> | null {
+  if (!manifest || typeof manifest !== 'object') {
+    return null;
+  }
+
+  const extra = (manifest as { extra?: unknown }).extra;
+  if (!extra || typeof extra !== 'object') {
+    return null;
+  }
+
+  const app = (extra as { app?: unknown }).app;
+  return app && typeof app === 'object' ? (app as Partial<AppConfig>) : null;
+}
+
+function requireOptionalNativeModule<T = unknown>(moduleName: string): T | null {
+  return (NativeModules[moduleName] as T | undefined) ?? null;
 }
 
 /**
@@ -27,7 +49,7 @@ export function loadAppConfig(): AppConfig {
 
   try {
     // 1. Try ExponentConstants native module directly
-    const ExponentConstants = requireOptionalNativeModule('ExponentConstants');
+    const ExponentConstants = requireOptionalNativeModule<ExpoManifestModule>('ExponentConstants');
     if (ExponentConstants && ExponentConstants.manifest) {
       let exponentManifest = ExponentConstants.manifest;
 
@@ -41,8 +63,8 @@ export function loadAppConfig(): AppConfig {
       }
 
       // Look for app config in various locations
-      const appConfig = exponentManifest?.extra?.app;
-      if (appConfig && typeof appConfig === 'object') {
+      const appConfig = getAppConfigFromManifest(exponentManifest);
+      if (appConfig) {
         Object.assign(config, appConfig);
         logger.debug('[loadAppConfig] Loaded from ExponentConstants:', Object.keys(config));
       }

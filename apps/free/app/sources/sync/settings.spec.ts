@@ -82,8 +82,9 @@ describe('settingsParse', () => {
   it('handles invalid zod parse by preserving unknown fields with defaults', () => {
     // Pass something that would fail zod parsing (e.g., wrong type for a known field)
     const result = settingsParse({ viewInline: 'not-a-boolean', unknownKey: 123 });
-    // Zod partial parse is lenient — invalid fields get stripped, defaults fill in
-    expect(result.unknownKey).toBe(123);
+    // Zod partial parse is lenient — invalid fields get stripped, defaults fill in,
+    // and unknown fields are discarded by the schema.
+    expect('unknownKey' in result).toBe(false);
     expect(typeof result.viewInline).toBe('boolean');
   });
 });

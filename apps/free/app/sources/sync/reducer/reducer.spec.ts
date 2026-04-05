@@ -3233,7 +3233,17 @@ describe('reducer', () => {
           role: 'agent',
           isSidechain: false,
           traceId: 'trace-A',
-          content: [{ type: 'tool-call', id: 'tc1', name: 'Bash', input: toolInput, uuid: 'u1', parentUUID: null }],
+          content: [
+            {
+              type: 'tool-call',
+              id: 'tc1',
+              name: 'Bash',
+              input: toolInput,
+              description: null,
+              uuid: 'u1',
+              parentUUID: null,
+            },
+          ],
         },
         {
           id: 'tool-result-msg',
@@ -3241,7 +3251,16 @@ describe('reducer', () => {
           role: 'agent',
           isSidechain: false,
           traceId: 'trace-A',
-          content: [{ type: 'tool_result', id: 'tc1', content: 'ok', uuid: 'u2', parentUUID: 'u1' }],
+          content: [
+            {
+              type: 'tool-result',
+              tool_use_id: 'tc1',
+              content: 'ok',
+              is_error: false,
+              uuid: 'u2',
+              parentUUID: 'u1',
+            },
+          ],
         },
       ]);
 
@@ -3286,7 +3305,17 @@ describe('reducer', () => {
           role: 'agent',
           isSidechain: false,
           traceId: 'trace-A',
-          content: [{ type: 'tool-call', id: 'tc1', name: 'Bash', input: { cmd: 'ls' }, uuid: 'u1', parentUUID: null }],
+          content: [
+            {
+              type: 'tool-call',
+              id: 'tc1',
+              name: 'Bash',
+              input: { cmd: 'ls' },
+              description: null,
+              uuid: 'u1',
+              parentUUID: null,
+            },
+          ],
         },
         {
           id: 'text-2',

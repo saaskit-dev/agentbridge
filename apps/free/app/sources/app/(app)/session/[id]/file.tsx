@@ -1,7 +1,9 @@
 import * as Clipboard from 'expo-clipboard';
+import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
+import { ImagePreviewModal } from '@/components/ImagePreviewModal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { FileIcon } from '@/components/FileIcon';
 import { layout } from '@/components/layout';
@@ -24,6 +26,8 @@ interface FileContent {
   isBinary: boolean;
 }
 
+type PreviewKind = 'text' | 'image' | 'table' | 'binary';
+
 /**
  * Whether this path should be shown as rendered Markdown (same pipeline as chat messages)
  * instead of a syntax-highlighted source block.
@@ -31,6 +35,220 @@ interface FileContent {
 function isMarkdownPreviewPath(path: string): boolean {
   const ext = path.split('.').pop()?.toLowerCase();
   return ext === 'md' || ext === 'mdx' || ext === 'markdown';
+}
+
+function isDelimitedTablePath(path: string): boolean {
+  const ext = getPathExtension(path);
+  return ext === 'csv' || ext === 'tsv';
+}
+
+function getPathExtension(path: string): string | null {
+  const ext = path.split('.').pop()?.toLowerCase();
+  return ext || null;
+}
+
+function getImageMimeType(path: string): string | null {
+  switch (getPathExtension(path)) {
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'bmp':
+      return 'image/bmp';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'ico':
+      return 'image/x-icon';
+    case 'heic':
+      return 'image/heic';
+    case 'heif':
+      return 'image/heif';
+    case 'avif':
+      return 'image/avif';
+    default:
+      return null;
+  }
+}
+
+function isOpaqueBinaryFile(path: string): boolean {
+  const ext = getPathExtension(path);
+  const binaryExtensions = [
+    'mp4',
+    'avi',
+    'mov',
+    'wmv',
+    'flv',
+    'webm',
+    'mp3',
+    'wav',
+    'flac',
+    'aac',
+    'ogg',
+    'pdf',
+    'doc',
+    'docx',
+    'xls',
+    'xlsx',
+    'ppt',
+    'pptx',
+    'zip',
+    'tar',
+    'gz',
+    'rar',
+    '7z',
+    'exe',
+    'dmg',
+    'deb',
+    'rpm',
+    'woff',
+    'woff2',
+    'ttf',
+    'otf',
+    'db',
+    'sqlite',
+    'sqlite3',
+  ];
+  return ext ? binaryExtensions.includes(ext) : false;
+}
+
+function getPreviewKind(path: string): PreviewKind {
+  if (getImageMimeType(path)) return 'image';
+  if (isDelimitedTablePath(path)) return 'table';
+  return isOpaqueBinaryFile(path) ? 'binary' : 'text';
+}
+
+function parseDelimitedTable(input: string, delimiter: ',' | '\t'): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const char = input[i];
+    const next = input[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === delimiter && !inQuotes) {
+      row.push(cell);
+      cell = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = '';
+      continue;
+    }
+
+    cell += char;
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows.filter(cells => !(cells.length === 1 && cells[0] === ''));
+}
+
+const MAX_TABLE_PREVIEW_ROWS = 100;
+
+function TablePreview({ path, content }: { path: string; content: string }) {
+  const { theme } = useUnistyles();
+  const delimiter: ',' | '\t' = getPathExtension(path) === 'tsv' ? '\t' : ',';
+  const rows = React.useMemo(() => parseDelimitedTable(content, delimiter), [content, delimiter]);
+  const previewRows = rows.slice(0, MAX_TABLE_PREVIEW_ROWS);
+  const columnCount = previewRows.reduce((max, row) => Math.max(max, row.length), 0);
+
+  if (previewRows.length === 0 || columnCount === 0) {
+    return (
+      <Text
+        style={{
+          fontSize: 16,
+          color: theme.colors.textSecondary,
+          fontStyle: 'italic',
+          ...Typography.default(),
+        }}
+      >
+        {t('files.fileEmpty')}
+      </Text>
+    );
+  }
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator>
+      <View
+        style={{
+          borderWidth: 1,
+          borderColor: theme.colors.divider,
+          borderRadius: 12,
+          overflow: 'hidden',
+          minWidth: '100%',
+        }}
+      >
+        {previewRows.map((row, rowIndex) => {
+          const isHeader = rowIndex === 0;
+          return (
+            <View
+              key={rowIndex}
+              style={{
+                flexDirection: 'row',
+                backgroundColor: isHeader
+                  ? theme.colors.surfaceHigh
+                  : rowIndex % 2 === 0
+                    ? theme.colors.surface
+                    : theme.colors.input.background,
+                borderTopWidth: rowIndex === 0 ? 0 : StyleSheet.hairlineWidth,
+                borderTopColor: theme.colors.divider,
+              }}
+            >
+              {Array.from({ length: columnCount }).map((_, columnIndex) => (
+                <View
+                  key={columnIndex}
+                  style={{
+                    width: 180,
+                    minHeight: 44,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderLeftWidth: columnIndex === 0 ? 0 : StyleSheet.hairlineWidth,
+                    borderLeftColor: theme.colors.divider,
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: theme.colors.text,
+                      ...(isHeader ? Typography.default('semiBold') : Typography.default()),
+                    }}
+                  >
+                    {row[columnIndex] || ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
 }
 
 // Diff display component
@@ -120,6 +338,7 @@ export default function FileScreen() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [fileSizeBytes, setFileSizeBytes] = React.useState<number | null>(null);
+  const [imagePreviewUri, setImagePreviewUri] = React.useState<string | null>(null);
 
   // Determine file language from extension
   const getFileLanguage = React.useCallback((path: string): string | null => {
@@ -178,55 +397,6 @@ export default function FileScreen() {
     }
   }, []);
 
-  // Check if file is likely binary based on extension
-  const isBinaryFile = React.useCallback((path: string): boolean => {
-    const ext = path.split('.').pop()?.toLowerCase();
-    const binaryExtensions = [
-      'png',
-      'jpg',
-      'jpeg',
-      'gif',
-      'bmp',
-      'svg',
-      'ico',
-      'mp4',
-      'avi',
-      'mov',
-      'wmv',
-      'flv',
-      'webm',
-      'mp3',
-      'wav',
-      'flac',
-      'aac',
-      'ogg',
-      'pdf',
-      'doc',
-      'docx',
-      'xls',
-      'xlsx',
-      'ppt',
-      'pptx',
-      'zip',
-      'tar',
-      'gz',
-      'rar',
-      '7z',
-      'exe',
-      'dmg',
-      'deb',
-      'rpm',
-      'woff',
-      'woff2',
-      'ttf',
-      'otf',
-      'db',
-      'sqlite',
-      'sqlite3',
-    ];
-    return ext ? binaryExtensions.includes(ext) : false;
-  }, []);
-
   // Load file content
   React.useEffect(() => {
     let isCancelled = false;
@@ -240,8 +410,10 @@ export default function FileScreen() {
         const session = storage.getState().sessions[sessionId!];
         const sessionPath = session?.metadata?.path;
 
-        // Check if file is likely binary before trying to read
-        if (isBinaryFile(filePath)) {
+        const previewKind = getPreviewKind(filePath);
+
+        // Skip content decoding for opaque binary formats we cannot render yet.
+        if (previewKind === 'binary') {
           if (!isCancelled) {
             setFileContent({
               content: '',
@@ -291,6 +463,16 @@ export default function FileScreen() {
 
             setFileSizeBytes(bytes.length);
 
+            if (previewKind === 'image') {
+              const mimeType = getImageMimeType(filePath) ?? 'application/octet-stream';
+              setFileContent({
+                content: `data:${mimeType};base64,${response.content}`,
+                encoding: 'base64',
+                isBinary: false,
+              });
+              return;
+            }
+
             if (looksLikeBinaryBytes(bytes)) {
               setFileContent({
                 content: '',
@@ -328,7 +510,7 @@ export default function FileScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [sessionId, filePath, isBinaryFile]);
+  }, [sessionId, filePath]);
 
   // Show error modal if there's an error
   React.useEffect(() => {
@@ -346,6 +528,7 @@ export default function FileScreen() {
 
   const fileName = filePath.split('/').pop() || filePath;
   const language = getFileLanguage(filePath);
+  const previewKind = getPreviewKind(filePath);
 
   /** Copy the full file path to clipboard and show a brief toast. */
   const copyFilePath = React.useCallback(async () => {
@@ -467,6 +650,9 @@ export default function FileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+      {imagePreviewUri && (
+        <ImagePreviewModal uri={imagePreviewUri} onClose={() => setImagePreviewUri(null)} />
+      )}
       {/* File path header — tap to copy path */}
       <Pressable
         onPress={copyFilePath}
@@ -575,8 +761,49 @@ export default function FileScreen() {
         {displayMode === 'diff' && diffContent ? (
           <DiffDisplay diffContent={diffContent} />
         ) : displayMode === 'file' && fileContent?.content ? (
-          isMarkdownPreviewPath(filePath) ? (
-            <MarkdownView markdown={fileContent.content} />
+          previewKind === 'image' ? (
+            <Pressable
+              onPress={() => setImagePreviewUri(fileContent.content)}
+              style={{
+                alignSelf: 'stretch',
+                backgroundColor: theme.colors.surfaceHigh,
+                borderWidth: 1,
+                borderColor: theme.colors.divider,
+                borderRadius: 12,
+                overflow: 'hidden',
+              }}
+            >
+              <Image
+                source={{ uri: fileContent.content }}
+                style={{
+                  width: '100%',
+                  minHeight: 240,
+                  maxHeight: 520,
+                  backgroundColor: theme.colors.surfaceHigh,
+                }}
+                contentFit="contain"
+              />
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: theme.colors.textSecondary,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  textAlign: 'center',
+                  ...Typography.default(),
+                }}
+              >
+                {t('files.tapImageToZoom')}
+              </Text>
+            </Pressable>
+          ) : previewKind === 'table' ? (
+            <TablePreview path={filePath} content={fileContent.content} />
+          ) : isMarkdownPreviewPath(filePath) ? (
+            <MarkdownView
+              markdown={fileContent.content}
+              sessionId={sessionId}
+              markdownFilePath={filePath}
+            />
           ) : (
             <SimpleSyntaxHighlighter
               code={fileContent.content}

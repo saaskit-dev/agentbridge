@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
-import { requireOptionalNativeModule } from 'expo-modules-core';
 import { Stack } from 'expo-router';
 import * as Updates from 'expo-updates';
 import React, { useState } from 'react';
@@ -18,6 +17,16 @@ interface JsonViewerProps {
   title: string;
   data: any;
   defaultExpanded?: boolean;
+}
+
+type ExpoManifestModule = {
+  manifest?: unknown;
+  manifestString?: string;
+  isEmbeddedLaunch?: boolean;
+};
+
+function requireOptionalNativeModule<T = unknown>(moduleName: string): T | null {
+  return (NativeModules[moduleName] as T | undefined) ?? null;
 }
 
 function JsonViewer({ title, data, defaultExpanded = false }: JsonViewerProps) {
@@ -90,8 +99,8 @@ function JsonViewer({ title, data, defaultExpanded = false }: JsonViewerProps) {
 
 export default function ExpoConstantsScreen() {
   // Get ExponentConstants native module directly
-  const ExponentConstants = requireOptionalNativeModule('ExponentConstants');
-  const ExpoUpdates = requireOptionalNativeModule('ExpoUpdates');
+  const ExponentConstants = requireOptionalNativeModule<ExpoManifestModule>('ExponentConstants');
+  const ExpoUpdates = requireOptionalNativeModule<ExpoManifestModule>('ExpoUpdates');
 
   // Get raw manifests from native modules (replicating Constants.ts logic)
   let rawExponentManifest = null;

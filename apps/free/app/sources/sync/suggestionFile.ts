@@ -30,6 +30,56 @@ interface SessionCache {
   refreshLock: AsyncLock;
 }
 
+function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function stripDirectorySlash(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function stripFileExtension(value: string): string {
+  const normalized = stripDirectorySlash(value);
+  const lastDot = normalized.lastIndexOf('.');
+  return lastDot > 0 ? normalized.slice(0, lastDot) : normalized;
+}
+
+function computeSearchPriority(item: FileItem, rawQuery: string, fuseScore: number): number {
+  const query = normalizeSearchText(rawQuery);
+  const fileName = normalizeSearchText(item.fileName);
+  const fullPath = normalizeSearchText(item.fullPath);
+  const normalizedFileName = stripDirectorySlash(fileName);
+  const normalizedFullPath = stripDirectorySlash(fullPath);
+  const baseName = stripFileExtension(normalizedFileName);
+  const pathSegments = normalizedFullPath.split('/').filter(Boolean);
+  const querySegments = query.split('/').filter(Boolean);
+
+  let priority = fuseScore;
+
+  if (normalizedFileName === query) priority -= 1000;
+  if (baseName === query) priority -= 900;
+  if (normalizedFullPath === query) priority -= 800;
+  if (normalizedFileName.startsWith(query)) priority -= 300;
+  if (baseName.startsWith(query)) priority -= 240;
+  if (pathSegments.some(segment => segment === query)) priority -= 220;
+  if (pathSegments.some(segment => stripFileExtension(segment) === query)) priority -= 200;
+  if (pathSegments.some(segment => segment.startsWith(query))) priority -= 120;
+  if (normalizedFullPath.includes(`/${query}`)) priority -= 80;
+
+  if (querySegments.length > 1) {
+    const joinedQuery = querySegments.join('/');
+    if (normalizedFullPath.includes(joinedQuery)) priority -= 90;
+    if (querySegments.every(segment => pathSegments.some(pathSegment => pathSegment.includes(segment)))) {
+      priority -= 60;
+    }
+  }
+
+  if (item.fileType === 'file') priority -= 5;
+  priority += normalizedFullPath.length * 0.0001;
+
+  return priority;
+}
+
 class FileSearchCache {
   private sessions = new Map<string, SessionCache>();
   private cacheTimeout = 5 * 60 * 1000; // 5 minutes
@@ -93,7 +143,11 @@ class FileSearchCache {
       const log = sessionLogger(logger, sessionId);
       log.debug('FileSearchCache: Refreshing file cache');
 
-      const response = await sessionRipgrep(sessionId, ['--files', '--follow'], undefined);
+      const response = await sessionRipgrep(
+        sessionId,
+        ['--files', '--follow', '--hidden', '--no-ignore', '--glob', '!.git'],
+        undefined
+      );
 
       if (!response.success || !response.stdout) {
         log.error(
@@ -179,8 +233,21 @@ class FileSearchCache {
       threshold,
     };
 
+    const deduped = new Map<string, { item: FileItem; priority: number }>();
+
     const results = cache.fuse.search(query, searchOptions);
-    return results.map(result => result.item);
+    for (const result of results) {
+      const priority = computeSearchPriority(result.item, query, result.score ?? 1);
+      const existing = deduped.get(result.item.fullPath);
+      if (!existing || priority < existing.priority) {
+        deduped.set(result.item.fullPath, { item: result.item, priority });
+      }
+    }
+
+    return [...deduped.values()]
+      .sort((a, b) => a.priority - b.priority)
+      .slice(0, limit)
+      .map(result => result.item);
   }
 
   getAllFiles(sessionId: string): FileItem[] {
@@ -207,4 +274,8 @@ export async function searchFiles(
   options: SearchOptions = {}
 ): Promise<FileItem[]> {
   return fileSearchCache.search(sessionId, query, options);
+}
+
+export function invalidateSessionFileSearchCache(sessionId: string): void {
+  fileSearchCache.clearCache(sessionId);
 }

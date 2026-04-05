@@ -704,6 +704,7 @@ export const zhHans: TranslationStructure = {
     loadingFile: ({ fileName }: { fileName: string }) => `正在加载 ${fileName}...`,
     binaryFile: '二进制文件',
     cannotDisplayBinary: '无法显示二进制文件内容',
+    tapImageToZoom: '点按图片可放大',
     diff: '差异',
     file: '文件',
     fileEmpty: '文件为空',

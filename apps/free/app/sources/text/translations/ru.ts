@@ -739,10 +739,20 @@ export const ru: TranslationStructure = {
     loadingFile: ({ fileName }: { fileName: string }) => `Загрузка ${fileName}...`,
     binaryFile: 'Бинарный файл',
     cannotDisplayBinary: 'Невозможно отобразить содержимое бинарного файла',
+    tapImageToZoom: 'Нажмите на изображение, чтобы увеличить',
     diff: 'Различия',
     file: 'Файл',
     fileEmpty: 'Файл пустой',
     noChanges: 'Нет изменений для отображения',
+    failedToDecodeContent: 'Не удалось декодировать содержимое файла',
+    failedToReadFile: 'Не удалось прочитать файл',
+    failedToLoadFile: 'Не удалось загрузить файл',
+    pathCopied: 'Путь скопирован',
+    fileSize: ({ bytes }: { bytes: number }) => {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    },
     browseTitle: 'Browse',
     browseFolderUp: 'Up',
     browseEmpty: 'This folder is empty',
@@ -1018,6 +1028,8 @@ export const ru: TranslationStructure = {
     pullToLoadEarlier: 'Потяните для загрузки ранних сообщений',
     releaseToLoadEarlier: 'Отпустите для загрузки ранних сообщений',
     loadingEarlier: 'Загрузка...',
+    navPanelPartialHint:
+      'Показаны только загруженные сообщения. Прокрутите вверх, чтобы загрузить более ранние.',
     scrollToBottom: 'Вниз',
     newMessages: ({ count }: { count: number }) =>
       `${count} ${count === 1 ? 'новое сообщение' : count < 5 ? 'новых сообщения' : 'новых сообщений'}`,

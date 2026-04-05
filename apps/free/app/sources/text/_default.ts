@@ -717,6 +717,7 @@ export const en = {
     loadingFile: ({ fileName }: { fileName: string }) => `Loading ${fileName}...`,
     binaryFile: 'Binary File',
     cannotDisplayBinary: 'Cannot display binary file content',
+    tapImageToZoom: 'Tap image to zoom',
     diff: 'Diff',
     file: 'File',
     fileEmpty: 'File is empty',

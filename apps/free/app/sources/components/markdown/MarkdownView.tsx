@@ -1,4 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
+import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { Link } from 'expo-router';
 import { useRouter } from 'expo-router';
@@ -6,15 +7,23 @@ import * as React from 'react';
 import { Pressable, ScrollView, View, Platform } from 'react-native';
 import { Gesture, GestureDetector, NativeViewGestureHandler } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
+import { ImagePreviewModal } from '../ImagePreviewModal';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Text } from '../StyledText';
 import { MermaidRenderer } from './MermaidRenderer';
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
+import { sessionReadFile } from '@/sync/ops';
 import { storeTempText } from '@/sync/persistence';
 import { useLocalSetting } from '@/sync/storage';
 import { t } from '@/text';
+import {
+  encodeSessionFilePathForRoute,
+  resolveSessionMarkdownAssetPath,
+  sanitizeMarkdownPathCandidate,
+  stripMarkdownPathSuffixes,
+} from '@/utils/sessionFilePath';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/markdown/MarkdownView');
 
@@ -33,8 +42,85 @@ export type Option = {
   title: string;
 };
 
+function getImageMimeTypeFromPath(pathOrUrl: string): string | null {
+  const cleanPath = pathOrUrl.split('?')[0]?.split('#')[0] ?? pathOrUrl;
+  const ext = cleanPath.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'bmp':
+      return 'image/bmp';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'ico':
+      return 'image/x-icon';
+    case 'heic':
+      return 'image/heic';
+    case 'heif':
+      return 'image/heif';
+    case 'avif':
+      return 'image/avif';
+    default:
+      return null;
+  }
+}
+
+function isRemoteImageUri(source: string): boolean {
+  return /^https?:\/\//i.test(source);
+}
+
+function isDataImageUri(source: string): boolean {
+  return /^data:image\//i.test(source);
+}
+
+function isLocalMarkdownImageSource(source: string): boolean {
+  const trimmed = sanitizeMarkdownPathCandidate(source);
+  if (!trimmed) return false;
+  if (isRemoteImageUri(trimmed) || isDataImageUri(trimmed)) return false;
+  return (
+    trimmed.startsWith('file://') ||
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('./') ||
+    trimmed.startsWith('../') ||
+    !/^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+  );
+}
+
+function isLocalMarkdownFileTarget(target: string): boolean {
+  const trimmed = sanitizeMarkdownPathCandidate(target);
+  if (!trimmed) return false;
+  if (/^https?:\/\//i.test(trimmed)) return false;
+  if (trimmed.startsWith('mailto:') || trimmed.startsWith('tel:')) return false;
+  return (
+    trimmed.startsWith('file://') ||
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('./') ||
+    trimmed.startsWith('../') ||
+    !/^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+  );
+}
+
+function resolveMarkdownFileTarget(target: string, assetContext?: MarkdownAssetContext): string | null {
+  const trimmed = stripMarkdownPathSuffixes(target);
+  if (!isLocalMarkdownFileTarget(trimmed)) return null;
+  if (!assetContext?.markdownFilePath) return null;
+  return resolveSessionMarkdownAssetPath(assetContext.markdownFilePath, trimmed);
+}
+
 export const MarkdownView = React.memo(
-  (props: { markdown: string; onOptionPress?: (option: Option) => void }) => {
+  (props: {
+    markdown: string;
+    onOptionPress?: (option: Option) => void;
+    sessionId?: string;
+    markdownFilePath?: string;
+  }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
 
     // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
@@ -67,6 +153,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
+                  assetContext={props}
                 />
               );
             } else if (block.type === 'header') {
@@ -78,6 +165,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
+                  assetContext={props}
                 />
               );
             } else if (block.type === 'horizontal-rule') {
@@ -90,6 +178,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
+                  assetContext={props}
                 />
               );
             } else if (block.type === 'numbered-list') {
@@ -100,6 +189,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
+                  assetContext={props}
                 />
               );
             } else if (block.type === 'code-block') {
@@ -144,6 +234,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
+                  assetContext={props}
                 />
               );
             } else if (block.type === 'checklist') {
@@ -154,6 +245,19 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
+                  assetContext={props}
+                />
+              );
+            } else if (block.type === 'image') {
+              return (
+                <RenderImageBlock
+                  key={index}
+                  source={block.source}
+                  alt={block.alt}
+                  first={index === 0}
+                  last={index === blocks.length - 1}
+                  sessionId={props.sessionId}
+                  markdownFilePath={props.markdownFilePath}
                 />
               );
             } else {
@@ -189,19 +293,91 @@ export const MarkdownView = React.memo(
   }
 );
 
+type MarkdownAssetContext = {
+  sessionId?: string;
+  markdownFilePath?: string;
+};
+
+function useResolvedMarkdownImage(source: string, assetContext?: MarkdownAssetContext) {
+  const [resolvedUri, setResolvedUri] = React.useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = React.useState(false);
+  const sanitizedSource = React.useMemo(() => sanitizeMarkdownPathCandidate(source), [source]);
+  const localSourcePath = React.useMemo(() => {
+    if (!isLocalMarkdownImageSource(source)) return null;
+    if (!assetContext?.markdownFilePath) return null;
+    return resolveSessionMarkdownAssetPath(assetContext.markdownFilePath, source);
+  }, [assetContext?.markdownFilePath, source]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoadFailed(false);
+
+      if (isRemoteImageUri(source) || isDataImageUri(source)) {
+        setResolvedUri(sanitizedSource);
+        return;
+      }
+
+      if (sanitizedSource.startsWith('file://')) {
+        setResolvedUri(sanitizedSource);
+        return;
+      }
+
+      if (!assetContext?.sessionId || !localSourcePath) {
+        setResolvedUri(null);
+        setLoadFailed(true);
+        return;
+      }
+
+      try {
+        const response = await sessionReadFile(assetContext.sessionId, localSourcePath);
+        if (cancelled) return;
+        if (!response.success || typeof response.content !== 'string') {
+          setResolvedUri(null);
+          setLoadFailed(true);
+          return;
+        }
+
+        const mimeType = getImageMimeTypeFromPath(localSourcePath) ?? 'application/octet-stream';
+        setResolvedUri(`data:${mimeType};base64,${response.content}`);
+      } catch (error) {
+        if (!cancelled) {
+          logger.debug('markdown image load failed', {
+            source,
+            resolvedPath: localSourcePath,
+            error: String(error),
+          });
+          setResolvedUri(null);
+          setLoadFailed(true);
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [assetContext?.sessionId, localSourcePath, sanitizedSource, source]);
+
+  return { resolvedUri, loadFailed, localSourcePath };
+}
+
 function RenderTextBlock(props: {
   spans: MarkdownSpan[];
   first: boolean;
   last: boolean;
   selectable: boolean;
+  assetContext?: MarkdownAssetContext;
 }) {
   const content = (
-    <Text
+    <RenderInlineBlock
+      spans={props.spans}
       selectable={props.selectable}
-      style={[style.text, props.first && style.first, props.last && style.last]}
-    >
-      <RenderSpans spans={props.spans} baseStyle={style.text} />
-    </Text>
+      containerStyle={[style.textBlock, props.first && style.first, props.last && style.last]}
+      textStyle={style.text}
+      assetContext={props.assetContext}
+    />
   );
   // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
   if (props.selectable && Platform.OS !== 'web') {
@@ -210,19 +386,66 @@ function RenderTextBlock(props: {
   return content;
 }
 
+function RenderImageBlock(props: {
+  source: string;
+  alt: string;
+  first: boolean;
+  last: boolean;
+  sessionId?: string;
+  markdownFilePath?: string;
+}) {
+  const [previewUri, setPreviewUri] = React.useState<string | null>(null);
+  const { resolvedUri, loadFailed, localSourcePath } = useResolvedMarkdownImage(props.source, {
+    sessionId: props.sessionId,
+    markdownFilePath: props.markdownFilePath,
+  });
+
+  const containerStyle = [style.imageBlock, props.first && style.first, props.last && style.last];
+
+  if (!resolvedUri) {
+    return (
+      <View style={containerStyle}>
+        <View style={style.imagePlaceholder}>
+          <Text style={style.imagePlaceholderText}>
+            {loadFailed ? props.alt || props.source : t('common.loading')}
+          </Text>
+          {loadFailed && <Text style={style.imageSourceText}>{props.source}</Text>}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={containerStyle}>
+      {previewUri && <ImagePreviewModal uri={previewUri} onClose={() => setPreviewUri(null)} />}
+      <Pressable onPress={() => setPreviewUri(resolvedUri)} style={style.imageCard}>
+        <Image source={{ uri: resolvedUri }} style={style.image} contentFit="contain" />
+      </Pressable>
+      {(props.alt || localSourcePath) && (
+        <Text style={style.imageCaption}>{props.alt || localSourcePath}</Text>
+      )}
+    </View>
+  );
+}
+
 function RenderHeaderBlock(props: {
   level: 1 | 2 | 3 | 4 | 5 | 6;
   spans: MarkdownSpan[];
   first: boolean;
   last: boolean;
   selectable: boolean;
+  assetContext?: MarkdownAssetContext;
 }) {
   const s = (style as any)[`header${props.level}`];
   const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
   const content = (
-    <Text selectable={props.selectable} style={headerStyle}>
-      <RenderSpans spans={props.spans} baseStyle={headerStyle} />
-    </Text>
+    <RenderInlineBlock
+      spans={props.spans}
+      selectable={props.selectable}
+      containerStyle={[style.textBlock, headerStyle]}
+      textStyle={headerStyle}
+      assetContext={props.assetContext}
+    />
   );
   // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
   if (props.selectable && Platform.OS !== 'web') {
@@ -236,14 +459,23 @@ function RenderListBlock(props: {
   first: boolean;
   last: boolean;
   selectable: boolean;
+  assetContext?: MarkdownAssetContext;
 }) {
   const listStyle = [style.text, style.list];
   const content = (
     <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
       {props.items.map((item, index) => (
-        <Text selectable={props.selectable} style={listStyle} key={index}>
-          - <RenderSpans spans={item} baseStyle={listStyle} />
-        </Text>
+        <View key={index} style={style.listRow}>
+          <Text selectable={props.selectable} style={listStyle}>
+            -{' '}
+          </Text>
+          <RenderInlineContent
+            spans={item}
+            selectable={props.selectable}
+            textStyle={listStyle}
+            assetContext={props.assetContext}
+          />
+        </View>
       ))}
     </View>
   );
@@ -259,14 +491,23 @@ function RenderNumberedListBlock(props: {
   first: boolean;
   last: boolean;
   selectable: boolean;
+  assetContext?: MarkdownAssetContext;
 }) {
   const listStyle = [style.text, style.list];
   const content = (
     <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
       {props.items.map((item, index) => (
-        <Text selectable={props.selectable} style={listStyle} key={index}>
-          {item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} />
-        </Text>
+        <View key={index} style={style.listRow}>
+          <Text selectable={props.selectable} style={listStyle}>
+            {item.number.toString()}.{' '}
+          </Text>
+          <RenderInlineContent
+            spans={item.spans}
+            selectable={props.selectable}
+            textStyle={listStyle}
+            assetContext={props.assetContext}
+          />
+        </View>
       ))}
     </View>
   );
@@ -379,12 +620,17 @@ function RenderBlockquoteBlock(props: {
   first: boolean;
   last: boolean;
   selectable: boolean;
+  assetContext?: MarkdownAssetContext;
 }) {
   const content = (
     <View style={[style.blockquote, props.first && style.first, props.last && style.last]}>
-      <Text selectable={props.selectable} style={[style.text, style.blockquoteText]}>
-        <RenderSpans spans={props.spans} baseStyle={[style.text, style.blockquoteText]} />
-      </Text>
+      <RenderInlineBlock
+        spans={props.spans}
+        selectable={props.selectable}
+        containerStyle={style.textBlock}
+        textStyle={[style.text, style.blockquoteText]}
+        assetContext={props.assetContext}
+      />
     </View>
   );
   if (props.selectable && Platform.OS !== 'web') {
@@ -399,15 +645,23 @@ function RenderChecklistBlock(props: {
   first: boolean;
   last: boolean;
   selectable: boolean;
+  assetContext?: MarkdownAssetContext;
 }) {
   const listStyle = [style.text, style.list];
   const content = (
     <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
       {props.items.map((item, index) => (
-        <Text selectable={props.selectable} style={listStyle} key={index}>
-          {item.checked ? '\u2611 ' : '\u2610 '}
-          <RenderSpans spans={item.spans} baseStyle={listStyle} />
-        </Text>
+        <View key={index} style={style.listRow}>
+          <Text selectable={props.selectable} style={listStyle}>
+            {item.checked ? '\u2611 ' : '\u2610 '}
+          </Text>
+          <RenderInlineContent
+            spans={item.spans}
+            selectable={props.selectable}
+            textStyle={listStyle}
+            assetContext={props.assetContext}
+          />
+        </View>
       ))}
     </View>
   );
@@ -417,18 +671,74 @@ function RenderChecklistBlock(props: {
   return content;
 }
 
-function RenderSpans(props: { spans: MarkdownSpan[]; baseStyle?: any }) {
+function RenderInlineBlock(props: {
+  spans: MarkdownSpan[];
+  selectable: boolean;
+  containerStyle?: any;
+  textStyle?: any;
+  assetContext?: MarkdownAssetContext;
+}) {
   return (
-    <>
+    <View style={props.containerStyle}>
+      <RenderInlineContent
+        spans={props.spans}
+        selectable={props.selectable}
+        textStyle={props.textStyle}
+        assetContext={props.assetContext}
+      />
+    </View>
+  );
+}
+
+function RenderInlineContent(props: {
+  spans: MarkdownSpan[];
+  selectable: boolean;
+  textStyle?: any;
+  assetContext?: MarkdownAssetContext;
+}) {
+  const router = useRouter();
+
+  return (
+    <View style={style.inlineContent}>
       {props.spans.map((span, index) => {
+        if (span.type === 'image') {
+          return (
+            <InlineMarkdownImage
+              key={index}
+              source={span.source}
+              alt={span.alt}
+              assetContext={props.assetContext}
+            />
+          );
+        }
+
         if (span.url) {
           const url = span.url;
+          const localTarget = resolveMarkdownFileTarget(url, props.assetContext);
+          if (localTarget && props.assetContext?.sessionId) {
+            return (
+              <Text
+                key={index}
+                selectable={props.selectable}
+                style={[style.link, props.textStyle, span.styles.map(s => style[s])]}
+                onPress={() => {
+                  const encodedPath = encodeURIComponent(
+                    encodeSessionFilePathForRoute(localTarget)
+                  );
+                  router.push(`/session/${props.assetContext?.sessionId}/file?path=${encodedPath}`);
+                }}
+              >
+                {span.text}
+              </Text>
+            );
+          }
+
           if (!shouldUseExpoRouterLink(url)) {
             return (
               <Text
                 key={index}
-                selectable
-                style={[style.link, props.baseStyle, span.styles.map(s => style[s])]}
+                selectable={props.selectable}
+                style={[style.link, props.textStyle, span.styles.map(s => style[s])]}
                 onPress={() => {
                   void Linking.openURL(url).catch(err => {
                     logger.debug('markdown link open failed', { url, error: String(err) });
@@ -440,24 +750,54 @@ function RenderSpans(props: { spans: MarkdownSpan[]; baseStyle?: any }) {
             );
           }
           return (
-            <Link
-              key={index}
-              href={url as any}
-              target="_blank"
-              style={[style.link, span.styles.map(s => style[s])]}
-            >
-              {span.text}
-            </Link>
-          );
-        } else {
-          return (
-            <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>
-              {span.text}
-            </Text>
-          );
+              <Link
+                key={index}
+                href={url as any}
+                target="_blank"
+                style={[style.link, props.textStyle, span.styles.map(s => style[s])]}
+              >
+                {span.text}
+              </Link>
+            );
         }
+
+        return (
+          <Text
+            key={index}
+            selectable={props.selectable}
+            style={[props.textStyle, span.styles.map(s => style[s])]}
+          >
+            {span.text}
+          </Text>
+        );
       })}
-    </>
+    </View>
+  );
+}
+
+function InlineMarkdownImage(props: {
+  source: string;
+  alt: string;
+  assetContext?: MarkdownAssetContext;
+}) {
+  const [previewUri, setPreviewUri] = React.useState<string | null>(null);
+  const { resolvedUri, loadFailed } = useResolvedMarkdownImage(props.source, props.assetContext);
+
+  if (!resolvedUri) {
+    return (
+      <Text style={style.inlineImageFallback}>
+        {loadFailed ? `[image: ${props.alt || props.source}]` : '[loading image]'}
+      </Text>
+    );
+  }
+
+  return (
+    <View style={style.inlineImageWrapper}>
+      {previewUri && <ImagePreviewModal uri={previewUri} onClose={() => setPreviewUri(null)} />}
+      <Pressable onPress={() => setPreviewUri(resolvedUri)} style={style.inlineImageCard}>
+        <Image source={{ uri: resolvedUri }} style={style.inlineImage} contentFit="cover" />
+      </Pressable>
+    </View>
   );
 }
 
@@ -517,10 +857,23 @@ const style = StyleSheet.create(theme => ({
     ...Typography.default(),
     fontSize: 16,
     lineHeight: 24, // Reduced from 28 to 24
-    marginTop: 8,
-    marginBottom: 8,
     color: theme.colors.text,
     fontWeight: '400',
+  },
+  textBlock: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  inlineContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 0,
+    rowGap: 6,
+  },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
 
   italic: {
@@ -791,6 +1144,77 @@ const style = StyleSheet.create(theme => ({
     color: theme.colors.text,
     fontSize: 16,
     lineHeight: 24,
+  },
+  imageBlock: {
+    marginVertical: 8,
+  },
+  imageCard: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+    backgroundColor: theme.colors.surfaceHigh,
+  },
+  image: {
+    width: '100%',
+    minHeight: 220,
+    maxHeight: 520,
+    backgroundColor: theme.colors.surfaceHigh,
+  },
+  imageCaption: {
+    ...Typography.default(),
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  imagePlaceholder: {
+    minHeight: 120,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+    backgroundColor: theme.colors.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    gap: 8,
+  },
+  imagePlaceholderText: {
+    ...Typography.default('semiBold'),
+    color: theme.colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  imageSourceText: {
+    ...Typography.mono(),
+    color: theme.colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  inlineImageWrapper: {
+    marginHorizontal: 4,
+    marginVertical: 2,
+  },
+  inlineImageCard: {
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+    backgroundColor: theme.colors.surfaceHigh,
+  },
+  inlineImage: {
+    width: 72,
+    height: 72,
+    backgroundColor: theme.colors.surfaceHigh,
+  },
+  inlineImageFallback: {
+    ...Typography.default(),
+    color: theme.colors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
   },
 
   // Add global style for Web platform (Unistyles supports this via compiler plugin)

@@ -678,6 +678,7 @@ export const ja: TranslationStructure = {
     loadingFile: ({ fileName }: { fileName: string }) => `${fileName}を読み込み中...`,
     binaryFile: 'バイナリファイル',
     cannotDisplayBinary: 'バイナリファイルの内容を表示できません',
+    tapImageToZoom: '画像をタップして拡大',
     diff: '差分',
     file: 'ファイル',
     fileEmpty: 'ファイルは空です',
@@ -979,6 +980,8 @@ export const ja: TranslationStructure = {
     pullToLoadEarlier: '引っ張って前のメッセージを読み込む',
     releaseToLoadEarlier: '離して前のメッセージを読み込む',
     loadingEarlier: '読み込み中...',
+    navPanelPartialHint:
+      '読み込まれたメッセージのみ表示しています。上にスクロールすると以前のメッセージを読み込みます。',
     scrollToBottom: '一番下へ',
     newMessages: ({ count }: { count: number }) => `${count}件の新しいメッセージ`,
     today: '今日',

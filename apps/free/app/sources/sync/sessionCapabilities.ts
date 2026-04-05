@@ -70,7 +70,7 @@ export type CapabilityCategory = keyof Pick<
   'models' | 'modes' | 'configOptions' | 'commands'
 >;
 
-const capabilityPresets: Record<'claude' | 'gemini' | 'opencode' | 'cursor', SessionCapabilities> =
+const capabilityPresets: Record<'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor', SessionCapabilities> =
   {
     claude: {
       models: {
@@ -84,6 +84,12 @@ const capabilityPresets: Record<'claude' | 'gemini' | 'opencode' | 'cursor', Ses
           { id: 'sonnet', name: 'Sonnet', description: 'Fast and efficient' },
           { id: 'opus', name: 'Opus', description: 'Most capable model' },
         ],
+        current: 'default',
+      },
+    },
+    codex: {
+      models: {
+        available: [{ id: 'default', name: 'Default', description: 'Use CLI default model' }],
         current: 'default',
       },
     },

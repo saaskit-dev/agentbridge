@@ -1,6 +1,8 @@
 import type { MarkdownBlock } from './markdownTypes';
 import { parseMarkdownSpans } from './parseMarkdownSpans';
 
+const markdownImagePattern = /^!\[([^\]]*)\]\(([^)]+)\)$/;
+
 function parseTable(
   lines: string[],
   startIndex: number
@@ -113,6 +115,17 @@ export function parseMarkdownBlock(markdown: string) {
     // Horizontal rule
     if (trimmed === '---') {
       blocks.push({ type: 'horizontal-rule' });
+      continue;
+    }
+
+    // Standalone image
+    const imageMatch = trimmed.match(markdownImagePattern);
+    if (imageMatch) {
+      blocks.push({
+        type: 'image',
+        alt: imageMatch[1] ?? '',
+        source: imageMatch[2]?.trim() ?? '',
+      });
       continue;
     }
 
