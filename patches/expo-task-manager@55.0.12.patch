@@ -1,0 +1,70 @@
+diff --git a/ios/TaskManagerModule.swift b/ios/TaskManagerModule.swift
+index 6322978baef5784d4ea185ed670a610895a2aa2c..a57a38e41f441ccd43adad3d0763d56feed9fea1 100644
+--- a/ios/TaskManagerModule.swift
++++ b/ios/TaskManagerModule.swift
+@@ -9,7 +9,7 @@ private let EXECUTE_TASK_EVENT_NAME = "TaskManager.executeTask"
+ 
+ public final class TaskManagerModule: Module, EXTaskManagerInterface {
+   let appId: AppId = "mainApplication"
+-  var eventsQueue: [[String: Any]]? = []
++  var eventsQueue: [[AnyHashable: Any]]? = []
+ 
+   public func definition() -> ModuleDefinition {
+     Name("ExpoTaskManager")
+@@ -17,7 +17,7 @@ public final class TaskManagerModule: Module, EXTaskManagerInterface {
+     Events(EXECUTE_TASK_EVENT_NAME)
+ 
+     OnCreate {
+-      EXTaskService.shared.setTaskManager(self, forAppId: appId, withUrl: findAppUrl())
++      EXTaskService.shared.setTaskManager(self, forAppId: appId, withUrl: findAppUrl() ?? "")
+     }
+ 
+     Constant("EVENT_NAME") {
+@@ -25,14 +25,14 @@ public final class TaskManagerModule: Module, EXTaskManagerInterface {
+     }
+ 
+     OnStartObserving(EXECUTE_TASK_EVENT_NAME) {
+-      // When `OnStartObserving` is called, the app is ready to execute new tasks.
+-      // It sends all events that were queued before this call.
+       if let eventsQueue {
+         for eventBody in eventsQueue {
+-          sendEvent(EXECUTE_TASK_EVENT_NAME, eventBody)
++          let stringBody = eventBody as? [String: Any] ?? eventBody.reduce(into: [String: Any]()) { result, pair in
++            if let key = pair.key as? String { result[key] = pair.value }
++          }
++          sendEvent(EXECUTE_TASK_EVENT_NAME, stringBody)
+         }
+       }
+-      // We will not need the queue anymore.
+       eventsQueue = nil
+     }
+ 
+@@ -78,7 +78,7 @@ public final class TaskManagerModule: Module, EXTaskManagerInterface {
+   }
+ 
+   public func registerTask(withName taskName: TaskName, consumer consumerClass: AnyClass, options: [AnyHashable: Any] = [:]) {
+-    let appUrl = findAppUrl()
++    let appUrl = findAppUrl() ?? ""
+     EXTaskService.shared.registerTask(withName: taskName, appId: appId, appUrl: appUrl, consumerClass: consumerClass, options: options)
+   }
+ 
+@@ -90,14 +90,14 @@ public final class TaskManagerModule: Module, EXTaskManagerInterface {
+     return EXTaskService.hasBackgroundModeEnabled(backgroundMode)
+   }
+ 
+-  public func execute(withBody body: [String: Any]) {
++  public func execute(withBody body: [AnyHashable: Any]) {
++    let stringBody = body as? [String: Any] ?? body.reduce(into: [String: Any]()) { result, pair in
++      if let key = pair.key as? String { result[key] = pair.value }
++    }
+     if eventsQueue != nil {
+-      // The module was created, but JS is not listening for events yet.
+-      // In that case we need to queue them up.
+       eventsQueue?.append(body)
+     } else {
+-      // JS is already listening to the event, we can emit it straight away.
+-      sendEvent(EXECUTE_TASK_EVENT_NAME, body)
++      sendEvent(EXECUTE_TASK_EVENT_NAME, stringBody)
+     }
+   }
+ 

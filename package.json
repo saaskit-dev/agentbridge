@@ -80,7 +80,10 @@
       "@more-tech/react-native-libsodium",
       "esbuild",
       "node-pty"
-    ]
+    ],
+    "patchedDependencies": {
+      "expo-task-manager@55.0.12": "patches/expo-task-manager@55.0.12.patch"
+    }
   },
   "packageManager": "pnpm@10.32.1",
   "engines": {
