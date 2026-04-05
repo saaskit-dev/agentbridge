@@ -10,11 +10,9 @@
  *   SessionManager.ts → daemon/run.ts → SessionManager.ts).
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import type { AgentSession } from './AgentSession';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySession = AgentSession<any>;
 
 const logger = new Logger('daemon/sessions/SessionManager');

@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { SessionManager } from './SessionManager';
 import type { AgentSession } from './AgentSession';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySession = AgentSession<any>;
 
 function makeMockSession(overrides: Partial<AnySession> = {}): AnySession {

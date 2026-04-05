@@ -19,7 +19,6 @@ import type { AgentType } from './types';
 
 const logger = new Logger('daemon/sessions/AgentSessionFactory');
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AgentSessionConstructor = new (opts: AgentSessionOpts) => AgentSession<any>;
 
 const registry = new Map<AgentType, AgentSessionConstructor>();
@@ -30,7 +29,6 @@ export const AgentSessionFactory = {
     registry.set(agentType, cls);
   },
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   create(agentType: AgentType, opts: AgentSessionOpts): AgentSession<any> {
     const Cls = registry.get(agentType);
     if (!Cls) {

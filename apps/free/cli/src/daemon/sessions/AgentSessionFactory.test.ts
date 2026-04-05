@@ -43,7 +43,6 @@ describe('AgentSessionFactory', () => {
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     AgentSessionFactory.register('__test_dummy__' as any, DummySession as any);
     expect(AgentSessionFactory.isRegistered('__test_dummy__' as any)).toBe(true);
 

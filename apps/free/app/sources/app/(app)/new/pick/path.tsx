@@ -230,7 +230,6 @@ export default function PathPickerScreen() {
     if (!params.machineId || browsePath !== null) return;
     const target = params.selectedPath || machine?.metadata?.homeDir;
     if (target) loadDirectory(target);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [machine?.metadata?.homeDir]);
 
   const handleSelectPath = React.useCallback(() => {

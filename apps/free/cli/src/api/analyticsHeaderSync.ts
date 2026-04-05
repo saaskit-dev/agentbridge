@@ -135,7 +135,6 @@ export function installAnalyticsHeaderInterceptor(): void {
   if (interceptorInstalled) return;
   interceptorInstalled = true;
 
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const axios = require('axios').default;
   axios.interceptors.response.use((response: any) => {
     const header = response.headers['x-analytics-enabled'];

@@ -5,9 +5,7 @@ import type { NormalizedMessage } from '@/daemon/sessions/types';
 // Intercept stdout and stderr writes
 let stdoutChunks: string[];
 let stderrChunks: string[];
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let stdoutSpy: any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let stderrSpy: any;
 
 beforeEach(() => {
