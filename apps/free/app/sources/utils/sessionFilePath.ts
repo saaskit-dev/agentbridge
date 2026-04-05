@@ -36,7 +36,9 @@ export function normalizePosixPath(path: string): string {
     stack.push(part);
   }
 
-  if (isAbsolute) return `/${stack.join('/')}` || '/';
+  if (isAbsolute) {
+    return stack.length === 0 ? '/' : `/${stack.join('/')}`;
+  }
   return stack.join('/') || '.';
 }
 
