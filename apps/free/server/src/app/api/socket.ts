@@ -1,5 +1,6 @@
 import { createAdapter } from '@socket.io/postgres-adapter';
 import { Pool } from 'pg';
+import { sendSilentReconnectPush } from '@/app/push/pushSender';
 import { Server, Socket } from 'socket.io';
 import {
   decrementWebSocketConnection,
@@ -172,7 +173,7 @@ export async function startSocket(app: Fastify) {
       log.debug('[connect] machine online broadcast', { userId, machineId: machineId });
     }
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', reason => {
       websocketEventsCounter.inc({ event_type: 'disconnect' });
 
       // Cleanup connections
@@ -247,6 +248,13 @@ export async function startSocket(app: Fastify) {
             payload: sessionActivity,
             recipientFilter: { type: 'user-scoped-only' },
           });
+        }
+
+        if (connection.connectionType === 'user-scoped') {
+          const isUnexpected = reason === 'transport close' || reason === 'ping timeout';
+          if (isUnexpected) {
+            await sendSilentReconnectPush(userId);
+          }
         }
 
         log.debug('[disconnect] db-write done', {
@@ -331,4 +339,3 @@ export async function startSocket(app: Fastify) {
     log.info('[shutdown] disconnect-drain: done');
   });
 }
-

@@ -1,10 +1,6 @@
 import 'react-native-quick-base64';
 import '../theme.css';
-import {
-  initAppTelemetry,
-  setTelemetryAuthToken,
-  setAnalyticsEnabled,
-} from '@/appTelemetry';
+import { initAppTelemetry, setTelemetryAuthToken, setAnalyticsEnabled } from '@/appTelemetry';
 import { FontAwesome } from '@expo/vector-icons';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import * as Fonts from 'expo-font';
@@ -46,13 +42,24 @@ initAppTelemetry();
 
 // Configure notification handler for foreground notifications
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async notification => {
+    if (notification.request.content.data?.type === 'ws-reconnect') {
+      return {
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
+      };
+    }
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    };
+  },
 });
 
 // Setup Android notification channel (required for Android 8.0+)
@@ -300,9 +307,7 @@ export default function RootLayout() {
   return (
     <>
       <FaviconPermissionIndicator />
-      <React.Fragment key={languageKey}>
-        {providers}
-      </React.Fragment>
+      <React.Fragment key={languageKey}>{providers}</React.Fragment>
     </>
   );
 }

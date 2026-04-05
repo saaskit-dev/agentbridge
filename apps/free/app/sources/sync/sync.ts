@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
+import * as TaskManager from 'expo-task-manager';
 import { registerPushToken } from './apiPush';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
@@ -65,6 +66,54 @@ import type { PermissionMode } from './sessionCapabilities';
 import { messageDB } from './messageDB';
 
 const logger = new Logger('app/sync');
+
+const BACKGROUND_NOTIFICATION_TASK = 'ws-reconnect-background';
+
+let lastHandledReconnectToken: string | null = null;
+
+let _ackReconnectToken: ((token: string) => Promise<void>) | null = null;
+
+async function handleReconnectPushNotification(
+  data: Record<string, unknown> | null | undefined
+): Promise<void> {
+  if (!data || data.type !== 'ws-reconnect') return;
+
+  const reconnectToken = data.reconnectToken as string | undefined;
+  if (!reconnectToken) return;
+
+  if (reconnectToken === lastHandledReconnectToken) {
+    logger.debug('[sync] ws-reconnect push ignored: duplicate token');
+    return;
+  }
+  lastHandledReconnectToken = reconnectToken;
+
+  if (_ackReconnectToken) {
+    await _ackReconnectToken(reconnectToken);
+  }
+
+  logger.info('[sync] silent push ws-reconnect received, resuming socket');
+  if (apiSocket.getStatus() !== 'connected' && apiSocket.getStatus() !== 'connecting') {
+    apiSocket.resume();
+  }
+}
+
+if (typeof TaskManager !== 'undefined') {
+  TaskManager.defineTask(
+    BACKGROUND_NOTIFICATION_TASK,
+    async ({
+      data,
+      error,
+    }: TaskManager.TaskManagerTaskBody<{ notification?: Notifications.Notification }>) => {
+      if (error) {
+        logger.error('[sync] background notification task error', { error: String(error) });
+        return;
+      }
+      await handleReconnectPushNotification(
+        (data?.notification?.request?.content?.data as Record<string, unknown> | undefined) ?? null
+      );
+    }
+  );
+}
 
 /**
  * Get voice hooks via lazy require to avoid static cross-layer init coupling.
@@ -218,6 +267,17 @@ class Sync {
         this.maybeStartBackgroundSendWatchdog();
       }
     });
+
+    if (Platform.OS !== 'web') {
+      Notifications.addNotificationReceivedListener(notification => {
+        handleReconnectPushNotification(
+          notification.request.content.data as Record<string, unknown> | undefined
+        );
+      });
+      void Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch(err => {
+        logger.debug('[sync] registerTaskAsync failed', { error: String(err) });
+      });
+    }
   }
 
   async create(credentials: AuthCredentials, encryption: Encryption) {
@@ -226,6 +286,20 @@ class Sync {
     this.anonId = encryption.anonId;
     this.accountId = parseToken(credentials.token);
     logger.info('[sync] create', { accountId: this.accountId });
+    _ackReconnectToken = async (reconnectToken: string) => {
+      if (!this.credentials) return;
+      const token = this.credentials.token;
+      const serverUrl = getServerUrl();
+      try {
+        await fetch(`${serverUrl}/v1/push-reconnect-ack`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reconnectToken }),
+        });
+      } catch (err) {
+        logger.debug('[sync] push-reconnect-ack failed', { error: String(err) });
+      }
+    };
     await this.#init();
 
     // Await settings sync to have fresh settings
@@ -246,6 +320,20 @@ class Sync {
     this.anonId = encryption.anonId;
     this.accountId = parseToken(credentials.token);
     logger.info('[sync] restore', { accountId: this.accountId });
+    _ackReconnectToken = async (reconnectToken: string) => {
+      if (!this.credentials) return;
+      const token = this.credentials.token;
+      const serverUrl = getServerUrl();
+      try {
+        await fetch(`${serverUrl}/v1/push-reconnect-ack`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reconnectToken }),
+        });
+      } catch (err) {
+        logger.debug('[sync] push-reconnect-ack failed', { error: String(err) });
+      }
+    };
     await this.#init();
   }
 
@@ -1092,7 +1180,7 @@ class Sync {
       hasLocalSessionRow: !!sessions[sessionId],
       listPageLikelyTruncated: keys.length >= 150,
     });
-  };
+  }
 
   private fetchSessions = async () => {
     if (!this.credentials) return;
@@ -2151,15 +2239,11 @@ class Sync {
         });
         messageDB
           .upsertMessagesAndSeq(sessionId, cacheEntries, maxSeq)
-          .catch(e =>
-            log.debug('[sync] messageDB upsertAndSeq failed', { error: String(e) })
-          );
+          .catch(e => log.debug('[sync] messageDB upsertAndSeq failed', { error: String(e) }));
       } else {
         messageDB
           .updateLastSeq(sessionId, maxSeq)
-          .catch(e =>
-            log.debug('[sync] messageDB updateLastSeq failed', { error: String(e) })
-          );
+          .catch(e => log.debug('[sync] messageDB updateLastSeq failed', { error: String(e) }));
       }
 
       this.setSessionLastSeq(sessionId, maxSeq);
@@ -2335,9 +2419,7 @@ class Sync {
         }));
         messageDB
           .upsertMessages(sessionId, cacheEntries)
-          .catch(e =>
-            log.debug('[sync] messageDB upsert failed', { error: String(e) })
-          );
+          .catch(e => log.debug('[sync] messageDB upsert failed', { error: String(e) }));
       }
 
       storage.getState().setSessionOlderMessagesState(sessionId, {
@@ -2565,9 +2647,7 @@ class Sync {
         });
         messageDB
           .upsertMessagesAndSeq(sessionId, cacheEntries, maxSeq)
-          .catch(e =>
-            log.debug('[sync] replay messageDB upsert failed', { error: String(e) })
-          );
+          .catch(e => log.debug('[sync] replay messageDB upsert failed', { error: String(e) }));
 
         this.setSessionLastSeq(sessionId, maxSeq);
       }
@@ -2982,10 +3062,10 @@ class Sync {
           // Version compatibility check
           const settingsSchemaVersion = parsedSettings.schemaVersion ?? 1;
           if (settingsSchemaVersion > SUPPORTED_SCHEMA_VERSION) {
-          logger.warn(
-            `Received settings schema v${settingsSchemaVersion}, ` +
-              `we support v${SUPPORTED_SCHEMA_VERSION}. Update app for full functionality.`
-          );
+            logger.warn(
+              `Received settings schema v${settingsSchemaVersion}, ` +
+                `we support v${SUPPORTED_SCHEMA_VERSION}. Update app for full functionality.`
+            );
           }
 
           storage.getState().applySettings(parsedSettings, accountUpdate.settings.version);
@@ -3211,9 +3291,7 @@ class Sync {
         const userProfile = users[feedItem.body.uid];
         if (userProfile === null || userProfile === undefined) {
           // User was not found or 404, don't store this item
-          logger.debug(
-            `Skipping feed item ${feedItem.id} - user ${feedItem.body.uid} not found`
-          );
+          logger.debug(`Skipping feed item ${feedItem.id} - user ${feedItem.body.uid} not found`);
           return;
         }
       }
@@ -3386,9 +3464,7 @@ class Sync {
     clearSessionTrace(sessionId);
     messageDB
       .deleteSession(sessionId)
-      .catch(e =>
-        log.debug('[sync] messageDB deleteSession failed', { error: String(e) })
-      );
+      .catch(e => log.debug('[sync] messageDB deleteSession failed', { error: String(e) }));
   }
 
   private applySessions = (

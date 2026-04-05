@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { type Fastify } from '../types';
 import { db } from '@/storage/db';
+import { ackReconnectToken } from '@/app/push/pushSender';
 
 export function pushRoutes(app: Fastify) {
   // Push Token Registration API
@@ -88,7 +89,6 @@ export function pushRoutes(app: Fastify) {
     }
   );
 
-  // Get Push Tokens API
   app.get(
     '/v1/push-tokens',
     {
@@ -118,6 +118,29 @@ export function pushRoutes(app: Fastify) {
       } catch (error) {
         return reply.code(500).send({ error: 'Failed to get push tokens' });
       }
+    }
+  );
+
+  app.post(
+    '/v1/push-reconnect-ack',
+    {
+      schema: {
+        body: z.object({
+          reconnectToken: z.string(),
+        }),
+        response: {
+          200: z.object({
+            success: z.boolean(),
+          }),
+        },
+      },
+      preHandler: app.authenticate,
+    },
+    async (request, reply) => {
+      const userId = request.userId;
+      const { reconnectToken } = request.body;
+      const valid = await ackReconnectToken(userId, reconnectToken);
+      return reply.send({ success: valid });
     }
   );
 }

@@ -766,6 +766,18 @@ export const ru: TranslationStructure = {
     imageTooLargeToPreview: 'This image is too large to preview inline',
     largeFilePreviewTruncated: 'Large file: only the first portion is shown',
     symlinkTo: ({ target }: { target: string }) => `Symlink to ${target}`,
+    download: 'Скачать',
+    downloadFolder: 'Скачать как ZIP',
+    delete: 'Удалить',
+    deleteFileConfirm: ({ name }: { name: string }) => `Delete "${name}"? This cannot be undone.`,
+    deleteFolderConfirm: ({ name }: { name: string }) => `Delete folder "${name}" and all its contents? This cannot be undone.`,
+    deleteSuccess: 'Успешно удалено',
+    deleteError: 'Не удалось удалить',
+    downloadError: 'Не удалось скачать файл',
+    fileTooLargeToDownload: 'Файл слишком большой для скачивания (макс. 10 МБ)',
+    downloadFolderError: 'Не удалось скачать папку',
+    preparingDownload: 'Подготовка к скачиванию...',
+    actions: 'Действия',
   },
 
   settingsAccount: {

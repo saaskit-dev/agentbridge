@@ -1,7 +1,18 @@
 import { Octicons } from '@expo/vector-icons';
+import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import * as React from 'react';
-import { View, ActivityIndicator, Platform, TextInput, Pressable, RefreshControl } from 'react-native';
+import {
+  View,
+  ActivityIndicator,
+  Platform,
+  TextInput,
+  Pressable,
+  RefreshControl,
+  ActionSheetIOS,
+  Alert,
+} from 'react-native';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { FileIcon } from '@/components/FileIcon';
 import { Item } from '@/components/Item';
@@ -10,7 +21,12 @@ import { layout } from '@/components/layout';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
-import { sessionListDirectory, type DirectoryEntry } from '@/sync/ops';
+import {
+  sessionListDirectory,
+  sessionReadFile,
+  sessionDeleteFile,
+  type DirectoryEntry,
+} from '@/sync/ops';
 import { useSession } from '@/sync/storage';
 import { invalidateSessionFileSearchCache, searchFiles, FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
@@ -37,7 +53,9 @@ function relativePathFromRoot(rootPath: string, currentPath: string): string {
   return c;
 }
 
-function getBrowseEntryKind(entry: DirectoryEntry): 'directory' | 'file' | 'broken-symlink' | 'special' {
+function getBrowseEntryKind(
+  entry: DirectoryEntry
+): 'directory' | 'file' | 'broken-symlink' | 'special' {
   if (entry.type === 'directory') return 'directory';
   if (entry.type === 'symlink' && entry.symlinkTargetType === 'directory') return 'directory';
   if (entry.type === 'file') return 'file';
@@ -210,6 +228,141 @@ export default function FilesScreen() {
     [router, sessionId]
   );
 
+  /**
+   * Download a single file from the daemon machine to the device via share sheet.
+   */
+  const downloadFile = React.useCallback(
+    async (absolutePath: string, fileName: string) => {
+      try {
+        const MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
+        const sizeCheck = await sessionReadFile(sessionId, absolutePath, 1);
+        if (typeof sizeCheck.size === 'number' && sizeCheck.size > MAX_DOWNLOAD_BYTES) {
+          Modal.alert(t('common.error'), t('files.fileTooLargeToDownload'));
+          return;
+        }
+        const response = await sessionReadFile(sessionId, absolutePath);
+        if (!response.success || typeof response.content !== 'string') {
+          Modal.alert(t('common.error'), t('files.downloadError'));
+          return;
+        }
+        const localUri = cacheDirectory + fileName;
+        await writeAsStringAsync(localUri, response.content, {
+          encoding: EncodingType.Base64,
+        });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(localUri, { dialogTitle: fileName });
+        } else {
+          Modal.alert(t('common.error'), t('files.downloadError'));
+        }
+      } catch (error) {
+        logger.error('downloadFile failed', toError(error));
+        Modal.alert(t('common.error'), t('files.downloadError'));
+      }
+    },
+    [sessionId]
+  );
+
+  /**
+   * Show the long-press action menu for a file or directory entry.
+   * Directories only support delete; download is file-only.
+   */
+  const showEntryActions = React.useCallback(
+    (absolutePath: string, name: string, kind: 'file' | 'directory') => {
+      const isDir = kind === 'directory';
+
+      const handleDelete = async () => {
+        const confirmMsg = isDir
+          ? t('files.deleteFolderConfirm', { name })
+          : t('files.deleteFileConfirm', { name });
+        const confirmed = await Modal.confirm(t('common.delete'), confirmMsg, {
+          destructive: true,
+        });
+        if (confirmed) {
+          const result = await sessionDeleteFile(sessionId, absolutePath, isDir);
+          if (result.success) {
+            refreshFileState({ clearSearchCache: true });
+          } else {
+            Modal.alert(t('common.error'), result.error ?? t('files.deleteError'));
+          }
+        }
+      };
+
+      if (Platform.OS === 'ios') {
+        if (isDir) {
+          ActionSheetIOS.showActionSheetWithOptions(
+            {
+              title: name,
+              options: [t('files.delete'), t('common.cancel')],
+              destructiveButtonIndex: 0,
+              cancelButtonIndex: 1,
+            },
+            async buttonIndex => {
+              if (buttonIndex === 0) await handleDelete();
+            }
+          );
+        } else {
+          ActionSheetIOS.showActionSheetWithOptions(
+            {
+              title: name,
+              options: [t('files.download'), t('files.delete'), t('common.cancel')],
+              destructiveButtonIndex: 1,
+              cancelButtonIndex: 2,
+            },
+            async buttonIndex => {
+              if (buttonIndex === 0) {
+                await downloadFile(absolutePath, name);
+              } else if (buttonIndex === 1) {
+                await handleDelete();
+              }
+            }
+          );
+        }
+      } else {
+        // Android / Web: use Alert
+        const confirmMsg = isDir
+          ? t('files.deleteFolderConfirm', { name })
+          : t('files.deleteFileConfirm', { name });
+        const buttons = [
+          ...(!isDir
+            ? [
+                {
+                  text: t('files.download'),
+                  onPress: () => {
+                    downloadFile(absolutePath, name).catch(() => {});
+                  },
+                },
+              ]
+            : []),
+          {
+            text: t('files.delete'),
+            style: 'destructive' as const,
+            onPress: () => {
+              Alert.alert(t('common.delete'), confirmMsg, [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                  text: t('common.delete'),
+                  style: 'destructive',
+                  onPress: async () => {
+                    const result = await sessionDeleteFile(sessionId, absolutePath, isDir);
+                    if (result.success) {
+                      refreshFileState({ clearSearchCache: true });
+                    } else {
+                      Modal.alert(t('common.error'), result.error ?? t('files.deleteError'));
+                    }
+                  },
+                },
+              ]);
+            },
+          },
+          { text: t('common.cancel'), style: 'cancel' as const },
+        ];
+        Alert.alert(name, undefined, buttons);
+      }
+    },
+    [downloadFile, refreshFileState, sessionId]
+  );
+
   const renderFileIconForSearch = (file: FileItem) => {
     if (file.fileType === 'folder') {
       return <Octicons name="file-directory" size={29} color="#007AFF" />;
@@ -281,7 +434,13 @@ export default function FilesScreen() {
           },
         ]}
       >
-        <Text style={{ ...Typography.default(), color: theme.colors.textSecondary, textAlign: 'center' }}>
+        <Text
+          style={{
+            ...Typography.default(),
+            color: theme.colors.textSecondary,
+            textAlign: 'center',
+          }}
+        >
           {t('errors.sessionDeleted')}
         </Text>
       </View>
@@ -415,6 +574,15 @@ export default function FilesScreen() {
                     }
                     openFilePreview(absolutePath);
                   }}
+                  onLongPress={() => {
+                    const absolutePath = resolveSearchResultPath(file.fullPath);
+                    if (!absolutePath) return;
+                    showEntryActions(
+                      absolutePath,
+                      file.fileName,
+                      file.fileType === 'folder' ? 'directory' : 'file'
+                    );
+                  }}
                   showDivider={index < searchResults.length - 1}
                 />
               ))
@@ -449,14 +617,20 @@ export default function FilesScreen() {
                     {(() => {
                       const rel = relativePathFromRoot(rootPath, browsePath || rootPath);
                       const segments = rel === '.' ? [] : rel.split('/');
-                      const allSegments = [{ label: 'root', path: rootPath }, ...segments.map((seg, i) => ({
-                        label: seg,
-                        path: rootPath + '/' + segments.slice(0, i + 1).join('/'),
-                      }))];
+                      const allSegments = [
+                        { label: 'root', path: rootPath },
+                        ...segments.map((seg, i) => ({
+                          label: seg,
+                          path: rootPath + '/' + segments.slice(0, i + 1).join('/'),
+                        })),
+                      ];
                       return allSegments.map((seg, i) => {
                         const isLast = i === allSegments.length - 1;
                         return (
-                          <View key={seg.path} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <View
+                            key={seg.path}
+                            style={{ flexDirection: 'row', alignItems: 'center' }}
+                          >
                             {i > 0 && (
                               <Text
                                 style={{
@@ -545,6 +719,11 @@ export default function FilesScreen() {
                             Modal.alert(t('common.error'), t('files.brokenSymlink'));
                           } else {
                             Modal.alert(t('common.error'), t('files.specialFile'));
+                          }
+                        }}
+                        onLongPress={() => {
+                          if (entryKind === 'file' || entryKind === 'directory') {
+                            showEntryActions(fullPath, entry.name, entryKind);
                           }
                         }}
                         showDivider={index < browseEntries.length - 1}

@@ -704,6 +704,18 @@ export const ja: TranslationStructure = {
     imageTooLargeToPreview: 'この画像は大きすぎてインライン表示できません',
     largeFilePreviewTruncated: 'ファイルが大きいため、先頭部分のみ表示しています',
     symlinkTo: ({ target }: { target: string }) => `${target} へのシンボリックリンク`,
+    download: 'ダウンロード',
+    downloadFolder: 'ZIPとしてダウンロード',
+    delete: '削除',
+    deleteFileConfirm: ({ name }: { name: string }) => `Delete "${name}"? This cannot be undone.`,
+    deleteFolderConfirm: ({ name }: { name: string }) => `Delete folder "${name}" and all its contents? This cannot be undone.`,
+    deleteSuccess: '削除しました',
+    deleteError: '削除に失敗しました',
+    downloadError: 'ファイルのダウンロードに失敗しました',
+    fileTooLargeToDownload: 'ファイルが大きすぎてダウンロードできません（最大10MB）',
+    downloadFolderError: 'フォルダのダウンロードに失敗しました',
+    preparingDownload: 'ダウンロードを準備中...',
+    actions: 'アクション',
   },
 
   settingsAccount: {

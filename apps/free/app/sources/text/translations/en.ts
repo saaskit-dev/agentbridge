@@ -245,8 +245,7 @@ export const en: TranslationStructure = {
     enhancedSessionWizard: 'Enhanced Session Wizard',
     enhancedSessionWizardEnabled: 'Profile-first session launcher active',
     enhancedSessionWizardDisabled: 'Using standard session launcher',
-
-},
+  },
 
   errors: {
     networkError: 'Network error occurred',
@@ -492,10 +491,10 @@ export const en: TranslationStructure = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
-    updateCliInstructions:
-      'Please run npm install -g @saaskit-dev/free',
+    updateCliInstructions: 'Please run npm install -g @saaskit-dev/free',
     restartAgent: 'Force Restart Agent',
-    restartAgentConfirm: 'This will kill the current agent process and start a fresh one. The session and conversation history will be preserved.',
+    restartAgentConfirm:
+      'This will kill the current agent process and start a fresh one. The session and conversation history will be preserved.',
     restartAgentSubtitle: 'Kill and restart the agent process',
     restartAgentSuccess: 'Agent process is restarting.',
     failedToRestartAgent: 'Failed to restart agent',
@@ -508,7 +507,8 @@ export const en: TranslationStructure = {
     sessionDeleted: 'Session deleted successfully',
     clearCache: 'Clear Cache',
     clearCacheSubtitle: 'Clear local cached data for this session',
-    clearCacheConfirm: 'Clear all cached data for this session? Messages will be re-fetched from the server.',
+    clearCacheConfirm:
+      'Clear all cached data for this session? Messages will be re-fetched from the server.',
     clearCacheSuccess: 'Cache cleared successfully',
     clearCacheFailed: 'Failed to clear cache',
   },
@@ -572,13 +572,16 @@ export const en: TranslationStructure = {
     speechInput: {
       recording: 'Listening...',
       permissionTitle: 'Microphone Access Required',
-      permissionMessage: 'Please allow microphone and speech recognition access in system settings.',
+      permissionMessage:
+        'Please allow microphone and speech recognition access in system settings.',
       permissionCancel: 'Cancel',
       permissionOpenSettings: 'Open Settings',
       errorTitle: 'Speech Recognition Failed',
-      errorMessage: ({ error }: { error: string }) => `Could not start speech recognition (${error}).`,
+      errorMessage: ({ error }: { error: string }) =>
+        `Could not start speech recognition (${error}).`,
       languageUnavailableTitle: 'Language Pack Not Installed',
-      languageUnavailableMessage: 'Speech recognition for the selected language needs to be downloaded. Open Settings to install it, or switch to English.',
+      languageUnavailableMessage:
+        'Speech recognition for the selected language needs to be downloaded. Open Settings to install it, or switch to English.',
       languageUnavailableCancel: 'Cancel',
       languageUnavailableOpenSettings: 'Open Settings',
       languageUnavailableUseEnglish: 'Use English',
@@ -719,6 +722,19 @@ export const en: TranslationStructure = {
     imageTooLargeToPreview: 'This image is too large to preview inline',
     largeFilePreviewTruncated: 'Large file: only the first portion is shown',
     symlinkTo: ({ target }: { target: string }) => `Symlink to ${target}`,
+    download: 'Download',
+    downloadFolder: 'Download as ZIP',
+    delete: 'Delete',
+    deleteFileConfirm: ({ name }: { name: string }) => `Delete "${name}"? This cannot be undone.`,
+    deleteFolderConfirm: ({ name }: { name: string }) =>
+      `Delete folder "${name}" and all its contents? This cannot be undone.`,
+    deleteSuccess: 'Deleted successfully',
+    deleteError: 'Failed to delete',
+    downloadError: 'Failed to download file',
+    fileTooLargeToDownload: 'File is too large to download (max 10 MB)',
+    downloadFolderError: 'Failed to download folder',
+    preparingDownload: 'Preparing download...',
+    actions: 'Actions',
   },
 
   voiceStatusBar: {
@@ -982,16 +998,20 @@ export const en: TranslationStructure = {
     previousSessions: 'Previous Sessions (up to 5 most recent)',
     machineNotFound: 'Machine not found',
     stopDaemonConfirmTitle: 'Stop Daemon?',
-    stopDaemonConfirmMessage: 'You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.',
+    stopDaemonConfirmMessage:
+      'You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.',
     daemonStopped: 'Daemon Stopped',
     failedToStopDaemon: 'Failed to stop daemon. It may not be running.',
     renameMachine: 'Rename Machine',
-    renameMachineMessage: 'Give this machine a custom name. Leave empty to use the default hostname.',
+    renameMachineMessage:
+      'Give this machine a custom name. Leave empty to use the default hostname.',
     enterMachineName: 'Enter machine name',
     machineRenamed: 'Machine renamed successfully',
     createDirectoryTitle: 'Create Directory?',
-    createDirectoryMessage: ({ directory }: { directory: string }) => `The directory '${directory}' does not exist. Would you like to create it?`,
-    failedToStartSession: 'Failed to start session. Make sure the daemon is running on the target machine.',
+    createDirectoryMessage: ({ directory }: { directory: string }) =>
+      `The directory '${directory}' does not exist. Would you like to create it?`,
+    failedToStartSession:
+      'Failed to start session. Make sure the daemon is running on the target machine.',
   },
 
   message: {
@@ -1174,16 +1194,19 @@ export const en: TranslationStructure = {
     tierPioneerFeature4: 'Dedicated tech consulting',
     title: 'Support',
     thankYouTitle: 'Thank You',
-    purchaseSuccess: ({ name }: { name: string }) => `You are now a「${name}」. Thank you for your support!`,
+    purchaseSuccess: ({ name }: { name: string }) =>
+      `You are now a「${name}」. Thank you for your support!`,
     purchaseFailed: 'Purchase Failed',
     unknownError: 'Unknown error, please try again',
     thankYouMessage: 'Thank you for your support',
     thankYouDescription: 'You are a valued Builder. Your support drives our continued innovation.',
     supportDevelopment: 'Support Development',
-    supportDescription: 'Your support drives our continued innovation. Choose a plan that works for you and shape the future of coding together.',
+    supportDescription:
+      'Your support drives our continued innovation. Choose a plan that works for you and shape the future of coding together.',
     recommended: 'Recommended',
     processing: 'Processing...',
-    joinTier: ({ name, price, period }: { name: string; price: string; period: string }) => `Join ${name} · ${price}${period}`,
+    joinTier: ({ name, price, period }: { name: string; price: string; period: string }) =>
+      `Join ${name} · ${price}${period}`,
     cancellableSecurePayment: 'Cancel anytime · Secure payment',
   },
 
@@ -1242,7 +1265,8 @@ export const en: TranslationStructure = {
     clearCache: 'Clear Cache',
     clearCacheSubtitle: 'Remove all cached data',
     clearCacheConfirmTitle: 'Clear Cache',
-    clearCacheConfirmMessage: 'Are you sure you want to clear all cached data? Messages will be re-fetched from the server.',
+    clearCacheConfirmMessage:
+      'Are you sure you want to clear all cached data? Messages will be re-fetched from the server.',
     clear: 'Clear',
     cacheCleared: 'Cache has been cleared',
     failedToClearCache: ({ error }: { error: string }) => `Failed to clear cache: ${error}`,

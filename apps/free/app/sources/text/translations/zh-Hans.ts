@@ -730,6 +730,18 @@ export const zhHans: TranslationStructure = {
     imageTooLargeToPreview: '这张图片太大，无法内联预览',
     largeFilePreviewTruncated: '文件较大，仅显示前面一部分内容',
     symlinkTo: ({ target }: { target: string }) => `符号链接到 ${target}`,
+    download: '下载',
+    downloadFolder: '下载为 ZIP',
+    delete: '删除',
+    deleteFileConfirm: ({ name }: { name: string }) => `Delete "${name}"? This cannot be undone.`,
+    deleteFolderConfirm: ({ name }: { name: string }) => `Delete folder "${name}" and all its contents? This cannot be undone.`,
+    deleteSuccess: '删除成功',
+    deleteError: '删除失败',
+    downloadError: '下载文件失败',
+    fileTooLargeToDownload: '文件过大，无法下载（最大 10 MB）',
+    downloadFolderError: '下载文件夹失败',
+    preparingDownload: '正在准备下载...',
+    actions: '操作',
   },
 
   voiceStatusBar: {

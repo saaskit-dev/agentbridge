@@ -123,6 +123,18 @@ interface SessionGetDirectoryTreeResponse {
   error?: string;
 }
 
+// Delete file operation types
+interface SessionDeleteFileRequest {
+  path: string;
+  recursive?: boolean;
+}
+
+interface SessionDeleteFileResponse {
+  success: boolean;
+  error?: string;
+  errorCode?: string;
+}
+
 // Ripgrep operation types
 interface SessionRipgrepRequest {
   args: string[];
@@ -629,6 +641,33 @@ export async function sessionListDirectory(
       SessionListDirectoryResponse,
       SessionListDirectoryRequest
     >(sessionId, 'listDirectory', request);
+    if (!response) {
+      return { success: false, error: 'No response from session' };
+    }
+    return response;
+  } catch (error) {
+    return {
+      success: false,
+      error: safeStringify(error),
+    };
+  }
+}
+
+/**
+ * Delete a file or directory from the session
+ */
+export async function sessionDeleteFile(
+  sessionId: string,
+  path: string,
+  recursive?: boolean
+): Promise<SessionDeleteFileResponse> {
+  try {
+    const request: SessionDeleteFileRequest = { path, recursive };
+    const response = await apiSocket.sessionRPC<SessionDeleteFileResponse, SessionDeleteFileRequest>(
+      sessionId,
+      'deleteFile',
+      request
+    );
     if (!response) {
       return { success: false, error: 'No response from session' };
     }

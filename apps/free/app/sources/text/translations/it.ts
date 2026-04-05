@@ -748,6 +748,18 @@ export const it: TranslationStructure = {
     imageTooLargeToPreview: 'This image is too large to preview inline',
     largeFilePreviewTruncated: 'Large file: only the first portion is shown',
     symlinkTo: ({ target }: { target: string }) => `Symlink to ${target}`,
+    download: 'Scarica',
+    downloadFolder: 'Scarica come ZIP',
+    delete: 'Elimina',
+    deleteFileConfirm: ({ name }: { name: string }) => `Delete "${name}"? This cannot be undone.`,
+    deleteFolderConfirm: ({ name }: { name: string }) => `Delete folder "${name}" and all its contents? This cannot be undone.`,
+    deleteSuccess: 'Eliminato correttamente',
+    deleteError: 'Eliminazione non riuscita',
+    downloadError: 'Download del file non riuscito',
+    fileTooLargeToDownload: 'Il file è troppo grande per il download (max 10 MB)',
+    downloadFolderError: 'Download della cartella non riuscito',
+    preparingDownload: 'Preparazione download...',
+    actions: 'Azioni',
   },
 
   settingsAccount: {

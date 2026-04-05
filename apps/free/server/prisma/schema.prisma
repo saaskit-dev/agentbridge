@@ -367,3 +367,15 @@ model UserKVStore {
   @@unique([accountId, key])
   @@index([accountId])
 }
+
+//
+// Push Reconnect Tokens
+//
+
+model ReconnectToken {
+  userId    String   @id
+  token     String
+  expiresAt DateTime
+
+  @@index([userId])
+}

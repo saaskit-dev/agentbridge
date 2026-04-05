@@ -1,6 +1,6 @@
 import { exec, ExecOptions } from 'child_process';
 import { createHash } from 'crypto';
-import { readFile, writeFile, readdir, stat, lstat, realpath, readlink, open } from 'fs/promises';
+import { readFile, writeFile, readdir, stat, lstat, realpath, readlink, open, rm, unlink } from 'fs/promises';
 import { join } from 'path';
 import { promisify } from 'util';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
@@ -119,6 +119,17 @@ interface DifftasticResponse {
   stdout?: string;
   stderr?: string;
   error?: string;
+}
+
+interface DeleteFileRequest {
+  path: string;
+  recursive?: boolean;
+}
+
+interface DeleteFileResponse {
+  success: boolean;
+  error?: string;
+  errorCode?: string;
 }
 
 /*
@@ -668,6 +679,40 @@ export function registerCommonHandlers(
       };
     }
   });
+
+  // Delete file/directory handler
+  rpcHandlerManager.registerHandler<DeleteFileRequest, DeleteFileResponse>(
+    'deleteFile',
+    async data => {
+      log.debug('Delete file request', { path: data.path, recursive: data.recursive });
+
+      const validation = validatePath(data.path, workingDirectory);
+      if (!validation.valid) {
+        return { success: false, error: validation.error };
+      }
+
+      try {
+        const fileStats = await lstat(validation.resolvedPath);
+        const isDirectory = fileStats.isDirectory();
+
+        if (isDirectory && !data.recursive) {
+          return { success: false, error: 'Path is a directory; set recursive=true to delete', errorCode: 'EISDIR' };
+        }
+
+        if (isDirectory) {
+          await rm(validation.resolvedPath, { recursive: true, force: false });
+        } else {
+          await unlink(validation.resolvedPath);
+        }
+
+        return { success: true };
+      } catch (error) {
+        const nodeError = error as NodeJS.ErrnoException;
+        log.debug('Failed to delete', { path: validation.resolvedPath, error: safeStringify(error) });
+        return { success: false, error: safeStringify(error), errorCode: nodeError.code };
+      }
+    }
+  );
 
   // Difftastic handler - raw interface to difftastic
   rpcHandlerManager.registerHandler<DifftasticRequest, DifftasticResponse>(

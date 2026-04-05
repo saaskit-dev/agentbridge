@@ -1,6 +1,9 @@
+import { Octicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { ImagePreviewModal } from '@/components/ImagePreviewModal';
@@ -592,6 +595,35 @@ export default function FileScreen() {
     }
   }, [filePath]);
 
+  /** Download the current file to the device via the share sheet. */
+  const downloadFile = React.useCallback(async () => {
+    try {
+      const MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
+      if (typeof fileSizeBytes === 'number' && fileSizeBytes > MAX_DOWNLOAD_BYTES) {
+        Modal.alert(t('common.error'), t('files.fileTooLargeToDownload'));
+        return;
+      }
+      const response = await sessionReadFile(sessionId, filePath);
+      if (!response.success || typeof response.content !== 'string') {
+        Modal.alert(t('common.error'), t('files.downloadError'));
+        return;
+      }
+      const localUri = cacheDirectory + fileName;
+      await writeAsStringAsync(localUri, response.content, {
+        encoding: EncodingType.Base64,
+      });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(localUri, { dialogTitle: fileName });
+      } else {
+        Modal.alert(t('common.error'), t('files.downloadError'));
+      }
+    } catch (e) {
+      logger.error('Failed to download file', toError(e));
+      Modal.alert(t('common.error'), t('files.downloadError'));
+    }
+  }, [filePath, fileName, sessionId, fileSizeBytes]);
+
   if (isLoading) {
     return (
       <View
@@ -706,44 +738,50 @@ export default function FileScreen() {
         <ImagePreviewModal uri={imagePreviewUri} onClose={() => setImagePreviewUri(null)} />
       )}
       {/* File path header — tap to copy path */}
-      <Pressable
-        onPress={copyFilePath}
+      <View
         style={{
           padding: 16,
           borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
           borderBottomColor: theme.colors.divider,
           backgroundColor: theme.colors.surfaceHigh,
+          flexDirection: 'row',
+          alignItems: 'center',
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <FileIcon fileName={fileName} size={20} />
-          <Text
-            style={{
-              fontSize: 14,
-              color: theme.colors.textSecondary,
-              marginLeft: 8,
-              flex: 1,
-              ...Typography.mono(),
-            }}
-            numberOfLines={2}
-          >
-            {filePath}
-          </Text>
-        </View>
-        {fileSizeBytes != null && (
-          <Text
-            style={{
-              fontSize: 12,
-              color: theme.colors.textSecondary,
-              marginTop: 4,
-              marginLeft: 28,
-              ...Typography.default(),
-            }}
-          >
-            {t('files.fileSize', { bytes: fileSizeBytes })}
-          </Text>
-        )}
-      </Pressable>
+        <Pressable onPress={copyFilePath} style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <FileIcon fileName={fileName} size={20} />
+            <Text
+              style={{
+                fontSize: 14,
+                color: theme.colors.textSecondary,
+                marginLeft: 8,
+                flex: 1,
+                ...Typography.mono(),
+              }}
+              numberOfLines={2}
+            >
+              {filePath}
+            </Text>
+          </View>
+          {fileSizeBytes != null && (
+            <Text
+              style={{
+                fontSize: 12,
+                color: theme.colors.textSecondary,
+                marginTop: 4,
+                marginLeft: 28,
+                ...Typography.default(),
+              }}
+            >
+              {t('files.fileSize', { bytes: fileSizeBytes })}
+            </Text>
+          )}
+        </Pressable>
+        <Pressable onPress={downloadFile} hitSlop={8} style={{ marginLeft: 12, padding: 4 }}>
+          <Octicons name="download" size={20} color={theme.colors.textLink} />
+        </Pressable>
+      </View>
 
       {/* Toggle buttons for File/Diff view */}
       {diffContent && (

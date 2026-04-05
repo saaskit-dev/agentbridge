@@ -145,7 +145,8 @@ export const en = {
     tierPioneerFeature4: 'Dedicated tech consulting',
     title: 'Support',
     thankYouTitle: 'Thank You',
-    purchaseSuccess: ({ name }: { name: string }) => `You are now a「${name}」. Thank you for your support!`,
+    purchaseSuccess: ({ name }: { name: string }) =>
+      `You are now a「${name}」. Thank you for your support!`,
     purchaseFailed: 'Purchase Failed',
     unknownError: 'Unknown error, please try again',
     thankYouMessage: 'Thank you for your support',
@@ -269,8 +270,7 @@ export const en = {
     enhancedSessionWizard: 'Enhanced Session Wizard',
     enhancedSessionWizardEnabled: 'Profile-first session launcher active',
     enhancedSessionWizardDisabled: 'Using standard session launcher',
-
-},
+  },
 
   errors: {
     networkError: 'Network error occurred',
@@ -516,8 +516,7 @@ export const en = {
       currentVersion: string;
       requiredVersion: string;
     }) => `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
-    updateCliInstructions:
-      'Please run npm install -g @saaskit-dev/free',
+    updateCliInstructions: 'Please run npm install -g @saaskit-dev/free',
     restartAgent: 'Force Restart Agent',
     restartAgentConfirm:
       'This will kill the current agent process and start a fresh one. The session and conversation history will be preserved.',
@@ -533,7 +532,8 @@ export const en = {
     sessionDeleted: 'Session deleted successfully',
     clearCache: 'Clear Cache',
     clearCacheSubtitle: 'Clear local cached data for this session',
-    clearCacheConfirm: 'Clear all cached data for this session? Messages will be re-fetched from the server.',
+    clearCacheConfirm:
+      'Clear all cached data for this session? Messages will be re-fetched from the server.',
     clearCacheSuccess: 'Cache cleared successfully',
     clearCacheFailed: 'Failed to clear cache',
   },
@@ -597,13 +597,16 @@ export const en = {
     speechInput: {
       recording: 'Listening...',
       permissionTitle: 'Microphone Access Required',
-      permissionMessage: 'Please allow microphone and speech recognition access in system settings.',
+      permissionMessage:
+        'Please allow microphone and speech recognition access in system settings.',
       permissionCancel: 'Cancel',
       permissionOpenSettings: 'Open Settings',
       errorTitle: 'Speech Recognition Failed',
-      errorMessage: ({ error }: { error: string }) => `Could not start speech recognition (${error}).`,
+      errorMessage: ({ error }: { error: string }) =>
+        `Could not start speech recognition (${error}).`,
       languageUnavailableTitle: 'Language Pack Not Installed',
-      languageUnavailableMessage: 'Speech recognition for the selected language needs to be downloaded. Open Settings to install it, or switch to English.',
+      languageUnavailableMessage:
+        'Speech recognition for the selected language needs to be downloaded. Open Settings to install it, or switch to English.',
       languageUnavailableCancel: 'Cancel',
       languageUnavailableOpenSettings: 'Open Settings',
       languageUnavailableUseEnglish: 'Use English',
@@ -744,6 +747,19 @@ export const en = {
     imageTooLargeToPreview: 'This image is too large to preview inline',
     largeFilePreviewTruncated: 'Large file: only the first portion is shown',
     symlinkTo: ({ target }: { target: string }) => `Symlink to ${target}`,
+    download: 'Download',
+    downloadFolder: 'Download as ZIP',
+    delete: 'Delete',
+    deleteFileConfirm: ({ name }: { name: string }) => `Delete "${name}"? This cannot be undone.`,
+    deleteFolderConfirm: ({ name }: { name: string }) =>
+      `Delete folder "${name}" and all its contents? This cannot be undone.`,
+    deleteSuccess: 'Deleted successfully',
+    deleteError: 'Failed to delete',
+    downloadError: 'Failed to download file',
+    fileTooLargeToDownload: 'File is too large to download (max 10 MB)',
+    downloadFolderError: 'Failed to download folder',
+    preparingDownload: 'Preparing download...',
+    actions: 'Actions',
   },
 
   voiceStatusBar: {
@@ -965,7 +981,8 @@ export const en = {
       `Loaded ${loaded} of ${total}. Still loading: ${agents}.`,
     partialFailure: ({ count, agents }: { count: number; agents: string }) =>
       `${count} agents could not be loaded: ${agents}.`,
-    unsupportedAgents: ({ agents }: { agents: string }) => `${agents} do not expose session history.`,
+    unsupportedAgents: ({ agents }: { agents: string }) =>
+      `${agents} do not expose session history.`,
     cachedAt: ({ time }: { time: string }) => `Updated ${time}`,
     loadMore: 'Load more sessions',
     filters: {
@@ -987,7 +1004,8 @@ export const en = {
     daemonStopped: 'Daemon Stopped',
     failedToStopDaemon: 'Failed to stop daemon. It may not be running.',
     renameMachine: 'Rename Machine',
-    renameMachineMessage: 'Give this machine a custom name. Leave empty to use the default hostname.',
+    renameMachineMessage:
+      'Give this machine a custom name. Leave empty to use the default hostname.',
     enterMachineName: 'Enter machine name',
     machineRenamed: 'Machine renamed successfully',
     createDirectoryTitle: 'Create Directory?',

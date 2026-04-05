@@ -693,6 +693,18 @@ export const zhHant: TranslationStructure = {
     imageTooLargeToPreview: '這張圖片太大，無法內嵌預覽',
     largeFilePreviewTruncated: '檔案過大，只顯示前面一部分內容',
     symlinkTo: ({ target }: { target: string }) => `符號連結到 ${target}`,
+    download: '下載',
+    downloadFolder: '下載為 ZIP',
+    delete: '刪除',
+    deleteFileConfirm: ({ name }: { name: string }) => `Delete "${name}"? This cannot be undone.`,
+    deleteFolderConfirm: ({ name }: { name: string }) => `Delete folder "${name}" and all its contents? This cannot be undone.`,
+    deleteSuccess: '刪除成功',
+    deleteError: '刪除失敗',
+    downloadError: '下載檔案失敗',
+    fileTooLargeToDownload: '檔案過大，無法下載（最大 10 MB）',
+    downloadFolderError: '下載資料夾失敗',
+    preparingDownload: '正在準備下載...',
+    actions: '操作',
   },
 
   settingsAccount: {
