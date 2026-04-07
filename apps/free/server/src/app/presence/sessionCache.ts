@@ -20,7 +20,7 @@ interface MachineCacheEntry {
   userId: string;
 }
 
-class ActivityCache {
+export class ActivityCache {
   private sessionCache = new Map<string, SessionCacheEntry>();
   private machineCache = new Map<string, MachineCacheEntry>();
   private batchTimer: NodeJS.Timeout | null = null;
@@ -169,15 +169,14 @@ class ActivityCache {
   }
 
   private async flushPendingUpdates(): Promise<void> {
-    const sessionUpdates: { id: string; timestamp: number }[] = [];
-    const machineUpdates: { id: string; timestamp: number; userId: string }[] = [];
+    const sessionUpdates: { id: string; timestamp: number; entry: SessionCacheEntry }[] = [];
+    const machineUpdates: { id: string; timestamp: number; userId: string; entry: MachineCacheEntry }[] =
+      [];
 
     // Collect session updates (only for active sessions)
     for (const [sessionId, entry] of this.sessionCache.entries()) {
       if (entry.pendingUpdate && entry.status === 'active') {
-        sessionUpdates.push({ id: sessionId, timestamp: entry.pendingUpdate });
-        entry.lastUpdateSent = entry.pendingUpdate;
-        entry.pendingUpdate = null;
+        sessionUpdates.push({ id: sessionId, timestamp: entry.pendingUpdate, entry });
       }
     }
 
@@ -188,9 +187,8 @@ class ActivityCache {
           id: machineId,
           timestamp: entry.pendingUpdate,
           userId: entry.userId,
+          entry,
         });
-        entry.lastUpdateSent = entry.pendingUpdate;
-        entry.pendingUpdate = null;
       }
     }
 
@@ -205,6 +203,13 @@ class ActivityCache {
             })
           )
         );
+
+        for (const update of sessionUpdates) {
+          update.entry.lastUpdateSent = update.timestamp;
+          if (update.entry.pendingUpdate === update.timestamp) {
+            update.entry.pendingUpdate = null;
+          }
+        }
 
         log.info(`Flushed ${sessionUpdates.length} session updates`);
       } catch (error) {
@@ -228,6 +233,13 @@ class ActivityCache {
             })
           )
         );
+
+        for (const update of machineUpdates) {
+          update.entry.lastUpdateSent = update.timestamp;
+          if (update.entry.pendingUpdate === update.timestamp) {
+            update.entry.pendingUpdate = null;
+          }
+        }
 
         log.info(`Flushed ${machineUpdates.length} machine updates`);
       } catch (error) {
@@ -258,14 +270,14 @@ class ActivityCache {
     }
   }
 
-  shutdown(): void {
+  async shutdown(): Promise<void> {
     if (this.batchTimer) {
       clearInterval(this.batchTimer);
       this.batchTimer = null;
     }
 
     // Flush any remaining updates
-    this.flushPendingUpdates().catch(error => {
+    await this.flushPendingUpdates().catch(error => {
       log.error(`Error flushing final updates: ${error}`);
     });
   }

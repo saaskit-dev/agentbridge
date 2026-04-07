@@ -124,7 +124,7 @@ async function main() {
     SHUTDOWN_PHASE.STORAGE
   );
   onShutdown('activity-cache', async () => {
-    activityCache.shutdown();
+    await activityCache.shutdown();
   });
   onShutdown('telemetry', async () => {
     if (isCollectorReady()) await getCollector().close();
