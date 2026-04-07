@@ -262,7 +262,13 @@ export async function startSocket(app: Fastify) {
           connectionType: connection.connectionType,
           ms: Date.now() - t0,
         });
-      })();
+      })().catch(error => {
+        log.error('[disconnect] unexpected async error', {
+          userId,
+          connectionType: connection.connectionType,
+          error: String(error),
+        });
+      });
 
       inFlightDisconnects.add(work);
       work.finally(() => inFlightDisconnects.delete(work));
