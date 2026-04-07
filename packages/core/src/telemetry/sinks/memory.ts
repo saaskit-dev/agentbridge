@@ -32,7 +32,9 @@ export class MemorySink implements LogSink {
 
     if (this.persistence) {
       const intervalMs = this.persistence.flushIntervalMs ?? 5_000;
-      this.persistTimer = setInterval(() => this.persistToDisk(), intervalMs);
+      this.persistTimer = setInterval(() => {
+        void this.persistToDisk().catch(() => undefined);
+      }, intervalMs);
       if (
         this.persistTimer &&
         typeof this.persistTimer === 'object' &&

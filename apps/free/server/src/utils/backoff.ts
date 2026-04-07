@@ -26,7 +26,7 @@ export function createBackoff(opts?: {
   factor?: number;
 }): BackoffFunc {
   return async <T>(callback: () => Promise<T>, signal?: AbortSignal): Promise<T> => {
-    const currentFailureCount = 0;
+    let currentFailureCount = 0;
     const minDelay = opts && opts.minDelay !== undefined ? opts.minDelay : 250;
     const maxDelay = opts && opts.maxDelay !== undefined ? opts.maxDelay : 10000;
     const factor = opts && opts.factor !== undefined ? opts.factor : 0.5;
@@ -45,6 +45,7 @@ export function createBackoff(opts?: {
           maxDelay,
           factor
         );
+        currentFailureCount++;
         await delay(waitForRequest, signal);
       }
     }

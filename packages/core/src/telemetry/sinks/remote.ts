@@ -41,7 +41,9 @@ export class RemoteSink implements LogSink {
     this.extraSanitizer = opts.extraSanitizer;
 
     const intervalMs = opts.flushIntervalMs ?? 30_000;
-    this.flushTimer = setInterval(() => this.doFlush(), intervalMs);
+    this.flushTimer = setInterval(() => {
+      void this.doFlush().catch(() => undefined);
+    }, intervalMs);
     if (this.flushTimer && typeof this.flushTimer === 'object' && 'unref' in this.flushTimer) {
       (this.flushTimer as NodeJS.Timeout).unref();
     }

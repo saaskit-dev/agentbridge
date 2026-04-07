@@ -1,9 +1,12 @@
 import { AbortedExeption } from './aborted';
 import { backoff } from './backoff';
 import { keepAlive, shutdownSignal } from './shutdown';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
-export async function forever(name: string, callback: () => Promise<void>) {
-  keepAlive(name, async () => {
+const log = new Logger('utils/forever');
+
+export function forever(name: string, callback: () => Promise<void>): void {
+  void keepAlive(name, async () => {
     await backoff(async () => {
       while (!shutdownSignal.aborted) {
         try {
@@ -16,6 +19,14 @@ export async function forever(name: string, callback: () => Promise<void>) {
           }
         }
       }
+    });
+  }).catch(error => {
+    if (AbortedExeption.isAborted(error)) {
+      return;
+    }
+    log.error('[forever] background task exited unexpectedly', {
+      name,
+      error: String(error),
     });
   });
 }

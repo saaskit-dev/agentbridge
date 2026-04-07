@@ -44,7 +44,9 @@ export class FileSink implements LogSink {
     this.cleanupOldFiles();
 
     if (this.bufferFlushMs > 0) {
-      this.flushTimer = setInterval(() => this.flushBuffer(), this.bufferFlushMs);
+      this.flushTimer = setInterval(() => {
+        void this.flushBuffer().catch(() => undefined);
+      }, this.bufferFlushMs);
       if (this.flushTimer && typeof this.flushTimer === 'object' && 'unref' in this.flushTimer) {
         (this.flushTimer as NodeJS.Timeout).unref();
       }

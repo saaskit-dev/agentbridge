@@ -39,7 +39,9 @@ export class TelemetryRelay {
     this.batchSize = opts.batchSize ?? 200;
 
     const intervalMs = opts.flushIntervalMs ?? 15_000;
-    this.flushTimer = setInterval(() => this.flush(), intervalMs);
+    this.flushTimer = setInterval(() => {
+      void this.flush().catch(() => undefined);
+    }, intervalMs);
     if (this.flushTimer && typeof this.flushTimer === 'object' && 'unref' in this.flushTimer) {
       (this.flushTimer as NodeJS.Timeout).unref();
     }
