@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
+import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
@@ -21,6 +22,7 @@ import { getGitHubOAuthParams, disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { isUsingCustomServer } from '@/sync/serverConfig';
+import { sync } from '@/sync/sync';
 import { useLocalSettingMutable, useSetting, useEntitlement } from '@/sync/storage';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -45,8 +47,29 @@ export const SettingsView = React.memo(function SettingsView() {
   const displayName = getDisplayName(profile);
   const avatarUrl = getAvatarUrl(profile);
   const bio = getBio(profile);
+  const [notificationPermissionStatus, setNotificationPermissionStatus] = React.useState<
+    'unknown' | 'granted' | 'denied' | 'undetermined'
+  >('unknown');
+  const [notificationCanAskAgain, setNotificationCanAskAgain] = React.useState(true);
 
   const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
+
+  const refreshNotificationPermission = React.useCallback(async () => {
+    if (Platform.OS === 'web') {
+      return;
+    }
+    const permissions = await Notifications.getPermissionsAsync();
+    setNotificationPermissionStatus(
+      permissions.status === 'granted' || permissions.status === 'denied'
+        ? permissions.status
+        : 'undetermined'
+    );
+    setNotificationCanAskAgain(permissions.canAskAgain ?? true);
+  }, []);
+
+  React.useEffect(() => {
+    void refreshNotificationPermission();
+  }, [refreshNotificationPermission]);
 
   const handleGitHub = async () => {
     const url = 'https://github.com/saaskit-dev/agentbridge';
@@ -129,6 +152,52 @@ export const SettingsView = React.memo(function SettingsView() {
       await disconnectService(auth.credentials!, 'anthropic');
     }
   });
+
+  const [enablingBackgroundReconnect, handleEnableBackgroundReconnect] = useFreeAction(
+    async () => {
+      const result = await sync.enableBackgroundReconnectNotifications();
+      await refreshNotificationPermission();
+
+      if (result === 'granted') {
+        Modal.alert(
+          'Background reconnect enabled',
+          'Free can now use silent notifications to restore live sessions while the app is in background.'
+        );
+        return;
+      }
+
+      if (result === 'settings-required') {
+        Modal.alert(
+          'Notifications blocked',
+          'Enable notifications for Free in system settings so background reconnect can work.'
+        );
+        await Linking.openSettings();
+        return;
+      }
+
+      if (result === 'denied') {
+        Modal.alert(
+          'Notifications not enabled',
+          'Background reconnect stays limited until notifications are allowed for Free.'
+        );
+        return;
+      }
+
+      if (result === 'unsupported') {
+        Modal.alert(
+          'Unavailable',
+          'This build cannot register background reconnect notifications right now.'
+        );
+      }
+    }
+  );
+
+  const backgroundReconnectSubtitle =
+    notificationPermissionStatus === 'granted'
+      ? 'Silent notifications are enabled to restore live sessions in background.'
+      : !notificationCanAskAgain
+        ? 'Notifications are blocked in system settings. Tap to open Settings.'
+        : 'Tap to enable silent notifications so Free can restore live sessions in background.';
 
   return (
     <ItemList style={{ paddingTop: 0 }}>
@@ -326,6 +395,23 @@ export const SettingsView = React.memo(function SettingsView() {
           icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
           onPress={() => router.push('/settings/usage')}
         />
+        {Platform.OS !== 'web' && (
+          <Item
+            title="Background Reconnect Notifications"
+            subtitle={backgroundReconnectSubtitle}
+            icon={
+              <Ionicons
+                name="notifications-outline"
+                size={29}
+                color={notificationPermissionStatus === 'granted' ? '#34C759' : '#FF9500'}
+              />
+            }
+            detail={notificationPermissionStatus === 'granted' ? 'On' : 'Off'}
+            onPress={handleEnableBackgroundReconnect}
+            loading={enablingBackgroundReconnect}
+            showChevron={false}
+          />
+        )}
       </ItemGroup>
 
       {/* Developer */}

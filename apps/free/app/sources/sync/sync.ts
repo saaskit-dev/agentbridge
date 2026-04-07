@@ -2,7 +2,8 @@ import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
-import { registerPushToken } from './apiPush';
+import NetInfo from '@react-native-community/netinfo';
+import { registerPushToken as registerPushTokenApi } from './apiPush';
 import { Platform, AppState, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
@@ -20,6 +21,12 @@ import {
   loadPendingOutbox,
   savePendingOutbox,
   saveCachedSessions,
+  loadHandledReconnectToken,
+  saveHandledReconnectToken,
+  loadPendingReconnectAcks,
+  savePendingReconnectAcks,
+  loadRegisteredPushToken,
+  saveRegisteredPushToken,
 } from './persistence';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
@@ -68,10 +75,30 @@ import { messageDB } from './messageDB';
 const logger = new Logger('app/sync');
 
 const BACKGROUND_NOTIFICATION_TASK = 'ws-reconnect-background';
+type PushRegistrationResult =
+  | 'granted'
+  | 'denied'
+  | 'settings-required'
+  | 'unsupported'
+  | 'skipped';
 
 let lastHandledReconnectToken: string | null = null;
 
-let _ackReconnectToken: ((token: string) => Promise<void>) | null = null;
+let _enqueueReconnectTokenAck: ((token: string) => void) | null = null;
+
+function getLastHandledReconnectToken(): string | null {
+  if (lastHandledReconnectToken === null) {
+    lastHandledReconnectToken = loadHandledReconnectToken();
+  }
+  return lastHandledReconnectToken;
+}
+
+function persistReconnectAckToken(reconnectToken: string) {
+  const pendingAcks = loadPendingReconnectAcks();
+  if (!pendingAcks.includes(reconnectToken)) {
+    savePendingReconnectAcks([...pendingAcks, reconnectToken]);
+  }
+}
 
 async function handleReconnectPushNotification(
   data: Record<string, unknown> | null | undefined
@@ -81,14 +108,17 @@ async function handleReconnectPushNotification(
   const reconnectToken = data.reconnectToken as string | undefined;
   if (!reconnectToken) return;
 
-  if (reconnectToken === lastHandledReconnectToken) {
+  if (reconnectToken === getLastHandledReconnectToken()) {
     logger.debug('[sync] ws-reconnect push ignored: duplicate token');
     return;
   }
   lastHandledReconnectToken = reconnectToken;
+  saveHandledReconnectToken(reconnectToken);
 
-  if (_ackReconnectToken) {
-    await _ackReconnectToken(reconnectToken);
+  if (_enqueueReconnectTokenAck) {
+    _enqueueReconnectTokenAck(reconnectToken);
+  } else {
+    persistReconnectAckToken(reconnectToken);
   }
 
   logger.info('[sync] silent push ws-reconnect received, resuming socket');
@@ -182,6 +212,10 @@ class Sync {
   private backgroundSendTimeout: ReturnType<typeof setTimeout> | null = null;
   private backgroundSendNotificationId: string | null = null;
   private backgroundSendStartedAt: number | null = null;
+  private pendingReconnectAcks = loadPendingReconnectAcks();
+  private reconnectAckFlushPromise: Promise<void> | null = null;
+  private lastRegisteredPushToken = loadRegisteredPushToken();
+  private lastKnownConnectivity: boolean | null = null;
   revenueCatInitialized = false;
 
   // Ephemeral update subscribers for streaming text support
@@ -210,18 +244,26 @@ class Sync {
       if (__DEV__) {
         return;
       }
-      await this.registerPushToken();
+      try {
+        await this.registerPushToken();
+      } catch (error) {
+        logger.debug('[sync] Automatic push token registration failed', {
+          error: safeStringify(error),
+        });
+      }
     };
     this.pushTokenSync = new InvalidateSync(registerPushToken);
     this.activityAccumulator = new ActivityUpdateAccumulator(
       this.flushActivityUpdates.bind(this),
       2000
     );
+    apiSocket.setReconnectMode(this.appState === 'active' ? 'foreground' : 'background');
 
     // Listen for app state changes to refresh purchases
     AppState.addEventListener('change', nextAppState => {
       this.appState = nextAppState;
       if (nextAppState === 'active') {
+        apiSocket.setReconnectMode('foreground');
         const shouldFailAfterResume =
           this.backgroundSendStartedAt !== null &&
           this.hasPendingOutboxMessages() &&
@@ -255,6 +297,7 @@ class Sync {
         this.profileSync.invalidate();
         this.machinesSync.invalidate();
         this.pushTokenSync.invalidate();
+        void this.flushReconnectAckQueue();
         this.sessionsSync.invalidate();
         this.nativeUpdateSync.invalidate();
         logger.debug('📱 App became active: Invalidating artifacts sync');
@@ -263,6 +306,7 @@ class Sync {
         this.friendRequestsSync.invalidate();
         this.feedSync.invalidate();
       } else {
+        apiSocket.setReconnectMode('background');
         logger.debug(`📱 App state changed to: ${nextAppState}`);
         this.maybeStartBackgroundSendWatchdog();
       }
@@ -274,8 +318,38 @@ class Sync {
           notification.request.content.data as Record<string, unknown> | undefined
         );
       });
+      if (
+        'addPushTokenListener' in Notifications &&
+        typeof Notifications.addPushTokenListener === 'function'
+      ) {
+        Notifications.addPushTokenListener(({ data }) => {
+          void this.handlePushTokenRotation(data);
+        });
+      }
       void Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch(err => {
         logger.debug('[sync] registerTaskAsync failed', { error: String(err) });
+      });
+      NetInfo.addEventListener(state => {
+        const isReachable = state.isConnected === true && state.isInternetReachable !== false;
+        const didRestore = this.lastKnownConnectivity === false && isReachable;
+        this.lastKnownConnectivity = isReachable;
+        if (!didRestore) {
+          return;
+        }
+
+        logger.info('[sync] Network connectivity restored', {
+          appState: this.appState,
+          socketStatus: apiSocket.getStatus(),
+        });
+        void this.flushReconnectAckQueue();
+        this.pushTokenSync.invalidate();
+        if (
+          this.appState === 'active' &&
+          apiSocket.getStatus() !== 'connected' &&
+          apiSocket.getStatus() !== 'connecting'
+        ) {
+          apiSocket.resume();
+        }
       });
     }
   }
@@ -285,20 +359,12 @@ class Sync {
     this.encryption = encryption;
     this.anonId = encryption.anonId;
     this.accountId = parseToken(credentials.token);
+    lastHandledReconnectToken = loadHandledReconnectToken();
+    this.pendingReconnectAcks = loadPendingReconnectAcks();
+    this.lastRegisteredPushToken = loadRegisteredPushToken();
     logger.info('[sync] create', { accountId: this.accountId });
-    _ackReconnectToken = async (reconnectToken: string) => {
-      if (!this.credentials) return;
-      const token = this.credentials.token;
-      const serverUrl = getServerUrl();
-      try {
-        await fetch(`${serverUrl}/v1/push-reconnect-ack`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reconnectToken }),
-        });
-      } catch (err) {
-        logger.debug('[sync] push-reconnect-ack failed', { error: String(err) });
-      }
+    _enqueueReconnectTokenAck = (reconnectToken: string) => {
+      this.enqueueReconnectAck(reconnectToken);
     };
     await this.#init();
 
@@ -319,20 +385,12 @@ class Sync {
     this.encryption = encryption;
     this.anonId = encryption.anonId;
     this.accountId = parseToken(credentials.token);
+    lastHandledReconnectToken = loadHandledReconnectToken();
+    this.pendingReconnectAcks = loadPendingReconnectAcks();
+    this.lastRegisteredPushToken = loadRegisteredPushToken();
     logger.info('[sync] restore', { accountId: this.accountId });
-    _ackReconnectToken = async (reconnectToken: string) => {
-      if (!this.credentials) return;
-      const token = this.credentials.token;
-      const serverUrl = getServerUrl();
-      try {
-        await fetch(`${serverUrl}/v1/push-reconnect-ack`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reconnectToken }),
-        });
-      } catch (err) {
-        logger.debug('[sync] push-reconnect-ack failed', { error: String(err) });
-      }
+    _enqueueReconnectTokenAck = (reconnectToken: string) => {
+      this.enqueueReconnectAck(reconnectToken);
     };
     await this.#init();
   }
@@ -358,6 +416,7 @@ class Sync {
     this.purchasesSync.invalidate();
     this.machinesSync.invalidate();
     this.pushTokenSync.invalidate();
+    void this.flushReconnectAckQueue();
     this.nativeUpdateSync.invalidate();
     this.friendsSync.invalidate();
     this.friendRequestsSync.invalidate();
@@ -2534,44 +2593,156 @@ class Sync {
     this.onSessionVisible(sessionId);
   }
 
-  private registerPushToken = async () => {
-    logger.debug('registerPushToken');
-    // Only register on mobile platforms
-    if (Platform.OS === 'web') {
-      return;
+  private enqueueReconnectAck(reconnectToken: string) {
+    if (!this.pendingReconnectAcks.includes(reconnectToken)) {
+      this.pendingReconnectAcks = [...this.pendingReconnectAcks, reconnectToken];
+      savePendingReconnectAcks(this.pendingReconnectAcks);
+    }
+    void this.flushReconnectAckQueue();
+  }
+
+  private postReconnectAck = async (reconnectToken: string) => {
+    if (!this.credentials) {
+      throw new Error('Missing credentials for reconnect ack');
     }
 
-    // Request permission
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    logger.debug('existingStatus: ' + JSON.stringify(existingStatus));
-
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    logger.debug('finalStatus: ' + JSON.stringify(finalStatus));
-
-    if (finalStatus !== 'granted') {
-      logger.debug('Failed to get push token for push notification!');
-      return;
-    }
-
-    // Get push token
-    const projectId =
-      Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
-
-    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    logger.debug('tokenData: ' + JSON.stringify(tokenData));
-
-    // Register with server
-    try {
-      await registerPushToken(this.credentials, tokenData.data);
-      logger.debug('Push token registered successfully');
-    } catch (error) {
-      logger.debug('Failed to register push token', { error: safeStringify(error) });
+    const response = await fetch(`${getServerUrl()}/v1/push-reconnect-ack`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.credentials.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reconnectToken }),
+    });
+    if (!response.ok) {
+      throw new Error(`push-reconnect-ack failed: ${response.status}`);
     }
   };
+
+  private flushReconnectAckQueue = async () => {
+    if (this.reconnectAckFlushPromise) {
+      return this.reconnectAckFlushPromise;
+    }
+
+    this.reconnectAckFlushPromise = (async () => {
+      while (this.pendingReconnectAcks.length > 0) {
+        const reconnectToken = this.pendingReconnectAcks[0];
+        try {
+          await this.postReconnectAck(reconnectToken);
+          this.pendingReconnectAcks = this.pendingReconnectAcks.slice(1);
+          savePendingReconnectAcks(this.pendingReconnectAcks);
+        } catch (err) {
+          logger.debug('[sync] push-reconnect-ack failed', { error: String(err), reconnectToken });
+          break;
+        }
+      }
+    })().finally(() => {
+      this.reconnectAckFlushPromise = null;
+    });
+
+    return this.reconnectAckFlushPromise;
+  };
+
+  private registerPushToken = async ({
+    requestPermission = false,
+    forceRefresh = false,
+    source = 'sync',
+    tokenOverride,
+  }: {
+    requestPermission?: boolean;
+    forceRefresh?: boolean;
+    source?: string;
+    tokenOverride?: string;
+  } = {}): Promise<PushRegistrationResult> => {
+    logger.debug('[sync] registerPushToken', { requestPermission, forceRefresh, source });
+    if (Platform.OS === 'web') {
+      return 'unsupported';
+    }
+
+    const existingPermission = await Notifications.getPermissionsAsync();
+    let finalPermission = existingPermission;
+
+    if (existingPermission.status !== 'granted') {
+      if (!requestPermission) {
+        logger.debug('[sync] Skipping push token registration without notification permission', {
+          status: existingPermission.status,
+          source,
+        });
+        return 'skipped';
+      }
+      if (existingPermission.canAskAgain === false) {
+        logger.info('[sync] Notification permission requires opening system settings');
+        return 'settings-required';
+      }
+      finalPermission = await Notifications.requestPermissionsAsync();
+    }
+
+    if (finalPermission.status !== 'granted') {
+      logger.info('[sync] Notification permission denied', { source });
+      return 'denied';
+    }
+
+    const projectId =
+      Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+    if (!projectId) {
+      logger.warn('[sync] Missing Expo projectId while registering push token');
+      return 'unsupported';
+    }
+
+    const pushToken =
+      tokenOverride ?? (await Notifications.getExpoPushTokenAsync({ projectId })).data ?? null;
+    if (!pushToken) {
+      logger.warn('[sync] Expo push token unavailable', { source });
+      return 'unsupported';
+    }
+
+    if (!forceRefresh && pushToken === this.lastRegisteredPushToken) {
+      logger.debug('[sync] Push token unchanged; skipping server registration', { source });
+      return 'granted';
+    }
+
+    try {
+      await registerPushTokenApi(this.credentials, pushToken);
+      this.lastRegisteredPushToken = pushToken;
+      saveRegisteredPushToken(pushToken);
+      logger.info('[sync] Push token registered successfully', { source });
+      return 'granted';
+    } catch (error) {
+      logger.debug('[sync] Failed to register push token', {
+        source,
+        error: safeStringify(error),
+      });
+      throw error;
+    }
+  };
+
+  private handlePushTokenRotation = async (pushToken: string) => {
+    if (!pushToken || !this.credentials) {
+      return;
+    }
+
+    logger.info('[sync] Push token rotated; refreshing server registration');
+    try {
+      await this.registerPushToken({
+        requestPermission: false,
+        forceRefresh: true,
+        source: 'rotation',
+        tokenOverride: pushToken,
+      });
+    } catch (error) {
+      logger.debug('[sync] Failed to refresh rotated push token', {
+        error: safeStringify(error),
+      });
+    }
+  };
+
+  async enableBackgroundReconnectNotifications(): Promise<PushRegistrationResult> {
+    return this.registerPushToken({
+      requestPermission: true,
+      forceRefresh: true,
+      source: 'settings',
+    });
+  }
 
   /**
    * RFC-010 §3.3: Returns { sessionId: lastSeq } for all sessions with known

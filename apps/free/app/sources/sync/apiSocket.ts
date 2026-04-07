@@ -22,6 +22,12 @@ export interface SyncSocketState {
 }
 
 export type SyncSocketListener = (state: SyncSocketState) => void;
+type ReconnectMode = 'foreground' | 'background';
+
+const RECONNECT_DELAYS: Record<ReconnectMode, { min: number; max: number }> = {
+  foreground: { min: 1000, max: 5000 },
+  background: { min: 5000, max: 30000 },
+};
 
 //
 // Main Class
@@ -47,6 +53,7 @@ class ApiSocket {
   private lastDisconnectReason: string | null = null;
   private lastDisconnectAt: number | null = null;
   private lastConnectedAt: number | null = null;
+  private reconnectMode: ReconnectMode = 'foreground';
   // RFC-010 §3.3: Provider for active session lastSeqs (injected by Sync to avoid circular dep)
   private lastSeqsProvider: (() => Record<string, number>) | null = null;
 
@@ -85,6 +92,7 @@ class ApiSocket {
     logger.debug('[SyncSocket] connecting to', { endpoint: this.config.endpoint });
 
     const lastSeqs = this.lastSeqsProvider?.() ?? {};
+    const reconnectDelay = RECONNECT_DELAYS[this.reconnectMode];
     this.socket = io(this.config.endpoint, {
       path: '/v1/updates',
       auth: {
@@ -94,8 +102,8 @@ class ApiSocket {
       },
       transports: ['websocket'],
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelay: reconnectDelay.min,
+      reconnectionDelayMax: reconnectDelay.max,
       reconnectionAttempts: Infinity,
     });
 
@@ -473,6 +481,38 @@ class ApiSocket {
     } else {
       delete (this.socket.auth as Record<string, unknown>).lastSeqs;
     }
+  }
+
+  setReconnectMode(mode: ReconnectMode) {
+    if (this.reconnectMode === mode) {
+      return;
+    }
+
+    this.reconnectMode = mode;
+    if (!this.socket) {
+      return;
+    }
+
+    const delay = RECONNECT_DELAYS[mode];
+    const manager = this.socket.io as unknown as {
+      reconnectionDelay?: (value: number) => unknown;
+      reconnectionDelayMax?: (value: number) => unknown;
+      opts?: Record<string, unknown>;
+    };
+
+    manager.reconnectionDelay?.(delay.min);
+    manager.reconnectionDelayMax?.(delay.max);
+    if (manager.opts) {
+      manager.opts.reconnectionDelay = delay.min;
+      manager.opts.reconnectionDelayMax = delay.max;
+    }
+
+    logger.info('[SyncSocket] Updated reconnect mode', {
+      mode,
+      reconnectionDelay: delay.min,
+      reconnectionDelayMax: delay.max,
+      connected: this.socket.connected,
+    });
   }
 
   //

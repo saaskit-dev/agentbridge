@@ -14,6 +14,9 @@ const logger = new Logger('app/sync/persistence');
 
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
 const SESSION_CACHE_KEY = 'session-cache-v1';
+const HANDLED_RECONNECT_TOKEN_KEY = 'handled-reconnect-token-v1';
+const PENDING_RECONNECT_ACKS_KEY = 'pending-reconnect-acks-v1';
+const REGISTERED_PUSH_TOKEN_KEY = 'registered-push-token-v1';
 
 export type NewSessionAgentType = AppAgentFlavor;
 export type NewSessionSessionType = 'simple' | 'worktree';
@@ -455,6 +458,53 @@ export function savePendingOutbox(outbox: Record<string, PersistedOutboxMessage[
 
 export function clearPendingOutbox() {
   kvStore.delete(OUTBOX_KEY);
+}
+
+export function loadHandledReconnectToken(): string | null {
+  return kvStore.getString(HANDLED_RECONNECT_TOKEN_KEY) ?? null;
+}
+
+export function saveHandledReconnectToken(token: string | null) {
+  if (!token) {
+    kvStore.delete(HANDLED_RECONNECT_TOKEN_KEY);
+    return;
+  }
+  kvStore.set(HANDLED_RECONNECT_TOKEN_KEY, token);
+}
+
+export function loadPendingReconnectAcks(): string[] {
+  const raw = kvStore.getString(PENDING_RECONNECT_ACKS_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+  } catch (e) {
+    logger.error('Failed to parse pending reconnect acks', toError(e));
+    return [];
+  }
+}
+
+export function savePendingReconnectAcks(tokens: string[]) {
+  if (tokens.length === 0) {
+    kvStore.delete(PENDING_RECONNECT_ACKS_KEY);
+    return;
+  }
+  kvStore.set(PENDING_RECONNECT_ACKS_KEY, JSON.stringify(tokens));
+}
+
+export function loadRegisteredPushToken(): string | null {
+  return kvStore.getString(REGISTERED_PUSH_TOKEN_KEY) ?? null;
+}
+
+export function saveRegisteredPushToken(token: string | null) {
+  if (!token) {
+    kvStore.delete(REGISTERED_PUSH_TOKEN_KEY);
+    return;
+  }
+  kvStore.set(REGISTERED_PUSH_TOKEN_KEY, token);
 }
 
 export async function clearPersistence() {
