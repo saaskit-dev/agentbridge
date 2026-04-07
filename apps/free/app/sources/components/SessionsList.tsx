@@ -330,6 +330,8 @@ export function SessionsList() {
           contentContainerStyle={{
             paddingBottom: safeArea.bottom + 128,
             maxWidth: layout.maxWidth,
+            alignSelf: 'center',
+            width: '100%',
           }}
           ListHeaderComponent={HeaderComponent}
         />

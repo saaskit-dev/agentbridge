@@ -44,6 +44,7 @@ const stylesheet = StyleSheet.create(theme => ({
     marginBottom: 48,
     maxWidth: 250,
     width: '100%',
+    alignSelf: 'center',
   },
   stepRow: {
     flexDirection: 'row',

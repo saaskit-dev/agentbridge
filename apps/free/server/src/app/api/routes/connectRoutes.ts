@@ -103,7 +103,7 @@ export function connectRoutes(app: Fastify) {
       if (!tokenData) {
         log.info(`Invalid state token: ${state}`);
         return reply.redirect(
-          `${process.env.APP_URL || 'https://free.saaskit.app'}?error=invalid_state`
+          `${process.env.APP_URL!}?error=invalid_state`
         );
       }
 
@@ -113,7 +113,7 @@ export function connectRoutes(app: Fastify) {
 
       if (!clientId || !clientSecret) {
         return reply.redirect(
-          `${process.env.APP_URL || 'https://free.saaskit.app'}?error=server_config`
+          `${process.env.APP_URL!}?error=server_config`
         );
       }
 
@@ -140,7 +140,7 @@ export function connectRoutes(app: Fastify) {
 
         if (tokenResponseData.error) {
           return reply.redirect(
-            `${process.env.APP_URL || 'https://free.saaskit.app'}?error=${encodeURIComponent(tokenResponseData.error)}`
+            `${process.env.APP_URL!}?error=${encodeURIComponent(tokenResponseData.error)}`
           );
         }
 
@@ -158,7 +158,7 @@ export function connectRoutes(app: Fastify) {
 
         if (!userResponse.ok) {
           return reply.redirect(
-            `${process.env.APP_URL || 'https://free.saaskit.app'}?error=github_user_fetch_failed`
+            `${process.env.APP_URL!}?error=github_user_fetch_failed`
           );
         }
 
@@ -168,12 +168,12 @@ export function connectRoutes(app: Fastify) {
 
         // Redirect to app with success
         return reply.redirect(
-          `${process.env.APP_URL || 'https://free.saaskit.app'}?github=connected&user=${encodeURIComponent(userData.login)}`
+          `${process.env.APP_URL!}?github=connected&user=${encodeURIComponent(userData.login)}`
         );
       } catch (error) {
         log.info(`Error in GitHub GET callback: ${error}`);
         return reply.redirect(
-          `${process.env.APP_URL || 'https://free.saaskit.app'}?error=server_error`
+          `${process.env.APP_URL!}?error=server_error`
         );
       }
     }

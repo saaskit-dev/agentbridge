@@ -16,7 +16,7 @@ function getMaxWidth(): number {
     return Number.POSITIVE_INFINITY;
   }
 
-  // For tablets and web, use 700px
+  // For tablets and web, use 800px
   return 800;
 }
 
@@ -34,7 +34,7 @@ function getMaxLayoutWidth(): number {
     return 1400;
   }
 
-  // For tablets and web, use 700px
+  // For tablets and web, use 800px
   return 800;
 }
 
@@ -42,3 +42,12 @@ export const layout = {
   maxWidth: getMaxLayoutWidth(),
   headerMaxWidth: getMaxWidth(),
 };
+
+// On web, update layout values when the window resizes so that inline style
+// references (not StyleSheet captures) pick up the new value on next render.
+if (Platform.OS === 'web') {
+  Dimensions.addEventListener('change', () => {
+    layout.maxWidth = getMaxLayoutWidth();
+    layout.headerMaxWidth = getMaxWidth();
+  });
+}

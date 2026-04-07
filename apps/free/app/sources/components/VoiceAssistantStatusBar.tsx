@@ -3,6 +3,7 @@ import * as React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
+import { layout } from './layout';
 import { StatusDot } from './StatusDot';
 import { VoiceBars } from './VoiceBars';
 import { Typography } from '@/constants/Typography';
@@ -105,6 +106,7 @@ export const VoiceAssistantStatusBar = React.memo(
             style={{
               height: 32,
               width: '100%',
+              maxWidth: layout.maxWidth,
               justifyContent: 'center',
               alignItems: 'center',
             }}

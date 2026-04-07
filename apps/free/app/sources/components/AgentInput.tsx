@@ -1694,7 +1694,7 @@ export const AgentInput = React.memo(
                   alignItems: 'center',
                 }}
               >
-                <View style={styles.actionButtonsContainer}>
+                <View style={[styles.actionButtonsContainer, { flex: 1 }]}>
                   <View
                     pointerEvents={composerChromeLocked ? 'none' : 'auto'}
                     style={styles.actionButtonsLeft}

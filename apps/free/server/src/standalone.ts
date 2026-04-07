@@ -199,6 +199,44 @@ async function migrate() {
   await pg.close();
 }
 
+/**
+ * Ensure FREE_MASTER_SECRET is set. If not provided, auto-generate and persist
+ * to DATA_DIR/.master-secret so it survives restarts.
+ */
+function ensureMasterSecret(): void {
+  if (process.env.FREE_MASTER_SECRET) return;
+
+  const secretFile = path.join(dataDir, '.master-secret');
+  fs.mkdirSync(dataDir, { recursive: true });
+
+  // Try to read a previously generated secret
+  if (fs.existsSync(secretFile)) {
+    process.env.FREE_MASTER_SECRET = fs.readFileSync(secretFile, 'utf-8').trim();
+    console.log(`Using auto-generated master secret from ${secretFile}`);
+    return;
+  }
+
+  // Generate a new secret and persist it
+  const secret = crypto.randomUUID() + crypto.randomUUID();
+  fs.writeFileSync(secretFile, secret, { mode: 0o600 });
+  process.env.FREE_MASTER_SECRET = secret;
+  console.log(`Generated master secret and saved to ${secretFile}`);
+  console.log('To use your own secret, set FREE_MASTER_SECRET environment variable.');
+}
+
+/**
+ * Validate that APP_URL is set when GitHub OAuth is configured.
+ */
+function validateConfig(): void {
+  const hasGithubOAuth = process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET;
+  if (hasGithubOAuth && !process.env.APP_URL) {
+    console.error('ERROR: GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET are set but APP_URL is missing.');
+    console.error('APP_URL is required for GitHub OAuth callback redirects.');
+    console.error('Example: APP_URL=https://your-app-domain.com');
+    process.exit(1);
+  }
+}
+
 async function serve() {
   // Acquire lock to prevent concurrent instances (skipped in containers)
   if (!acquireLock()) {
@@ -210,6 +248,12 @@ async function serve() {
   // NOTE: Do NOT handle SIGINT/SIGTERM here — main.ts registers shutdown
   // handlers (closePGlite, etc.) that must run before exit. Calling
   // process.exit() here would skip those handlers and corrupt PGlite data.
+
+  // Auto-generate master secret if not provided
+  ensureMasterSecret();
+
+  // Validate configuration
+  validateConfig();
 
   // Set PGLITE_DIR so db.ts picks it up
   if (!process.env.DATABASE_URL) {
@@ -519,11 +563,12 @@ Usage:
     --jsonl              Output raw JSONL instead of pretty format
 
 Environment variables:
-  DATA_DIR          Base data directory (default: ./data)
-  PGLITE_DIR        PGlite database directory (default: DATA_DIR/pglite)
-  DATABASE_URL      PostgreSQL URL (if set, uses external Postgres instead of PGlite)
-  PORT              Server port (default: 3000)
-  FREE_MASTER_SECRET   Required: master secret for auth/encryption
+  DATA_DIR             Base data directory (default: ./data)
+  PGLITE_DIR           PGlite database directory (default: DATA_DIR/pglite)
+  DATABASE_URL         PostgreSQL URL (if set, uses external Postgres instead of PGlite)
+  PORT                 Server port (default: 3000)
+  FREE_MASTER_SECRET   Master secret for auth/encryption (auto-generated if not set)
+  APP_URL              Your app URL (required when GitHub OAuth is configured)
 `);
     process.exit(0);
   default:

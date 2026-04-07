@@ -12,9 +12,11 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { ChatFooter } from './ChatFooter';
+import { layout } from './layout';
 import { MessageView } from './MessageView';
 import { useSession, useSessionMessages, useMessage } from '@/sync/storage';
 import { Metadata, Session } from '@/sync/storageTypes';
@@ -229,22 +231,30 @@ const ChatFab = React.memo(
 );
 
 /** Stacks FABs vertically from the bottom-right corner (first child = bottom). */
-const ChatFabStack = React.memo((props: { children: React.ReactNode }) => (
-  <View
-    pointerEvents="box-none"
-    style={{
-      position: 'absolute',
-      bottom: 16,
-      right: 16,
-      zIndex: 20,
-      flexDirection: 'column-reverse',
-      alignItems: 'center',
-      gap: FAB_GAP,
-    }}
-  >
-    {props.children}
-  </View>
-));
+const ChatFabStack = React.memo((props: { children: React.ReactNode }) => {
+  const { width: screenWidth } = useWindowDimensions();
+  // Align FAB with the right edge of the maxWidth content area on wide screens
+  const fabRight =
+    layout.maxWidth < screenWidth
+      ? Math.max(16, (screenWidth - layout.maxWidth) / 2 + 16)
+      : 16;
+  return (
+    <View
+      pointerEvents="box-none"
+      style={{
+        position: 'absolute',
+        bottom: 16,
+        right: fabRight,
+        zIndex: 20,
+        flexDirection: 'column-reverse',
+        alignItems: 'center',
+        gap: FAB_GAP,
+      }}
+    >
+      {props.children}
+    </View>
+  );
+});
 
 /** Unread message count badge for the scroll-to-bottom FAB. */
 const UnreadBadge = React.memo((props: { count: number }) => {

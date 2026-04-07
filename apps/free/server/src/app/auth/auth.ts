@@ -24,7 +24,12 @@ class AuthModule {
       return; // Already initialized
     }
 
-    const secretRaw = process.env.FREE_MASTER_SECRET ?? '';
+    const secretRaw = process.env.FREE_MASTER_SECRET;
+    if (!secretRaw) {
+      throw new Error(
+        'FREE_MASTER_SECRET is not set. Run via "free-server serve" (auto-generates) or set it manually.'
+      );
+    }
     // Log a prefix of the seed so we can diagnose cross-restart key mismatches without leaking the full secret
     log.info('Initializing auth module', {
       seedPrefix: secretRaw.slice(0, 8),
@@ -48,7 +53,7 @@ class AuthModule {
 
     const githubGenerator = await privacyKit.createEphemeralTokenGenerator({
       service: 'github-free',
-      seed: process.env.FREE_MASTER_SECRET!,
+      seed: secretRaw,
       ttl: 5 * 60 * 1000, // 5 minutes
     });
 
