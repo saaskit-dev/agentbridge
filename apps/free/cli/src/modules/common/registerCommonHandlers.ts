@@ -693,7 +693,26 @@ export function registerCommonHandlers(
 
       try {
         const fileStats = await lstat(validation.resolvedPath);
+        const isSymlink = fileStats.isSymbolicLink();
         const isDirectory = fileStats.isDirectory();
+
+        // For symlinks pointing outside the working directory, only allow removing the
+        // symlink itself (unlink) — never follow into a recursive delete outside the sandbox.
+        if (isSymlink) {
+          try {
+            const resolvedTarget = await realpath(validation.resolvedPath);
+            const targetValidation = validatePath(resolvedTarget, workingDirectory);
+            if (!targetValidation.valid) {
+              // Target is outside working directory — only remove the symlink, never recurse
+              await unlink(validation.resolvedPath);
+              return { success: true };
+            }
+          } catch {
+            // Broken symlink — safe to remove the dangling link
+            await unlink(validation.resolvedPath);
+            return { success: true };
+          }
+        }
 
         if (isDirectory && !data.recursive) {
           return { success: false, error: 'Path is a directory; set recursive=true to delete', errorCode: 'EISDIR' };

@@ -51,6 +51,15 @@ interface FileErrorState {
  * Whether this path should be shown as rendered Markdown (same pipeline as chat messages)
  * instead of a syntax-highlighted source block.
  */
+/** Simple string hash for generating unique cache filenames. */
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
 function isMarkdownPreviewPath(path: string): boolean {
   const ext = path.split('.').pop()?.toLowerCase();
   return ext === 'md' || ext === 'mdx' || ext === 'markdown';
@@ -465,11 +474,13 @@ export default function FileScreen() {
         // Fetch git diff for the file (if in git repo)
         if (sessionPath && sessionId) {
           try {
+            // Shell-escape: wrap in single quotes, escaping any embedded single quotes
+            const escaped = filePath.replace(/'/g, "'\\''");
             const diffResponse = await sessionBash(sessionId, {
               // If someone is using a custom diff tool like
               // difftastic, the parser would break. So instead
               // force git to use the built in diff tool.
-              command: `git diff --no-ext-diff "${filePath}"`,
+              command: `git diff --no-ext-diff '${escaped}'`,
               cwd: sessionPath,
               timeout: 5000,
             });
@@ -608,7 +619,8 @@ export default function FileScreen() {
         Modal.alert(t('common.error'), t('files.downloadError'));
         return;
       }
-      const localUri = cacheDirectory + fileName;
+      const pathHash = Math.abs(hashCode(filePath)).toString(36);
+      const localUri = cacheDirectory + `${pathHash}-${fileName}`;
       await writeAsStringAsync(localUri, response.content, {
         encoding: EncodingType.Base64,
       });

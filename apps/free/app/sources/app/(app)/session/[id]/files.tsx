@@ -34,6 +34,15 @@ import { encodeSessionFilePathForRoute } from '@/utils/sessionFilePath';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/session/files');
 
+/** Simple string hash for generating unique cache filenames. */
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
 /**
  * Joins an absolute directory path with a single entry name (POSIX-style).
  */
@@ -87,6 +96,7 @@ export default function FilesScreen() {
   const [browseLoading, setBrowseLoading] = React.useState(false);
   const [browseError, setBrowseError] = React.useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [isBusy, setIsBusy] = React.useState(false);
   const [refreshKey, setRefreshKey] = React.useState(0);
   const browseRequestIdRef = React.useRef(0);
   const searchRequestIdRef = React.useRef(0);
@@ -233,6 +243,8 @@ export default function FilesScreen() {
    */
   const downloadFile = React.useCallback(
     async (absolutePath: string, fileName: string) => {
+      if (isBusy) return;
+      setIsBusy(true);
       try {
         const MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
         const sizeCheck = await sessionReadFile(sessionId, absolutePath, 1);
@@ -245,7 +257,9 @@ export default function FilesScreen() {
           Modal.alert(t('common.error'), t('files.downloadError'));
           return;
         }
-        const localUri = cacheDirectory + fileName;
+        // Use a hash prefix to avoid collision between same-named files in different dirs
+        const pathHash = Math.abs(hashCode(absolutePath)).toString(36);
+        const localUri = cacheDirectory + `${pathHash}-${fileName}`;
         await writeAsStringAsync(localUri, response.content, {
           encoding: EncodingType.Base64,
         });
@@ -258,9 +272,11 @@ export default function FilesScreen() {
       } catch (error) {
         logger.error('downloadFile failed', toError(error));
         Modal.alert(t('common.error'), t('files.downloadError'));
+      } finally {
+        setIsBusy(false);
       }
     },
-    [sessionId]
+    [sessionId, isBusy]
   );
 
   /**
@@ -269,6 +285,7 @@ export default function FilesScreen() {
    */
   const showEntryActions = React.useCallback(
     (absolutePath: string, name: string, kind: 'file' | 'directory') => {
+      if (isBusy) return;
       const isDir = kind === 'directory';
 
       const handleDelete = async () => {
@@ -278,13 +295,17 @@ export default function FilesScreen() {
         const confirmed = await Modal.confirm(t('common.delete'), confirmMsg, {
           destructive: true,
         });
-        if (confirmed) {
+        if (!confirmed) return;
+        setIsBusy(true);
+        try {
           const result = await sessionDeleteFile(sessionId, absolutePath, isDir);
           if (result.success) {
             refreshFileState({ clearSearchCache: true });
           } else {
             Modal.alert(t('common.error'), result.error ?? t('files.deleteError'));
           }
+        } finally {
+          setIsBusy(false);
         }
       };
 
@@ -319,10 +340,7 @@ export default function FilesScreen() {
           );
         }
       } else {
-        // Android / Web: use Alert
-        const confirmMsg = isDir
-          ? t('files.deleteFolderConfirm', { name })
-          : t('files.deleteFileConfirm', { name });
+        // Android / Web: use Alert for action menu, then Modal.confirm for delete
         const buttons = [
           ...(!isDir
             ? [
@@ -338,21 +356,7 @@ export default function FilesScreen() {
             text: t('files.delete'),
             style: 'destructive' as const,
             onPress: () => {
-              Alert.alert(t('common.delete'), confirmMsg, [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                  text: t('common.delete'),
-                  style: 'destructive',
-                  onPress: async () => {
-                    const result = await sessionDeleteFile(sessionId, absolutePath, isDir);
-                    if (result.success) {
-                      refreshFileState({ clearSearchCache: true });
-                    } else {
-                      Modal.alert(t('common.error'), result.error ?? t('files.deleteError'));
-                    }
-                  },
-                },
-              ]);
+              handleDelete().catch(() => {});
             },
           },
           { text: t('common.cancel'), style: 'cancel' as const },
@@ -360,7 +364,7 @@ export default function FilesScreen() {
         Alert.alert(name, undefined, buttons);
       }
     },
-    [downloadFile, refreshFileState, sessionId]
+    [downloadFile, isBusy, refreshFileState, sessionId]
   );
 
   const renderFileIconForSearch = (file: FileItem) => {
@@ -449,6 +453,24 @@ export default function FilesScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+      {isBusy && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 10,
+            backgroundColor: 'rgba(0,0,0,0.15)',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+          pointerEvents="auto"
+        >
+          <ActivityIndicator size="large" color={theme.colors.textLink} />
+        </View>
+      )}
       {/* Search Input - Always Visible */}
       <View
         style={{
