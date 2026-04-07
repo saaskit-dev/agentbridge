@@ -65,7 +65,7 @@ export class RemoteSink implements LogSink {
     }
 
     if (this.buffer.length >= this.batchSize) {
-      this.doFlush();
+      void this.doFlush().catch(() => undefined);
     }
   }
 

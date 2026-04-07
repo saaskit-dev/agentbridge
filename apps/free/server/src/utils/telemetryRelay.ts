@@ -57,7 +57,7 @@ export class TelemetryRelay {
     }
 
     if (this.buffer.length >= this.batchSize) {
-      this.flush();
+      void this.flush().catch(() => undefined);
     }
   }
 
