@@ -34,6 +34,7 @@ import { StatusDot } from './StatusDot';
 import {
   getAgentDescription,
   getAgentDisplayName,
+  isHiddenAgentOption,
   isExperimentalAgent,
   normalizeAgentFlavor,
   type AppAgentFlavor,
@@ -451,7 +452,6 @@ export const AgentInput = React.memo(
     const cliStatus = props.connectionStatus?.cliStatus;
     const cliStatusItems = React.useMemo(
       () => [
-        { key: 'claude-native', available: cliStatus?.['claude-native'] },
         ...(cliStatus?.claude !== undefined
           ? [{ key: 'claude', available: cliStatus.claude }]
           : []),
@@ -469,7 +469,6 @@ export const AgentInput = React.memo(
           : []),
       ],
       [
-        cliStatus?.['claude-native'],
         cliStatus?.claude,
         cliStatus?.['codex'],
         cliStatus?.gemini,
@@ -1198,10 +1197,10 @@ export const AgentInput = React.memo(
                     <Text style={styles.overlaySectionTitle}>{t('agentInput.agentTitle')}</Text>
                     {(() => {
                       const stableAgents = props.availableAgentTypes!.filter(
-                        a => !isExperimentalAgent(a)
+                        a => !isHiddenAgentOption(a) && !isExperimentalAgent(a)
                       );
-                      const experimentalAgents = props.availableAgentTypes!.filter(a =>
-                        isExperimentalAgent(a)
+                      const experimentalAgents = props.availableAgentTypes!.filter(
+                        a => !isHiddenAgentOption(a) && isExperimentalAgent(a)
                       );
 
                       const renderAgentRow = (agent: AppAgentFlavor) => {

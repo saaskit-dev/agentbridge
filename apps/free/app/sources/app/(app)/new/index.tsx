@@ -31,6 +31,7 @@ import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import {
   coerceAgentType,
+  isHiddenAgentOption,
   isAcpAgent,
   isExperimentalAgent,
   type AppAgentFlavor,
@@ -194,6 +195,9 @@ function NewSessionWizard() {
     // Check if agent type was provided in temp data
     if (tempSessionData?.agentType) {
       const requestedAgentType = coerceAgentType(tempSessionData.agentType);
+      if (isHiddenAgentOption(requestedAgentType)) {
+        return 'claude';
+      }
       if (isExperimentalAgent(requestedAgentType) && !experimentsEnabled) {
         return 'claude';
       }
@@ -201,6 +205,9 @@ function NewSessionWizard() {
     }
     if (typeof lastUsedAgent === 'string') {
       const savedAgentType = coerceAgentType(lastUsedAgent);
+      if (isHiddenAgentOption(savedAgentType)) {
+        return 'claude';
+      }
       if (!isExperimentalAgent(savedAgentType) || experimentsEnabled) {
         return savedAgentType;
       }
@@ -212,7 +219,6 @@ function NewSessionWizard() {
     'codex',
     'gemini',
     'opencode',
-    'claude-native',
   ]);
 
   // Persist agent selection changes (separate from setState to avoid race condition)
@@ -515,6 +521,12 @@ function NewSessionWizard() {
       return;
     }
     const nextAgentType = coerceAgentType(agentParam);
+    if (isHiddenAgentOption(nextAgentType)) {
+      if (agentType !== 'claude') {
+        setAgentType('claude');
+      }
+      return;
+    }
     if (nextAgentType !== agentType) {
       setAgentType(nextAgentType);
     }
@@ -532,7 +544,9 @@ function NewSessionWizard() {
       if (cancelled || agentTypes.length === 0) {
         return;
       }
-      const discoveredAgentTypes = agentTypes.map(agentType => coerceAgentType(agentType));
+      const discoveredAgentTypes = agentTypes
+        .map(agentType => coerceAgentType(agentType))
+        .filter(agentType => !isHiddenAgentOption(agentType));
       setSupportedAgentTypes(discoveredAgentTypes);
       if (!discoveredAgentTypes.includes(agentType)) {
         setAgentType(discoveredAgentTypes[0] ?? 'claude');
@@ -882,7 +896,6 @@ function NewSessionWizard() {
       isPulsing: isOnline,
       cliStatus: includeCLI
         ? {
-            'claude-native': cliAvailability.claudeNative,
             claude: cliAvailability.claude,
             codex: cliAvailability.codex,
             ...(experimentsEnabled && {

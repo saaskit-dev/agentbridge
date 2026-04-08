@@ -97,6 +97,12 @@ export function isExperimentalAgent(agentType: AppAgentFlavor): boolean {
   return agentType === 'claude-native';
 }
 
+// TODO: Remove this hide-only shim after claude-native is fully deleted from
+// app/cli/daemon/backend types and session recovery paths.
+export function isHiddenAgentOption(agentType: AppAgentFlavor): boolean {
+  return agentType === 'claude-native';
+}
+
 export function isAgentFlavorMatch(
   requestedAgentType: AppAgentFlavor,
   actualFlavor: SessionFlavor | null | undefined

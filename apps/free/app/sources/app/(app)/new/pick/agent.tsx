@@ -12,6 +12,7 @@ import {
   coerceAgentType,
   getAgentDescription,
   getAgentDisplayName,
+  isHiddenAgentOption,
   isExperimentalAgent,
   type AppAgentFlavor,
 } from '@/sync/agentFlavor';
@@ -202,7 +203,6 @@ const FALLBACK_AGENT_TYPES: AppAgentFlavor[] = [
   'codex',
   'gemini',
   'opencode',
-  'claude-native',
 ];
 
 type AgentSection = {
@@ -260,7 +260,12 @@ export default function AgentPickerScreen() {
   }, [params.machineId]);
 
   const visibleAgentTypes = React.useMemo(
-    () => agentTypes.filter(agentType => experimentsEnabled || !isExperimentalAgent(agentType)),
+    () =>
+      agentTypes.filter(
+        agentType =>
+          !isHiddenAgentOption(agentType) &&
+          (experimentsEnabled || !isExperimentalAgent(agentType))
+      ),
     [agentTypes, experimentsEnabled]
   );
 
