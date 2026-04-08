@@ -28,31 +28,31 @@ export const FOCUS_AUDIO_CATALOG = [
     id: 'light-rain',
     label: 'Light Rain',
     category: 'rain',
-    uri: 'https://white-noises.com/sounds/rain/light-rain.wav',
+    uri: 'https://white-noises.com/sounds/rain/light-rain.mp3',
   },
   {
     id: 'waves',
     label: 'Waves',
     category: 'nature',
-    uri: 'https://white-noises.com/sounds/nature/waves.wav',
+    uri: 'https://white-noises.com/sounds/nature/waves.mp3',
   },
   {
     id: 'campfire',
     label: 'Campfire',
     category: 'nature',
-    uri: 'https://white-noises.com/sounds/nature/campfire.wav',
+    uri: 'https://white-noises.com/sounds/nature/campfire.mp3',
   },
   {
     id: 'cafe',
     label: 'Cafe',
     category: 'places',
-    uri: 'https://white-noises.com/sounds/places/cafe.wav',
+    uri: 'https://white-noises.com/sounds/places/cafe.mp3',
   },
   {
     id: 'library',
     label: 'Library',
     category: 'places',
-    uri: 'https://white-noises.com/sounds/places/library.wav',
+    uri: 'https://white-noises.com/sounds/places/library.mp3',
   },
 ] as const;
 

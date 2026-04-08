@@ -58,9 +58,19 @@ function getFocusAudioDirectory(): Directory | null {
   return focusAudioDirectory;
 }
 
+function getRemoteFocusAudioUri(sound: FocusAudioSound): string {
+  return getFocusAudioSound(sound).uri;
+}
+
+function getFocusAudioFileExtension(sound: FocusAudioSound): string {
+  const pathname = new URL(getRemoteFocusAudioUri(sound)).pathname;
+  const extension = pathname.split('.').pop()?.toLowerCase();
+  return extension || 'audio';
+}
+
 function getFocusAudioFile(sound: FocusAudioSound): File | null {
   const directory = getFocusAudioDirectory();
-  return directory ? new File(directory, `${sound}.wav`) : null;
+  return directory ? new File(directory, `${sound}.${getFocusAudioFileExtension(sound)}`) : null;
 }
 
 function emitFocusAudioState() {
@@ -106,10 +116,6 @@ function markSoundFailed(sound: FocusAudioSound, error: unknown) {
     failedSound: sound,
     error: String(error),
   }));
-}
-
-function getRemoteFocusAudioUri(sound: FocusAudioSound): string {
-  return getFocusAudioSound(sound).uri;
 }
 
 async function ensureFocusAudioSource(sound: FocusAudioSound): Promise<string> {
