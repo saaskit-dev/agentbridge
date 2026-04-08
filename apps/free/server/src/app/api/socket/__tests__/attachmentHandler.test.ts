@@ -287,7 +287,12 @@ describe('attachmentHandler — daemon relay', () => {
 
     await socket.triggerUpload({ ...VALID_PAYLOAD, data: ab });
 
-    const forwarded = _timeoutSocket.emitWithAck.mock.calls[0][1] as { data: Buffer };
+    const firstCall = _timeoutSocket.emitWithAck.mock.calls[0] as unknown as [
+      string,
+      { data: Buffer },
+    ];
+    expect(firstCall).toBeDefined();
+    const forwarded = firstCall[1];
     expect(Buffer.isBuffer(forwarded.data)).toBe(true);
     expect(Array.from(forwarded.data)).toEqual([1, 2, 3, 4]);
   });

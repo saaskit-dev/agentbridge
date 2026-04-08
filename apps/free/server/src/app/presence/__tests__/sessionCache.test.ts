@@ -84,7 +84,7 @@ describe('ActivityCache', () => {
     await cache.isSessionValid('sess-1', 'user-1');
     expect(cache.queueSessionUpdate('sess-1', 60_000)).toBe(true);
 
-    let resolveUpdate: (() => void) | null = null;
+    let resolveUpdate!: () => void;
     const updatePromise = new Promise<void>(resolve => {
       resolveUpdate = resolve;
     });
@@ -98,7 +98,7 @@ describe('ActivityCache', () => {
     await Promise.resolve();
     expect(shutdownFinished).toBe(false);
 
-    resolveUpdate?.();
+    resolveUpdate();
     await shutdownPromise;
 
     expect(shutdownFinished).toBe(true);

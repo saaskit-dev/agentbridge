@@ -310,12 +310,12 @@ export function accountRoutes(app: Fastify) {
             updatedAt: Date;
             data: PrismaJson.UsageReportData;
           }>
-        >(Prisma.sql`
+        >`
           SELECT "createdAt", "updatedAt", "data"
           FROM "UsageReport"
-          WHERE ${Prisma.join(sqlWhere, Prisma.sql` AND `)}
+          WHERE ${Prisma.join(sqlWhere, ' AND ')}
           ORDER BY "createdAt" DESC
-        `);
+        `;
 
         const result = aggregateUsageReports(
           reports,

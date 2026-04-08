@@ -3,6 +3,7 @@ import {
   aggregateUsageReports,
   getUsageReportTimestampMs,
   UNKNOWN_USAGE_FILTER_VALUE,
+  type UsageReportRecord,
 } from '../usageAggregation';
 
 describe('getUsageReportTimestampMs', () => {
@@ -55,7 +56,7 @@ describe('getUsageReportTimestampMs', () => {
 
 describe('aggregateUsageReports', () => {
   it('filters and groups using usage timestamps instead of row creation time', () => {
-    const reports = [
+    const reports: UsageReportRecord[] = [
       {
         createdAt: new Date('2026-04-01T00:00:00.000Z'),
         data: {

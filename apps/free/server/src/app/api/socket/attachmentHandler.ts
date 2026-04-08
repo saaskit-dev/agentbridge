@@ -30,7 +30,7 @@ export function attachmentHandler(
 ): void {
   // Allow App clients (user-scoped or session-scoped, but not daemon) to upload attachments.
   // The sessionId comes from the payload, so user-scoped connections work fine.
-  if (connection.isDaemon) return;
+  if (connection.connectionType === 'session-scoped' && connection.isDaemon) return;
 
   // -----------------------------------------------------------------------
   // Download: App requests attachment binary from Daemon
