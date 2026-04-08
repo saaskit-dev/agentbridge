@@ -89,6 +89,10 @@ export async function sendSilentReconnectPush(userId: string): Promise<void> {
 
     const expoState = getExpo();
     if (!expoState) {
+      log.error('[push] reconnect push aborted because Expo client is unavailable', {
+        userId,
+        tokenCount: tokens.length,
+      });
       return;
     }
     const { expo, ExpoClass } = expoState;

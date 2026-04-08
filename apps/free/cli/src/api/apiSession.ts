@@ -108,6 +108,9 @@ export class ApiSessionClient extends EventEmitter {
   private lastSeq: number;
   /** True until the first successful connection completes. */
   private isFirstConnect = true;
+  private lastConnectedAt: number | null = null;
+  private lastDisconnectAt: number | null = null;
+  private lastDisconnectReason: string | null = null;
   /** Set by `connect` handler, consumed by `replay` handler.
    *  'recovery' — first connect after creation: only update lastSeq, don't route
    *  'reconnect' — subsequent connect: decrypt and route messages normally */
@@ -182,12 +185,16 @@ export class ApiSessionClient extends EventEmitter {
     //
 
     this.socket.on('connect', () => {
+      this.lastConnectedAt = Date.now();
       logger.info('[CLI] Session connected', {
         userId: this.userId,
         sessionId: this.sessionId,
         traceId: getProcessTraceContext()?.traceId,
         isFirstConnect: this.isFirstConnect,
         lastSeq: this.lastSeq,
+        socketId: this.socket.id,
+        prevDisconnectReason: this.lastDisconnectReason,
+        prevDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
       });
       // Set replay mode BEFORE clearing flag — replay handler fires after connect
       this.nextReplayMode = this.isFirstConnect ? 'recovery' : 'reconnect';
@@ -211,11 +218,15 @@ export class ApiSessionClient extends EventEmitter {
     );
 
     this.socket.on('disconnect', reason => {
+      this.lastDisconnectReason = reason;
+      this.lastDisconnectAt = Date.now();
       logger.info('[CLI] Session disconnected', {
         userId: this.userId,
         sessionId: this.sessionId,
         traceId: getProcessTraceContext()?.traceId,
         reason,
+        socketId: this.socket.id,
+        connectedDurationMs: this.lastConnectedAt ? Date.now() - this.lastConnectedAt : null,
       });
       this.rpcHandlerManager.onSocketDisconnect();
     });
@@ -226,6 +237,12 @@ export class ApiSessionClient extends EventEmitter {
         sessionId: this.sessionId,
         traceId: getProcessTraceContext()?.traceId,
         error: error.message,
+        socketId: this.socket.id,
+        socketConnected: this.socket.connected,
+        activeTransport: this.socket.io.engine?.transport?.name,
+        lastSeq: this.lastSeq,
+        lastDisconnectReason: this.lastDisconnectReason,
+        lastDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
       });
       this.rpcHandlerManager.onSocketDisconnect();
     });

@@ -28,6 +28,16 @@ export class SessionManager {
   constructor(private readonly onEvictHistory: (sessionId: string) => void = () => {}) {}
 
   register(sessionId: string, session: AnySession): void {
+    const existing = this.sessions.get(sessionId);
+    if (existing && existing !== session) {
+      logger.error('[SessionManager] duplicate session registration rejected', {
+        sessionId,
+        existingAgentType: existing.agentType,
+        incomingAgentType: session.agentType,
+      });
+      throw new Error(`Session ${sessionId} is already registered`);
+    }
+
     this.sessions.set(sessionId, session);
     logger.info('[SessionManager] session registered', {
       sessionId,

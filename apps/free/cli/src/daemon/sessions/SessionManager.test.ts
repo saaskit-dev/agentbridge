@@ -116,13 +116,13 @@ describe('SessionManager', () => {
     expect(s2.handleSigint).toHaveBeenCalled();
   });
 
-  it('register overwrites existing session with same id', () => {
+  it('register rejects duplicate session ids', () => {
     const mgr = new SessionManager();
     const s1 = makeMockSession();
     const s2 = makeMockSession({ agentType: 'codex' });
     mgr.register('sess-1', s1);
-    mgr.register('sess-1', s2);
-    expect(mgr.get('sess-1')).toBe(s2);
+    expect(() => mgr.register('sess-1', s2)).toThrow('Session sess-1 is already registered');
+    expect(mgr.get('sess-1')).toBe(s1);
     expect(mgr.list()).toHaveLength(1);
   });
 });

@@ -284,7 +284,7 @@ export interface EphemeralPayload {
 
 // === EVENT ROUTER CLASS ===
 
-class EventRouter {
+export class EventRouter {
   private userConnections = new Map<string, Set<ClientConnection>>();
 
   // === CONNECTION MANAGEMENT ===
@@ -336,6 +336,28 @@ class EventRouter {
       }
     }
     return undefined;
+  }
+
+  hasSessionConnection(userId: string, sessionId: string): boolean {
+    const connections = this.userConnections.get(userId);
+    if (!connections) return false;
+    for (const conn of connections) {
+      if (conn.connectionType === 'session-scoped' && conn.sessionId === sessionId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  hasMachineConnection(userId: string, machineId: string): boolean {
+    const connections = this.userConnections.get(userId);
+    if (!connections) return false;
+    for (const conn of connections) {
+      if (conn.connectionType === 'machine-scoped' && conn.machineId === machineId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // === EVENT EMISSION METHODS ===

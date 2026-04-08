@@ -133,6 +133,9 @@ export class ApiMachineClient {
   private rpcHandlerManager: RpcHandlerManager;
   /** Pending recovery-done payload — sent on first connect, then cleared. */
   private pendingRecoveryDone: string[] | null = null;
+  private lastConnectedAt: number | null = null;
+  private lastDisconnectAt: number | null = null;
+  private lastDisconnectReason: string | null = null;
 
   constructor(
     private token: string,
@@ -395,7 +398,13 @@ export class ApiMachineClient {
     });
 
     this.socket.on('connect', () => {
-      logger.info('[DAEMON] Machine connected', { machineId: this.machine.id });
+      this.lastConnectedAt = Date.now();
+      logger.info('[DAEMON] Machine connected', {
+        machineId: this.machine.id,
+        socketId: this.socket.id,
+        prevDisconnectReason: this.lastDisconnectReason,
+        prevDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
+      });
 
       // Update daemon state to running
       // We need to override previous state because the daemon (this process)
@@ -436,8 +445,15 @@ export class ApiMachineClient {
       this.startKeepAlive();
     });
 
-    this.socket.on('disconnect', () => {
-      logger.debug('[API MACHINE] Disconnected from server', { machineId: this.machine.id });
+    this.socket.on('disconnect', reason => {
+      this.lastDisconnectReason = reason;
+      this.lastDisconnectAt = Date.now();
+      logger.info('[DAEMON] Machine disconnected', {
+        machineId: this.machine.id,
+        socketId: this.socket.id,
+        reason,
+        connectedDurationMs: this.lastConnectedAt ? Date.now() - this.lastConnectedAt : null,
+      });
       this.rpcHandlerManager.onSocketDisconnect();
       this.stopKeepAlive();
     });
@@ -499,6 +515,11 @@ export class ApiMachineClient {
       logger.error('[DAEMON] Machine connect failed', undefined, {
         machineId: this.machine.id,
         error: error.message,
+        socketId: this.socket.id,
+        socketConnected: this.socket.connected,
+        activeTransport: this.socket.io.engine?.transport?.name,
+        lastDisconnectReason: this.lastDisconnectReason,
+        lastDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
       });
     });
 

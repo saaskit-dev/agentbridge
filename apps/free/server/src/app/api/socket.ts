@@ -181,6 +181,18 @@ export async function startSocket(app: Fastify) {
       decrementWebSocketConnection(connection.connectionType);
 
       log.info(`User disconnected: ${userId}`);
+      log.info('[disconnect] connection removed', {
+        userId,
+        connectionType: connection.connectionType,
+        socketId: socket.id,
+        reason,
+        ...(connection.connectionType === 'session-scoped'
+          ? { sessionId: connection.sessionId, isDaemon: connection.isDaemon === true }
+          : {}),
+        ...(connection.connectionType === 'machine-scoped'
+          ? { machineId: connection.machineId }
+          : {}),
+      });
 
       const work = (async () => {
         const t0 = Date.now();
@@ -191,6 +203,20 @@ export async function startSocket(app: Fastify) {
 
         // Broadcast daemon offline status and update database
         if (connection.connectionType === 'machine-scoped') {
+          const hasRemainingMachineConnection = eventRouter.hasMachineConnection(
+            userId,
+            connection.machineId
+          );
+          if (hasRemainingMachineConnection) {
+            log.info('[disconnect] machine still connected elsewhere, skipping inactive transition', {
+              userId,
+              machineId: connection.machineId,
+              socketId: socket.id,
+              reason,
+            });
+            return;
+          }
+
           const now = Date.now();
           // Update database
           try {
@@ -219,6 +245,20 @@ export async function startSocket(app: Fastify) {
 
         // Broadcast session offline status and update database
         if (connection.connectionType === 'session-scoped') {
+          const hasRemainingSessionConnection = eventRouter.hasSessionConnection(
+            userId,
+            connection.sessionId
+          );
+          if (hasRemainingSessionConnection) {
+            log.info('[disconnect] session still connected elsewhere, skipping offline transition', {
+              userId,
+              sessionId: connection.sessionId,
+              socketId: socket.id,
+              reason,
+            });
+            return;
+          }
+
           const now = Date.now();
           // Update database
           try {
@@ -253,6 +293,11 @@ export async function startSocket(app: Fastify) {
         if (connection.connectionType === 'user-scoped') {
           const isUnexpected = reason === 'transport close' || reason === 'ping timeout';
           if (isUnexpected) {
+            log.info('[disconnect] user-scoped connection dropped unexpectedly, attempting reconnect push', {
+              userId,
+              socketId: socket.id,
+              reason,
+            });
             await sendSilentReconnectPush(userId);
           }
         }
