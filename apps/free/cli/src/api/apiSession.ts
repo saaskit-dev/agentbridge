@@ -28,6 +28,10 @@ import { InvalidateSync } from '@/utils/sync';
 import { backoff, delay } from '@/utils/time';
 import type { SessionEnvelope } from '@/sessionProtocol/types';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
+import {
+  loadPendingSessionOutbox,
+  persistPendingSessionOutbox,
+} from './sessionOutboxPersistence';
 
 const logger = new Logger('api/apiSession');
 
@@ -67,6 +71,18 @@ type V3SessionMessage = {
   traceId?: string;
   createdAt: number;
   updatedAt: number;
+};
+
+type PendingOutboxMessage = { content: string; id: string; _trace?: WireTrace };
+
+type PlannedReconnectState = {
+  reason: 'server-restart';
+  reconnectAfterMs: number;
+  startedAt: number;
+  deadline: number;
+  promise: Promise<void>;
+  resolve: () => void;
+  timer: NodeJS.Timeout;
 };
 
 function decodeUserId(token: string): string | undefined {
@@ -115,9 +131,12 @@ export class ApiSessionClient extends EventEmitter {
    *  'recovery' — first connect after creation: only update lastSeq, don't route
    *  'reconnect' — subsequent connect: decrypt and route messages normally */
   private nextReplayMode: 'recovery' | 'reconnect' = 'recovery';
-  private pendingOutbox: Array<{ content: string; id: string; _trace?: WireTrace }> = [];
+  private pendingOutbox: PendingOutboxMessage[] = [];
   private readonly sendSync: InvalidateSync;
   private readonly receiveSync: InvalidateSync;
+  private readonly outboxPersistenceLock = new AsyncLock();
+  private readonly outboxReady: Promise<void>;
+  private plannedReconnect: PlannedReconnectState | null = null;
 
   constructor(token: string, session: Session) {
     super();
@@ -135,6 +154,7 @@ export class ApiSessionClient extends EventEmitter {
     this.lastSeq = session.lastSeq ?? 0;
     this.sendSync = new InvalidateSync(() => this.flushOutbox());
     this.receiveSync = new InvalidateSync(() => this.fetchMessages());
+    this.outboxReady = this.restorePersistedOutbox();
 
     // Initialize RPC handler manager
     this.rpcHandlerManager = new RpcHandlerManager({
@@ -185,6 +205,7 @@ export class ApiSessionClient extends EventEmitter {
     //
 
     this.socket.on('connect', () => {
+      const plannedReconnect = this.clearPlannedReconnect();
       this.lastConnectedAt = Date.now();
       logger.info('[CLI] Session connected', {
         userId: this.userId,
@@ -195,6 +216,8 @@ export class ApiSessionClient extends EventEmitter {
         socketId: this.socket.id,
         prevDisconnectReason: this.lastDisconnectReason,
         prevDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
+        resumedAfterServerRestart: !!plannedReconnect,
+        restartDowntimeMs: plannedReconnect ? Date.now() - plannedReconnect.startedAt : null,
       });
       // Set replay mode BEFORE clearing flag — replay handler fires after connect
       this.nextReplayMode = this.isFirstConnect ? 'recovery' : 'reconnect';
@@ -220,19 +243,26 @@ export class ApiSessionClient extends EventEmitter {
     this.socket.on('disconnect', reason => {
       this.lastDisconnectReason = reason;
       this.lastDisconnectAt = Date.now();
-      logger.info('[CLI] Session disconnected', {
+      const plannedReconnect = this.getPlannedReconnectContext();
+      logger.info(
+        plannedReconnect
+          ? '[CLI] Session disconnected for planned server restart'
+          : '[CLI] Session disconnected',
+        {
         userId: this.userId,
         sessionId: this.sessionId,
         traceId: getProcessTraceContext()?.traceId,
         reason,
         socketId: this.socket.id,
         connectedDurationMs: this.lastConnectedAt ? Date.now() - this.lastConnectedAt : null,
-      });
+          ...plannedReconnect,
+        }
+      );
       this.rpcHandlerManager.onSocketDisconnect();
     });
 
     this.socket.on('connect_error', error => {
-      logger.error('[CLI] Session connect failed', undefined, {
+      const payload = {
         userId: this.userId,
         sessionId: this.sessionId,
         traceId: getProcessTraceContext()?.traceId,
@@ -243,9 +273,29 @@ export class ApiSessionClient extends EventEmitter {
         lastSeq: this.lastSeq,
         lastDisconnectReason: this.lastDisconnectReason,
         lastDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
-      });
+        ...this.getPlannedReconnectContext(),
+      };
+      if (this.plannedReconnect) {
+        logger.info('[CLI] Session reconnecting after planned server restart', payload);
+      } else {
+        logger.error('[CLI] Session connect failed', undefined, payload);
+      }
       this.rpcHandlerManager.onSocketDisconnect();
     });
+
+    this.socket.on(
+      'server-draining',
+      (data: { reason: 'server-restart'; reconnectAfterMs: number; startedAt: number }) => {
+        this.beginPlannedReconnect(data);
+        logger.info('[CLI] Session preparing for planned server restart', {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          socketId: this.socket.id,
+          reconnectAfterMs: data.reconnectAfterMs,
+          startedAt: data.startedAt,
+        });
+      }
+    );
 
     // Server-driven archive fallback: DB is the source of truth.
     // If the server detects that the session is already archived (active=false)
@@ -540,6 +590,7 @@ export class ApiSessionClient extends EventEmitter {
   }
 
   private async fetchMessages() {
+    await this.waitForOperationalSocket();
     let afterSeq = this.lastSeq;
     while (true) {
       let ack: { ok: boolean; messages?: V3SessionMessage[]; hasMore?: boolean; error?: string };
@@ -629,6 +680,7 @@ export class ApiSessionClient extends EventEmitter {
   private static readonly MAX_SEQ_CATCHUP_PAGES = 50;
 
   private async fetchRemainingSeqs() {
+    await this.waitForOperationalSocket();
     let afterSeq = this.lastSeq;
     let pages = 0;
     while (pages < ApiSessionClient.MAX_SEQ_CATCHUP_PAGES) {
@@ -671,9 +723,11 @@ export class ApiSessionClient extends EventEmitter {
   private static readonly FLUSH_BATCH_SIZE = 100;
 
   private async flushOutbox() {
+    await this.outboxReady;
     if (this.pendingOutbox.length === 0) {
       return;
     }
+    await this.waitForOperationalSocket();
 
     // Drain in batches via WebSocket emitWithAck (RFC-010).
     while (this.pendingOutbox.length > 0) {
@@ -715,6 +769,7 @@ export class ApiSessionClient extends EventEmitter {
       }
 
       this.pendingOutbox.splice(0, batch.length);
+      await this.persistCurrentOutbox();
 
       const messages = Array.isArray(ack.messages) ? ack.messages : [];
       const maxSeq = messages.reduce(
@@ -734,6 +789,7 @@ export class ApiSessionClient extends EventEmitter {
   }
 
   private async enqueueMessage(content: unknown): Promise<string> {
+    await this.outboxReady;
     const encrypted = await encryptToWireString(
       this.encryptionKey,
       this.encryptionVariant,
@@ -746,6 +802,7 @@ export class ApiSessionClient extends EventEmitter {
       id,
       ...(trace ? { _trace: trace } : {}),
     });
+    await this.persistCurrentOutbox();
     logger.debug('[apiSession] message enqueued', {
       userId: this.userId,
       sessionId: this.sessionId,
@@ -913,6 +970,7 @@ export class ApiSessionClient extends EventEmitter {
     this.metadataLock
       .inLock(async () => {
         await backoff(async () => {
+          await this.waitForOperationalSocket();
           const updated = handler(this.metadata!);
           const answer = await withTimeout(
             this.socket.emitWithAck('update-metadata', {
@@ -972,6 +1030,7 @@ export class ApiSessionClient extends EventEmitter {
     this.agentStateLock
       .inLock(async () => {
         await backoff(async () => {
+          await this.waitForOperationalSocket();
           const updated = handler(this.agentState || {});
           const answer = await withTimeout(
             this.socket.emitWithAck('update-state', {
@@ -1021,6 +1080,7 @@ export class ApiSessionClient extends EventEmitter {
     this.capabilitiesLock
       .inLock(async () => {
         await backoff(async () => {
+          await this.waitForOperationalSocket();
           const answer = await withTimeout(
             this.socket.emitWithAck('update-capabilities', {
               sid: this.sessionId,
@@ -1154,8 +1214,106 @@ export class ApiSessionClient extends EventEmitter {
   async close() {
     logger.debug('[API] socket.close() called');
     setCurrentTurnTrace(undefined);
+    await this.outboxReady;
+    await this.persistCurrentOutbox();
     this.sendSync.stop();
     this.receiveSync.stop();
     this.socket.close();
+  }
+
+  private async restorePersistedOutbox(): Promise<void> {
+    const restored = await loadPendingSessionOutbox(this.sessionId);
+    if (restored.length === 0) {
+      return;
+    }
+    this.pendingOutbox.push(...restored);
+    logger.info('[apiSession] restored persisted outbox', {
+      sessionId: this.sessionId,
+      restoredCount: restored.length,
+      ids: restored.map(message => message.id),
+    });
+  }
+
+  private async persistCurrentOutbox(): Promise<void> {
+    await this.outboxPersistenceLock.inLock(async () => {
+      await persistPendingSessionOutbox(this.sessionId, this.pendingOutbox);
+    });
+  }
+
+  private beginPlannedReconnect(data: {
+    reason: 'server-restart';
+    reconnectAfterMs: number;
+    startedAt: number;
+  }): void {
+    const reconnectAfterMs = Math.max(0, data.reconnectAfterMs);
+    const deadline = Date.now() + reconnectAfterMs + 15_000;
+    if (this.plannedReconnect && this.plannedReconnect.deadline >= deadline) {
+      return;
+    }
+
+    const previous = this.clearPlannedReconnect();
+    const state = {} as PlannedReconnectState;
+    state.reason = data.reason;
+    state.reconnectAfterMs = reconnectAfterMs;
+    state.startedAt = data.startedAt;
+    state.deadline = deadline;
+    state.promise = new Promise<void>(resolve => {
+      state.resolve = resolve;
+    });
+    state.timer = setTimeout(() => {
+      if (this.plannedReconnect !== state) {
+        return;
+      }
+      logger.warn('[CLI] Planned server restart window elapsed', {
+        sessionId: this.sessionId,
+        reconnectAfterMs: state.reconnectAfterMs,
+        startedAt: state.startedAt,
+      });
+      this.clearPlannedReconnect();
+    }, Math.max(0, deadline - Date.now()));
+    state.timer.unref?.();
+    this.plannedReconnect = state;
+
+    if (previous) {
+      logger.info('[CLI] Replaced stale planned reconnect state', {
+        sessionId: this.sessionId,
+        previousStartedAt: previous.startedAt,
+        nextStartedAt: data.startedAt,
+      });
+    }
+  }
+
+  private clearPlannedReconnect(): PlannedReconnectState | null {
+    const plannedReconnect = this.plannedReconnect;
+    if (!plannedReconnect) {
+      return null;
+    }
+    this.plannedReconnect = null;
+    clearTimeout(plannedReconnect.timer);
+    plannedReconnect.resolve();
+    return plannedReconnect;
+  }
+
+  private getPlannedReconnectContext():
+    | {
+        plannedReconnectReason: 'server-restart';
+        plannedReconnectRemainingMs: number;
+        plannedReconnectStartedAt: number;
+      }
+    | undefined {
+    if (!this.plannedReconnect) {
+      return undefined;
+    }
+    return {
+      plannedReconnectReason: this.plannedReconnect.reason,
+      plannedReconnectRemainingMs: Math.max(0, this.plannedReconnect.deadline - Date.now()),
+      plannedReconnectStartedAt: this.plannedReconnect.startedAt,
+    };
+  }
+
+  private async waitForOperationalSocket(): Promise<void> {
+    if (this.plannedReconnect) {
+      await this.plannedReconnect.promise;
+    }
   }
 }

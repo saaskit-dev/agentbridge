@@ -119,6 +119,11 @@ export type Update = z.infer<typeof UpdateSchema>;
  */
 export interface ServerToClientEvents {
   update: (data: Update) => void;
+  'server-draining': (data: {
+    reason: 'server-restart';
+    reconnectAfterMs: number;
+    startedAt: number;
+  }) => void;
   'rpc-request': (
     data: { method: string; params: string },
     callback: (response: string) => void

@@ -12,6 +12,7 @@ import { activityBroadcaster } from '@/app/api/socket/activityBroadcaster';
 import { db } from '@/storage/db';
 import { allocateSessionSeq, allocateSessionSeqBatch, allocateUserSeq } from '@/storage/seq';
 import { AsyncLock } from '@/utils/lock';
+import { shouldDrainWebSocketsGracefully } from '@/utils/shutdown';
 import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import type { WireTrace } from '@saaskit-dev/agentbridge/telemetry';
@@ -25,11 +26,27 @@ function extractWireTrace(data: any): WireTrace | undefined {
 }
 
 const log = new Logger('app/api/socket/sessionUpdateHandler');
+
+function rejectWhileDraining(
+  callback: ((response: any) => void) | undefined,
+  payload: Record<string, unknown>
+): boolean {
+  if (!shouldDrainWebSocketsGracefully()) {
+    return false;
+  }
+  callback?.(payload);
+  return true;
+}
+
 export function sessionUpdateHandler(userId: string, socket: Socket, connection: ClientConnection) {
   socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
     try {
       const { sid, metadata, expectedVersion } = data;
       const trace = extractWireTrace(data);
+
+      if (rejectWhileDraining(callback, { result: 'error', error: 'Server draining' })) {
+        return;
+      }
 
       // Validate input
       if (!sid || typeof metadata !== 'string' || typeof expectedVersion !== 'number') {
@@ -137,6 +154,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
       const { sid, agentState, expectedVersion } = data;
       const trace = extractWireTrace(data);
 
+      if (rejectWhileDraining(callback, { result: 'error', error: 'Server draining' })) {
+        return;
+      }
+
       // Validate input
       if (
         !sid ||
@@ -243,6 +264,10 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
     try {
       const { sid, capabilities, expectedVersion } = data;
       const trace = extractWireTrace(data);
+
+      if (rejectWhileDraining(callback, { result: 'error', error: 'Server draining' })) {
+        return;
+      }
 
       if (
         !sid ||
@@ -424,6 +449,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
     await sendMessagesLock.inLock(async () => {
       const requestStart = Date.now();
       try {
+        if (rejectWhileDraining(callback, { ok: false, error: 'Server draining' })) {
+          return;
+        }
         websocketEventsCounter.inc({ event_type: 'send-messages' });
         const { sessionId: sid, messages } = data ?? {};
 
@@ -594,6 +622,9 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
   socket.on('fetch-messages', async (data: any, callback: (response: any) => void) => {
     try {
+      if (rejectWhileDraining(callback, { ok: false, error: 'Server draining' })) {
+        return;
+      }
       websocketEventsCounter.inc({ event_type: 'fetch-messages' });
       const { sessionId: sid, after_seq, before_seq, limit: rawLimit } = data ?? {};
 

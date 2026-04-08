@@ -166,7 +166,7 @@ async function gracefulExit(reason: string): Promise<void> {
   log.error(`Graceful exit triggered: ${reason}`);
 
   // Trigger shutdown handlers
-  triggerShutdown();
+  triggerShutdown('fatal');
 
   // Force exit after 5 seconds if cleanup hangs
   setTimeout(() => {

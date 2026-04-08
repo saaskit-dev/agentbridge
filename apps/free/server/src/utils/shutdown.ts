@@ -22,6 +22,7 @@ export const shutdownSignal = shutdownController.signal;
 
 let shutdownTriggered = false;
 let shutdownResolve: (() => void) | null = null;
+let shutdownReason: 'manual' | 'signal' | 'fatal' | null = null;
 
 export function onShutdown(
   name: string,
@@ -64,15 +65,24 @@ export function isShuttingDown(): boolean {
   return shutdownTriggered;
 }
 
+export function getShutdownReason(): 'manual' | 'signal' | 'fatal' | null {
+  return shutdownReason;
+}
+
+export function shouldDrainWebSocketsGracefully(): boolean {
+  return shutdownReason === 'manual' || shutdownReason === 'signal';
+}
+
 /**
  * Trigger a graceful shutdown programmatically
  * Can be called from exception handlers or other error scenarios
  */
-export function triggerShutdown(): void {
+export function triggerShutdown(reason: 'manual' | 'signal' | 'fatal' = 'manual'): void {
   if (shutdownTriggered) {
     return;
   }
   shutdownTriggered = true;
+  shutdownReason = reason;
   shutdownController.abort();
 
   if (shutdownResolve) {
@@ -86,11 +96,11 @@ export async function awaitShutdown() {
 
     process.on('SIGINT', async () => {
       log.info('Received SIGINT signal. Exiting...');
-      triggerShutdown();
+      triggerShutdown('signal');
     });
     process.on('SIGTERM', async () => {
       log.info('Received SIGTERM signal. Exiting...');
-      triggerShutdown();
+      triggerShutdown('signal');
     });
   });
 

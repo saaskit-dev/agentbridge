@@ -38,6 +38,11 @@ function getWireTrace(): WireTrace | undefined {
 }
 interface ServerToDaemonEvents {
   update: (data: Update) => void;
+  'server-draining': (data: {
+    reason: 'server-restart';
+    reconnectAfterMs: number;
+    startedAt: number;
+  }) => void;
   'rpc-request': (
     data: { method: string; params: string },
     callback: (response: string) => void
@@ -114,6 +119,16 @@ interface DaemonToServerEvents {
   }) => void;
 }
 
+type PlannedReconnectState = {
+  reason: 'server-restart';
+  reconnectAfterMs: number;
+  startedAt: number;
+  deadline: number;
+  promise: Promise<void>;
+  resolve: () => void;
+  timer: NodeJS.Timeout;
+};
+
 type MachineRpcHandlers = {
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   stopSession: (sessionId: string) => boolean;
@@ -136,6 +151,7 @@ export class ApiMachineClient {
   private lastConnectedAt: number | null = null;
   private lastDisconnectAt: number | null = null;
   private lastDisconnectReason: string | null = null;
+  private plannedReconnect: PlannedReconnectState | null = null;
 
   constructor(
     private token: string,
@@ -302,6 +318,7 @@ export class ApiMachineClient {
     handler: (metadata: MachineMetadata | null) => MachineMetadata
   ): Promise<void> {
     await backoff(async () => {
+      await this.waitForOperationalSocket();
       const updated = handler(this.machine.metadata);
 
       const answer = await this.socket.emitWithAck('machine-update-metadata', {
@@ -343,6 +360,7 @@ export class ApiMachineClient {
    */
   async updateDaemonState(handler: (state: DaemonState | null) => DaemonState): Promise<void> {
     await backoff(async () => {
+      await this.waitForOperationalSocket();
       const updated = handler(this.machine.daemonState);
 
       const answer = await this.socket.emitWithAck('machine-update-state', {
@@ -398,12 +416,15 @@ export class ApiMachineClient {
     });
 
     this.socket.on('connect', () => {
+      const plannedReconnect = this.clearPlannedReconnect();
       this.lastConnectedAt = Date.now();
       logger.info('[DAEMON] Machine connected', {
         machineId: this.machine.id,
         socketId: this.socket.id,
         prevDisconnectReason: this.lastDisconnectReason,
         prevDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
+        resumedAfterServerRestart: !!plannedReconnect,
+        restartDowntimeMs: plannedReconnect ? Date.now() - plannedReconnect.startedAt : null,
       });
 
       // Update daemon state to running
@@ -448,12 +469,18 @@ export class ApiMachineClient {
     this.socket.on('disconnect', reason => {
       this.lastDisconnectReason = reason;
       this.lastDisconnectAt = Date.now();
-      logger.info('[DAEMON] Machine disconnected', {
+      logger.info(
+        this.plannedReconnect
+          ? '[DAEMON] Machine disconnected for planned server restart'
+          : '[DAEMON] Machine disconnected',
+        {
         machineId: this.machine.id,
         socketId: this.socket.id,
         reason,
         connectedDurationMs: this.lastConnectedAt ? Date.now() - this.lastConnectedAt : null,
-      });
+          ...this.getPlannedReconnectContext(),
+        }
+      );
       this.rpcHandlerManager.onSocketDisconnect();
       this.stopKeepAlive();
     });
@@ -512,7 +539,7 @@ export class ApiMachineClient {
     });
 
     this.socket.on('connect_error', error => {
-      logger.error('[DAEMON] Machine connect failed', undefined, {
+      const payload = {
         machineId: this.machine.id,
         error: error.message,
         socketId: this.socket.id,
@@ -520,8 +547,27 @@ export class ApiMachineClient {
         activeTransport: this.socket.io.engine?.transport?.name,
         lastDisconnectReason: this.lastDisconnectReason,
         lastDisconnectAgo: this.lastDisconnectAt ? Date.now() - this.lastDisconnectAt : null,
-      });
+        ...this.getPlannedReconnectContext(),
+      };
+      if (this.plannedReconnect) {
+        logger.info('[DAEMON] Machine reconnecting after planned server restart', payload);
+      } else {
+        logger.error('[DAEMON] Machine connect failed', undefined, payload);
+      }
     });
+
+    this.socket.on(
+      'server-draining',
+      (data: { reason: 'server-restart'; reconnectAfterMs: number; startedAt: number }) => {
+        this.beginPlannedReconnect(data);
+        logger.info('[DAEMON] Machine preparing for planned server restart', {
+          machineId: this.machine.id,
+          socketId: this.socket.id,
+          reconnectAfterMs: data.reconnectAfterMs,
+          startedAt: data.startedAt,
+        });
+      }
+    );
 
     this.socket.io.on('error', (error: any) => {
       logger.debug('[API MACHINE] Socket error', {
@@ -549,6 +595,75 @@ export class ApiMachineClient {
       clearInterval(this.keepAliveInterval);
       this.keepAliveInterval = null;
       logger.debug('[API MACHINE] Keep-alive stopped', { machineId: this.machine.id });
+    }
+  }
+
+  private beginPlannedReconnect(data: {
+    reason: 'server-restart';
+    reconnectAfterMs: number;
+    startedAt: number;
+  }): void {
+    const reconnectAfterMs = Math.max(0, data.reconnectAfterMs);
+    const deadline = Date.now() + reconnectAfterMs + 15_000;
+    if (this.plannedReconnect && this.plannedReconnect.deadline >= deadline) {
+      return;
+    }
+
+    this.clearPlannedReconnect();
+    const state = {} as PlannedReconnectState;
+    state.reason = data.reason;
+    state.reconnectAfterMs = reconnectAfterMs;
+    state.startedAt = data.startedAt;
+    state.deadline = deadline;
+    state.promise = new Promise<void>(resolve => {
+      state.resolve = resolve;
+    });
+    state.timer = setTimeout(() => {
+      if (this.plannedReconnect !== state) {
+        return;
+      }
+      logger.warn('[DAEMON] Planned server restart window elapsed', {
+        machineId: this.machine.id,
+        reconnectAfterMs: state.reconnectAfterMs,
+        startedAt: state.startedAt,
+      });
+      this.clearPlannedReconnect();
+    }, Math.max(0, deadline - Date.now()));
+    state.timer.unref?.();
+    this.plannedReconnect = state;
+  }
+
+  private clearPlannedReconnect(): PlannedReconnectState | null {
+    const plannedReconnect = this.plannedReconnect;
+    if (!plannedReconnect) {
+      return null;
+    }
+    this.plannedReconnect = null;
+    clearTimeout(plannedReconnect.timer);
+    plannedReconnect.resolve();
+    return plannedReconnect;
+  }
+
+  private getPlannedReconnectContext():
+    | {
+        plannedReconnectReason: 'server-restart';
+        plannedReconnectRemainingMs: number;
+        plannedReconnectStartedAt: number;
+      }
+    | undefined {
+    if (!this.plannedReconnect) {
+      return undefined;
+    }
+    return {
+      plannedReconnectReason: this.plannedReconnect.reason,
+      plannedReconnectRemainingMs: Math.max(0, this.plannedReconnect.deadline - Date.now()),
+      plannedReconnectStartedAt: this.plannedReconnect.startedAt,
+    };
+  }
+
+  private async waitForOperationalSocket(): Promise<void> {
+    if (this.plannedReconnect) {
+      await this.plannedReconnect.promise;
     }
   }
 

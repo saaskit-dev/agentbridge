@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => {
     loggerWarn: vi.fn(),
     loggerDebug: vi.fn(),
     onShutdown: vi.fn(),
+    shouldDrainWebSocketsGracefully: vi.fn(),
     rpcHandler: vi.fn(),
     pingHandler: vi.fn(),
     sessionUpdateHandler: vi.fn(),
@@ -165,6 +166,7 @@ vi.mock('../../monitoring/metrics2', () => ({
 
 vi.mock('@/utils/shutdown', () => ({
   onShutdown: mocks.onShutdown,
+  shouldDrainWebSocketsGracefully: mocks.shouldDrainWebSocketsGracefully,
   SHUTDOWN_PHASE: {
     NETWORK: 0,
     APP: 1,
@@ -238,6 +240,7 @@ describe('startSocket disconnect guards', () => {
     mocks.verifyToken.mockResolvedValue({ userId: 'user-1' });
     mocks.hasMachineConnection.mockReturnValue(false);
     mocks.hasSessionConnection.mockReturnValue(false);
+    mocks.shouldDrainWebSocketsGracefully.mockReturnValue(false);
     mocks.machineUpdateMany.mockResolvedValue({ count: 1 });
     mocks.sessionUpdateMany.mockResolvedValue({ count: 1 });
     mocks.sendSilentReconnectPush.mockResolvedValue(undefined);
@@ -301,6 +304,40 @@ describe('startSocket disconnect guards', () => {
         userId: 'user-1',
         connectionType: 'user-scoped',
         error: 'Error: push failed',
+      })
+    );
+  });
+
+  it('skips offline transitions and reconnect push during graceful server drain', async () => {
+    mocks.shouldDrainWebSocketsGracefully.mockReturnValue(true);
+
+    const sessionSocket = await connectSocket({
+      clientType: 'session-scoped',
+      sessionId: 'session-1',
+    });
+    const userSocket = await connectSocket({
+      clientType: 'user-scoped',
+    }, 'socket-2');
+
+    await sessionSocket.triggerDisconnect('transport close');
+    await userSocket.triggerDisconnect('transport close');
+
+    expect(mocks.sessionUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.machineUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.sendSilentReconnectPush).not.toHaveBeenCalled();
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      '[disconnect] server draining, skipping disconnect side-effects',
+      expect.objectContaining({
+        connectionType: 'session-scoped',
+        sessionId: 'session-1',
+        reason: 'transport close',
+      })
+    );
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      '[disconnect] server draining, skipping disconnect side-effects',
+      expect.objectContaining({
+        connectionType: 'user-scoped',
+        reason: 'transport close',
       })
     );
   });

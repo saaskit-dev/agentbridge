@@ -27,10 +27,16 @@ import {
 } from '@/app/events/eventRouter';
 import { Logger, continueTrace, createTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { runWithTrace } from '@/utils/requestTrace';
-import { onShutdown, SHUTDOWN_PHASE } from '@/utils/shutdown';
+import {
+  onShutdown,
+  SHUTDOWN_PHASE,
+  shouldDrainWebSocketsGracefully,
+} from '@/utils/shutdown';
 import { db } from '@/storage/db';
+import { delay } from '@/utils/delay';
 
 const log = new Logger('app/api/socket');
+const SERVER_DRAIN_BROADCAST_MS = 1500;
 
 // Track in-flight disconnect DB operations so the APP phase can drain them
 // before the STORAGE phase closes PGlite.
@@ -196,10 +202,28 @@ export async function startSocket(app: Fastify) {
 
       const work = (async () => {
         const t0 = Date.now();
+        const gracefulDrain = shouldDrainWebSocketsGracefully();
         log.debug('[disconnect] db-write start', {
           userId,
           connectionType: connection.connectionType,
+          gracefulDrain,
         });
+
+        if (gracefulDrain) {
+          log.info('[disconnect] server draining, skipping disconnect side-effects', {
+            userId,
+            connectionType: connection.connectionType,
+            socketId: socket.id,
+            reason,
+            ...(connection.connectionType === 'session-scoped'
+              ? { sessionId: connection.sessionId }
+              : {}),
+            ...(connection.connectionType === 'machine-scoped'
+              ? { machineId: connection.machineId }
+              : {}),
+          });
+          return;
+        }
 
         // Broadcast daemon offline status and update database
         if (connection.connectionType === 'machine-scoped') {
@@ -374,6 +398,19 @@ export async function startSocket(app: Fastify) {
     'socket.io',
     async () => {
       log.info('[shutdown] socket.io close: start');
+      if (shouldDrainWebSocketsGracefully()) {
+        const connectedSockets = io.sockets.sockets.size;
+        log.info('[shutdown] socket.io drain: notifying clients', {
+          connectedSockets,
+          reconnectAfterMs: SERVER_DRAIN_BROADCAST_MS,
+        });
+        io.emit('server-draining', {
+          reason: 'server-restart',
+          reconnectAfterMs: SERVER_DRAIN_BROADCAST_MS,
+          startedAt: Date.now(),
+        });
+        await delay(SERVER_DRAIN_BROADCAST_MS);
+      }
       await io.close();
       log.info('[shutdown] socket.io close: done');
     },

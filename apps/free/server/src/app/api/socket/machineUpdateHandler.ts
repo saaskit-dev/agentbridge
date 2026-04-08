@@ -14,8 +14,21 @@ import { safeStringify } from '@saaskit-dev/agentbridge';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { randomKeyNaked } from '@/utils/randomKeyNaked';
 import { activityBroadcaster } from '@/app/api/socket/activityBroadcaster';
+import { shouldDrainWebSocketsGracefully } from '@/utils/shutdown';
 
 const log = new Logger('app/api/socket/machineUpdateHandler');
+
+function rejectWhileDraining(
+  callback: ((response: any) => void) | undefined,
+  payload: Record<string, unknown>
+): boolean {
+  if (!shouldDrainWebSocketsGracefully()) {
+    return false;
+  }
+  callback?.(payload);
+  return true;
+}
+
 export function machineUpdateHandler(userId: string, socket: Socket) {
   socket.on('machine-alive', async (data: { machineId: string; time: number }) => {
     try {
@@ -64,6 +77,10 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
   socket.on('machine-update-metadata', async (data: any, callback: (response: any) => void) => {
     try {
       const { machineId, metadata, expectedVersion } = data;
+
+      if (rejectWhileDraining(callback, { result: 'error', message: 'Server draining' })) {
+        return;
+      }
 
       // Validate input
       if (!machineId || typeof metadata !== 'string' || typeof expectedVersion !== 'number') {
@@ -247,6 +264,10 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
   socket.on('machine-update-state', async (data: any, callback: (response: any) => void) => {
     try {
       const { machineId, daemonState, expectedVersion } = data;
+
+      if (rejectWhileDraining(callback, { result: 'error', message: 'Server draining' })) {
+        return;
+      }
 
       // Validate input
       if (!machineId || typeof daemonState !== 'string' || typeof expectedVersion !== 'number') {

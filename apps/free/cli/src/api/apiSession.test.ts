@@ -11,7 +11,13 @@ function testMsg(label: string) {
   };
 }
 
-const { mockIo, mockBackoff, mockDelay } = vi.hoisted(() => ({
+const {
+  mockIo,
+  mockBackoff,
+  mockDelay,
+  mockLoadPendingSessionOutbox,
+  mockPersistPendingSessionOutbox,
+} = vi.hoisted(() => ({
   mockIo: vi.fn(),
   mockBackoff: vi.fn(async <T>(callback: () => Promise<T>) => {
     let lastError: unknown;
@@ -25,6 +31,8 @@ const { mockIo, mockBackoff, mockDelay } = vi.hoisted(() => ({
     throw lastError;
   }),
   mockDelay: vi.fn(async () => undefined),
+  mockLoadPendingSessionOutbox: vi.fn(async (): Promise<Array<{ id: string; content: string }>> => []),
+  mockPersistPendingSessionOutbox: vi.fn(async () => undefined),
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -52,6 +60,11 @@ vi.mock('@/modules/common/registerCommonHandlers', () => ({
 vi.mock('@/utils/time', () => ({
   backoff: mockBackoff,
   delay: mockDelay,
+}));
+
+vi.mock('./sessionOutboxPersistence', () => ({
+  loadPendingSessionOutbox: mockLoadPendingSessionOutbox,
+  persistPendingSessionOutbox: mockPersistPendingSessionOutbox,
 }));
 
 type SocketHandler = (...args: any[]) => void;
@@ -133,6 +146,8 @@ describe('ApiSessionClient v3 messages API migration', () => {
     vi.clearAllMocks();
     socketHandlers = {};
     session = makeSession();
+    mockLoadPendingSessionOutbox.mockResolvedValue([]);
+    mockPersistPendingSessionOutbox.mockResolvedValue(undefined);
 
     mockSocket = {
       connected: true,
@@ -279,6 +294,58 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     expect((client as any).pendingOutbox).toHaveLength(0);
     expect((client as any).lastSeq).toBe(1);
+  });
+
+  it('restores persisted outbox entries and replays them idempotently on reconnect', async () => {
+    mockLoadPendingSessionOutbox.mockResolvedValueOnce([
+      {
+        id: 'persisted-1',
+        content: await encryptContent(session, testMsg('persisted')),
+      },
+    ]);
+    const client = new ApiSessionClient('fake-token', session);
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [{ id: 'persisted-1', seq: 1, createdAt: 1, updatedAt: 1 }],
+    });
+
+    await waitForCheck(() => {
+      expect((client as any).pendingOutbox).toHaveLength(1);
+    });
+
+    emitSocketEvent('connect');
+
+    await waitForCheck(() => {
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockSocket.emitWithAck.mock.calls[0][1].messages[0].id).toBe('persisted-1');
+    expect((client as any).pendingOutbox).toHaveLength(0);
+  });
+
+  it('holds queued messages during planned server restart and flushes after reconnect', async () => {
+    const client = new ApiSessionClient('fake-token', session);
+    mockSocket.emitWithAck.mockResolvedValueOnce({
+      ok: true,
+      messages: [{ id: 'msg-1', seq: 1, createdAt: 1, updatedAt: 1 }],
+    });
+
+    emitSocketEvent('server-draining', {
+      reason: 'server-restart',
+      reconnectAfterMs: 1000,
+      startedAt: Date.now(),
+    });
+
+    await client.sendNormalizedMessage(testMsg('after-draining'));
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+
+    emitSocketEvent('connect');
+
+    await waitForCheck(() => {
+      expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('sends session protocol messages through enqueueMessage with session envelope', async () => {
