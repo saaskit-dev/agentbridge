@@ -1314,7 +1314,16 @@ export abstract class AgentSession<TMode> {
         });
       } else if (c.type === 'token_count') {
         // 上报 usage 数据到服务器
-        this.session.sendUsageData(c.usage, this.opts.model ?? undefined);
+        this.session.sendUsageData(
+          c.usage,
+          {
+            model: this.opts.model ?? undefined,
+            key: `usage:${msg.id}`,
+            timestamp: msg.createdAt,
+            agentType: this.agentType,
+            startedBy: this.opts.startedBy,
+          }
+        );
       }
     } else if (msg.role === 'agent' && Array.isArray(msg.content)) {
       for (const block of msg.content as Array<{ type: string; [k: string]: unknown }>) {

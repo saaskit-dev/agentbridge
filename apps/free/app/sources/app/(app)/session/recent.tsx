@@ -8,6 +8,7 @@ import { layout } from '@/components/layout';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { compareUpdatedDesc } from '@/sync/entitySort';
 import { useAllSessions } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
@@ -114,7 +115,7 @@ function formatDateHeader(date: Date): string {
 }
 
 function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
-  const sortedSessions = sessions.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+  const sortedSessions = sessions.slice().sort(compareUpdatedDesc);
 
   const items: SessionHistoryItem[] = [];
   let currentDateGroup: Session[] = [];

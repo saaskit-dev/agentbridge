@@ -7,17 +7,33 @@ export interface UsageDataPoint {
   tokens: Record<string, number>;
   cost: Record<string, number>;
   reportCount: number;
+  breakdown?: Record<
+    string,
+    {
+      tokens: Record<string, number>;
+      cost: Record<string, number>;
+      reportCount: number;
+    }
+  >;
 }
+
+export type UsageGroupDimension = 'none' | 'agent' | 'model' | 'startedBy';
+export const UNKNOWN_USAGE_FILTER_VALUE = '__unknown__';
 
 export interface UsageQueryParams {
   sessionId?: string;
   startTime?: number; // Unix timestamp in seconds
   endTime?: number; // Unix timestamp in seconds
   groupBy?: 'hour' | 'day';
+  groupDimension?: UsageGroupDimension;
+  agent?: string;
+  model?: string;
+  startedBy?: 'cli' | 'daemon' | 'app' | typeof UNKNOWN_USAGE_FILTER_VALUE;
 }
 
 export interface UsageResponse {
   usage: UsageDataPoint[];
+  groupDimension?: UsageGroupDimension;
 }
 
 /**
@@ -57,7 +73,8 @@ export async function queryUsage(
 export async function getUsageForPeriod(
   credentials: AuthCredentials,
   period: 'today' | '7days' | '30days',
-  sessionId?: string
+  sessionId?: string,
+  params: Pick<UsageQueryParams, 'groupDimension' | 'agent' | 'model' | 'startedBy'> = {}
 ): Promise<UsageResponse> {
   const now = Math.floor(Date.now() / 1000);
   const oneDaySeconds = 24 * 60 * 60;
@@ -88,6 +105,7 @@ export async function getUsageForPeriod(
     startTime,
     endTime: now,
     groupBy,
+    ...params,
   });
 }
 
@@ -97,31 +115,39 @@ export async function getUsageForPeriod(
 export function calculateTotals(usage: UsageDataPoint[]): {
   totalTokens: number;
   totalCost: number;
-  tokensByModel: Record<string, number>;
-  costByModel: Record<string, number>;
+  breakdown: Record<
+    string,
+    {
+      tokens: number;
+      cost: number;
+      reportCount: number;
+    }
+  >;
 } {
   const result = {
     totalTokens: 0,
     totalCost: 0,
-    tokensByModel: {} as Record<string, number>,
-    costByModel: {} as Record<string, number>,
+    breakdown: {} as Record<
+      string,
+      {
+        tokens: number;
+        cost: number;
+        reportCount: number;
+      }
+    >,
   };
 
   for (const dataPoint of usage) {
-    // Sum tokens
-    for (const [model, tokens] of Object.entries(dataPoint.tokens)) {
-      if (typeof tokens === 'number') {
-        result.totalTokens += tokens;
-        result.tokensByModel[model] = (result.tokensByModel[model] || 0) + tokens;
-      }
-    }
+    result.totalTokens += dataPoint.tokens.total || 0;
+    result.totalCost += dataPoint.cost.total || 0;
 
-    // Sum costs
-    for (const [model, cost] of Object.entries(dataPoint.cost)) {
-      if (typeof cost === 'number') {
-        result.totalCost += cost;
-        result.costByModel[model] = (result.costByModel[model] || 0) + cost;
+    for (const [label, entry] of Object.entries(dataPoint.breakdown || {})) {
+      if (!result.breakdown[label]) {
+        result.breakdown[label] = { tokens: 0, cost: 0, reportCount: 0 };
       }
+      result.breakdown[label].tokens += entry.tokens.total || 0;
+      result.breakdown[label].cost += entry.cost.total || 0;
+      result.breakdown[label].reportCount += entry.reportCount || 0;
     }
   }
 

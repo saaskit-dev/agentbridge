@@ -1,31 +1,44 @@
 /**
  * Unified worktree branch options (configured in one modal).
  *
- * Resolution order in `createWorktree`:
- * 1. `existingBranch` set → check out that branch in a new worktree path.
- * 2. Else `newBranchName` set → create that branch (optional `startPoint`).
- * 3. Else only `startPoint` set → auto branch name + start ref.
- * 4. Else → fully auto (random branch name, no start).
+ * Mode resolution in `createWorktree`:
+ * - `auto` → create a random branch name (optional `startPoint`, or fall back to `existingBranch`)
+ * - `existing` → check out the selected branch in a new worktree path
+ * - `new` → create a named branch (uses `startPoint`, or falls back to `existingBranch`)
  */
 
+export type WorktreeBranchMode = 'auto' | 'existing' | 'new';
+
 export type WorktreeBranchBinding = {
+  mode: WorktreeBranchMode;
   existingBranch: string;
   newBranchName: string;
   startPoint: string;
 };
 
 /**
- * Default: all empty → automatic random branch when creating the worktree.
+ * Default: automatic random branch when creating the worktree.
  */
 export function defaultWorktreeBranchBinding(): WorktreeBranchBinding {
-  return { existingBranch: '', newBranchName: '', startPoint: '' };
+  return { mode: 'auto', existingBranch: '', newBranchName: '', startPoint: '' };
 }
 
 /**
- * Always valid — empty binding means auto-create.
+ * Validate the explicit UI mode so send-state matches user intent.
  */
-export function isWorktreeBranchBindingValid(_binding: WorktreeBranchBinding): boolean {
-  return true;
+export function isWorktreeBranchBindingValid(binding: WorktreeBranchBinding): boolean {
+  const newBranchName = binding.newBranchName.trim();
+
+  switch (binding.mode) {
+    case 'auto':
+      return newBranchName.length === 0;
+    case 'existing':
+      return binding.existingBranch.trim().length > 0 && newBranchName.length === 0;
+    case 'new':
+      return newBranchName.length > 0;
+    default:
+      return false;
+  }
 }
 
 /**
@@ -42,10 +55,11 @@ export function parseWorktreeBranchBinding(raw: unknown): WorktreeBranchBinding 
       return defaultWorktreeBranchBinding();
     }
     if (o.kind === 'existing' && typeof o.branch === 'string') {
-      return { existingBranch: o.branch, newBranchName: '', startPoint: '' };
+      return { mode: 'existing', existingBranch: o.branch, newBranchName: '', startPoint: '' };
     }
     if (o.kind === 'new') {
       return {
+        mode: 'new',
         existingBranch: '',
         newBranchName: typeof o.branchName === 'string' ? o.branchName : '',
         startPoint: typeof o.startPoint === 'string' ? o.startPoint : '',
@@ -54,14 +68,28 @@ export function parseWorktreeBranchBinding(raw: unknown): WorktreeBranchBinding 
   }
 
   if (
+    typeof o.mode === 'string' ||
     typeof o.existingBranch === 'string' ||
     typeof o.newBranchName === 'string' ||
     typeof o.startPoint === 'string'
   ) {
+    const existingBranch = typeof o.existingBranch === 'string' ? o.existingBranch : '';
+    const newBranchName = typeof o.newBranchName === 'string' ? o.newBranchName : '';
+    const startPoint = typeof o.startPoint === 'string' ? o.startPoint : '';
+    const parsedMode: WorktreeBranchMode =
+      o.mode === 'existing' || o.mode === 'new' || o.mode === 'auto'
+        ? o.mode
+        : existingBranch.trim()
+          ? 'existing'
+          : newBranchName.trim()
+            ? 'new'
+            : 'auto';
+
     return {
-      existingBranch: typeof o.existingBranch === 'string' ? o.existingBranch : '',
-      newBranchName: typeof o.newBranchName === 'string' ? o.newBranchName : '',
-      startPoint: typeof o.startPoint === 'string' ? o.startPoint : '',
+      mode: parsedMode,
+      existingBranch,
+      newBranchName,
+      startPoint,
     };
   }
 

@@ -30,6 +30,9 @@ export default tseslint.config(
       '**/*.cjs',
       '**/.release-it.notes.js',
       '**/import-meta-shim.js',
+      '.dev/**',
+      '.worktrees/**',
+      '.claude/worktrees/**',
     ],
   },
   {

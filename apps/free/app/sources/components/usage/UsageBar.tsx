@@ -10,6 +10,7 @@ interface UsageBarProps {
   color?: string;
   showPercentage?: boolean;
   height?: number;
+  formatValue?: (value: number) => string;
 }
 
 const styles = StyleSheet.create(theme => ({
@@ -49,12 +50,17 @@ export const UsageBar: React.FC<UsageBarProps> = ({
   color,
   showPercentage = false,
   height = 8,
+  formatValue,
 }) => {
   const { theme } = useUnistyles();
   const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
   const fillColor = color || '#007AFF';
 
-  const displayValue = showPercentage ? `${percentage.toFixed(1)}%` : value.toLocaleString();
+  const displayValue = showPercentage
+    ? `${percentage.toFixed(1)}%`
+    : formatValue
+      ? formatValue(value)
+      : value.toLocaleString();
 
   return (
     <View style={styles.container}>

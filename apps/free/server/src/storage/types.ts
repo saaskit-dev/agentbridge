@@ -18,6 +18,10 @@ declare global {
         total: number;
         [key: string]: number;
       };
+      timestamp?: number;
+      agentType?: string;
+      model?: string;
+      startedBy?: 'cli' | 'daemon' | 'app';
     };
 
     // Update content types

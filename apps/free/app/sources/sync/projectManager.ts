@@ -3,6 +3,7 @@
  * Groups sessions by machine ID and path to create project entities
  */
 
+import { compareUpdatedDesc } from './entitySort';
 import { Session, MachineMetadata, GitStatus } from './storageTypes';
 
 /**
@@ -193,7 +194,7 @@ class ProjectManager {
    * Get all projects
    */
   getProjects(): Project[] {
-    return Array.from(this.projects.values()).sort((a, b) => b.updatedAt - a.updatedAt); // Most recently updated first
+    return Array.from(this.projects.values()).sort(compareUpdatedDesc); // Most recently updated first
   }
 
   /**

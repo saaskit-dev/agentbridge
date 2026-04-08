@@ -78,6 +78,14 @@ function formatTime(ts: number): string {
   });
 }
 
+function getLocalDayKey(ts: number): string {
+  const date = new Date(ts);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // ---------------------------------------------------------------------------
 // List item types (messages + separators)
 // ---------------------------------------------------------------------------
@@ -102,7 +110,7 @@ function buildListItems(messages: Message[]): ListItem[] {
       items.push({
         type: 'date-separator',
         label: formatDateLabel(msg.createdAt),
-        key: `date-${Math.floor(msg.createdAt / 86_400_000)}`,
+        key: `date-${getLocalDayKey(msg.createdAt)}-${msg.id}`,
       });
     }
 

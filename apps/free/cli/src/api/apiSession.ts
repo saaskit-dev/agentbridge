@@ -843,7 +843,17 @@ export class ApiSessionClient extends EventEmitter {
   /**
    * Send usage data to the server
    */
-  sendUsageData(usage: Usage, model?: string) {
+  sendUsageData(
+    usage: Usage,
+    options?: {
+      model?: string;
+      key?: string;
+      timestamp?: number;
+      agentType?: string;
+      startedBy?: 'cli' | 'daemon' | 'app';
+    }
+  ) {
+    const { model, key = 'claude-session', timestamp, agentType, startedBy } = options ?? {};
     // Calculate total tokens
     const totalTokens =
       usage.input_tokens +
@@ -855,8 +865,12 @@ export class ApiSessionClient extends EventEmitter {
 
     // Transform Claude usage format to backend expected format
     const usageReport = {
-      key: 'claude-session',
+      key,
       sessionId: this.sessionId,
+      timestamp,
+      agentType,
+      model,
+      startedBy,
       tokens: {
         total: totalTokens,
         input: usage.input_tokens,

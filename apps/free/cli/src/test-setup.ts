@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createWriteStream, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 function ensureDir(p: string) {
@@ -44,7 +44,7 @@ export async function setup() {
   // 1. Isolate test artifacts
   // ---------------------------------------------------------------------------
   const runId = `${Date.now()}-${process.pid}-${randomUUID().slice(0, 8)}`;
-  const base = join(homedir(), '.free-test', 'vitest', runId);
+  const base = join(process.env.FREE_TEST_TMPDIR || tmpdir(), 'free-test', 'vitest', runId);
   const freeHomeDir = join(base, 'free');
   const fakeHomeDir = join(base, 'home');
   const isolatedServerPort = 32000 + Math.floor(Math.random() * 10000);
@@ -92,16 +92,18 @@ export async function setup() {
   //    Unit tests ignore this; integration tests connect to it automatically.
   // ---------------------------------------------------------------------------
   const projectRoot = join(import.meta.dirname, '..', '..', '..', '..');
+  const serverRoot = join(projectRoot, 'apps', 'free', 'server');
   const pgliteDir = join(freeHomeDir, 'integration-pglite');
   const dataDir = join(freeHomeDir, 'integration-server-data');
   const serverLogFile = join(freeHomeDir, 'logs', 'integration-server-bootstrap.log');
   ensureDir(join(freeHomeDir, 'logs'));
   const serverLogStream = createWriteStream(serverLogFile, { flags: 'a' });
 
-  serverProcess = spawn('pnpm', ['--filter', '@free/server', 'standalone', 'serve'], {
-    cwd: projectRoot,
+  serverProcess = spawn('node', ['--import', 'tsx', './src/standalone.ts', 'serve'], {
+    cwd: serverRoot,
     env: {
       ...process.env,
+      HOST: '127.0.0.1',
       PORT: String(isolatedServerPort),
       APP_ENV: 'development',
       FREE_HOME_DIR: freeHomeDir,

@@ -31,6 +31,8 @@ import { Profile } from './profile';
 import { projectManager } from './projectManager';
 import { Purchases, customerInfoToPurchases } from './purchases';
 import { createReducer, reducer, ReducerState } from './reducer/reducer';
+import { compareCreatedDesc, compareUpdatedDesc } from './entitySort';
+import { sortMessagesDesc } from './messageSort';
 import { Session, Machine, GitStatus } from './storageTypes';
 import { Message } from './typesMessage';
 import { NormalizedMessage } from './typesRaw';
@@ -49,12 +51,6 @@ const logger = new Logger('app/sync/storage');
 function resolveIsMutableTool(toolName: string): boolean {
   const { isMutableTool } = require('@/components/tools/knownTools') as typeof import('@/components/tools/knownTools');
   return isMutableTool(toolName);
-}
-
-/** Sort messages newest-first. seq (server monotonic) is the primary key when both have it; createdAt is the fallback. */
-function sortMessagesDesc(a: Message, b: Message): number {
-  if (a.seq !== undefined && b.seq !== undefined) return b.seq - a.seq;
-  return b.createdAt - a.createdAt;
 }
 
 // Callbacks registered by external modules to avoid circular dependencies
@@ -252,8 +248,8 @@ function buildSessionListViewData(sessions: Record<string, Session>): SessionLis
   });
 
   // Sort sessions by updated date (newest first)
-  activeSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-  inactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+  activeSessions.sort(compareUpdatedDesc);
+  inactiveSessions.sort(compareUpdatedDesc);
 
   // Build unified list view data
   const listData: SessionListViewItem[] = [];
@@ -473,8 +469,8 @@ export const storage = create<StorageState>()((set, get) => {
         });
 
         // Sort both arrays by creation date for stable ordering
-        activeSessions.sort((a, b) => b.createdAt - a.createdAt);
-        inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
+        activeSessions.sort(compareCreatedDesc);
+        inactiveSessions.sort(compareCreatedDesc);
 
         // Build flat list data for FlashList
         const listData: SessionListItem[] = [];
@@ -1474,9 +1470,7 @@ export function useAllMachines(): Machine[] {
   return storage(
     useShallow(state => {
       if (!state.isDataReady) return [];
-      return Object.values(state.machines)
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .filter(v => v.active);
+      return Object.values(state.machines).sort(compareCreatedDesc).filter(v => v.active);
     })
   );
 }
@@ -1489,11 +1483,17 @@ export function useSessionListViewData(): SessionListViewItem[] | null {
   return storage(state => (state.isDataReady ? state.sessionListViewData : null));
 }
 
+export function useActiveSessionCount(): number {
+  return storage(
+    useShallow(state => Object.values(state.sessions).filter(session => session.status === 'active').length)
+  );
+}
+
 export function useAllSessions(): Session[] {
   return storage(
     useShallow(state => {
       if (!state.isDataReady) return [];
-      return Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
+      return Object.values(state.sessions).sort(compareUpdatedDesc);
     })
   );
 }
@@ -1550,7 +1550,7 @@ export function useArtifacts(): DecryptedArtifact[] {
       // Filter out draft artifacts from the main list
       return Object.values(state.artifacts)
         .filter(artifact => !artifact.draft)
-        .sort((a, b) => b.updatedAt - a.updatedAt);
+        .sort(compareUpdatedDesc);
     })
   );
 }
@@ -1560,7 +1560,7 @@ export function useAllArtifacts(): DecryptedArtifact[] {
     useShallow(state => {
       if (!state.isDataReady) return [];
       // Return all artifacts including drafts
-      return Object.values(state.artifacts).sort((a, b) => b.updatedAt - a.updatedAt);
+      return Object.values(state.artifacts).sort(compareUpdatedDesc);
     })
   );
 }
@@ -1572,7 +1572,7 @@ export function useDraftArtifacts(): DecryptedArtifact[] {
       // Return only draft artifacts
       return Object.values(state.artifacts)
         .filter(artifact => artifact.draft === true)
-        .sort((a, b) => b.updatedAt - a.updatedAt);
+        .sort(compareUpdatedDesc);
     })
   );
 }

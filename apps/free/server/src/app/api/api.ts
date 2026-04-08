@@ -158,7 +158,8 @@ export async function startApi() {
 
   // Start HTTP
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-  await app.listen({ port, host: '0.0.0.0' });
+  const host = process.env.HOST || '0.0.0.0';
+  await app.listen({ port, host });
   onShutdown(
     'http',
     async () => {
@@ -173,5 +174,5 @@ export async function startApi() {
   await startSocket(typed);
 
   // End
-  log.info('API ready on port http://localhost:' + port);
+  log.info(`API ready on http://${host}:${port}`);
 }

@@ -146,6 +146,7 @@ function NewSessionWizard() {
   const { theme, rt } = useUnistyles();
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
+  const scrollViewRef = React.useRef<ScrollView>(null);
   const { height: kbHeight, progress: kbProgress } = useReanimatedKeyboardAnimation();
   const animatedInputStyle = useAnimatedStyle(
     () => ({
@@ -731,6 +732,18 @@ function NewSessionWizard() {
     }
   }, [selectedMachineId, selectedPath, router]);
 
+  const handleWorktreeBranchInputFocus = React.useCallback(() => {
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 180);
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 360);
+  }, []);
+
   // Session creation
   const handleCreateSession = React.useCallback(async () => {
     if (!selectedMachineId) {
@@ -752,6 +765,7 @@ function NewSessionWizard() {
         const worktreeResult = await createWorktree(
           selectedMachineId,
           selectedPath,
+          selectedMachine?.metadata?.homeDir,
           worktreeBranchBinding
         );
 
@@ -877,6 +891,7 @@ function NewSessionWizard() {
     modelMode,
     recentMachinePaths,
     router,
+    selectedMachine,
   ]);
 
   const screenWidth = useWindowDimensions().width;
@@ -938,12 +953,14 @@ function NewSessionWizard() {
     <View style={styles.container}>
       <View style={{ flex: 1 }}>
         <ScrollView
+          ref={scrollViewRef}
           style={{ flex: 1 }}
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
             flexGrow: 1,
             justifyContent: 'flex-end',
-            paddingBottom: 8,
+            paddingBottom: sessionType === 'worktree' ? 220 : 96,
           }}
         >
           {experimentsEnabled && (
@@ -956,6 +973,8 @@ function NewSessionWizard() {
                     onChange={setWorktreeBranchBinding}
                     machineId={selectedMachineId}
                     basePath={selectedPath}
+                    homeDir={selectedMachine?.metadata?.homeDir}
+                    onCreateBranchInputFocus={handleWorktreeBranchInputFocus}
                   />
                 )}
               </View>

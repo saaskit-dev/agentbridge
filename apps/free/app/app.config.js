@@ -65,6 +65,7 @@ export default {
       },
       infoPlist: {
         LSApplicationCategoryType: 'public.app-category.developer-tools',
+        UIBackgroundModes: ['audio'],
         NSPhotoLibraryUsageDescription:
           'Allow $(PRODUCT_NAME) to attach images to your messages.',
         NSMicrophoneUsageDescription:

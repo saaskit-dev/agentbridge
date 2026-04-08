@@ -9,27 +9,23 @@ import {
   Modal,
   FlatList,
   TouchableOpacity,
-  ScrollView,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { listLocalGitBranches } from '@/utils/createWorktree';
-import {
-  defaultWorktreeBranchBinding,
-  type WorktreeBranchBinding,
-} from '@/utils/worktreeBranchBinding';
+import { type WorktreeBranchBinding } from '@/utils/worktreeBranchBinding';
 
 interface WorktreeBranchBindingSelectorProps {
   value: WorktreeBranchBinding;
   onChange: (value: WorktreeBranchBinding) => void;
   machineId: string | null;
   basePath: string;
+  homeDir?: string;
+  onCreateBranchInputFocus?: () => void;
 }
 
-/** Theme slice for native &lt;select&gt; / modal */
 interface BranchSelectThemeColors {
   divider: string;
   input: { background: string };
@@ -45,77 +41,26 @@ const stylesheet = StyleSheet.create(theme => ({
     marginBottom: 12,
     overflow: 'hidden',
   },
-  configureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  content: {
     paddingHorizontal: 16,
     paddingVertical: 14,
-    minHeight: 52,
+    gap: 12,
   },
-  configureRowPressed: {
-    backgroundColor: theme.colors.surfacePressed,
-  },
-  configureTitle: {
+  title: {
     fontSize: 13,
     color: theme.colors.textSecondary,
-    marginBottom: 4,
     ...Typography.default('semiBold'),
   },
-  configureSummary: {
-    fontSize: 16,
-    color: theme.colors.text,
+  pathHint: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
     ...Typography.default('regular'),
-  },
-  chevron: {
-    fontSize: 18,
-    color: theme.colors.textSecondary,
-    marginLeft: 8,
-  },
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  modalSheet: {
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
-    paddingBottom: 24,
-  },
-  modalHeader: {
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.divider,
-  },
-  modalTitle: {
-    fontSize: 17,
-    ...Typography.default('semiBold'),
-  },
-  modalBody: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    maxHeight: 340,
-  },
-  modalHint: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    marginBottom: 12,
-    ...Typography.default(),
   },
   sectionLabel: {
     fontSize: 12,
     color: theme.colors.textSecondary,
     marginBottom: 6,
     ...Typography.default('semiBold'),
-  },
-  orLabel: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    marginVertical: 12,
-    textAlign: 'center',
-    ...Typography.default(),
   },
   textInput: {
     borderWidth: 1,
@@ -128,7 +73,6 @@ const stylesheet = StyleSheet.create(theme => ({
     ...Typography.default('regular'),
   },
   selectRow: {
-    marginTop: 8,
     borderWidth: 1,
     borderColor: theme.colors.divider,
     borderRadius: 8,
@@ -163,21 +107,18 @@ const stylesheet = StyleSheet.create(theme => ({
     marginTop: 8,
     gap: 8,
   },
-  modalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 16,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: theme.colors.divider,
-    marginTop: 8,
+  helperText: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginTop: 6,
+    ...Typography.default(),
   },
-  modalBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+  branchSheet: {
+    maxHeight: '55%',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    paddingBottom: 24,
   },
-  modalBtnPrimary: {},
   modalItem: {
     paddingVertical: 14,
     paddingHorizontal: 20,
@@ -188,17 +129,8 @@ const stylesheet = StyleSheet.create(theme => ({
     fontSize: 16,
     ...Typography.default('regular'),
   },
-  branchSheet: {
-    maxHeight: '55%',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    paddingBottom: 24,
-  },
 }));
 
-/**
- * Web: &lt;select&gt;. Android: dropdown. iOS: row + modal list.
- */
 function ExistingBranchSelect(props: {
   existingBranch: string;
   branches: string[];
@@ -211,11 +143,10 @@ function ExistingBranchSelect(props: {
   const [iosOpen, setIosOpen] = React.useState(false);
 
   const displayLabel = existingBranch.trim().length > 0 ? existingBranch : placeholder;
-
   const iosListData = React.useMemo(
     () => [
       { key: '__placeholder__', label: placeholder, value: '' },
-      ...branches.map(b => ({ key: b, label: b, value: b })),
+      ...branches.map(branch => ({ key: branch, label: branch, value: branch })),
     ],
     [branches, placeholder]
   );
@@ -239,7 +170,7 @@ function ExistingBranchSelect(props: {
         },
       },
       React.createElement('option', { value: '' }, placeholder),
-      ...branches.map(b => React.createElement('option', { key: b, value: b }, b))
+      ...branches.map(branch => React.createElement('option', { key: branch, value: branch }, branch))
     );
   }
 
@@ -254,8 +185,8 @@ function ExistingBranchSelect(props: {
           dropdownIconColor={theme.colors.textSecondary}
         >
           <Picker.Item label={placeholder} value="" color={theme.colors.textSecondary} />
-          {branches.map(b => (
-            <Picker.Item key={b} label={b} value={b} color={theme.colors.text} />
+          {branches.map(branch => (
+            <Picker.Item key={branch} label={branch} value={branch} color={theme.colors.text} />
           ))}
         </Picker>
       </View>
@@ -309,50 +240,44 @@ function ExistingBranchSelect(props: {
   );
 }
 
-/**
- * One-line summary of the binding for the collapsed row.
- */
-function bindingSummaryLine(binding: WorktreeBranchBinding): string {
-  const ex = binding.existingBranch.trim();
-  const nn = binding.newBranchName.trim();
-  const sp = binding.startPoint.trim();
-  if (ex) {
-    return t('newSession.worktree.branchSummaryExisting', { branch: ex });
+function formatWorktreeRootPreview(homeDir?: string): string | null {
+  if (!homeDir?.trim()) {
+    return null;
   }
-  if (nn && sp) {
-    return t('newSession.worktree.branchSummaryNewWithStart', { name: nn, start: sp });
-  }
-  if (nn) {
-    return t('newSession.worktree.branchSummaryNew', { name: nn });
-  }
-  if (sp) {
-    return t('newSession.worktree.branchSummaryAutoFrom', { start: sp });
-  }
-  return t('newSession.worktree.branchSummaryAuto');
+  return '~/free-worktree/...';
 }
 
-/**
- * Single card: tap opens a modal to pick existing branch and/or new branch; all empty → auto.
- */
+function getPreferredBranch(branches: string[], currentBranch: string): string {
+  const trimmedCurrentBranch = currentBranch.trim();
+
+  if (trimmedCurrentBranch && branches.includes(trimmedCurrentBranch)) {
+    return trimmedCurrentBranch;
+  }
+  if (branches.includes('main')) {
+    return 'main';
+  }
+  if (branches.includes('master')) {
+    return 'master';
+  }
+  return branches[0] ?? '';
+}
+
 export const WorktreeBranchBindingSelector: React.FC<WorktreeBranchBindingSelectorProps> = ({
   value,
   onChange,
   machineId,
   basePath,
+  homeDir,
+  onCreateBranchInputFocus,
 }) => {
   const { theme } = useUnistyles();
   const styles = stylesheet;
-
-  const [modalOpen, setModalOpen] = React.useState(false);
-  const [draft, setDraft] = React.useState<WorktreeBranchBinding>(() => defaultWorktreeBranchBinding());
-
   const [branches, setBranches] = React.useState<string[]>([]);
   const [loadingBranches, setLoadingBranches] = React.useState(false);
   const [branchLoadError, setBranchLoadError] = React.useState<string | null>(null);
 
-  /**
-   * Load local branches for the dropdown inside the modal.
-   */
+  const storagePreview = React.useMemo(() => formatWorktreeRootPreview(homeDir), [homeDir]);
+
   const handleRefreshBranches = React.useCallback(async () => {
     if (!machineId || !basePath.trim()) {
       setBranches([]);
@@ -364,6 +289,17 @@ export const WorktreeBranchBindingSelector: React.FC<WorktreeBranchBindingSelect
     try {
       const list = await listLocalGitBranches(machineId, basePath);
       setBranches(list);
+      const preferredBranch = getPreferredBranch(list, value.existingBranch);
+
+      if (preferredBranch && preferredBranch !== value.existingBranch.trim()) {
+        const isCreatingNewBranch = value.newBranchName.trim().length > 0;
+        onChange({
+          mode: isCreatingNewBranch ? 'new' : 'auto',
+          existingBranch: preferredBranch,
+          newBranchName: value.newBranchName,
+          startPoint: isCreatingNewBranch ? value.startPoint.trim() || preferredBranch : '',
+        });
+      }
       if (list.length === 0) {
         setBranchLoadError(t('newSession.worktree.branchBindingNoBranches'));
       }
@@ -373,7 +309,14 @@ export const WorktreeBranchBindingSelector: React.FC<WorktreeBranchBindingSelect
     } finally {
       setLoadingBranches(false);
     }
-  }, [machineId, basePath]);
+  }, [
+    basePath,
+    machineId,
+    onChange,
+    value.existingBranch,
+    value.newBranchName,
+    value.startPoint,
+  ]);
 
   React.useEffect(() => {
     if (!machineId || !basePath.trim()) {
@@ -382,135 +325,62 @@ export const WorktreeBranchBindingSelector: React.FC<WorktreeBranchBindingSelect
     void handleRefreshBranches();
   }, [machineId, basePath, handleRefreshBranches]);
 
-  const openModal = React.useCallback(() => {
-    setDraft({
-      existingBranch: value.existingBranch,
-      newBranchName: value.newBranchName,
-      startPoint: value.startPoint,
-    });
-    setModalOpen(true);
-  }, [value]);
-
-  /**
-   * Apply draft and close. Empty draft → auto-create on the server.
-   */
-  const commitModal = React.useCallback(() => {
-    onChange({ ...draft });
-    setModalOpen(false);
-  }, [draft, onChange]);
-
-  const cancelModal = React.useCallback(() => {
-    setModalOpen(false);
-  }, []);
-
-  const summary = React.useMemo(() => bindingSummaryLine(value), [value]);
-
   return (
     <View style={styles.card}>
-      <Pressable
-        onPress={openModal}
-        style={({ pressed }) => [styles.configureRow, pressed && styles.configureRowPressed]}
-      >
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <Text style={styles.configureTitle}>{t('newSession.worktree.branchConfigureTitle')}</Text>
-          <Text style={styles.configureSummary} numberOfLines={2}>
-            {summary}
-          </Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
-      </Pressable>
+      <View style={styles.content}>
+        <Text style={styles.title}>{t('newSession.worktree.branchConfigureTitle')}</Text>
+        {storagePreview ? <Text style={styles.pathHint}>{storagePreview}</Text> : null}
 
-      <Modal
-        visible={modalOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={cancelModal}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ flex: 1 }}
-        >
-          <View style={styles.modalRoot}>
-            <Pressable style={{ flex: 1 }} onPress={cancelModal} />
-            <View
-              style={[
-                styles.modalSheet,
-                { backgroundColor: theme.colors.surface },
-                Platform.OS === 'web' ? ({ maxHeight: '90vh' } as object) : { maxHeight: '88%' },
-              ]}
-            >
-              <View style={[styles.modalHeader, { borderBottomColor: theme.colors.divider }]}>
-                <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
-                  {t('newSession.worktree.branchModalTitle')}
-                </Text>
-              </View>
-
-              <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
-                <Text style={styles.modalHint}>{t('newSession.worktree.branchModalEmptyHint')}</Text>
-                <Text style={styles.modalHint}>{t('newSession.worktree.branchModalPriorityHint')}</Text>
-
-                <Text style={[styles.sectionLabel, { color: theme.colors.textSecondary }]}>
-                  {t('newSession.worktree.branchPickerHint')}
-                </Text>
-                <ExistingBranchSelect
-                  existingBranch={draft.existingBranch}
-                  branches={branches}
-                  placeholder={t('newSession.worktree.branchPickerPlaceholder')}
-                  theme={theme}
-                  onSelect={branch =>
-                    setDraft(d => ({ ...d, existingBranch: branch }))
-                  }
-                />
-                <View style={styles.refreshRow}>
-                  <Pressable onPress={() => void handleRefreshBranches()}>
-                    <Text style={{ fontSize: 14, color: theme.colors.button.primary.background }}>
-                      {t('newSession.worktree.branchBindingRefresh')}
-                    </Text>
-                  </Pressable>
-                  {loadingBranches && (
-                    <ActivityIndicator size="small" color={theme.colors.button.primary.background} />
-                  )}
-                </View>
-                {branchLoadError ? (
-                  <Text style={[styles.modalHint, { marginTop: 6 }]}>{branchLoadError}</Text>
-                ) : null}
-
-                <Text style={styles.orLabel}>{t('newSession.worktree.branchModalOr')}</Text>
-
-                <TextInput
-                  style={styles.textInput}
-                  value={draft.newBranchName}
-                  onChangeText={text => setDraft(d => ({ ...d, newBranchName: text }))}
-                  placeholder={t('newSession.worktree.newBranchNamePlaceholder')}
-                  placeholderTextColor={theme.colors.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TextInput
-                  style={[styles.textInput, { marginTop: 10 }]}
-                  value={draft.startPoint}
-                  onChangeText={text => setDraft(d => ({ ...d, startPoint: text }))}
-                  placeholder={t('newSession.worktree.startPointPlaceholder')}
-                  placeholderTextColor={theme.colors.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </ScrollView>
-
-              <View style={[styles.modalFooter, { borderTopColor: theme.colors.divider }]}>
-                <Pressable style={styles.modalBtn} onPress={cancelModal}>
-                  <Text style={{ color: theme.colors.textSecondary, fontSize: 16 }}>{t('common.cancel')}</Text>
-                </Pressable>
-                <Pressable style={styles.modalBtn} onPress={commitModal}>
-                  <Text style={{ color: theme.colors.button.primary.background, fontSize: 16, ...Typography.default('semiBold') }}>
-                    {t('common.save')}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
+        <View>
+          <Text style={styles.sectionLabel}>{t('newSession.worktree.branchPickerHint')}</Text>
+          <ExistingBranchSelect
+            existingBranch={value.existingBranch}
+            branches={branches}
+            placeholder={t('newSession.worktree.branchPickerPlaceholder')}
+            theme={theme}
+            onSelect={branch =>
+              onChange({
+                mode: value.newBranchName.trim() ? 'new' : 'auto',
+                existingBranch: branch,
+                newBranchName: value.newBranchName,
+                startPoint: value.newBranchName.trim() ? branch || value.startPoint : '',
+              })
+            }
+          />
+          <View style={styles.refreshRow}>
+            <Pressable onPress={() => void handleRefreshBranches()}>
+              <Text style={{ fontSize: 14, color: theme.colors.button.primary.background }}>
+                {t('newSession.worktree.branchBindingRefresh')}
+              </Text>
+            </Pressable>
+            {loadingBranches ? (
+              <ActivityIndicator size="small" color={theme.colors.button.primary.background} />
+            ) : null}
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          {branchLoadError ? <Text style={styles.helperText}>{branchLoadError}</Text> : null}
+        </View>
+
+        <View>
+          <Text style={styles.sectionLabel}>{t('newSession.worktree.branchModalOr')}</Text>
+          <TextInput
+            style={styles.textInput}
+            value={value.newBranchName}
+            onChangeText={text =>
+              onChange({
+                mode: text.trim() ? 'new' : 'auto',
+                existingBranch: value.existingBranch,
+                newBranchName: text,
+                startPoint: text.trim() ? value.existingBranch || value.startPoint : '',
+              })
+            }
+            onFocus={onCreateBranchInputFocus}
+            placeholder={t('newSession.worktree.newBranchNamePlaceholder')}
+            placeholderTextColor={theme.colors.textSecondary}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+      </View>
     </View>
   );
 };

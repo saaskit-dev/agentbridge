@@ -3,6 +3,7 @@
  */
 
 import { generateWorktreeName } from './generateWorktreeName';
+import { getWorktreeStorageRoot, normalizeWorktreePath } from './worktreePaths';
 import { machineBash } from '@/sync/ops';
 import {
   defaultWorktreeBranchBinding,
@@ -15,6 +16,32 @@ import {
  */
 function bashSingleQuoted(arg: string): string {
   return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+async function resolveWorktreeHomeDir(
+  machineId: string,
+  basePath: string,
+  homeDir?: string
+): Promise<string | null> {
+  if (homeDir?.trim()) {
+    return normalizeWorktreePath(homeDir.trim());
+  }
+
+  const result = await machineBash(machineId, 'printf %s "$HOME"', basePath);
+  if (!result.success || !result.stdout.trim()) {
+    return null;
+  }
+
+  return normalizeWorktreePath(result.stdout.trim());
+}
+
+async function resolveRepoRoot(machineId: string, basePath: string): Promise<string | null> {
+  const result = await machineBash(machineId, 'git rev-parse --show-toplevel', basePath);
+  if (!result.success || !result.stdout.trim()) {
+    return null;
+  }
+
+  return normalizeWorktreePath(result.stdout.trim());
 }
 
 /**
@@ -42,19 +69,21 @@ export async function listLocalGitBranches(machineId: string, cwd: string): Prom
 async function runWorktreeAddWithPathRetries(
   machineId: string,
   basePath: string,
-  buildCommand: (relativeWorktreePath: string) => string
-): Promise<{ success: boolean; stderr: string; relativePath: string }> {
-  let dirName = generateWorktreeName();
-  let relativePath = `.dev/worktree/${dirName}`;
-  let result = await machineBash(machineId, buildCommand(relativePath), basePath);
+  worktreeRootPath: string,
+  buildCommand: (worktreeName: string, worktreePath: string) => string
+): Promise<{ success: boolean; stderr: string; worktreePath: string; worktreeName: string }> {
+  const baseWorktreeName = generateWorktreeName();
+  let worktreeName = baseWorktreeName;
+  let worktreePath = `${worktreeRootPath}/${worktreeName}`;
+  let result = await machineBash(machineId, buildCommand(worktreeName, worktreePath), basePath);
 
   if (!result.success && result.stderr.includes('already exists')) {
     for (let i = 2; i <= 4; i++) {
-      const newName = `${dirName}-${i}`;
-      relativePath = `.dev/worktree/${newName}`;
-      result = await machineBash(machineId, buildCommand(relativePath), basePath);
+      worktreeName = `${baseWorktreeName}-${i}`;
+      worktreePath = `${worktreeRootPath}/${worktreeName}`;
+      result = await machineBash(machineId, buildCommand(worktreeName, worktreePath), basePath);
       if (result.success) {
-        return { success: true, stderr: '', relativePath };
+        return { success: true, stderr: '', worktreePath, worktreeName };
       }
       if (!result.stderr.includes('already exists')) {
         break;
@@ -65,7 +94,8 @@ async function runWorktreeAddWithPathRetries(
   return {
     success: result.success,
     stderr: result.stderr,
-    relativePath,
+    worktreePath,
+    worktreeName,
   };
 }
 
@@ -75,6 +105,7 @@ async function runWorktreeAddWithPathRetries(
 async function createAutoNamedWorktree(
   machineId: string,
   basePath: string,
+  worktreeRootPath: string,
   startPoint?: string
 ): Promise<{
   success: boolean;
@@ -82,39 +113,25 @@ async function createAutoNamedWorktree(
   branchName: string;
   error?: string;
 }> {
-  const name = generateWorktreeName();
-  const relativePath = `.dev/worktree/${name}`;
-  const cmd = startPoint?.trim()
-    ? `git worktree add -b ${bashSingleQuoted(name)} ${bashSingleQuoted(relativePath)} ${bashSingleQuoted(startPoint.trim())}`
-    : `git worktree add -b ${bashSingleQuoted(name)} ${bashSingleQuoted(relativePath)}`;
-
-  let result = await machineBash(machineId, cmd, basePath);
-
-  if (!result.success && result.stderr.includes('already exists')) {
-    for (let i = 2; i <= 4; i++) {
-      const newName = `${name}-${i}`;
-      const newRelativePath = `.dev/worktree/${newName}`;
-      const retryCmd = startPoint?.trim()
-        ? `git worktree add -b ${bashSingleQuoted(newName)} ${bashSingleQuoted(newRelativePath)} ${bashSingleQuoted(startPoint.trim())}`
-        : `git worktree add -b ${bashSingleQuoted(newName)} ${bashSingleQuoted(newRelativePath)}`;
-      result = await machineBash(machineId, retryCmd, basePath);
-
-      if (result.success) {
-        return {
-          success: true,
-          worktreePath: `${basePath}/${newRelativePath}`,
-          branchName: newName,
-          error: undefined,
-        };
-      }
+  const quotedRoot = bashSingleQuoted(worktreeRootPath);
+  const outcome = await runWorktreeAddWithPathRetries(
+    machineId,
+    basePath,
+    worktreeRootPath,
+    (worktreeName, worktreePath) => {
+      const quotedPath = bashSingleQuoted(worktreePath);
+      const startSuffix = startPoint?.trim()
+        ? ` ${bashSingleQuoted(startPoint.trim())}`
+        : '';
+      return `mkdir -p ${quotedRoot} && git worktree add -b ${bashSingleQuoted(worktreeName)} ${quotedPath}${startSuffix}`;
     }
-  }
+  );
 
-  if (result.success) {
+  if (outcome.success) {
     return {
       success: true,
-      worktreePath: `${basePath}/${relativePath}`,
-      branchName: name,
+      worktreePath: outcome.worktreePath,
+      branchName: outcome.worktreeName,
       error: undefined,
     };
   }
@@ -123,16 +140,17 @@ async function createAutoNamedWorktree(
     success: false,
     worktreePath: '',
     branchName: '',
-    error: result.stderr || 'Failed to create worktree',
+    error: outcome.stderr || 'Failed to create worktree',
   };
 }
 
 /**
- * Create a worktree under `.dev/worktree/...` according to the branch binding.
+ * Create a worktree under `~/free-worktree/<project>/...` according to the branch binding.
  */
 export async function createWorktree(
   machineId: string,
   basePath: string,
+  homeDir: string | undefined,
   binding: WorktreeBranchBinding = defaultWorktreeBranchBinding()
 ): Promise<{
   success: boolean;
@@ -151,7 +169,27 @@ export async function createWorktree(
     };
   }
 
-  await machineBash(machineId, 'git worktree prune', basePath);
+  const repoRoot = await resolveRepoRoot(machineId, basePath);
+  if (!repoRoot) {
+    return {
+      success: false,
+      worktreePath: '',
+      branchName: '',
+      error: 'Could not resolve repository root',
+    };
+  }
+
+  await machineBash(machineId, 'git worktree prune', repoRoot);
+
+  const resolvedHomeDir = await resolveWorktreeHomeDir(machineId, repoRoot, homeDir);
+  if (!resolvedHomeDir) {
+    return {
+      success: false,
+      worktreePath: '',
+      branchName: '',
+      error: 'Could not resolve home directory',
+    };
+  }
 
   if (!isWorktreeBranchBindingValid(binding)) {
     return {
@@ -162,22 +200,25 @@ export async function createWorktree(
     };
   }
 
+  const worktreeRootPath = getWorktreeStorageRoot(repoRoot, resolvedHomeDir);
   const existing = binding.existingBranch.trim();
   const newName = binding.newBranchName.trim();
   const start = binding.startPoint.trim();
 
-  if (existing) {
+  if (binding.mode === 'existing') {
+    const quotedRoot = bashSingleQuoted(worktreeRootPath);
     const outcome = await runWorktreeAddWithPathRetries(
       machineId,
-      basePath,
-      relativePath =>
-        `git worktree add ${bashSingleQuoted(relativePath)} ${bashSingleQuoted(existing)}`
+      repoRoot,
+      worktreeRootPath,
+      (_worktreeName, worktreePath) =>
+        `mkdir -p ${quotedRoot} && git worktree add ${bashSingleQuoted(worktreePath)} ${bashSingleQuoted(existing)}`
     );
 
     if (outcome.success) {
       return {
         success: true,
-        worktreePath: `${basePath}/${outcome.relativePath}`,
+        worktreePath: outcome.worktreePath,
         branchName: existing,
         error: undefined,
       };
@@ -196,18 +237,23 @@ export async function createWorktree(
     };
   }
 
-  if (newName) {
-    const outcome = await runWorktreeAddWithPathRetries(machineId, basePath, relativePath => {
-      if (start) {
-        return `git worktree add -b ${bashSingleQuoted(newName)} ${bashSingleQuoted(relativePath)} ${bashSingleQuoted(start)}`;
+  if (binding.mode === 'new') {
+    const startPoint = start || existing;
+    const quotedRoot = bashSingleQuoted(worktreeRootPath);
+    const outcome = await runWorktreeAddWithPathRetries(
+      machineId,
+      repoRoot,
+      worktreeRootPath,
+      (_worktreeName, worktreePath) => {
+        const startSuffix = startPoint ? ` ${bashSingleQuoted(startPoint)}` : '';
+        return `mkdir -p ${quotedRoot} && git worktree add -b ${bashSingleQuoted(newName)} ${bashSingleQuoted(worktreePath)}${startSuffix}`;
       }
-      return `git worktree add -b ${bashSingleQuoted(newName)} ${bashSingleQuoted(relativePath)}`;
-    });
+    );
 
     if (outcome.success) {
       return {
         success: true,
-        worktreePath: `${basePath}/${outcome.relativePath}`,
+        worktreePath: outcome.worktreePath,
         branchName: newName,
         error: undefined,
       };
@@ -221,5 +267,10 @@ export async function createWorktree(
     };
   }
 
-  return createAutoNamedWorktree(machineId, basePath, start || undefined);
+  return createAutoNamedWorktree(
+    machineId,
+    repoRoot,
+    worktreeRootPath,
+    start || existing || undefined
+  );
 }

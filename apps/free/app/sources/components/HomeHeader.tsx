@@ -8,8 +8,8 @@ import { Header } from './navigation/Header';
 import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { getServerInfo } from '@/sync/serverConfig';
-import { useSocketStatus } from '@/sync/storage';
 import { t } from '@/text';
+import { useSocketConnectionStatus } from '@/utils/socketConnectionStatus';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
   headerButton: {
@@ -156,53 +156,10 @@ function HeaderLeft() {
 }
 
 function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
-  const socketStatus = useSocketStatus();
   const styles = stylesheet;
-
-  // Get connection status styling (matching sessionUtils.ts pattern)
-  const getConnectionStatus = () => {
-    const { status } = socketStatus;
-    switch (status) {
-      case 'connected':
-        return {
-          color: styles.statusConnected.color,
-          isPulsing: false,
-          text: t('status.connected'),
-          textColor: styles.statusConnected.color,
-        };
-      case 'connecting':
-        return {
-          color: styles.statusConnecting.color,
-          isPulsing: true,
-          text: t('status.connecting'),
-          textColor: styles.statusConnecting.color,
-        };
-      case 'disconnected':
-        return {
-          color: styles.statusDisconnected.color,
-          isPulsing: false,
-          text: t('status.disconnected'),
-          textColor: styles.statusDisconnected.color,
-        };
-      case 'error':
-        return {
-          color: styles.statusError.color,
-          isPulsing: false,
-          text: t('status.error'),
-          textColor: styles.statusError.color,
-        };
-      default:
-        return {
-          color: styles.statusDefault.color,
-          isPulsing: false,
-          text: '',
-          textColor: styles.statusDefault.color,
-        };
-    }
-  };
+  const connectionStatus = useSocketConnectionStatus();
 
   const hasCustomSubtitle = !!subtitle;
-  const connectionStatus = getConnectionStatus();
   const showConnectionStatus = !hasCustomSubtitle && connectionStatus.text;
 
   return (

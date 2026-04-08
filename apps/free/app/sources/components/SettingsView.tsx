@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
-import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
+import { getFocusAudioSound } from '@/audio/focusAudioCatalog';
 import { Avatar } from '@/components/Avatar';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -23,7 +23,7 @@ import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { sync } from '@/sync/sync';
-import { useLocalSettingMutable, useSetting, useEntitlement } from '@/sync/storage';
+import { useLocalSetting, useLocalSettingMutable, useSetting, useEntitlement } from '@/sync/storage';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useProfile } from '@/sync/storage';
@@ -39,6 +39,8 @@ export const SettingsView = React.memo(function SettingsView() {
   const [, setDebugIdsInitializedForDevMode] = useLocalSettingMutable(
     'debugIdsInitializedForDevMode'
   );
+  const focusAudioEnabled = useLocalSetting('focusAudioEnabled');
+  const focusAudioSound = useLocalSetting('focusAudioSound');
   const isPro = useEntitlement('pro');
   const experiments = useSetting('experiments');
   const isCustomServer = isUsingCustomServer();
@@ -47,29 +49,16 @@ export const SettingsView = React.memo(function SettingsView() {
   const displayName = getDisplayName(profile);
   const avatarUrl = getAvatarUrl(profile);
   const bio = getBio(profile);
-  const [notificationPermissionStatus, setNotificationPermissionStatus] = React.useState<
-    'unknown' | 'granted' | 'denied' | 'undetermined'
-  >('unknown');
-  const [notificationCanAskAgain, setNotificationCanAskAgain] = React.useState(true);
 
   const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
-
-  const refreshNotificationPermission = React.useCallback(async () => {
-    if (Platform.OS === 'web') {
-      return;
-    }
-    const permissions = await Notifications.getPermissionsAsync();
-    setNotificationPermissionStatus(
-      permissions.status === 'granted' || permissions.status === 'denied'
-        ? permissions.status
-        : 'undetermined'
-    );
-    setNotificationCanAskAgain(permissions.canAskAgain ?? true);
-  }, []);
-
-  React.useEffect(() => {
-    void refreshNotificationPermission();
-  }, [refreshNotificationPermission]);
+  const focusAudioSoundLabel =
+    focusAudioSound === 'white-noise'
+      ? t('focusAudio.whiteNoise')
+      : focusAudioSound === 'pink-noise'
+        ? t('focusAudio.pinkNoise')
+        : focusAudioSound === 'brown-noise'
+          ? t('focusAudio.brownNoise')
+          : getFocusAudioSound(focusAudioSound).label;
 
   const handleGitHub = async () => {
     const url = 'https://github.com/saaskit-dev/agentbridge';
@@ -152,52 +141,6 @@ export const SettingsView = React.memo(function SettingsView() {
       await disconnectService(auth.credentials!, 'anthropic');
     }
   });
-
-  const [enablingBackgroundReconnect, handleEnableBackgroundReconnect] = useFreeAction(
-    async () => {
-      const result = await sync.enableBackgroundReconnectNotifications();
-      await refreshNotificationPermission();
-
-      if (result === 'granted') {
-        Modal.alert(
-          'Background reconnect enabled',
-          'Free can now use silent notifications to restore live sessions while the app is in background.'
-        );
-        return;
-      }
-
-      if (result === 'settings-required') {
-        Modal.alert(
-          'Notifications blocked',
-          'Enable notifications for Free in system settings so background reconnect can work.'
-        );
-        await Linking.openSettings();
-        return;
-      }
-
-      if (result === 'denied') {
-        Modal.alert(
-          'Notifications not enabled',
-          'Background reconnect stays limited until notifications are allowed for Free.'
-        );
-        return;
-      }
-
-      if (result === 'unsupported') {
-        Modal.alert(
-          'Unavailable',
-          'This build cannot register background reconnect notifications right now.'
-        );
-      }
-    }
-  );
-
-  const backgroundReconnectSubtitle =
-    notificationPermissionStatus === 'granted'
-      ? 'Silent notifications are enabled to restore live sessions in background.'
-      : !notificationCanAskAgain
-        ? 'Notifications are blocked in system settings. Tap to open Settings.'
-        : 'Tap to enable silent notifications so Free can restore live sessions in background.';
 
   return (
     <ItemList style={{ paddingTop: 0 }}>
@@ -384,10 +327,26 @@ export const SettingsView = React.memo(function SettingsView() {
           onPress={() => router.push('/settings/appearance')}
         />
         <Item
+          title={t('settings.permissions')}
+          subtitle={t('settings.permissionsSubtitle')}
+          icon={<Ionicons name="shield-checkmark-outline" size={29} color="#34C759" />}
+          onPress={() => router.push('/settings/permissions')}
+        />
+        <Item
           title={t('settings.featuresTitle')}
           subtitle={t('settings.featuresSubtitle')}
           icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
           onPress={() => router.push('/settings/features')}
+        />
+        <Item
+          title={t('settings.focusAudio')}
+          subtitle={
+            focusAudioEnabled
+              ? t('focusAudio.settingsSubtitleEnabled', { sound: focusAudioSoundLabel })
+              : t('focusAudio.settingsSubtitleDisabled')
+          }
+          icon={<Ionicons name="musical-notes-outline" size={29} color="#007AFF" />}
+          onPress={() => router.push('/settings/focus-audio')}
         />
         <Item
           title={t('settings.usage')}
@@ -395,23 +354,6 @@ export const SettingsView = React.memo(function SettingsView() {
           icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
           onPress={() => router.push('/settings/usage')}
         />
-        {Platform.OS !== 'web' && (
-          <Item
-            title="Background Reconnect Notifications"
-            subtitle={backgroundReconnectSubtitle}
-            icon={
-              <Ionicons
-                name="notifications-outline"
-                size={29}
-                color={notificationPermissionStatus === 'granted' ? '#34C759' : '#FF9500'}
-              />
-            }
-            detail={notificationPermissionStatus === 'granted' ? 'On' : 'Off'}
-            onPress={handleEnableBackgroundReconnect}
-            loading={enablingBackgroundReconnect}
-            showChevron={false}
-          />
-        )}
       </ItemGroup>
 
       {/* Developer */}

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { compareUpdatedDesc } from './entitySort';
 import {
   getCapabilityPresetFlavor,
   isAcpAgent,
@@ -278,7 +279,7 @@ export function getLatestCapabilitiesForAgent(
         isAgentFlavorMatch(agentType, session.metadata?.flavor) &&
         session.capabilities
     )
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+    .sort(compareUpdatedDesc);
 
   const latestCapabilities = matchingSessions[0]?.capabilities;
   if (!latestCapabilities) {

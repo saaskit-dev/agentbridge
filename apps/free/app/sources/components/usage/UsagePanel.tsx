@@ -5,16 +5,30 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { UsageBar } from './UsageBar';
 import { UsageChart } from './UsageChart';
 import { useAuth } from '@/auth/AuthContext';
-import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Text } from '@/components/StyledText';
-import { getUsageForPeriod, calculateTotals, UsageDataPoint } from '@/sync/apiUsage';
+import {
+  getUsageForPeriod,
+  calculateTotals,
+  UNKNOWN_USAGE_FILTER_VALUE,
+  type UsageDataPoint,
+  type UsageGroupDimension,
+} from '@/sync/apiUsage';
 import { t } from '@/text';
 import { FreeError } from '@/utils/errors';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/usage/UsagePanel');
 
 type TimePeriod = 'today' | '7days' | '30days';
+type BreakdownDimension = Exclude<UsageGroupDimension, 'none'>;
+const UNKNOWN_BREAKDOWN_LABEL = 'unknown';
+
+function toUsageDimensionFilterValue(value: string | null): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value === UNKNOWN_BREAKDOWN_LABEL ? UNKNOWN_USAGE_FILTER_VALUE : value;
+}
 
 const styles = StyleSheet.create(theme => ({
   container: {
@@ -96,6 +110,28 @@ const styles = StyleSheet.create(theme => ({
     gap: 16,
     padding: 16,
   },
+  filterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  filterText: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+  clearFilterButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: theme.colors.divider,
+  },
+  clearFilterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
   metricButton: {
     paddingVertical: 6,
     paddingHorizontal: 16,
@@ -115,24 +151,39 @@ const styles = StyleSheet.create(theme => ({
   },
 }));
 
-export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
+type UsagePanelProps = {
+  sessionId?: string;
+  initialBreakdownDimension?: BreakdownDimension;
+  initialSelectedBreakdownValue?: string | null;
+  lockSession?: boolean;
+};
+
+export const UsagePanel: React.FC<UsagePanelProps> = ({
+  sessionId,
+  initialBreakdownDimension = 'agent',
+  initialSelectedBreakdownValue = null,
+  lockSession = false,
+}) => {
   const { theme } = useUnistyles();
   const auth = useAuth();
   const [period, setPeriod] = useState<TimePeriod>('7days');
   const [chartMetric, setChartMetric] = useState<'tokens' | 'cost'>('tokens');
+  const [breakdownDimension, setBreakdownDimension] =
+    useState<BreakdownDimension>(initialBreakdownDimension);
+  const [selectedBreakdownValue, setSelectedBreakdownValue] =
+    useState<string | null>(initialSelectedBreakdownValue);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usageData, setUsageData] = useState<UsageDataPoint[]>([]);
   const [totals, setTotals] = useState({
     totalTokens: 0,
     totalCost: 0,
-    tokensByModel: {} as Record<string, number>,
-    costByModel: {} as Record<string, number>,
+    breakdown: {} as Record<string, { tokens: number; cost: number; reportCount: number }>,
   });
 
   useEffect(() => {
-    loadUsageData();
-  }, [period, sessionId]);
+    void loadUsageData();
+  }, [period, sessionId, breakdownDimension, selectedBreakdownValue]);
 
   const loadUsageData = async () => {
     if (!auth.credentials) {
@@ -144,7 +195,16 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     setError(null);
 
     try {
-      const response = await getUsageForPeriod(auth.credentials, period, sessionId);
+      const filterValue = toUsageDimensionFilterValue(selectedBreakdownValue);
+      const response = await getUsageForPeriod(auth.credentials, period, sessionId, {
+        groupDimension: breakdownDimension,
+        agent: breakdownDimension === 'agent' ? filterValue : undefined,
+        model: breakdownDimension === 'model' ? filterValue : undefined,
+        startedBy:
+          breakdownDimension === 'startedBy' && filterValue
+            ? (filterValue as 'cli' | 'daemon' | 'app' | typeof UNKNOWN_USAGE_FILTER_VALUE)
+            : undefined,
+      });
       setUsageData(response.usage || []);
       setTotals(calculateTotals(response.usage || []));
     } catch (err) {
@@ -177,6 +237,11 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     '7days': t('usage.last7Days'),
     '30days': t('usage.last30Days'),
   };
+  const breakdownLabels: Record<BreakdownDimension, string> = {
+    agent: t('usage.agent'),
+    model: t('usage.modelDimension'),
+    startedBy: t('usage.source'),
+  };
 
   if (loading) {
     return (
@@ -195,12 +260,16 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     );
   }
 
-  // Get top models by usage
-  const topModels = Object.entries(totals.tokensByModel)
-    .sort(([, a], [, b]) => b - a)
+  const topBreakdown = Object.entries(totals.breakdown)
+    .sort(([, a], [, b]) =>
+      chartMetric === 'tokens' ? b.tokens - a.tokens : b.cost - a.cost
+    )
     .slice(0, 5);
-
-  const maxModelTokens = Math.max(...Object.values(totals.tokensByModel), 1);
+  const maxBreakdownValue = Math.max(
+    ...topBreakdown.map(([, value]) => (chartMetric === 'tokens' ? value.tokens : value.cost)),
+    1
+  );
+  const breakdownTitle = breakdownLabels[breakdownDimension];
 
   return (
     <ScrollView style={styles.container}>
@@ -262,18 +331,90 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
         </View>
       )}
 
-      {/* Usage by Model */}
-      {topModels.length > 0 && (
-        <ItemGroup title={t('usage.byModel')}>
+      {usageData.length === 0 && (
+        <View style={styles.errorContainer}>
+          <Ionicons name="bar-chart-outline" size={48} color={theme.colors.textSecondary} />
+          <Text style={[styles.errorText, { color: theme.colors.textSecondary }]}>
+            {t('usage.noData')}
+          </Text>
+        </View>
+      )}
+
+      {usageData.length > 0 && (
+        <View style={styles.chartSection}>
+          <Text style={styles.sectionTitle}>{t('usage.breakdown')}</Text>
+          <View style={styles.metricToggle}>
+            {(Object.keys(breakdownLabels) as BreakdownDimension[]).map(option => (
+              <Pressable
+                key={option}
+                style={[
+                  styles.metricButton,
+                  breakdownDimension === option && styles.metricButtonActive,
+                ]}
+                onPress={() => {
+                  setBreakdownDimension(option);
+                  setSelectedBreakdownValue(null);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.metricText,
+                    breakdownDimension === option && styles.metricTextActive,
+                  ]}
+                >
+                  {breakdownLabels[option]}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {lockSession && sessionId && (
+            <View style={styles.filterRow}>
+              <Text style={styles.filterText}>{t('usage.sessionOnly')}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {topBreakdown.length > 0 && (
+        <ItemGroup title={breakdownTitle}>
+          {selectedBreakdownValue && (
+            <View style={styles.filterRow}>
+              <Text style={styles.filterText}>
+                {t('usage.filteringBy', {
+                  dimension: breakdownLabels[breakdownDimension],
+                  value: selectedBreakdownValue,
+                })}
+              </Text>
+              <Pressable
+                style={styles.clearFilterButton}
+                onPress={() => setSelectedBreakdownValue(null)}
+              >
+                <Text style={styles.clearFilterText}>{t('usage.clearFilter')}</Text>
+              </Pressable>
+            </View>
+          )}
           <View style={{ padding: 16 }}>
-            {topModels.map(([model, tokens]) => (
-              <UsageBar
-                key={model}
-                label={model}
-                value={tokens}
-                maxValue={maxModelTokens}
-                color="#007AFF"
-              />
+            {topBreakdown.map(([label, values]) => (
+              <Pressable
+                key={label}
+                onPress={() =>
+                  setSelectedBreakdownValue(current => (current === label ? null : label))
+                }
+              >
+                <UsageBar
+                  label={label}
+                  value={chartMetric === 'tokens' ? values.tokens : values.cost}
+                  maxValue={maxBreakdownValue}
+                  color={
+                    selectedBreakdownValue === label
+                      ? '#34C759'
+                      : chartMetric === 'tokens'
+                        ? '#007AFF'
+                        : '#FF9500'
+                  }
+                  formatValue={chartMetric === 'tokens' ? formatTokens : formatCost}
+                />
+              </Pressable>
             ))}
           </View>
         </ItemGroup>

@@ -10,6 +10,7 @@ import { ProjectGitStatus } from './ProjectGitStatus';
 import { StatusDot } from './StatusDot';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { compareCreatedDesc } from '@/sync/entitySort';
 import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
 import { useAllMachines, useSetting } from '@/sync/storage';
 import { Session, Machine } from '@/sync/storageTypes';
@@ -273,7 +274,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     // Sort sessions within each machine group by creation time (newest first)
     groups.forEach(projectGroup => {
       projectGroup.machines.forEach(machineGroup => {
-        machineGroup.sessions.sort((a, b) => b.createdAt - a.createdAt);
+        machineGroup.sessions.sort(compareCreatedDesc);
       });
     });
 

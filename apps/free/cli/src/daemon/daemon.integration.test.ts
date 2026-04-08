@@ -32,9 +32,8 @@ import { getLatestDaemonLog } from '@/utils/daemonLogs';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 import {
   ensureLocalServerAndCredentials,
-  stopSpawnedProcess,
 } from '@/test-helpers/integrationEnvironment';
-import type { ChildProcess } from 'child_process';
+import { startDaemonForIntegrationTest } from '@/test-helpers/daemonTestHarness';
 
 // Utility to wait for condition
 async function waitFor(
@@ -60,30 +59,12 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
   });
 
   beforeEach(async () => {
-    // First ensure no daemon is running by checking PID in metadata file
-    await stopDaemon();
-
-    // Start fresh daemon for this test
-    // This will return and start a background process - we don't need to wait for it
-    void spawnFreeCLI(['daemon', 'start-sync'], {
-      stdio: 'ignore',
-    });
-
-    // Wait for daemon to write its state file (it needs to auth, setup, and start server)
-    await waitFor(
-      async () => {
-        const state = await readDaemonState();
-        return state !== null;
-      },
-      10_000,
-      250
-    ); // Wait up to 10 seconds, checking every 250ms
+    daemonPid = await startDaemonForIntegrationTest();
 
     const daemonState = await readDaemonState();
     if (!daemonState) {
-      throw new Error('Daemon failed to start within timeout');
+      throw new Error('Daemon state missing after integration startup');
     }
-    daemonPid = daemonState.pid;
 
     console.log(`[TEST] Daemon started for test: PID=${daemonPid}`);
     console.log(`[TEST] Daemon log file: ${daemonState?.daemonLogPath}`);
@@ -378,19 +359,9 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
     // 4. Clean daemon state and restart
     await clearDaemonState();
 
-    void spawnFreeCLI(['daemon', 'start-sync'], { stdio: 'ignore' });
-    await waitFor(
-      async () => {
-        const state = await readDaemonState();
-        return state !== null && state.pid !== daemonPid;
-      },
-      15_000,
-      250
-    );
-
-    const newState = await readDaemonState();
-    expect(newState).toBeDefined();
-    daemonPid = newState!.pid; // Update for afterEach cleanup
+    const previousDaemonPid = daemonPid;
+    daemonPid = await startDaemonForIntegrationTest();
+    expect(daemonPid).not.toBe(previousDaemonPid);
 
     // 5. Verify session was recovered
     await waitFor(
@@ -433,17 +404,7 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
     expect(persistedFiles.length).toBeGreaterThanOrEqual(1);
 
     // 4. Restart daemon
-    void spawnFreeCLI(['daemon', 'start-sync'], { stdio: 'ignore' });
-    await waitFor(
-      async () => {
-        const state = await readDaemonState();
-        return state !== null;
-      },
-      10_000,
-      250
-    );
-    const newState = await readDaemonState();
-    daemonPid = newState!.pid;
+    daemonPid = await startDaemonForIntegrationTest();
 
     // 5. Session should be recovered
     await waitFor(
@@ -487,17 +448,7 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
       await stopDaemonHttp();
       await waitFor(async () => !existsSync(configuration.daemonStateFile), 3000);
 
-      void spawnFreeCLI(['daemon', 'start-sync'], { stdio: 'ignore' });
-      await waitFor(
-        async () => {
-          const state = await readDaemonState();
-          return state !== null;
-        },
-        10_000,
-        250
-      );
-      const newState = await readDaemonState();
-      daemonPid = newState!.pid;
+      daemonPid = await startDaemonForIntegrationTest();
 
       // 3. Recovery attempt should fail (invalid data) but snapshot is retained
       //    for retry — only expired by age (24h TTL), not by failure.

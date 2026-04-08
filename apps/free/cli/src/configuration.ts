@@ -9,6 +9,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import packageJson from '../package.json';
+import { getDaemonSocketPath } from '@/utils/daemonSocketPath';
 
 /** Strip `--variant <value>` pairs injected by spawnFreeCLI for process identification. */
 export function stripVariantArgs(argv: string[]): string[] {
@@ -76,6 +77,10 @@ class Configuration {
       this.freeHomeDir = join(homedir(), '.free');
     }
 
+    this.isDev = process.env.APP_ENV === 'development';
+    this.variant = this.isDev ? 'development' : 'production';
+    this.currentCliVersion = packageJson.version;
+
     this.logsDir = join(this.freeHomeDir, 'logs');
     this.tmpDir = join(this.freeHomeDir, 'tmp');
     this.hooksDir = join(this.tmpDir, 'hooks');
@@ -84,7 +89,7 @@ class Configuration {
     this.privateKeyFile = join(this.freeHomeDir, 'access.key');
     this.daemonStateFile = join(this.freeHomeDir, 'daemon.state.json');
     this.daemonLockFile = join(this.freeHomeDir, 'daemon.state.json.lock');
-    this.daemonSocketPath = join(this.freeHomeDir, 'daemon.sock');
+    this.daemonSocketPath = getDaemonSocketPath(this.freeHomeDir, this.variant);
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(
       process.env.FREE_EXPERIMENTAL?.toLowerCase() || ''
@@ -92,12 +97,8 @@ class Configuration {
     this.disableCaffeinate = ['true', '1', 'yes'].includes(
       process.env.FREE_DISABLE_CAFFEINATE?.toLowerCase() || ''
     );
-    this.isDev = process.env.APP_ENV === 'development';
-
-    this.currentCliVersion = packageJson.version;
 
     // Variant detection — drives service label isolation so dev/production daemons can coexist
-    this.variant = this.isDev ? 'development' : 'production';
     const variantSuffix = this.variant === 'development' ? '-dev' : '';
     this.daemonServiceLabel = `app.saaskit.free.daemon${variantSuffix}`;
     this.daemonSystemdServiceName = `free-daemon${variantSuffix}`;

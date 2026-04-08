@@ -227,6 +227,10 @@ export interface ClientToServerEvents {
   'usage-report': (data: {
     key: string;
     sessionId: string;
+    timestamp?: number;
+    agentType?: string;
+    model?: string;
+    startedBy?: 'cli' | 'daemon' | 'app';
     tokens: {
       total: number;
       [key: string]: number;

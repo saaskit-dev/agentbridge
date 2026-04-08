@@ -23,6 +23,7 @@ import { useMachineStatus } from '@/hooks/useMachineStatus';
 import { useSocketStatus, useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
 import { t } from '@/text';
 import { useIsTablet } from '@/utils/responsive';
+import { useSocketConnectionStatus } from '@/utils/socketConnectionStatus';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/MainView');
 
@@ -116,50 +117,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
   const { theme } = useUnistyles();
   const socketStatus = useSocketStatus();
   const { machines, onlineCount } = useMachineStatus();
-
-  const connectionStatus = React.useMemo(() => {
-    // Auth error takes priority — show clear re-login prompt
-    if (socketStatus.authError) {
-      return {
-        color: theme.colors.status.error,
-        isPulsing: false,
-        text: t('status.authError') ?? 'Auth expired, please re-login',
-      };
-    }
-    const { status } = socketStatus;
-    switch (status) {
-      case 'connected':
-        return {
-          color: theme.colors.status.connected,
-          isPulsing: false,
-          text: t('status.connected'),
-        };
-      case 'connecting':
-        return {
-          color: theme.colors.status.connecting,
-          isPulsing: true,
-          text: t('status.connecting'),
-        };
-      case 'disconnected':
-        return {
-          color: theme.colors.status.disconnected,
-          isPulsing: false,
-          text: t('status.disconnected'),
-        };
-      case 'error':
-        return {
-          color: theme.colors.status.error,
-          isPulsing: false,
-          text: t('status.error'),
-        };
-      default:
-        return {
-          color: theme.colors.status.default,
-          isPulsing: false,
-          text: '',
-        };
-    }
-  }, [socketStatus, theme]);
+  const connectionStatus = useSocketConnectionStatus();
 
   const machineStatusText = t('status.machinesOnline', { count: onlineCount });
   const machineStatusColor =

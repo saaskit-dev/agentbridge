@@ -13,6 +13,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
 import { machineListExternalAgentSessions, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { machineSpawnNewSession } from '@/sync/ops';
+import { compareUpdatedDesc } from '@/sync/entitySort';
 import { useSessions, useMachine } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -92,7 +93,7 @@ export default function MachineDetailScreen() {
   }, [sessions, machineId]);
 
   const previousSessions = useMemo(() => {
-    return [...machineSessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 5);
+    return [...machineSessions].sort(compareUpdatedDesc).slice(0, 5);
   }, [machineSessions]);
 
   const recentPaths = useMemo(() => {

@@ -11,8 +11,8 @@ interface TokenCacheEntry {
 interface AuthTokens {
   generator: Awaited<ReturnType<typeof privacyKit.createPersistentTokenGenerator>>;
   verifier: Awaited<ReturnType<typeof privacyKit.createPersistentTokenVerifier>>;
-  githubVerifier: Awaited<ReturnType<typeof privacyKit.createEphemeralTokenVerifier>>;
-  githubGenerator: Awaited<ReturnType<typeof privacyKit.createEphemeralTokenGenerator>>;
+  githubVerifier?: Awaited<ReturnType<typeof privacyKit.createEphemeralTokenVerifier>>;
+  githubGenerator?: Awaited<ReturnType<typeof privacyKit.createEphemeralTokenGenerator>>;
 }
 
 class AuthModule {
@@ -51,6 +51,24 @@ class AuthModule {
       persistentPkHex: Buffer.from(generator.publicKey).toString('hex').slice(0, 16) + '...',
     });
 
+    this.tokens = { generator, verifier };
+
+    log.info('Auth module initialized');
+  }
+
+  private async ensureGithubTokens(): Promise<void> {
+    if (!this.tokens) {
+      throw new Error('Auth module not initialized');
+    }
+    if (this.tokens.githubGenerator && this.tokens.githubVerifier) {
+      return;
+    }
+
+    const secretRaw = process.env.FREE_MASTER_SECRET;
+    if (!secretRaw) {
+      throw new Error('FREE_MASTER_SECRET is not set');
+    }
+
     const githubGenerator = await privacyKit.createEphemeralTokenGenerator({
       service: 'github-free',
       seed: secretRaw,
@@ -62,9 +80,10 @@ class AuthModule {
       publicKey: Uint8Array.from(githubGenerator.publicKey),
     });
 
-    this.tokens = { generator, verifier, githubVerifier, githubGenerator };
+    this.tokens.githubGenerator = githubGenerator;
+    this.tokens.githubVerifier = githubVerifier;
 
-    log.info('Auth module initialized');
+    log.info('GitHub auth tokens initialized');
   }
 
   async createToken(userId: string, extras?: any): Promise<string> {
@@ -177,9 +196,10 @@ class AuthModule {
     if (!this.tokens) {
       throw new Error('Auth module not initialized');
     }
+    await this.ensureGithubTokens();
 
     const payload = { user: userId, purpose: 'github-oauth' };
-    const token = await this.tokens.githubGenerator.new(payload);
+    const token = await this.tokens.githubGenerator!.new(payload);
 
     return token;
   }
@@ -188,9 +208,10 @@ class AuthModule {
     if (!this.tokens) {
       throw new Error('Auth module not initialized');
     }
+    await this.ensureGithubTokens();
 
     try {
-      const verified = await this.tokens.githubVerifier.verify(token);
+      const verified = await this.tokens.githubVerifier!.verify(token);
       if (!verified) {
         return null;
       }

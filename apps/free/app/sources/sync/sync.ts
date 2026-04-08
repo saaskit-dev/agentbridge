@@ -4,7 +4,7 @@ import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import NetInfo from '@react-native-community/netinfo';
 import { registerPushToken as registerPushTokenApi } from './apiPush';
-import { Platform, AppState, type AppStateStatus } from 'react-native';
+import { Platform, AppState, Linking, type AppStateStatus } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import {
@@ -178,6 +178,8 @@ type OutboxMessage = {
 class Sync {
   private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
   encryption!: Encryption;
+  private shouldPromptBackgroundReconnectOnResume = false;
+  private backgroundReconnectPromptInFlight = false;
   accountId!: string;
   anonId!: string;
   private credentials!: AuthCredentials;
@@ -264,6 +266,11 @@ class Sync {
       this.appState = nextAppState;
       if (nextAppState === 'active') {
         apiSocket.setReconnectMode('foreground');
+        const shouldPromptBackgroundReconnect =
+          this.shouldPromptBackgroundReconnectOnResume &&
+          apiSocket.getStatus() !== 'connected' &&
+          apiSocket.getStatus() !== 'connecting';
+        this.shouldPromptBackgroundReconnectOnResume = false;
         const shouldFailAfterResume =
           this.backgroundSendStartedAt !== null &&
           this.hasPendingOutboxMessages() &&
@@ -289,6 +296,7 @@ class Sync {
         } else {
           apiSocket.refreshReconnectAuth();
         }
+        void this.maybePromptForBackgroundReconnect(shouldPromptBackgroundReconnect);
         // Re-trigger send sync for any sessions with pending outbox messages
         for (const sessionId of this.pendingOutbox.keys()) {
           this.getSendSync(sessionId).invalidate();
@@ -306,6 +314,8 @@ class Sync {
         this.friendRequestsSync.invalidate();
         this.feedSync.invalidate();
       } else {
+        this.shouldPromptBackgroundReconnectOnResume =
+          this.hasPendingOutboxMessages() || storage.getState().getActiveSessions().length > 0;
         apiSocket.setReconnectMode('background');
         logger.debug(`📱 App state changed to: ${nextAppState}`);
         this.maybeStartBackgroundSendWatchdog();
@@ -2743,6 +2753,80 @@ class Sync {
       source: 'settings',
     });
   }
+
+  private maybePromptForBackgroundReconnect = async (shouldPrompt: boolean): Promise<void> => {
+    if (
+      !shouldPrompt ||
+      Platform.OS === 'web' ||
+      this.backgroundReconnectPromptInFlight ||
+      storage.getState().localSettings.backgroundReconnectPromptHandled
+    ) {
+      return;
+    }
+
+    const permissions = await Notifications.getPermissionsAsync();
+    if (permissions.status === 'granted' || this.appState !== 'active') {
+      return;
+    }
+
+    this.backgroundReconnectPromptInFlight = true;
+    try {
+      const { Modal } = require('@/modal') as typeof import('@/modal');
+      const { t } = require('@/text') as typeof import('@/text');
+
+      if (permissions.canAskAgain === false) {
+        const openSettings = await Modal.confirm(
+          t('backgroundReconnect.blockedTitle'),
+          t('backgroundReconnect.blockedMessage'),
+          {
+            cancelText: t('common.cancel'),
+            confirmText: t('agentInput.speechInput.permissionOpenSettings'),
+          }
+        );
+
+        storage.getState().applyLocalSettings({ backgroundReconnectPromptHandled: true });
+        if (openSettings) {
+          await Linking.openSettings();
+        }
+        return;
+      }
+
+      const shouldEnable = await Modal.confirm(
+        t('backgroundReconnect.promptTitle'),
+        t('backgroundReconnect.promptMessage'),
+        {
+          cancelText: t('common.cancel'),
+          confirmText: t('common.continue'),
+        }
+      );
+
+      storage.getState().applyLocalSettings({ backgroundReconnectPromptHandled: true });
+      if (!shouldEnable) {
+        return;
+      }
+
+      const result = await this.enableBackgroundReconnectNotifications();
+      if (result === 'settings-required') {
+        const openSettings = await Modal.confirm(
+          t('backgroundReconnect.blockedTitle'),
+          t('backgroundReconnect.blockedMessage'),
+          {
+            cancelText: t('common.cancel'),
+            confirmText: t('agentInput.speechInput.permissionOpenSettings'),
+          }
+        );
+        if (openSettings) {
+          await Linking.openSettings();
+        }
+      }
+    } catch (error) {
+      logger.debug('[sync] Failed to show background reconnect prompt', {
+        error: safeStringify(error),
+      });
+    } finally {
+      this.backgroundReconnectPromptInFlight = false;
+    }
+  };
 
   /**
    * RFC-010 §3.3: Returns { sessionId: lastSeq } for all sessions with known

@@ -426,6 +426,12 @@ function SessionInfoContent({ session }: { session: Session }) {
 
         {/* Quick Actions */}
         <ItemGroup title={t('sessionInfo.quickActions')}>
+          <Item
+            title={t('sessionInfo.viewUsage')}
+            subtitle={t('sessionInfo.viewUsageSubtitle')}
+            icon={<Ionicons name="stats-chart-outline" size={29} color="#34C759" />}
+            onPress={() => router.push(`/session/${session.id}/usage`)}
+          />
           {session.metadata?.machineId && (
             <Item
               title={t('sessionInfo.viewMachine')}

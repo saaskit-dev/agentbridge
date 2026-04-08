@@ -14,6 +14,7 @@ import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSe
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { t } from '@/text';
 import { useHeaderHeight } from '@/utils/responsive';
+import { useSocketConnectionStatus } from '@/utils/socketConnectionStatus';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { MainView } from './MainView';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
@@ -144,48 +145,7 @@ export const SidebarView = React.memo(() => {
   const inboxHasContent = useInboxHasContent();
   const settings = useSettings();
   const { machines, onlineCount } = useMachineStatus();
-
-  // Compute connection status once per render (theme-reactive, no stale memoization)
-  const connectionStatus = (() => {
-    const { status } = socketStatus;
-    switch (status) {
-      case 'connected':
-        return {
-          color: styles.statusConnected.color,
-          isPulsing: false,
-          text: t('status.connected'),
-          textColor: styles.statusConnected.color,
-        };
-      case 'connecting':
-        return {
-          color: styles.statusConnecting.color,
-          isPulsing: true,
-          text: t('status.connecting'),
-          textColor: styles.statusConnecting.color,
-        };
-      case 'disconnected':
-        return {
-          color: styles.statusDisconnected.color,
-          isPulsing: false,
-          text: t('status.disconnected'),
-          textColor: styles.statusDisconnected.color,
-        };
-      case 'error':
-        return {
-          color: styles.statusError.color,
-          isPulsing: false,
-          text: t('status.error'),
-          textColor: styles.statusError.color,
-        };
-      default:
-        return {
-          color: styles.statusDefault.color,
-          isPulsing: false,
-          text: '',
-          textColor: styles.statusDefault.color,
-        };
-    }
-  })();
+  const connectionStatus = useSocketConnectionStatus();
 
   // Calculate sidebar width and determine title positioning
   // Uses same formula as SidebarNavigator.tsx:18 for consistency

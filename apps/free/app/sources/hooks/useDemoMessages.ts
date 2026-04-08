@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { compareCreatedDesc } from '@/sync/entitySort';
 import { createReducer } from '@/sync/reducer/reducer';
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
@@ -14,7 +15,7 @@ export function useDemoMessages(messages: Message[]) {
     });
 
     // Sort messages by createdAt
-    const sortedMessages = [...messages].sort((a, b) => b.createdAt - a.createdAt);
+    const sortedMessages = [...messages].sort(compareCreatedDesc);
 
     // Write the demo messages to the hardcoded session
     storage.setState(state => ({

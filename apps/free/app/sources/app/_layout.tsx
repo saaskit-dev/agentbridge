@@ -19,6 +19,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { AuthProvider } from '@/auth/AuthContext';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
+import { FocusAudioController } from '@/components/FocusAudioController';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
@@ -291,6 +292,7 @@ export default function RootLayout() {
               <ModalProvider>
                 <CommandPaletteProvider>
                   <RealtimeProvider>
+                    <FocusAudioController />
                     <HorizontalSafeAreaWrapper>
                       <SidebarNavigator />
                     </HorizontalSafeAreaWrapper>

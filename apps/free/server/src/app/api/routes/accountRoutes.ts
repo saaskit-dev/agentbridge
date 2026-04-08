@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { Fastify } from '../types';
 import { eventRouter, buildUpdateAccountUpdate } from '@/app/events/eventRouter';
 import { db } from '@/storage/db';
+import { aggregateUsageReports, UNKNOWN_USAGE_FILTER_VALUE } from './usageAggregation';
 import { getPublicUrl } from '@/storage/files';
 import { allocateUserSeq } from '@/storage/seq';
 import { AccountProfile } from '@/types';
@@ -243,24 +245,28 @@ export function accountRoutes(app: Fastify) {
           startTime: z.number().int().positive().nullish(),
           endTime: z.number().int().positive().nullish(),
           groupBy: z.enum(['hour', 'day']).nullish(),
+          groupDimension: z.enum(['none', 'agent', 'model', 'startedBy']).nullish(),
+          agent: z.string().min(1).nullish(),
+          model: z.string().min(1).nullish(),
+          startedBy: z.union([z.enum(['cli', 'daemon', 'app']), z.literal(UNKNOWN_USAGE_FILTER_VALUE)]).nullish(),
         }),
       },
       preHandler: app.authenticate,
     },
     async (request, reply) => {
       const userId = request.userId;
-      const { sessionId, startTime, endTime, groupBy } = request.body;
+      const { sessionId, startTime, endTime, groupBy, groupDimension, agent, model, startedBy } =
+        request.body;
       const actualGroupBy = groupBy || 'day';
+      const actualGroupDimension = groupDimension || 'none';
+      const startTimeMs = startTime ? startTime * 1000 : undefined;
+      const endTimeMs = endTime ? endTime * 1000 : undefined;
 
       try {
         // Build query conditions
         const where: {
           accountId: string;
           sessionId?: string | null;
-          createdAt?: {
-            gte?: Date;
-            lte?: Date;
-          };
         } = {
           accountId: userId,
         };
@@ -279,110 +285,62 @@ export function accountRoutes(app: Fastify) {
           where.sessionId = sessionId;
         }
 
-        if (startTime || endTime) {
-          where.createdAt = {};
-          if (startTime) {
-            where.createdAt.gte = new Date(startTime * 1000);
-          }
-          if (endTime) {
-            where.createdAt.lte = new Date(endTime * 1000);
-          }
+        const sqlWhere: Prisma.Sql[] = [Prisma.sql`"accountId" = ${userId}`];
+        if (where.sessionId) {
+          sqlWhere.push(Prisma.sql`"sessionId" = ${where.sessionId}`);
         }
 
-        // Fetch usage reports
-        const reports = await db.usageReport.findMany({
-          where,
-          orderBy: {
-            createdAt: 'desc',
-          },
-        });
+        const usageTimestampExpr = Prisma.sql`
+          CASE
+            WHEN jsonb_typeof("data"->'timestamp') = 'number' THEN ("data"->>'timestamp')::bigint
+            ELSE FLOOR(EXTRACT(EPOCH FROM "updatedAt") * 1000)::bigint
+          END
+        `;
 
-        // Aggregate data by time period
-        const aggregated = new Map<
-          string,
+        if (startTimeMs !== undefined) {
+          sqlWhere.push(Prisma.sql`${usageTimestampExpr} >= ${startTimeMs}`);
+        }
+        if (endTimeMs !== undefined) {
+          sqlWhere.push(Prisma.sql`${usageTimestampExpr} <= ${endTimeMs}`);
+        }
+
+        const reports = await db.$queryRaw<
+          Array<{
+            createdAt: Date;
+            updatedAt: Date;
+            data: PrismaJson.UsageReportData;
+          }>
+        >(Prisma.sql`
+          SELECT "createdAt", "updatedAt", "data"
+          FROM "UsageReport"
+          WHERE ${Prisma.join(sqlWhere, Prisma.sql` AND `)}
+          ORDER BY "createdAt" DESC
+        `);
+
+        const result = aggregateUsageReports(
+          reports,
           {
-            tokens: Record<string, number>;
-            cost: Record<string, number>;
-            count: number;
-            timestamp: number;
+            startTime: startTime ?? undefined,
+            endTime: endTime ?? undefined,
+            groupBy: actualGroupBy,
+            groupDimension: actualGroupDimension,
+            filters: {
+              agent: agent && agent !== UNKNOWN_USAGE_FILTER_VALUE ? agent : undefined,
+              model: model && model !== UNKNOWN_USAGE_FILTER_VALUE ? model : undefined,
+              startedBy:
+                startedBy && startedBy !== UNKNOWN_USAGE_FILTER_VALUE ? startedBy : undefined,
+              agentUnknown: agent === UNKNOWN_USAGE_FILTER_VALUE,
+              modelUnknown: model === UNKNOWN_USAGE_FILTER_VALUE,
+              startedByUnknown: startedBy === UNKNOWN_USAGE_FILTER_VALUE,
+            },
           }
-        >();
-
-        for (const report of reports) {
-          const data = report.data as PrismaJson.UsageReportData;
-          const date = new Date(report.createdAt);
-
-          // Calculate timestamp based on groupBy
-          let timestamp: number;
-          if (actualGroupBy === 'hour') {
-            // Round down to hour
-            const hourDate = new Date(
-              date.getFullYear(),
-              date.getMonth(),
-              date.getDate(),
-              date.getHours(),
-              0,
-              0,
-              0
-            );
-            timestamp = Math.floor(hourDate.getTime() / 1000);
-          } else {
-            // Round down to day
-            const dayDate = new Date(
-              date.getFullYear(),
-              date.getMonth(),
-              date.getDate(),
-              0,
-              0,
-              0,
-              0
-            );
-            timestamp = Math.floor(dayDate.getTime() / 1000);
-          }
-
-          const key = timestamp.toString();
-
-          if (!aggregated.has(key)) {
-            aggregated.set(key, {
-              tokens: {},
-              cost: {},
-              count: 0,
-              timestamp,
-            });
-          }
-
-          const agg = aggregated.get(key)!;
-          agg.count++;
-
-          // Aggregate tokens
-          for (const [tokenKey, tokenValue] of Object.entries(data.tokens)) {
-            if (typeof tokenValue === 'number') {
-              agg.tokens[tokenKey] = (agg.tokens[tokenKey] || 0) + tokenValue;
-            }
-          }
-
-          // Aggregate costs
-          for (const [costKey, costValue] of Object.entries(data.cost)) {
-            if (typeof costValue === 'number') {
-              agg.cost[costKey] = (agg.cost[costKey] || 0) + costValue;
-            }
-          }
-        }
-
-        // Convert to array and sort by timestamp
-        const result = Array.from(aggregated.values())
-          .map(data => ({
-            timestamp: data.timestamp,
-            tokens: data.tokens,
-            cost: data.cost,
-            reportCount: data.count,
-          }))
-          .sort((a, b) => a.timestamp - b.timestamp);
+        );
 
         return reply.send({
           usage: result,
           groupBy: actualGroupBy,
-          totalReports: reports.length,
+          groupDimension: actualGroupDimension,
+          totalReports: result.reduce((sum, point) => sum + point.reportCount, 0),
         });
       } catch (error) {
         log.error(`Failed to query usage reports: ${error}`);

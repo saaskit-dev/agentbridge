@@ -135,8 +135,11 @@ export const zhHant: TranslationStructure = {
     accountSubtitle: '管理您的帳戶詳情',
     appearance: '外觀',
     appearanceSubtitle: '自訂應用程式外觀',
+    permissions: '權限',
+    permissionsSubtitle: '查看每項權限的用途，並統一管理授權狀態',
     featuresTitle: '功能',
     featuresSubtitle: '啟用或停用應用程式功能',
+    focusAudio: '專注音訊',
     developer: '開發者',
     exitDeveloperMode: '退出開發者模式',
     developerTools: '開發者工具',
@@ -166,6 +169,81 @@ export const zhHant: TranslationStructure = {
       `${name} ${status === 'online' ? '線上' : '離線'}`,
     featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
       `${feature} 已${enabled ? '啟用' : '停用'}`,
+  },
+
+  focusAudio: {
+    pageTitle: '專注音訊',
+    description: '播放可聽見的環境音循環。啟用後，即使 Free 進入背景，也可以繼續播放。',
+    enable: '播放專注音訊',
+    enabledState: '會持續循環播放，直到你手動關閉',
+    disabledState: '已關閉',
+    sound: '聲音',
+    soundFooter: '選擇你希望在專注音訊啟用時聽到的環境噪聲類型。',
+    soundFooterDisabled: '你可以先選好聲音，之後需要時再開始播放。',
+    selectedSound: '目前選擇',
+    volume: '音量',
+    volumeFooter: '在切到背景前，先設定你想要的播放音量。0% 代表靜音。',
+    volumeHint: '如果你想暫時靜音但不關閉專注音訊，可以把它調到 0%。',
+    volumePercent: ({ percent }: { percent: number }) => `${percent}%`,
+    mixWithOthers: '與其他音訊混播',
+    mixWithOthersSubtitle: '允許音樂、Podcast 或其他 App 的聲音同時繼續播放。',
+    mixWithOthersFooter: '只有在你希望專注音訊獨佔系統音訊工作階段時，才關閉這個選項。',
+    whiteNoise: '白噪音',
+    pinkNoise: '粉紅噪音',
+    brownNoise: '棕噪音',
+    settingsSubtitleEnabled: ({ sound }: { sound: string }) => `已開啟 · ${sound}`,
+    settingsSubtitleDisabled: '可聽見的背景環境音',
+  },
+
+  backgroundReconnect: {
+    promptTitle: '開啟背景重連',
+    promptMessage: '允許 Free 使用靜默通知，在 App 進入背景後恢復即時會話連線。',
+    blockedTitle: '開啟背景重連',
+    blockedMessage: 'Free 的通知權限目前已被系統封鎖。請前往系統設定開啟通知，讓背景重連可以生效。',
+  },
+
+  permissions: {
+    pageDescription:
+      '你可以只開啟自己願意授予的權限。Free 只會在相關功能真的需要時請求授權，這個頁面會清楚說明每項權限的用途與最小化使用方式。',
+    browserTitle: '瀏覽器權限',
+    browserMessage:
+      '在 Web 端，權限由瀏覽器在功能實際需要時提示管理。你可以透過瀏覽器站點設定查看或修改授權。',
+    recommendedTitle: '即時連線與語音',
+    recommendedFooter:
+      '這組權限主要用於背景重連、語音輸入和即時功能。只有在相關功能需要時，Free 才會請求它們。',
+    optionalTitle: '媒體與裝置存取',
+    optionalFooter:
+      '這組權限只會在你主動選擇媒體內容或使用 QR 連線流程時用到。',
+    whyLabel: '為什麼需要',
+    minimizeLabel: '我們如何最小化使用',
+    statusAllowed: '已允許',
+    statusLimited: '部分允許',
+    statusNotAsked: '尚未請求',
+    statusBlocked: '已封鎖',
+    statusUnavailable: '不可用',
+    actionAllow: '允許存取',
+    actionManage: '前往設定',
+    notificationsTitle: '通知',
+    notificationsPurpose:
+      '用於重要提醒與背景重連，讓 live session 在 App 進入背景後仍有機會恢復連線。',
+    notificationsMinimize:
+      '靜默通知只會在確實需要重連時使用，不會持續不斷地發送背景重連通知。',
+    microphoneTitle: '麥克風',
+    microphonePurpose: '用於語音對話和語音輸入。',
+    microphoneMinimize:
+      '只有在你主動使用語音功能時才會存取麥克風，Free 不會在背景錄音。',
+    speechTitle: '語音辨識',
+    speechPurpose: '用於將你的語音轉成文字，供語音輸入使用。',
+    speechMinimize:
+      '只有在你主動開始語音輸入時才會啟用語音辨識，不會在一般輸入或背景執行時使用。',
+    photosTitle: '照片',
+    photosPurpose: '當你從相簿選擇圖片並附加到會話時需要。',
+    photosMinimize:
+      'Free 只會存取你明確選擇的照片，不會在背景掃描整個相簿。',
+    cameraTitle: '相機',
+    cameraPurpose: '用於掃碼連接裝置或終端時的 QR Code 掃描。',
+    cameraMinimize:
+      '只有在你主動打開掃碼流程時才會使用相機，並且僅用於當前的 QR 連線操作。',
   },
 
   settingsAppearance: {
@@ -313,6 +391,9 @@ export const zhHant: TranslationStructure = {
       failed: ({ error }: { error: string }) => `建立 worktree 失敗：${error}`,
       success: 'Worktree 建立成功',
       branchConfigureTitle: 'Worktree 分支',
+      branchModeAuto: '自動',
+      branchModeExisting: '既有',
+      branchModeNew: '新建',
       branchModalTitle: 'Worktree 分支',
       branchModalOr: '或新建分支',
       branchModalPriorityHint: '若已選擇上方既有分支，將優先於下方新建分支欄位。',
@@ -444,6 +525,8 @@ export const zhHant: TranslationStructure = {
     quickActions: '快速操作',
     viewMachine: '查看裝置',
     viewMachineSubtitle: '查看裝置詳情和工作階段',
+    viewUsage: '查看用量',
+    viewUsageSubtitle: '查看此工作階段的權杖和費用拆分',
     killSessionSubtitle: '立即終止工作階段',
     archiveSessionSubtitle: '封存此工作階段並停止它',
     recoveryFailedArchiveSubtitle: '此工作階段在當機後恢復失敗',
@@ -1113,6 +1196,14 @@ export const zhHant: TranslationStructure = {
     usageOverTime: '使用趨勢',
     byModel: '按模型',
     noData: '暫無使用資料',
+    breakdown: '拆分',
+    agent: 'Agent',
+    modelDimension: '模型',
+    source: '來源',
+    clearFilter: '清除',
+    filteringBy: ({ dimension, value }: { dimension: string; value: string }) =>
+      `按 ${dimension} 篩選：${value}`,
+    sessionOnly: '目前僅查看此工作階段',
   },
 
   support: {

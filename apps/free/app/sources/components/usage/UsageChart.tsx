@@ -76,9 +76,9 @@ export const UsageChart: React.FC<UsageChartProps> = ({
   // Calculate max value for scaling
   const getValueForDataPoint = (point: UsageDataPoint): number => {
     if (metric === 'tokens') {
-      return Object.values(point.tokens).reduce((sum, val) => sum + (val || 0), 0);
+      return point.tokens.total || 0;
     } else {
-      return Object.values(point.cost).reduce((sum, val) => sum + (val || 0), 0);
+      return point.cost.total || 0;
     }
   };
 

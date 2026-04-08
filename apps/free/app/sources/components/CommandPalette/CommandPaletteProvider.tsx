@@ -6,6 +6,7 @@ import { Command } from './types';
 import { useAuth } from '@/auth/AuthContext';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { compareUpdatedDesc } from '@/sync/entitySort';
 import { storage } from '@/sync/storage';
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
@@ -77,7 +78,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
 
     // Add session-specific commands
     const recentSessions = Object.values(sessions)
-      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .sort(compareUpdatedDesc)
       .slice(0, 5);
 
     recentSessions.forEach(session => {

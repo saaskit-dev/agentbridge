@@ -170,8 +170,11 @@ export const es: TranslationStructure = {
     accountSubtitle: 'Gestiona los detalles de tu cuenta',
     appearance: 'Apariencia',
     appearanceSubtitle: 'Personaliza como se ve la app',
+    permissions: 'Permissions',
+    permissionsSubtitle: 'See what each permission is used for and manage access',
     featuresTitle: 'Características',
     featuresSubtitle: 'Habilitar o deshabilitar funciones de la aplicación',
+    focusAudio: 'Focus Audio',
     developer: 'Desarrollador',
     exitDeveloperMode: 'Salir del modo desarrollador',
     developerTools: 'Herramientas de desarrollador',
@@ -201,6 +204,85 @@ export const es: TranslationStructure = {
       `${name} está ${status === 'online' ? 'en línea' : 'desconectado'}`,
     featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
       `${feature} ${enabled ? 'habilitada' : 'deshabilitada'}`,
+  },
+
+  focusAudio: {
+    pageTitle: 'Focus Audio',
+    description:
+      'Play an audible ambient loop while you work. When enabled, it can keep playing after Free moves to the background.',
+    enable: 'Play Focus Audio',
+    enabledState: 'Playing in a loop until you turn it off',
+    disabledState: 'Off',
+    sound: 'Sound',
+    soundFooter: 'Choose the ambient noise profile you want to hear while Focus Audio is active.',
+    soundFooterDisabled: 'You can choose a sound now and start playback whenever you are ready.',
+    selectedSound: 'Selected',
+    volume: 'Volume',
+    volumeFooter: 'Set the playback level you want before leaving the app. 0% mutes the sound.',
+    volumeHint: 'Set this to 0% if you want to mute Focus Audio without turning it off.',
+    volumePercent: ({ percent }: { percent: number }) => `${percent}%`,
+    mixWithOthers: 'Mix With Other Audio',
+    mixWithOthersSubtitle: 'Let music, podcasts, or other apps keep playing at the same time.',
+    mixWithOthersFooter:
+      'Turn this off only if you want Focus Audio to take over the audio session.',
+    whiteNoise: 'White Noise',
+    pinkNoise: 'Pink Noise',
+    brownNoise: 'Brown Noise',
+    settingsSubtitleEnabled: ({ sound }: { sound: string }) => `On · ${sound}`,
+    settingsSubtitleDisabled: 'Audible background ambience',
+  },
+
+  backgroundReconnect: {
+    promptTitle: 'Enable Background Reconnect',
+    promptMessage:
+      'Allow Free to use silent notifications to restore live sessions while the app is in the background.',
+    blockedTitle: 'Turn On Background Reconnect',
+    blockedMessage:
+      'Notifications are currently blocked for Free. Open system settings to allow background reconnect.',
+  },
+
+  permissions: {
+    pageDescription:
+      'Turn on only the permissions you want. Free asks for access only when a feature needs it, and this page explains how each permission is used.',
+    browserTitle: 'Browser Permissions',
+    browserMessage:
+      'On web, permissions are managed by your browser when a feature asks for them. Use your browser site settings to review or change access.',
+    recommendedTitle: 'Live Sessions & Voice',
+    recommendedFooter:
+      'These permissions support reconnect, voice input, and real-time features. Free asks only when a related feature needs them.',
+    optionalTitle: 'Media & Device Access',
+    optionalFooter:
+      'These permissions are only used when you choose media or QR-based linking flows yourself.',
+    whyLabel: 'Why we ask',
+    minimizeLabel: 'How we minimize access',
+    statusAllowed: 'Allowed',
+    statusLimited: 'Limited',
+    statusNotAsked: 'Not asked',
+    statusBlocked: 'Blocked',
+    statusUnavailable: 'Unavailable',
+    actionAllow: 'Allow Access',
+    actionManage: 'Open Settings',
+    notificationsTitle: 'Notifications',
+    notificationsPurpose:
+      'Used for important alerts and background reconnect, so live sessions can recover after the app has been in the background.',
+    notificationsMinimize:
+      'We use silent notifications for reconnect only when needed. We do not keep sending background reconnect notifications continuously.',
+    microphoneTitle: 'Microphone',
+    microphonePurpose: 'Needed for voice conversations and speech input.',
+    microphoneMinimize:
+      'Audio is accessed only while you are actively using voice features. Free does not record in the background.',
+    speechTitle: 'Speech Recognition',
+    speechPurpose: 'Needed to turn your speech into text when you use voice input.',
+    speechMinimize:
+      'Speech recognition runs only when you start dictation. It is not used for normal typing or in the background.',
+    photosTitle: 'Photos',
+    photosPurpose: 'Needed when you choose an image from your library to attach to a session.',
+    photosMinimize:
+      'Free only accesses photos you explicitly select. We do not scan your library in the background.',
+    cameraTitle: 'Camera',
+    cameraPurpose: 'Needed for QR code scanning when you link a device or connect a terminal.',
+    cameraMinimize:
+      'The camera is used only while the scanner is open, and only for the QR linking flow you start yourself.',
   },
 
   settingsAppearance: {
@@ -359,6 +441,9 @@ export const es: TranslationStructure = {
       failed: ({ error }: { error: string }) => `Error al crear worktree: ${error}`,
       success: 'Worktree creado exitosamente',
       branchConfigureTitle: 'Worktree branch',
+      branchModeAuto: 'Auto',
+      branchModeExisting: 'Existente',
+      branchModeNew: 'Nueva',
       branchModalTitle: 'Worktree branch',
       branchModalOr: 'Or create a new branch',
       branchModalPriorityHint:
@@ -493,6 +578,8 @@ export const es: TranslationStructure = {
     quickActions: 'Acciones rápidas',
     viewMachine: 'Ver máquina',
     viewMachineSubtitle: 'Ver detalles de máquina y sesiones',
+    viewUsage: 'Ver uso',
+    viewUsageSubtitle: 'Ver el desglose de tokens y costo de esta sesión',
     killSessionSubtitle: 'Terminar inmediatamente la sesión',
     archiveSessionSubtitle: 'Archivar esta sesión y detenerla',
     recoveryFailedArchiveSubtitle: 'Esta sesión no se pudo recuperar después de un fallo',
@@ -1182,6 +1269,14 @@ export const es: TranslationStructure = {
     usageOverTime: 'Uso a lo largo del tiempo',
     byModel: 'Por modelo',
     noData: 'No hay datos de uso disponibles',
+    breakdown: 'Desglose',
+    agent: 'Agente',
+    modelDimension: 'Modelo',
+    source: 'Origen',
+    clearFilter: 'Limpiar',
+    filteringBy: ({ dimension, value }: { dimension: string; value: string }) =>
+      `Filtrando por ${dimension}: ${value}`,
+    sessionOnly: 'Viendo solo esta sesión',
   },
 
   dev: {

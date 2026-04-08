@@ -28,6 +28,7 @@ import { homedir } from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { createPGlite } from './storage/pgliteLoader';
+import { sortMigrationDirs } from './utils/sortMigrationDirs';
 
 // ES module compatible __dirname
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,14 +36,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR || './data';
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, 'pglite');
 const lockFile = path.join(dataDir, '.server.lock');
-
-function sortMigrationDirs(dirs: string[]): string[] {
-  return [...dirs].sort((a, b) => {
-    if (a === 'init') return -1;
-    if (b === 'init') return 1;
-    return a.localeCompare(b);
-  });
-}
 
 /**
  * Check if running in a container environment (Docker, etc.)

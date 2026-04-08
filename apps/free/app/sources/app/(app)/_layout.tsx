@@ -84,6 +84,14 @@ export default function RootLayout() {
         }}
       />
       <Stack.Screen
+        name="session/[id]/usage"
+        options={{
+          headerShown: true,
+          headerTitle: t('settings.usage'),
+          headerBackTitle: t('common.back'),
+        }}
+      />
+      <Stack.Screen
         name="session/[id]/files"
         options={{
           headerShown: true,
@@ -112,9 +120,21 @@ export default function RootLayout() {
         }}
       />
       <Stack.Screen
+        name="settings/permissions"
+        options={{
+          headerTitle: t('settings.permissions'),
+        }}
+      />
+      <Stack.Screen
         name="settings/features"
         options={{
           headerTitle: t('settings.features'),
+        }}
+      />
+      <Stack.Screen
+        name="settings/focus-audio"
+        options={{
+          headerTitle: t('focusAudio.pageTitle'),
         }}
       />
       <Stack.Screen

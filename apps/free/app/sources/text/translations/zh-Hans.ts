@@ -172,8 +172,11 @@ export const zhHans: TranslationStructure = {
     accountSubtitle: '管理您的账户详情',
     appearance: '外观',
     appearanceSubtitle: '自定义应用外观',
+    permissions: '权限',
+    permissionsSubtitle: '查看每项权限的用途，并统一管理授权状态',
     featuresTitle: '功能',
     featuresSubtitle: '启用或禁用应用功能',
+    focusAudio: '专注音频',
     developer: '开发者',
     exitDeveloperMode: '退出开发者模式',
     developerTools: '开发者工具',
@@ -203,6 +206,81 @@ export const zhHans: TranslationStructure = {
       `${name} ${status === 'online' ? '在线' : '离线'}`,
     featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
       `${feature} 已${enabled ? '启用' : '禁用'}`,
+  },
+
+  focusAudio: {
+    pageTitle: '专注音频',
+    description: '播放可听见的环境音循环。开启后，即使 Free 退到后台，也可以继续播放。',
+    enable: '播放专注音频',
+    enabledState: '会持续循环播放，直到你手动关闭',
+    disabledState: '已关闭',
+    sound: '声音',
+    soundFooter: '选择你希望在专注音频开启时听到的环境噪声类型。',
+    soundFooterDisabled: '你可以先选好声音，之后需要时再开始播放。',
+    selectedSound: '当前选择',
+    volume: '音量',
+    volumeFooter: '在切到后台前，先设置你想要的播放音量。0% 表示静音。',
+    volumeHint: '如果你想暂时静音但不关闭专注音频，可以把它调到 0%。',
+    volumePercent: ({ percent }: { percent: number }) => `${percent}%`,
+    mixWithOthers: '与其他音频混播',
+    mixWithOthersSubtitle: '允许音乐、播客或其他 App 的声音同时继续播放。',
+    mixWithOthersFooter: '只有在你希望专注音频独占系统音频会话时，才关闭这个选项。',
+    whiteNoise: '白噪音',
+    pinkNoise: '粉噪音',
+    brownNoise: '棕噪音',
+    settingsSubtitleEnabled: ({ sound }: { sound: string }) => `已开启 · ${sound}`,
+    settingsSubtitleDisabled: '可听见的后台环境音',
+  },
+
+  backgroundReconnect: {
+    promptTitle: '开启后台重连',
+    promptMessage: '允许 Free 使用静默通知，在应用退到后台后恢复实时会话连接。',
+    blockedTitle: '开启后台重连',
+    blockedMessage: 'Free 的通知权限目前已被系统拦截。请前往系统设置开启通知，以便后台重连生效。',
+  },
+
+  permissions: {
+    pageDescription:
+      '你可以只开启自己愿意授予的权限。Free 只会在相关功能确实需要时请求授权，这个页面会明确说明每项权限的用途和最小化使用方式。',
+    browserTitle: '浏览器权限',
+    browserMessage:
+      '在 Web 端，权限由浏览器在功能实际需要时弹出管理。你可以通过浏览器站点设置查看或修改授权。',
+    recommendedTitle: '实时连接与语音',
+    recommendedFooter:
+      '这组权限主要用于后台重连、语音输入和实时能力。只有在相关功能需要时，Free 才会请求它们。',
+    optionalTitle: '媒体与设备访问',
+    optionalFooter:
+      '这组权限只会在你主动选择媒体内容或使用二维码连接流程时用到。',
+    whyLabel: '为什么需要',
+    minimizeLabel: '我们如何最小化使用',
+    statusAllowed: '已允许',
+    statusLimited: '部分允许',
+    statusNotAsked: '尚未请求',
+    statusBlocked: '已阻止',
+    statusUnavailable: '不可用',
+    actionAllow: '允许访问',
+    actionManage: '前往设置',
+    notificationsTitle: '通知',
+    notificationsPurpose:
+      '用于重要提醒和后台重连，让 live session 在应用退到后台后还有机会恢复连接。',
+    notificationsMinimize:
+      '静默通知只会在确实需要重连时使用，不会持续不断地发送后台重连通知。',
+    microphoneTitle: '麦克风',
+    microphonePurpose: '用于语音对话和语音输入。',
+    microphoneMinimize:
+      '只有在你主动使用语音功能时才会访问麦克风，Free 不会在后台录音。',
+    speechTitle: '语音识别',
+    speechPurpose: '用于把你的语音转换成文字，供语音输入使用。',
+    speechMinimize:
+      '只有在你主动开始语音输入时才会启用语音识别，不会在普通输入或后台运行时使用。',
+    photosTitle: '照片',
+    photosPurpose: '当你从相册选择图片并附加到会话时需要。',
+    photosMinimize:
+      'Free 只会访问你明确选择的照片，不会在后台扫描整个相册。',
+    cameraTitle: '相机',
+    cameraPurpose: '用于扫码连接设备或终端时的二维码扫描。',
+    cameraMinimize:
+      '只有在你主动打开扫码流程时才会使用相机，并且仅用于当前二维码连接操作。',
   },
 
   settingsAppearance: {
@@ -350,6 +428,9 @@ export const zhHans: TranslationStructure = {
       failed: ({ error }: { error: string }) => `创建 worktree 失败：${error}`,
       success: 'Worktree 创建成功',
       branchConfigureTitle: 'Worktree 分支',
+      branchModeAuto: '自动',
+      branchModeExisting: '已有',
+      branchModeNew: '新建',
       branchModalTitle: 'Worktree 分支',
       branchModalOr: '或新建分支',
       branchModalPriorityHint: '若已选择上方已有分支，将优先于下方新建分支字段。',
@@ -481,6 +562,8 @@ export const zhHans: TranslationStructure = {
     quickActions: '快速操作',
     viewMachine: '查看设备',
     viewMachineSubtitle: '查看设备详情和会话',
+    viewUsage: '查看用量',
+    viewUsageSubtitle: '查看此会话的 token 和费用拆分',
     killSessionSubtitle: '立即终止会话',
     archiveSessionSubtitle: '归档此会话并停止它',
     recoveryFailedArchiveSubtitle: '此会话在崩溃后恢复失败',
@@ -1159,6 +1242,14 @@ export const zhHans: TranslationStructure = {
     usageOverTime: '使用趋势',
     byModel: '按模型',
     noData: '暂无使用数据',
+    breakdown: '拆分',
+    agent: 'Agent',
+    modelDimension: '模型',
+    source: '来源',
+    clearFilter: '清除',
+    filteringBy: ({ dimension, value }: { dimension: string; value: string }) =>
+      `按 ${dimension} 筛选：${value}`,
+    sessionOnly: '当前仅查看此会话',
   },
 
   dev: {

@@ -10,7 +10,7 @@ export function usageHandler(userId: string, socket: Socket) {
   socket.on('usage-report', async (data: any, callback?: (response: any) => void) => {
     await receiveUsageLock.inLock(async () => {
       try {
-        const { key, sessionId, tokens, cost } = data;
+        const { key, sessionId, tokens, cost, timestamp, agentType, model, startedBy } = data;
 
         // Validate required fields
         if (!key || typeof key !== 'string') {
@@ -43,6 +43,34 @@ export function usageHandler(userId: string, socket: Socket) {
           return;
         }
 
+        if (timestamp !== undefined && (typeof timestamp !== 'number' || !Number.isFinite(timestamp))) {
+          if (callback) {
+            callback({ success: false, error: 'Invalid timestamp' });
+          }
+          return;
+        }
+
+        if (agentType !== undefined && typeof agentType !== 'string') {
+          if (callback) {
+            callback({ success: false, error: 'Invalid agentType' });
+          }
+          return;
+        }
+
+        if (model !== undefined && typeof model !== 'string') {
+          if (callback) {
+            callback({ success: false, error: 'Invalid model' });
+          }
+          return;
+        }
+
+        if (startedBy !== undefined && !['cli', 'daemon', 'app'].includes(startedBy)) {
+          if (callback) {
+            callback({ success: false, error: 'Invalid startedBy' });
+          }
+          return;
+        }
+
         try {
           // If sessionId provided, verify it belongs to the user
           if (sessionId) {
@@ -65,6 +93,10 @@ export function usageHandler(userId: string, socket: Socket) {
           const usageData: PrismaJson.UsageReportData = {
             tokens,
             cost,
+            timestamp,
+            agentType,
+            model,
+            startedBy,
           };
 
           // Upsert the usage report

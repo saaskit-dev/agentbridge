@@ -35,12 +35,11 @@ export async function startDaemonForIntegrationTest(): Promise<number> {
     stdio: 'ignore',
   });
 
-  let daemonPid: number | null = null;
+  let lockFilePid: number | null = null;
   await waitFor(
     async () => {
       const state = await readDaemonState();
       if (state?.pid) {
-        daemonPid = state.pid;
         return true;
       }
 
@@ -48,8 +47,7 @@ export async function startDaemonForIntegrationTest(): Promise<number> {
         const rawPid = readFileSync(configuration.daemonLockFile, 'utf-8').trim();
         const parsedPid = Number.parseInt(rawPid, 10);
         if (Number.isFinite(parsedPid) && parsedPid > 0) {
-          daemonPid = parsedPid;
-          return true;
+          lockFilePid = parsedPid;
         }
       }
 
@@ -60,11 +58,13 @@ export async function startDaemonForIntegrationTest(): Promise<number> {
   );
 
   const daemonState = await readDaemonState();
-  if (!daemonState && !daemonPid) {
-    throw new Error('Daemon failed to start within timeout');
+  if (!daemonState?.pid) {
+    throw new Error(
+      `Daemon failed to write state within timeout${lockFilePid ? ` (lock pid ${lockFilePid})` : ''}`
+    );
   }
 
-  return daemonState?.pid ?? daemonPid!;
+  return daemonState.pid;
 }
 
 export async function waitForTrackedDaemonSession(

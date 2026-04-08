@@ -1,4 +1,17 @@
 import * as z from 'zod';
+import {
+  DEFAULT_FOCUS_AUDIO_SOUND,
+  isFocusAudioSound,
+  LEGACY_FOCUS_AUDIO_SOUND_MAP,
+  type FocusAudioSound,
+} from '@/audio/focusAudioCatalog';
+
+export const FocusAudioSoundSchema = z.preprocess(value => {
+  if (typeof value === 'string' && value in LEGACY_FOCUS_AUDIO_SOUND_MAP) {
+    return LEGACY_FOCUS_AUDIO_SOUND_MAP[value as keyof typeof LEGACY_FOCUS_AUDIO_SOUND_MAP];
+  }
+  return value;
+}, z.custom<FocusAudioSound>(isFocusAudioSound));
 
 //
 // Schema
@@ -23,6 +36,19 @@ export const LocalSettingsSchema = z.object({
   acknowledgedCliVersions: z
     .record(z.string(), z.string())
     .describe('Acknowledged CLI versions per machine'),
+  backgroundReconnectPromptHandled: z
+    .boolean()
+    .describe('Whether the on-demand background reconnect prompt has already been handled'),
+  focusAudioEnabled: z.boolean().describe('Enable audible focus audio playback'),
+  focusAudioSound: FocusAudioSoundSchema.describe('Selected focus audio sound profile'),
+  focusAudioVolume: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe('Focus audio playback volume from 0.0 to 1.0'),
+  focusAudioMixWithOthers: z
+    .boolean()
+    .describe('Whether focus audio should mix with other app audio'),
 });
 
 //
@@ -46,6 +72,11 @@ export const localSettingsDefaults: LocalSettings = {
   themePreference: 'adaptive',
   markdownCopyV2: true,
   acknowledgedCliVersions: {},
+  backgroundReconnectPromptHandled: false,
+  focusAudioEnabled: false,
+  focusAudioSound: DEFAULT_FOCUS_AUDIO_SOUND,
+  focusAudioVolume: 0.35,
+  focusAudioMixWithOthers: true,
 };
 Object.freeze(localSettingsDefaults);
 

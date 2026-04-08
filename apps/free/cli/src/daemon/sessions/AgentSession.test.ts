@@ -93,6 +93,7 @@ function makeMockSession(sessionId = 'test-session-id'): ApiSessionClient {
     sendNormalizedMessage: vi.fn().mockResolvedValue('local-id'),
     sendStreamingTextDelta: vi.fn(),
     sendStreamingTextComplete: vi.fn(),
+    sendUsageData: vi.fn(),
     updateCapabilities: vi.fn(),
     updateMetadata: vi.fn(),
     sendSessionDeath: vi.fn(),
@@ -229,6 +230,46 @@ describe('AgentSession.abort()', () => {
 
     await session.abort();
     expect(backend.abort).toHaveBeenCalled();
+  });
+});
+
+describe('AgentSession usage reporting', () => {
+  it('reports token_count events using the message id as a stable usage key', async () => {
+    const session = new TestAgentSession(makeOpts());
+    const mockSession = makeMockSession('sess-usage');
+    session.injectSession(mockSession);
+
+    await session.emitOutputMessage({
+      id: 'msg-usage-1',
+      role: 'event',
+      createdAt: 1_234_567,
+      isSidechain: false,
+      content: {
+        type: 'token_count',
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_creation_input_tokens: 10,
+          cache_read_input_tokens: 5,
+        },
+      },
+    });
+
+    expect(mockSession.sendUsageData).toHaveBeenCalledWith(
+      {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation_input_tokens: 10,
+        cache_read_input_tokens: 5,
+      },
+      {
+        model: undefined,
+        key: 'usage:msg-usage-1',
+        timestamp: 1_234_567,
+        agentType: 'claude',
+        startedBy: 'cli',
+      }
+    );
   });
 });
 
