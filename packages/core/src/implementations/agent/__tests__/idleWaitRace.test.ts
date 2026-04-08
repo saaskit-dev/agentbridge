@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AcpBackend } from '../acp.js';
 import type { AcpAgentConfig } from '../../../types/agent.js';
+import type { AgentMessage } from '../../../interfaces/agent.js';
 
 /** Minimal config: no process spawn — tests inject a mock connection. */
 function makeTestConfig(): AcpAgentConfig {
@@ -25,11 +26,13 @@ function asInternal(b: AcpBackend): {
   emitIdleStatus(): void;
   connection: { prompt: (req: unknown) => Promise<void> } | null;
   acpSessionId: string | null;
+  handleSessionUpdate(params: unknown): void;
 } {
   return b as unknown as {
     emitIdleStatus(): void;
     connection: { prompt: (req: unknown) => Promise<void> } | null;
     acpSessionId: string | null;
+    handleSessionUpdate(params: unknown): void;
   };
 }
 
@@ -123,5 +126,66 @@ describe('AcpBackend idle vs waitForResponseComplete race', () => {
     await Promise.resolve();
     internal.emitIdleStatus();
     await expect(wait).resolves.toBeUndefined();
+  });
+
+  it('emits token-count when prompt() returns ACP usage', async () => {
+    const backend = new AcpBackend(makeTestConfig());
+    const internal = asInternal(backend);
+    const messages: AgentMessage[] = [];
+
+    backend.onMessage(msg => {
+      messages.push(msg);
+    });
+
+    internal.connection = {
+      prompt: vi.fn().mockResolvedValue({
+        stopReason: 'end_turn',
+        usage: {
+          inputTokens: 120,
+          outputTokens: 45,
+          cachedReadTokens: 30,
+          cachedWriteTokens: 15,
+          totalTokens: 210,
+        },
+      }),
+    };
+    internal.acpSessionId = 'ses_test';
+
+    await backend.sendPrompt('local', [{ type: 'text', text: 'hello' }]);
+
+    expect(messages).toContainEqual({
+      type: 'token-count',
+      input_tokens: 120,
+      output_tokens: 45,
+      cache_read_input_tokens: 30,
+      cache_creation_input_tokens: 15,
+    });
+  });
+
+  it('emits non-reporting token-count when session_update is usage_update', () => {
+    const backend = new AcpBackend(makeTestConfig());
+    const internal = asInternal(backend);
+    const messages: AgentMessage[] = [];
+
+    backend.onMessage(msg => {
+      messages.push(msg);
+    });
+
+    internal.handleSessionUpdate({
+      update: {
+        sessionUpdate: 'usage_update',
+        used: 4321,
+        size: 128000,
+      },
+    });
+
+    expect(messages).toContainEqual({
+      type: 'token-count',
+      input_tokens: 0,
+      output_tokens: 0,
+      context_used_tokens: 4321,
+      context_window_size: 128000,
+      reportToServer: false,
+    });
   });
 });

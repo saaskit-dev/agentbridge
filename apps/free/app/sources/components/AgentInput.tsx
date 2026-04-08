@@ -102,6 +102,7 @@ interface AgentInputProps {
     cacheCreation: number;
     cacheRead: number;
     contextSize: number;
+    contextWindowSize?: number;
   };
   alwaysShowContextSize?: boolean;
   onFileViewerPress?: () => void;
@@ -268,6 +269,24 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     marginLeft: 8,
     ...Typography.default(),
   },
+  contextLiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  contextLiveText: {
+    fontSize: 11,
+    ...Typography.default(),
+  },
+  contextPill: {
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  contextPillText: {
+    fontSize: 10,
+    ...Typography.default('semiBold'),
+  },
 
   // Button styles
   actionButtonsContainer: {
@@ -347,8 +366,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
   },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
-  const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
+const getContextWarning = (
+  contextSize: number,
+  contextWindowSize: number = MAX_CONTEXT_SIZE,
+  alwaysShow: boolean = false,
+  theme: Theme
+) => {
+  const percentageUsed = (contextSize / contextWindowSize) * 100;
   const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
 
   if (percentageRemaining <= 5) {
@@ -369,6 +393,16 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
     };
   }
   return null; // No display needed
+};
+
+const formatTokenCompact = (value: number) => {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  }
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(value >= 100_000 ? 0 : 1)}k`;
+  }
+  return `${Math.round(value)}`;
 };
 
 export const AgentInput = React.memo(
@@ -419,8 +453,50 @@ export const AgentInput = React.memo(
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
-      ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
+      ? getContextWarning(
+          props.usageData.contextSize,
+          props.usageData.contextWindowSize ?? MAX_CONTEXT_SIZE,
+          props.alwaysShowContextSize ?? false,
+          theme
+        )
       : null;
+    const contextUsageDisplay = React.useMemo(() => {
+      if (!props.usageData?.contextSize) {
+        return null;
+      }
+
+      const contextWindowSize = props.usageData.contextWindowSize ?? MAX_CONTEXT_SIZE;
+      const used = props.usageData.contextSize;
+      const percent = Math.max(0, Math.min(100, Math.round((used / contextWindowSize) * 100)));
+
+      if (percent >= 95) {
+        return {
+          label: `${formatTokenCompact(used)} / ${formatTokenCompact(contextWindowSize)}`,
+          percent,
+          textColor: theme.colors.warningCritical,
+          pillBackground: `${theme.colors.warningCritical}20`,
+          pillTextColor: theme.colors.warningCritical,
+        };
+      }
+
+      if (percent >= 90) {
+        return {
+          label: `${formatTokenCompact(used)} / ${formatTokenCompact(contextWindowSize)}`,
+          percent,
+          textColor: theme.colors.warning,
+          pillBackground: `${theme.colors.warning}18`,
+          pillTextColor: theme.colors.warning,
+        };
+      }
+
+      return {
+        label: `${formatTokenCompact(used)} / ${formatTokenCompact(contextWindowSize)}`,
+        percent,
+        textColor: theme.colors.textSecondary,
+        pillBackground: theme.colors.surface,
+        pillTextColor: theme.colors.textSecondary,
+      };
+    }, [props.usageData, theme.colors.surface, theme.colors.textSecondary, theme.colors.warning, theme.colors.warningCritical]);
     const modelCapabilities = props.capabilities?.models;
     const modeCapabilities = props.capabilities?.modes;
     const hasAgentModeList = (modeCapabilities?.available?.length ?? 0) > 0;
@@ -1308,6 +1384,7 @@ export const AgentInput = React.memo(
           {/* Connection status, context warning, and permission mode */}
           {(props.connectionStatus ||
             contextWarning ||
+            contextUsageDisplay ||
             hasCapabilityStatus ||
             props.pendingCapabilityLabel) && (
             <View
@@ -1408,6 +1485,39 @@ export const AgentInput = React.memo(
                   gap: 1,
                 }}
               >
+                {contextUsageDisplay ? (
+                  <View style={styles.contextLiveRow}>
+                    <Text
+                      style={[
+                        styles.contextLiveText,
+                        {
+                          color: contextUsageDisplay.textColor,
+                        },
+                      ]}
+                    >
+                      {contextUsageDisplay.label}
+                    </Text>
+                    <View
+                      style={[
+                        styles.contextPill,
+                        {
+                          backgroundColor: contextUsageDisplay.pillBackground,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.contextPillText,
+                          {
+                            color: contextUsageDisplay.pillTextColor,
+                          },
+                        ]}
+                      >
+                        {contextUsageDisplay.percent}%
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
                 {props.pendingCapabilityLabel ? (
                   <Text
                     style={{

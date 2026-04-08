@@ -883,6 +883,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
                 cacheCreation: sessionUsage.cacheCreation,
                 cacheRead: sessionUsage.cacheRead,
                 contextSize: sessionUsage.contextSize,
+                contextWindowSize: sessionUsage.contextWindowSize,
               }
             : session.latestUsage
               ? {
@@ -891,6 +892,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
                   cacheCreation: session.latestUsage.cacheCreation,
                   cacheRead: session.latestUsage.cacheRead,
                   contextSize: session.latestUsage.contextSize,
+                  contextWindowSize: session.latestUsage.contextWindowSize,
                 }
               : undefined
         }

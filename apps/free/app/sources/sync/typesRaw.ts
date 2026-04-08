@@ -15,6 +15,8 @@ const usageDataSchema = z.object({
   cache_creation_input_tokens: z.number().optional(),
   cache_read_input_tokens: z.number().optional(),
   output_tokens: z.number(),
+  context_used_tokens: z.number().optional(),
+  context_window_size: z.number().optional(),
   service_tier: z.string().optional(),
 });
 

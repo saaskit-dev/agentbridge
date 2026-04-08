@@ -238,6 +238,10 @@ describe('AgentSession usage reporting', () => {
     const session = new TestAgentSession(makeOpts());
     const mockSession = makeMockSession('sess-usage');
     session.injectSession(mockSession);
+    session.injectBackend({
+      ...session.createBackend(),
+      getCurrentModel: () => 'gpt-5-codex',
+    });
 
     await session.emitOutputMessage({
       id: 'msg-usage-1',
@@ -263,13 +267,38 @@ describe('AgentSession usage reporting', () => {
         cache_read_input_tokens: 5,
       },
       {
-        model: undefined,
+        model: 'gpt-5-codex',
         key: 'usage:msg-usage-1',
         timestamp: 1_234_567,
         agentType: 'claude',
         startedBy: 'cli',
       }
     );
+  });
+
+  it('does not report token_count events marked as local-only', async () => {
+    const session = new TestAgentSession(makeOpts());
+    const mockSession = makeMockSession('sess-usage-local');
+    session.injectSession(mockSession);
+
+    await session.emitOutputMessage({
+      id: 'msg-usage-local-1',
+      role: 'event',
+      createdAt: 1_234_890,
+      isSidechain: false,
+      content: {
+        type: 'token_count',
+        reportToServer: false,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          context_used_tokens: 4321,
+          context_window_size: 128000,
+        },
+      },
+    });
+
+    expect(mockSession.sendUsageData).not.toHaveBeenCalled();
   });
 });
 

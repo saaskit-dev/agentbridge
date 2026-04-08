@@ -454,6 +454,10 @@ export class ClaudeNativeBackend implements AgentBackend {
     this.permissionHandler?.updateSession(newSession);
   }
 
+  getCurrentModel(): string | null {
+    return this.startOpts?.model ?? null;
+  }
+
   async setModel(modelId: string): Promise<void> {
     logger.warn(
       '[ClaudeNativeBackend] setModel called but runtime model switching is not supported in PTY/SDK mode',

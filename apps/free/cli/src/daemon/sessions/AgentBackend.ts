@@ -135,4 +135,5 @@ export interface AgentBackend {
   setMode?(modeId: string): Promise<void>;
   setConfig?(optionId: string, value: string): Promise<void>;
   runCommand?(commandId: string): Promise<void>;
+  getCurrentModel?(): string | null | undefined;
 }

@@ -102,7 +102,14 @@ interface PromptRequest {
 interface PromptResponse {
   stopReason: 'end_turn' | 'max_tokens' | 'max_turn_requests' | 'refusal' | 'cancelled';
   _meta?: Record<string, unknown> | null;
-  usage?: { inputTokens?: number; outputTokens?: number } | null;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens?: number | null;
+    cachedReadTokens?: number | null;
+    cachedWriteTokens?: number | null;
+    thoughtTokens?: number | null;
+  } | null;
 }
 
 /** ContentBlock union matching the ACP protocol schema. */
@@ -294,6 +301,9 @@ type ExtendedSessionNotification = SessionNotification & {
     sessionUpdate?: string;
     toolCallId?: string;
     status?: string;
+    used?: number;
+    size?: number;
+    cost?: unknown;
     kind?: string | unknown;
     content?:
       | {
@@ -1348,6 +1358,26 @@ export class AcpBackend implements IAgentBackend {
       return;
     }
 
+    if (sessionUpdateType === 'usage_update') {
+      const usageUpdate = update as SessionUpdate & {
+        used?: number;
+        size?: number;
+      };
+      this.emit({
+        type: 'token-count',
+        input_tokens: 0,
+        output_tokens: 0,
+        ...(usageUpdate.used != null
+          ? { context_used_tokens: Number(usageUpdate.used) }
+          : {}),
+        ...(usageUpdate.size != null
+          ? { context_window_size: Number(usageUpdate.size) }
+          : {}),
+        reportToServer: false,
+      });
+      return;
+    }
+
     // Handle legacy and auxiliary update types
     handleLegacyMessageChunk(update as SessionUpdate, ctx);
     handlePlanUpdate(update as SessionUpdate, ctx);
@@ -1449,6 +1479,20 @@ export class AcpBackend implements IAgentBackend {
         }
       );
       logger.info('[AcpBackend] Prompt turn completed', { stopReason: this.lastStopReason });
+
+      if (promptResponse?.usage) {
+        this.emit({
+          type: 'token-count',
+          input_tokens: Number(promptResponse.usage.inputTokens ?? 0),
+          output_tokens: Number(promptResponse.usage.outputTokens ?? 0),
+          ...(promptResponse.usage.cachedWriteTokens != null
+            ? { cache_creation_input_tokens: Number(promptResponse.usage.cachedWriteTokens) }
+            : {}),
+          ...(promptResponse.usage.cachedReadTokens != null
+            ? { cache_read_input_tokens: Number(promptResponse.usage.cachedReadTokens) }
+            : {}),
+        });
+      }
 
       // connection.prompt() resolving means the agent turn is definitively complete.
       // If idle was never emitted (e.g. all tool calls timed out but no new chunks

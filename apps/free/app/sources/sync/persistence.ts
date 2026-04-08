@@ -136,6 +136,10 @@ function parseCachedSession(raw: unknown): Session | null {
           cacheCreation: (latestUsageRaw as Record<string, number>).cacheCreation,
           cacheRead: (latestUsageRaw as Record<string, number>).cacheRead,
           contextSize: (latestUsageRaw as Record<string, number>).contextSize,
+          contextWindowSize:
+            typeof (latestUsageRaw as Record<string, unknown>).contextWindowSize === 'number'
+              ? (latestUsageRaw as Record<string, number>).contextWindowSize
+              : undefined,
           timestamp: (latestUsageRaw as Record<string, number>).timestamp,
         }
       : null;

@@ -174,6 +174,7 @@ export type ReducerState = {
     cacheCreation: number;
     cacheRead: number;
     contextSize: number;
+    contextWindowSize?: number;
     timestamp: number;
   };
 };
@@ -1379,6 +1380,7 @@ export function reducer(
           cacheCreation: state.latestUsage.cacheCreation,
           cacheRead: state.latestUsage.cacheRead,
           contextSize: state.latestUsage.contextSize,
+          contextWindowSize: state.latestUsage.contextWindowSize,
         }
       : undefined,
     hasReadyEvent: hasReadyEvent || undefined,
@@ -1403,9 +1405,11 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
       cacheCreation: usage.cache_creation_input_tokens || 0,
       cacheRead: usage.cache_read_input_tokens || 0,
       contextSize:
+        usage.context_used_tokens ??
         (usage.cache_creation_input_tokens || 0) +
-        (usage.cache_read_input_tokens || 0) +
-        usage.input_tokens,
+          (usage.cache_read_input_tokens || 0) +
+          usage.input_tokens,
+      contextWindowSize: usage.context_window_size,
       timestamp: timestamp,
     };
   }

@@ -51,6 +51,8 @@ export type UsageData = {
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
   output_tokens: number;
+  context_used_tokens?: number;
+  context_window_size?: number;
   service_tier?: string;
 };
 
@@ -107,7 +109,7 @@ export type AgentEvent =
   | { type: 'daemon-log'; level: 'error'; component: string; message: string; error?: string }
   // ── Daemon-only operational signals (delivered via ephemeral channels, not persisted as messages)
   | { type: 'status'; state: 'working' | 'idle' }
-  | { type: 'token_count'; usage: UsageData }
+  | { type: 'token_count'; usage: UsageData; reportToServer?: boolean }
   | {
       type: 'permission_request';
       requestId: string;

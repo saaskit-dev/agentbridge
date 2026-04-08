@@ -189,8 +189,22 @@ export function mapAcpMessageToNormalized(
           ...(m.cache_read_input_tokens != null
             ? { cache_read_input_tokens: Number(m.cache_read_input_tokens) }
             : {}),
+          ...(m.context_used_tokens != null
+            ? { context_used_tokens: Number(m.context_used_tokens) }
+            : {}),
+          ...(m.context_window_size != null
+            ? { context_window_size: Number(m.context_window_size) }
+            : {}),
         };
-        return { ...base, role: 'event', content: { type: 'token_count', usage } };
+        return {
+          ...base,
+          role: 'event',
+          content: {
+            type: 'token_count',
+            usage,
+            ...(m.reportToServer != null ? { reportToServer: Boolean(m.reportToServer) } : {}),
+          },
+        };
       }
 
       if (!options?.skipExecAndPatch) {

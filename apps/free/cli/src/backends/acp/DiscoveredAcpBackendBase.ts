@@ -475,6 +475,16 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.permissionHandler?.updateSession(newSession);
   }
 
+  getCurrentModel(): string | null {
+    return (
+      this.publishedCapabilitiesSnapshot.models?.current ??
+      this.capabilitiesSnapshot.models?.current ??
+      this.appliedModelSelection ??
+      this.initialModel ??
+      null
+    );
+  }
+
   async setModel(modelId: string): Promise<void> {
     this.initialModel = modelId;
     this.appliedModelSelection = modelId;

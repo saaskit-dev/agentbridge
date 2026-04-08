@@ -69,6 +69,7 @@ export interface SessionUsage {
   cacheCreation: number;
   cacheRead: number;
   contextSize: number;
+  contextWindowSize?: number;
   timestamp: number;
 }
 
