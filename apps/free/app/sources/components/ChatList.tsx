@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { ChatFooter } from './ChatFooter';
+import { buildChatListItems, type ChatListItem } from './chatListItems';
 import { layout } from './layout';
 import { MessageView } from './MessageView';
 import { useSession, useSessionMessages, useMessage } from '@/sync/storage';
@@ -34,11 +35,9 @@ type PullState = 'idle' | 'pulling' | 'ready' | 'loading';
 const PULL_THRESHOLD = 80;
 const PULL_MIN = 10;
 const MIN_LOADING_MS = 300;
-const MESSAGE_HIGHLIGHT_MS = 2200;
+const MESSAGE_HIGHLIGHT_MS = 1200;
 /** Scroll offset threshold to consider user "at bottom" (inverted: y ≈ 0). */
 const AT_BOTTOM_THRESHOLD = 80;
-/** Minimum time gap (ms) between consecutive messages to show a timestamp separator. */
-const TIME_GAP_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 type UserNavItem = {
   listIndex: number;
@@ -51,10 +50,6 @@ type UserNavItem = {
 const FAB_SIZE = 40;
 const FAB_GAP = 12;
 const logger = new Logger('app/components/ChatList');
-
-// ---------------------------------------------------------------------------
-// Date / time helpers
-// ---------------------------------------------------------------------------
 
 function isSameDay(a: number, b: number): boolean {
   const da = new Date(a);
@@ -83,14 +78,6 @@ function formatTime(ts: number): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function getLocalDayKey(ts: number): string {
-  const date = new Date(ts);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }
 
 function renderHighlightedText(
@@ -131,93 +118,7 @@ function renderHighlightedText(
 // List item types (messages + separators)
 // ---------------------------------------------------------------------------
 
-type ListItem =
-  | {
-      type: 'message-group';
-      key: string;
-      messageIds: string[];
-      primaryMessageId: string;
-      createdAt: number;
-      role: 'user' | 'assistant';
-    }
-  | { type: 'date-separator'; label: string; key: string }
-  | { type: 'time-separator'; label: string; key: string };
-
-function buildListItems(messages: Message[]): ListItem[] {
-  // Messages are sorted newest-first. In the inverted FlatList, data[0] = visual bottom.
-  // We iterate from oldest (end) to newest (start) to insert separators correctly.
-
-  const items: ListItem[] = [];
-  const groups: Array<{
-    messageIds: string[];
-    primaryMessageId: string;
-    createdAt: number;
-    role: 'user' | 'assistant';
-  }> = [];
-
-  const getRole = (message: Message): 'user' | 'assistant' =>
-    message.kind === 'user-text' ? 'user' : 'assistant';
-
-  let currentGroup: (typeof groups)[number] | null = null;
-
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-    const role = getRole(message);
-    if (!currentGroup || currentGroup.role !== role) {
-      currentGroup = {
-        messageIds: [message.id],
-        primaryMessageId: message.id,
-        createdAt: message.createdAt,
-        role,
-      };
-      groups.push(currentGroup);
-    } else {
-      currentGroup.messageIds.push(message.id);
-      currentGroup.primaryMessageId = message.id;
-      currentGroup.createdAt = message.createdAt;
-    }
-  }
-
-  for (let i = 0; i < groups.length; i++) {
-    const group = groups[i];
-    const prevGroup = i > 0 ? groups[i - 1] : null;
-
-    // Date separator: if this message is on a different day from the previous one
-    if (!prevGroup || !isSameDay(group.createdAt, prevGroup.createdAt)) {
-      items.push({
-        type: 'date-separator',
-        label: formatDateLabel(group.createdAt),
-        key: `date-${getLocalDayKey(group.createdAt)}-${group.primaryMessageId}`,
-      });
-    }
-
-    // Time gap separator: same day but > TIME_GAP_THRESHOLD_MS since previous message
-    if (
-      prevGroup &&
-      isSameDay(group.createdAt, prevGroup.createdAt) &&
-      group.createdAt - prevGroup.createdAt > TIME_GAP_THRESHOLD_MS
-    ) {
-      items.push({
-        type: 'time-separator',
-        label: formatTime(group.createdAt),
-        key: `time-${group.primaryMessageId}`,
-      });
-    }
-
-    items.push({
-      type: 'message-group',
-      key: `group-${group.primaryMessageId}`,
-      messageIds: [...group.messageIds].reverse(),
-      primaryMessageId: group.primaryMessageId,
-      createdAt: group.createdAt,
-      role: group.role,
-    });
-  }
-
-  // Reverse so newest is at index 0 (matches inverted FlatList expectation)
-  items.reverse();
-  return items;
-}
+type ListItem = ChatListItem;
 
 // ---------------------------------------------------------------------------
 // Pull-to-action pill
@@ -1147,8 +1048,10 @@ const ChatListInternal = React.memo(
 
         // Show/hide scroll-to-bottom FAB
         if (isAtBottom.current) {
-          shouldFollowBottomRef.current = true;
-          recentUserJumpIndexRef.current = -1;
+          if (!isProgrammaticScrollRef.current) {
+            shouldFollowBottomRef.current = true;
+            recentUserJumpIndexRef.current = -1;
+          }
           updateShowScrollFab(false);
           if (!wasAtBottom) updateUnreadCount(0);
         } else {
@@ -1268,6 +1171,15 @@ const ChatListInternal = React.memo(
       }, MESSAGE_HIGHLIGHT_MS);
     }, []);
 
+    const finishProgrammaticScroll = useCallback(() => {
+      isProgrammaticScrollRef.current = false;
+      if (isAtBottom.current) {
+        shouldFollowBottomRef.current = true;
+        updateShowScrollFab(false);
+        updateUnreadCount(0);
+      }
+    }, [updateShowScrollFab, updateUnreadCount]);
+
     /** Jump to a message by id. Looks up the current index to avoid stale-index bugs. */
     const handleJumpToUserMessage = useCallback((messageId: string) => {
       const index = listItemsRef.current.findIndex(
@@ -1279,9 +1191,9 @@ const ChatListInternal = React.memo(
       isProgrammaticScrollRef.current = true;
       flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
       setTimeout(() => {
-        isProgrammaticScrollRef.current = false;
+        finishProgrammaticScroll();
       }, 500);
-    }, [highlightMessage]);
+    }, [finishProgrammaticScroll, highlightMessage]);
 
     /** Fallback when scrollToIndex targets an unmeasured item. */
     const handleScrollToIndexFailed = useCallback(
@@ -1295,7 +1207,7 @@ const ChatListInternal = React.memo(
           // Re-lookup the target item in case listItems changed during the scroll
           const targetItem = listItemsRef.current[info.index];
           if (!targetItem) {
-            isProgrammaticScrollRef.current = false;
+            finishProgrammaticScroll();
             return;
           }
           // Find the item's current index (it may have shifted if older messages were loaded)
@@ -1312,14 +1224,17 @@ const ChatListInternal = React.memo(
             animated: true,
             viewPosition: 0.5,
           });
-          setTimeout(() => { isProgrammaticScrollRef.current = false; }, 500);
+          setTimeout(() => { finishProgrammaticScroll(); }, 500);
         }, 200);
       },
-      []
+      [finishProgrammaticScroll]
     );
 
     // ----- build list items with separators -----
-    const listItems = useMemo(() => buildListItems(messages), [messages]);
+    const listItems = useMemo(
+      () => buildChatListItems(messages, formatDateLabel, formatTime),
+      [messages]
+    );
     listItemsRef.current = listItems;
     const previousListStateRef = useRef<{
       messageCount: number;
