@@ -17,6 +17,12 @@ import { streamingHandler } from './socket/streamingHandler';
 import { usageHandler } from './socket/usageHandler';
 import { attachmentHandler } from './socket/attachmentHandler';
 import { replayMissedMessages } from './socket/replayHandler';
+import {
+  buildMachineRoom,
+  buildSessionRoom,
+  buildUserRoom,
+  hasRemainingConnections,
+} from './socket/connectionRooms';
 import { Fastify } from './types';
 import { auth } from '@/app/auth/auth';
 import {
@@ -166,6 +172,12 @@ export async function startSocket(app: Fastify) {
     }
     eventRouter.addConnection(userId, connection);
     incrementWebSocketConnection(connection.connectionType);
+    await socket.join(buildUserRoom(userId));
+    if (connection.connectionType === 'session-scoped') {
+      await socket.join(buildSessionRoom(userId, connection.sessionId));
+    } else if (connection.connectionType === 'machine-scoped') {
+      await socket.join(buildMachineRoom(userId, connection.machineId));
+    }
 
     // Broadcast daemon online status
     if (connection.connectionType === 'machine-scoped') {
@@ -227,9 +239,9 @@ export async function startSocket(app: Fastify) {
 
         // Broadcast daemon offline status and update database
         if (connection.connectionType === 'machine-scoped') {
-          const hasRemainingMachineConnection = eventRouter.hasMachineConnection(
-            userId,
-            connection.machineId
+          const hasRemainingMachineConnection = await hasRemainingConnections(
+            io,
+            buildMachineRoom(userId, connection.machineId)
           );
           if (hasRemainingMachineConnection) {
             log.info('[disconnect] machine still connected elsewhere, skipping inactive transition', {
@@ -269,9 +281,9 @@ export async function startSocket(app: Fastify) {
 
         // Broadcast session offline status and update database
         if (connection.connectionType === 'session-scoped') {
-          const hasRemainingSessionConnection = eventRouter.hasSessionConnection(
-            userId,
-            connection.sessionId
+          const hasRemainingSessionConnection = await hasRemainingConnections(
+            io,
+            buildSessionRoom(userId, connection.sessionId)
           );
           if (hasRemainingSessionConnection) {
             log.info('[disconnect] session still connected elsewhere, skipping offline transition', {
