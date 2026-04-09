@@ -3643,6 +3643,32 @@ class Sync {
       }
     }
 
+    if (updateData.type === 'usage') {
+      const session = storage.getState().sessions[updateData.id];
+      if (session) {
+        const latestUsage = {
+          inputTokens: updateData.tokens.input,
+          outputTokens: updateData.tokens.output,
+          cacheCreation: updateData.tokens.cache_creation,
+          cacheRead: updateData.tokens.cache_read,
+          contextSize:
+            updateData.tokens.context_used ??
+            updateData.tokens.input +
+              updateData.tokens.cache_creation +
+              updateData.tokens.cache_read,
+          contextWindowSize: updateData.tokens.context_window,
+          timestamp: updateData.timestamp,
+        };
+
+        this.applySessions([
+          {
+            ...session,
+            latestUsage,
+          },
+        ]);
+      }
+    }
+
     // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity
 
     // Notify all subscribers (for streaming text, etc.)

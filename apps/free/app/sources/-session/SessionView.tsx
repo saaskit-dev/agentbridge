@@ -79,6 +79,7 @@ export const SessionView = React.memo((props: { id: string }) => {
   const isTablet = useIsTablet();
   const devModeEnabledForHeader = useLocalSetting('devModeEnabled') || __DEV__;
   const showDebugIds = useLocalSetting('showDebugIds');
+  const [jumpToRecentUserSignal, setJumpToRecentUserSignal] = React.useState(0);
 
   // Compute header props based on session state
   const headerProps = useMemo(() => {
@@ -160,6 +161,7 @@ export const SessionView = React.memo((props: { id: string }) => {
           <ChatHeaderView
             {...headerProps}
             onBackPress={() => router.back()}
+            onTitleDoublePress={() => setJumpToRecentUserSignal(value => value + 1)}
             devSessionId={devModeEnabledForHeader && showDebugIds ? sessionId : null}
           />
           {/* Voice status bar below header - not on tablet (shown in sidebar) */}
@@ -208,14 +210,24 @@ export const SessionView = React.memo((props: { id: string }) => {
           </View>
         ) : (
           // Normal session view
-          <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
+          <SessionViewLoaded
+            key={sessionId}
+            sessionId={sessionId}
+            session={session}
+            jumpToRecentUserSignal={jumpToRecentUserSignal}
+          />
         )}
       </View>
     </>
   );
 });
 
-function SessionViewLoaded({ sessionId, session }: { sessionId: string; session: Session }) {
+function SessionViewLoaded(props: {
+  sessionId: string;
+  session: Session;
+  jumpToRecentUserSignal: number;
+}) {
+  const { sessionId, session, jumpToRecentUserSignal } = props;
   const { theme } = useUnistyles();
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -751,7 +763,17 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string; session:
     }
   }, [isLoaded, messages.length, sessionId, shouldRenderChatList]);
 
-  const content = <>{shouldRenderChatList && <ChatList session={session} footerNotice={footerNotice} />}</>;
+  const content = (
+    <>
+      {shouldRenderChatList && (
+        <ChatList
+          session={session}
+          footerNotice={footerNotice}
+          jumpToRecentUserSignal={jumpToRecentUserSignal}
+        />
+      )}
+    </>
+  );
   const placeholder =
     !shouldRenderChatList ? (
       <>

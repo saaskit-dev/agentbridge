@@ -7,8 +7,8 @@ import { layout } from './layout';
 import { MarkdownView } from './markdown/MarkdownView';
 import { Option } from './markdown/MarkdownView';
 import { StreamingAgentText } from './StreamingText';
-
 import { ToolView } from './tools/ToolView';
+import { Typography } from '@/constants/Typography';
 import { useLocalSetting, useSetting, useSession } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -26,7 +26,15 @@ export const MessageView = React.memo(function MessageView(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  hideTimestamp?: boolean;
+  collapseToolsSignal?: number;
 }) {
+  const timestampAlignment =
+    props.message.kind === 'user-text'
+      ? 'flex-end'
+      : props.message.kind === 'agent-text'
+        ? 'flex-start'
+        : null;
   return (
     <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
       <View style={styles.messageContent}>
@@ -35,11 +43,40 @@ export const MessageView = React.memo(function MessageView(props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
+          collapseToolsSignal={props.collapseToolsSignal}
         />
+        {!props.hideTimestamp && timestampAlignment ? (
+          <MessageTimestamp
+            createdAt={props.message.createdAt}
+            alignSelf={timestampAlignment}
+          />
+        ) : null}
       </View>
     </View>
   );
 });
+
+function MessageTimestamp(props: {
+  createdAt: number;
+  alignSelf: 'flex-start' | 'flex-end';
+}) {
+  const { theme } = useUnistyles();
+  return (
+    <Text
+      style={[
+        styles.messageTimestamp,
+        {
+          alignSelf: props.alignSelf,
+        },
+      ]}
+    >
+      {new Date(props.createdAt).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}
+    </Text>
+  );
+}
 
 // RenderBlock function that dispatches to the correct component based on message kind
 function RenderBlock(props: {
@@ -47,6 +84,7 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  collapseToolsSignal?: number;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -62,6 +100,7 @@ function RenderBlock(props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
+          collapseToolsSignal={props.collapseToolsSignal}
         />
       );
 
@@ -500,6 +539,32 @@ function AgentEventBlock(props: {
       </View>
     );
   }
+  if (props.event.type === 'token_count') {
+    const { usage } = props.event;
+    const contextSize =
+      usage.context_used_tokens ??
+      (usage.cache_creation_input_tokens || 0) +
+        (usage.cache_read_input_tokens || 0) +
+        usage.input_tokens;
+
+    return (
+      <View style={styles.agentEventContainer}>
+        <Text style={styles.agentEventText}>
+          {`Usage  in ${usage.input_tokens}  out ${usage.output_tokens}`}
+        </Text>
+        {(usage.cache_read_input_tokens || usage.cache_creation_input_tokens) && (
+          <Text style={[styles.agentEventText, { opacity: 0.8 }]}>
+            {`Cache read ${usage.cache_read_input_tokens || 0}  write ${usage.cache_creation_input_tokens || 0}`}
+          </Text>
+        )}
+        {typeof usage.context_window_size === 'number' && (
+          <Text style={[styles.agentEventText, { opacity: 0.8 }]}>
+            {`Context ${contextSize} / ${usage.context_window_size}`}
+          </Text>
+        )}
+      </View>
+    );
+  }
   if (props.event.type === 'limit-reached') {
     const formatTime = (timestamp: number): string => {
       try {
@@ -575,6 +640,7 @@ function ToolCallBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
+  collapseToolsSignal?: number;
 }) {
   if (!props.message.tool) {
     return null;
@@ -587,6 +653,7 @@ function ToolCallBlock(props: {
         messages={props.message.children}
         sessionId={props.sessionId}
         messageId={props.message.id}
+        collapseSignal={props.collapseToolsSignal}
       />
       <DevTraceBadge traceId={props.message.traceId} id={props.message.id} />
     </View>
@@ -604,6 +671,15 @@ const styles = StyleSheet.create(theme => ({
     flexBasis: 0,
     maxWidth: layout.maxWidth,
   },
+  messageTimestamp: {
+    marginTop: -6,
+    marginBottom: 10,
+    marginHorizontal: 16,
+    color: theme.colors.textSecondary,
+    fontSize: 11,
+    opacity: 0.75,
+    ...Typography.default(),
+  },
   userMessageContainer: {
     maxWidth: '100%',
     flexDirection: 'column',
@@ -616,12 +692,12 @@ const styles = StyleSheet.create(theme => ({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 10,
     maxWidth: '100%',
   },
   agentMessageContainer: {
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     borderRadius: 16,
     alignSelf: 'flex-start',
   },

@@ -14,7 +14,7 @@ import type {
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify } from '@saaskit-dev/agentbridge';
 const logger = new Logger('daemon/controlServer');
-const AgentTypeSchema = z.enum(['claude', 'claude-native', 'codex', 'gemini', 'opencode']);
+const AgentTypeSchema = z.enum(['claude', 'codex', 'gemini', 'opencode']);
 
 export function startDaemonControlServer({
   getSessions,

@@ -25,6 +25,7 @@ interface ToolViewProps {
   onPress?: () => void;
   sessionId?: string;
   messageId?: string;
+  collapseSignal?: number;
 }
 
 export const ToolView = React.memo<ToolViewProps>(props => {
@@ -154,6 +155,11 @@ export const ToolView = React.memo<ToolViewProps>(props => {
       setIsExpanded(false);
     }
   }, [autoCollapseOnSettled, isSettled, tool.completedAt, tool.state]);
+
+  React.useEffect(() => {
+    if (!props.collapseSignal) return;
+    setIsExpanded(false);
+  }, [props.collapseSignal]);
 
   const canOpenDetails = !!(onPress || (sessionId && messageId));
   const canToggleInline = minimal;

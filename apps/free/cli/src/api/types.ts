@@ -236,6 +236,7 @@ export interface ClientToServerEvents {
     agentType?: string;
     model?: string;
     startedBy?: 'cli' | 'daemon' | 'app';
+    localOnly?: boolean;
     tokens: {
       total: number;
       [key: string]: number;

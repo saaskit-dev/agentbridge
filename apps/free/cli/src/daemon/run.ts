@@ -16,7 +16,6 @@ import type {
 } from './ipc/protocol';
 import { SessionManager } from './sessions/SessionManager';
 import { AgentSessionFactory } from './sessions/AgentSessionFactory';
-import { ClaudeNativeSession } from './sessions/ClaudeNativeSession';
 import { GeminiSession } from './sessions/GeminiSession';
 import { OpenCodeSession } from './sessions/OpenCodeSession';
 import { ClaudeSession } from './sessions/ClaudeSession';
@@ -61,7 +60,6 @@ import type { AgentType } from './sessions/types';
 import { cleanStaleAttachments } from './sessions/cleanAttachments';
 
 // Register all agent session types at module load time
-AgentSessionFactory.register('claude-native', ClaudeNativeSession);
 AgentSessionFactory.register('claude', ClaudeSession);
 AgentSessionFactory.register('codex', CodexSession);
 AgentSessionFactory.register('gemini', GeminiSession);
@@ -634,16 +632,41 @@ export async function startDaemon(): Promise<void> {
         }
       }
 
+      const unsupportedSnapshots = persisted.filter(
+        data =>
+          data.daemonInstanceId !== daemonInstanceId &&
+          !AgentSessionFactory.isRegistered(data.agentType)
+      );
+      for (const data of unsupportedSnapshots) {
+        await erasePersistedSession(data.sessionId).catch(err =>
+          logger.warn('[DAEMON] Failed to erase unsupported session snapshot', {
+            sessionId: data.sessionId,
+            agentType: data.agentType,
+            error: String(err),
+          })
+        );
+        logger.info('[DAEMON] Dropped unsupported session snapshot during recovery', {
+          sessionId: data.sessionId,
+          agentType: data.agentType,
+        });
+      }
+      const recoverablePersisted = persisted.filter(
+        data =>
+          data.daemonInstanceId === daemonInstanceId ||
+          AgentSessionFactory.isRegistered(data.agentType)
+      );
+
       // Recover sessions from any previous daemon instance.
       // daemonInstanceId is a UUID — no PID reuse ambiguity.
-      const hasRecoverable = persisted.some(d => d.daemonInstanceId !== daemonInstanceId);
+      const hasRecoverable = recoverablePersisted.some(d => d.daemonInstanceId !== daemonInstanceId);
       logger.info('[DAEMON] Session recovery scan', {
         persistedTotal: persisted.length,
+        unsupportedSkipped: unsupportedSnapshots.length,
         corruptedFiles: corruptedSessionIds.length,
         repairedFromServer: repairedIds.size,
         hasRecoverable,
         daemonInstanceId,
-        sessionIds: persisted.map(d => d.sessionId),
+        sessionIds: recoverablePersisted.map(d => d.sessionId),
       });
       if (hasRecoverable) ipcServer!.beginRecovery();
       let recoveredCount = 0;
@@ -666,7 +689,7 @@ export async function startDaemon(): Promise<void> {
           failedAt: Date.now(),
         });
       }
-      for (const data of persisted) {
+      for (const data of recoverablePersisted) {
         if (data.daemonInstanceId === daemonInstanceId) continue; // ours, skip
 
         try {
@@ -735,13 +758,14 @@ export async function startDaemon(): Promise<void> {
         }
       }
       if (hasRecoverable) ipcServer!.endRecovery();
-      if (recoveredCount > 0 || corruptedSessionIds.length > 0) {
+      if (recoveredCount > 0 || corruptedSessionIds.length > 0 || unsupportedSnapshots.length > 0) {
         logger.info('[DAEMON] Session recovery complete', {
           recovered: recoveredCount,
           failed: failedRecoveries.length,
+          unsupportedSkipped: unsupportedSnapshots.length,
           corruptedRepaired: repairedIds.size,
           corruptedUnrepaired: corruptedSessionIds.length - repairedIds.size,
-          total: persisted.length,
+          total: recoverablePersisted.length,
         });
       }
 
@@ -1087,4 +1111,3 @@ export async function startDaemon(): Promise<void> {
     process.exit(1);
   }
 }
-

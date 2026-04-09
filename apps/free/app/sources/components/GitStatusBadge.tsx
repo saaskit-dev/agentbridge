@@ -39,7 +39,6 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
         alignItems: 'center',
         gap: 8,
         flexShrink: 1,
-        overflow: 'hidden',
       }}
     >
       {/* Git icon - always shown */}

@@ -2,13 +2,13 @@
  * Agent types - unified implementation
  */
 /** Agent identifier */
-export type AgentId = 'claude' | 'claude-native' | 'gemini' | 'opencode' | 'codex' | 'cursor';
+export type AgentId = 'claude' | 'gemini' | 'opencode' | 'codex' | 'cursor';
 
 /** Agent status values */
 export type AgentStatus = 'starting' | 'running' | 'idle' | 'stopped' | 'error';
 
 /** Transport type for agent communication */
-export type AgentTransport = 'native-claude' | 'acp';
+export type AgentTransport = 'acp';
 
 /** MCP server configuration — stdio (default) or HTTP transport per ACP spec. */
 export type McpServerConfig =

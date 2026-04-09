@@ -46,6 +46,8 @@ const agentEventSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('token_count'),
+      usage: usageDataSchema,
+      reportToServer: z.boolean().optional(),
     })
     .passthrough(),
   z.object({
@@ -731,10 +733,6 @@ export function normalizeRawMessage(
   }
   raw = parsed.data;
   if (raw.role === 'event') {
-    if (raw.content.type === 'token_count') {
-      return null;
-    }
-
     return {
       id,
 

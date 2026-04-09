@@ -227,6 +227,8 @@ export const ApiEphemeralUsageUpdateSchema = z.object({
     output: z.number(),
     cache_creation: z.number(),
     cache_read: z.number(),
+    context_used: z.number().optional(),
+    context_window: z.number().optional(),
   }),
   cost: z.object({
     total: z.number(),

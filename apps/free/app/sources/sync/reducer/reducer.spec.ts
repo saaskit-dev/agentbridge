@@ -128,6 +128,45 @@ describe('reducer', () => {
     });
   });
 
+  describe('usage handling', () => {
+    it('surfaces token_count events and updates latest usage', () => {
+      const state = createReducer();
+      const messages: NormalizedMessage[] = [
+        {
+          id: 'usage-1',
+          createdAt: 1000,
+          role: 'event',
+          isSidechain: false,
+          content: {
+            type: 'token_count',
+            usage: {
+              input_tokens: 120,
+              output_tokens: 45,
+              cache_read_input_tokens: 30,
+              context_window_size: 200000,
+            },
+          },
+        },
+      ];
+
+      const result = reducer(state, messages);
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].kind).toBe('agent-event');
+      if (result.messages[0].kind === 'agent-event') {
+        expect(result.messages[0].event.type).toBe('token_count');
+      }
+
+      expect(result.usage).toMatchObject({
+        inputTokens: 120,
+        outputTokens: 45,
+        cacheRead: 30,
+        contextSize: 150,
+        contextWindowSize: 200000,
+      });
+    });
+  });
+
   describe('agent text message handling', () => {
     it('should process agent text messages', () => {
       const state = createReducer();

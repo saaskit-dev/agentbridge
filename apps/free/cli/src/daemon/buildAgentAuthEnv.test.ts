@@ -4,9 +4,6 @@ import { configuration } from '@/configuration';
 
 describe('buildAgentAuthEnv', () => {
   it('passes the mobile token through for Claude agents only', () => {
-    expect(buildAgentAuthEnv('claude-native', 'oauth-token')).toEqual({
-      CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token',
-    });
     expect(buildAgentAuthEnv('claude', 'oauth-token')).toEqual({
       CLAUDE_CODE_OAUTH_TOKEN: 'oauth-token',
     });

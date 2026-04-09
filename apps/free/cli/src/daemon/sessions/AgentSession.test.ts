@@ -272,11 +272,12 @@ describe('AgentSession usage reporting', () => {
         timestamp: 1_234_567,
         agentType: 'claude',
         startedBy: 'cli',
+        localOnly: false,
       }
     );
   });
 
-  it('does not report token_count events marked as local-only', async () => {
+  it('broadcasts token_count events marked as local-only without persistence', async () => {
     const session = new TestAgentSession(makeOpts());
     const mockSession = makeMockSession('sess-usage-local');
     session.injectSession(mockSession);
@@ -298,7 +299,22 @@ describe('AgentSession usage reporting', () => {
       },
     });
 
-    expect(mockSession.sendUsageData).not.toHaveBeenCalled();
+    expect(mockSession.sendUsageData).toHaveBeenCalledWith(
+      {
+        input_tokens: 0,
+        output_tokens: 0,
+        context_used_tokens: 4321,
+        context_window_size: 128000,
+      },
+      {
+        model: undefined,
+        key: 'usage:msg-usage-local-1',
+        timestamp: 1_234_890,
+        agentType: 'claude',
+        startedBy: 'cli',
+        localOnly: true,
+      }
+    );
   });
 });
 

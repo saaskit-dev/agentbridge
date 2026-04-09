@@ -31,7 +31,6 @@ import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import {
   coerceAgentType,
-  isHiddenAgentOption,
   isAcpAgent,
   isExperimentalAgent,
   type AppAgentFlavor,
@@ -196,9 +195,6 @@ function NewSessionWizard() {
     // Check if agent type was provided in temp data
     if (tempSessionData?.agentType) {
       const requestedAgentType = coerceAgentType(tempSessionData.agentType);
-      if (isHiddenAgentOption(requestedAgentType)) {
-        return 'claude';
-      }
       if (isExperimentalAgent(requestedAgentType) && !experimentsEnabled) {
         return 'claude';
       }
@@ -206,9 +202,6 @@ function NewSessionWizard() {
     }
     if (typeof lastUsedAgent === 'string') {
       const savedAgentType = coerceAgentType(lastUsedAgent);
-      if (isHiddenAgentOption(savedAgentType)) {
-        return 'claude';
-      }
       if (!isExperimentalAgent(savedAgentType) || experimentsEnabled) {
         return savedAgentType;
       }
@@ -522,12 +515,6 @@ function NewSessionWizard() {
       return;
     }
     const nextAgentType = coerceAgentType(agentParam);
-    if (isHiddenAgentOption(nextAgentType)) {
-      if (agentType !== 'claude') {
-        setAgentType('claude');
-      }
-      return;
-    }
     if (nextAgentType !== agentType) {
       setAgentType(nextAgentType);
     }
@@ -546,8 +533,7 @@ function NewSessionWizard() {
         return;
       }
       const discoveredAgentTypes = agentTypes
-        .map(agentType => coerceAgentType(agentType))
-        .filter(agentType => !isHiddenAgentOption(agentType));
+        .map(agentType => coerceAgentType(agentType));
       setSupportedAgentTypes(discoveredAgentTypes);
       if (!discoveredAgentTypes.includes(agentType)) {
         setAgentType(discoveredAgentTypes[0] ?? 'claude');
@@ -560,7 +546,6 @@ function NewSessionWizard() {
 
   const isAgentAvailable = React.useCallback(
     (candidate: string): boolean => {
-      if (candidate === 'claude-native') return cliAvailability.claudeNative !== false;
       if (candidate === 'claude') return cliAvailability.claude !== false;
       if (candidate === 'codex') return cliAvailability.codex !== false;
       if (candidate === 'gemini') return experimentsEnabled && cliAvailability.gemini !== false;
@@ -569,7 +554,6 @@ function NewSessionWizard() {
       return true;
     },
     [
-      cliAvailability.claudeNative,
       cliAvailability.claude,
       cliAvailability.codex,
       cliAvailability.gemini,
@@ -598,7 +582,6 @@ function NewSessionWizard() {
     }
   }, [
     cliAvailability.timestamp,
-    cliAvailability.claudeNative,
     cliAvailability.claude,
     cliAvailability.codex,
     cliAvailability.gemini,

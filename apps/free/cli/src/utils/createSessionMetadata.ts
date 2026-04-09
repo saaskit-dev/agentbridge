@@ -18,7 +18,7 @@ import { projectPath } from '@/projectPath';
 /**
  * Backend flavor identifier for session metadata.
  */
-export type BackendFlavor = 'claude' | 'claude-native' | 'codex' | 'gemini' | 'opencode';
+export type BackendFlavor = 'claude' | 'codex' | 'gemini' | 'opencode';
 
 /**
  * Options for creating session metadata.

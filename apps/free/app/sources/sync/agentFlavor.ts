@@ -1,16 +1,10 @@
 export type DisplayAgentFlavor = 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
-export type KnownAgentType =
-  | 'claude'
-  | 'claude-native'
-  | 'codex'
-  | 'gemini'
-  | 'opencode'
-  | 'cursor';
+export type KnownAgentType = 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
 export type AppAgentFlavor = KnownAgentType | string;
 export type SessionFlavor = AppAgentFlavor | 'gpt' | 'openai';
 
 export function normalizeAgentFlavor(flavor: SessionFlavor | null | undefined): DisplayAgentFlavor {
-  if (flavor === 'claude' || flavor === 'claude-native') return 'claude';
+  if (flavor === 'claude') return 'claude';
   if (flavor === 'codex' || flavor === 'gpt' || flavor === 'openai') {
     return 'codex';
   }
@@ -23,7 +17,6 @@ export function normalizeAgentFlavor(flavor: SessionFlavor | null | undefined): 
 export function getCapabilityPresetFlavor(
   flavor: SessionFlavor | null | undefined
 ): DisplayAgentFlavor | null {
-  if (flavor === 'claude-native') return 'claude';
   if (flavor === 'gemini') return 'gemini';
   if (flavor === 'opencode') return 'opencode';
   if (flavor === 'cursor') return 'cursor';
@@ -31,13 +24,7 @@ export function getCapabilityPresetFlavor(
 }
 
 export function usesAcpPermissionDecisions(flavor: SessionFlavor | null | undefined): boolean {
-  if (!flavor) {
-    return false;
-  }
-  if (flavor === 'claude-native') {
-    return false;
-  }
-  return true;
+  return Boolean(flavor);
 }
 
 export function coerceAgentType(flavor: unknown): AppAgentFlavor {
@@ -46,7 +33,6 @@ export function coerceAgentType(flavor: unknown): AppAgentFlavor {
   }
   if (
     flavor === 'claude' ||
-    flavor === 'claude-native' ||
     flavor === 'codex' ||
     flavor === 'gemini' ||
     flavor === 'opencode' ||
@@ -62,7 +48,6 @@ export function coerceAgentType(flavor: unknown): AppAgentFlavor {
 
 export function getAgentDisplayName(agentType: AppAgentFlavor): string {
   if (agentType === 'claude') return 'Claude';
-  if (agentType === 'claude-native') return 'Claude Native';
   if (agentType === 'codex') return 'Codex';
   if (agentType === 'gemini') return 'Gemini';
   if (agentType === 'opencode') return 'OpenCode';
@@ -75,7 +60,6 @@ export function getAgentDisplayName(agentType: AppAgentFlavor): string {
 
 export function getAgentDescription(agentType: AppAgentFlavor): string {
   if (agentType === 'claude') return 'Claude via ACP';
-  if (agentType === 'claude-native') return 'Claude native PTY/SDK backend';
   if (agentType === 'codex') return 'Codex via ACP';
   if (agentType === 'gemini') return 'Gemini via ACP';
   if (agentType === 'opencode') return 'OpenCode via ACP';
@@ -94,13 +78,11 @@ export function isAcpAgent(flavor: SessionFlavor | null | undefined): boolean {
 }
 
 export function isExperimentalAgent(agentType: AppAgentFlavor): boolean {
-  return agentType === 'claude-native';
+  return agentType === 'gemini' || agentType === 'opencode' || agentType === 'cursor';
 }
 
-// TODO: Remove this hide-only shim after claude-native is fully deleted from
-// app/cli/daemon/backend types and session recovery paths.
 export function isHiddenAgentOption(agentType: AppAgentFlavor): boolean {
-  return agentType === 'claude-native';
+  return false;
 }
 
 export function isAgentFlavorMatch(

@@ -925,9 +925,11 @@ export class ApiSessionClient extends EventEmitter {
       timestamp?: number;
       agentType?: string;
       startedBy?: 'cli' | 'daemon' | 'app';
+      localOnly?: boolean;
     }
   ) {
-    const { model, key = 'claude-session', timestamp, agentType, startedBy } = options ?? {};
+    const { model, key = 'claude-session', timestamp, agentType, startedBy, localOnly } =
+      options ?? {};
     // Calculate total tokens
     const totalTokens =
       usage.input_tokens +
@@ -951,12 +953,19 @@ export class ApiSessionClient extends EventEmitter {
         output: usage.output_tokens,
         cache_creation: usage.cache_creation_input_tokens || 0,
         cache_read: usage.cache_read_input_tokens || 0,
+        ...(usage.context_used_tokens != null
+          ? { context_used: Number(usage.context_used_tokens) }
+          : {}),
+        ...(usage.context_window_size != null
+          ? { context_window: Number(usage.context_window_size) }
+          : {}),
       },
       cost: {
         total: costs.total,
         input: costs.input,
         output: costs.output,
       },
+      ...(localOnly ? { localOnly: true } : {}),
     };
     logger.debug('[SOCKET] Sending usage data', { userId: this.userId, sessionId: this.sessionId });
     this.socket.emit('usage-report', { ...usageReport, _trace: getWireTrace() });

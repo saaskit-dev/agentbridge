@@ -211,6 +211,7 @@ export type ReducerResult = {
     cacheCreation: number;
     cacheRead: number;
     contextSize: number;
+    contextWindowSize?: number;
   };
   hasReadyEvent?: boolean;
   latestStatus?: 'working' | 'idle';
@@ -412,6 +413,10 @@ export function reducer(
 
   // Process converted events immediately
   for (const { message, event } of convertedEvents) {
+    if (event.type === 'token_count') {
+      processUsageData(state, event.usage, message.createdAt);
+    }
+
     const mid = allocateId();
     storeRootMessage(state, {
       id: mid,
@@ -1298,6 +1303,10 @@ export function reducer(
 
   for (const msg of nonSidechainMessages) {
     if (msg.role === 'event') {
+      if (msg.content.type === 'token_count') {
+        processUsageData(state, msg.content.usage, msg.createdAt);
+      }
+
       const mid = allocateId();
       storeRootMessage(state, {
         id: mid,

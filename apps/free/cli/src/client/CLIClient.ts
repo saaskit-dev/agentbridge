@@ -133,6 +133,21 @@ function feedMessageToBuffer(msg: NormalizedMessage, buffer: MessageBuffer): voi
         // Display formatted text from system/init and result/summary+stats
         buffer.addMessage(event.message, 'status');
         break;
+      case 'token_count': {
+        const { input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens } =
+          event.usage;
+        buffer.addMessage(
+          `📊 Usage: in ${input_tokens}, out ${output_tokens}`,
+          'status'
+        );
+        if (cache_read_input_tokens || cache_creation_input_tokens) {
+          buffer.addMessage(
+            `  Cache: read ${cache_read_input_tokens || 0}, write ${cache_creation_input_tokens || 0}`,
+            'status'
+          );
+        }
+        break;
+      }
       case 'daemon-log':
         buffer.addMessage(`❌ ${event.message}`, 'result');
         break;
@@ -156,14 +171,8 @@ export async function runWithDaemonIPC(opts: CLIClientOptions): Promise<void> {
 
   const agentType = opts.spawnOpts.agent ?? 'claude';
 
-  // PTY mode: only when agent is claude and stdin is a real TTY.
-  // In PTY mode, InputHandler sets stdin.setRawMode(true) and forwards raw bytes
-  // as pty_data IPC messages so the daemon can pipe them to the agent's stdin.
-  // When attaching to an orphan session (headless / no TTY), force remote mode.
-  const isPtyMode =
-    !opts.attachSessionId && agentType === 'claude-native' && process.stdin.isTTY === true;
-  // Tell the daemon which backend mode to use so ClaudeBackend can spawn correctly.
-  const startingMode = isPtyMode ? 'local' : 'remote';
+  const isPtyMode = false;
+  const startingMode = 'remote';
   logger.debug('agent config', {
     agent: agentType,
     isPtyMode,

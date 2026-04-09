@@ -149,7 +149,6 @@ export type NormalizedMessage = (
 
 export type AgentType =
   | 'claude'
-  | 'claude-native'
   | 'codex'
   | 'gemini'
   | 'opencode'

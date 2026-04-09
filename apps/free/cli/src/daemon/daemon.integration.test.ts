@@ -462,4 +462,40 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
       unlinkSync(join(daemonSessionsDir, 'bad-session-test.json'));
     }
   );
+
+  it(
+    'should drop persisted snapshots for unsupported agent types during recovery',
+    { timeout: 30_000 },
+    async () => {
+      const daemonSessionsDir = join(configuration.freeHomeDir, 'daemon-sessions');
+      if (!existsSync(daemonSessionsDir)) {
+        const { mkdirSync } = require('fs');
+        mkdirSync(daemonSessionsDir, { recursive: true });
+      }
+
+      const unsupportedData = {
+        sessionId: 'unsupported-agent-test',
+        agentType: 'removed-agent',
+        cwd: '/tmp',
+        startedBy: 'cli',
+        createdAt: Date.now(),
+        daemonInstanceId: 'dead-daemon-instance',
+      };
+      writeFileSync(
+        join(daemonSessionsDir, 'unsupported-agent-test.json'),
+        JSON.stringify(unsupportedData)
+      );
+
+      await stopDaemonHttp();
+      await waitFor(async () => !existsSync(configuration.daemonStateFile), 3000);
+
+      daemonPid = await startDaemonForIntegrationTest();
+
+      await waitFor(
+        async () => !existsSync(join(daemonSessionsDir, 'unsupported-agent-test.json')),
+        5000,
+        200
+      );
+    }
+  );
 });

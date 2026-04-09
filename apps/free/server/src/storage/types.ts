@@ -22,6 +22,7 @@ declare global {
       agentType?: string;
       model?: string;
       startedBy?: 'cli' | 'daemon' | 'app';
+      localOnly?: boolean;
     };
 
     // Update content types

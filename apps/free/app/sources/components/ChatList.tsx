@@ -12,7 +12,6 @@ import {
   Text,
   TextInput,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { ChatFooter } from './ChatFooter';
@@ -35,12 +34,20 @@ type PullState = 'idle' | 'pulling' | 'ready' | 'loading';
 const PULL_THRESHOLD = 80;
 const PULL_MIN = 10;
 const MIN_LOADING_MS = 300;
+const MESSAGE_HIGHLIGHT_MS = 2200;
 /** Scroll offset threshold to consider user "at bottom" (inverted: y ≈ 0). */
 const AT_BOTTOM_THRESHOLD = 80;
 /** Minimum time gap (ms) between consecutive messages to show a timestamp separator. */
 const TIME_GAP_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
-type UserNavItem = { listIndex: number; messageId: string; seq: number; preview: string; time: string };
+type UserNavItem = {
+  listIndex: number;
+  messageId: string;
+  seq: number;
+  preview: string;
+  time: string;
+  createdAt: number;
+};
 const FAB_SIZE = 40;
 const FAB_GAP = 12;
 const logger = new Logger('app/components/ChatList');
@@ -86,12 +93,53 @@ function getLocalDayKey(ts: number): string {
   return `${year}-${month}-${day}`;
 }
 
+function renderHighlightedText(
+  text: string,
+  query: string,
+  baseStyle: Record<string, unknown>,
+  highlightStyle: Record<string, unknown>
+) {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return <Text style={baseStyle}>{text}</Text>;
+  const lowerText = text.toLowerCase();
+  const lowerQuery = trimmedQuery.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let start = 0;
+  let key = 0;
+
+  while (start < text.length) {
+    const matchIndex = lowerText.indexOf(lowerQuery, start);
+    if (matchIndex === -1) {
+      parts.push(text.slice(start));
+      break;
+    }
+    if (matchIndex > start) {
+      parts.push(text.slice(start, matchIndex));
+    }
+    parts.push(
+      <Text key={`match-${key++}`} style={highlightStyle}>
+        {text.slice(matchIndex, matchIndex + trimmedQuery.length)}
+      </Text>
+    );
+    start = matchIndex + trimmedQuery.length;
+  }
+
+  return <Text style={baseStyle}>{parts}</Text>;
+}
+
 // ---------------------------------------------------------------------------
 // List item types (messages + separators)
 // ---------------------------------------------------------------------------
 
 type ListItem =
-  | { type: 'message'; messageId: string }
+  | {
+      type: 'message-group';
+      key: string;
+      messageIds: string[];
+      primaryMessageId: string;
+      createdAt: number;
+      role: 'user' | 'assistant';
+    }
   | { type: 'date-separator'; label: string; key: string }
   | { type: 'time-separator'; label: string; key: string };
 
@@ -100,34 +148,70 @@ function buildListItems(messages: Message[]): ListItem[] {
   // We iterate from oldest (end) to newest (start) to insert separators correctly.
 
   const items: ListItem[] = [];
+  const groups: Array<{
+    messageIds: string[];
+    primaryMessageId: string;
+    createdAt: number;
+    role: 'user' | 'assistant';
+  }> = [];
+
+  const getRole = (message: Message): 'user' | 'assistant' =>
+    message.kind === 'user-text' ? 'user' : 'assistant';
+
+  let currentGroup: (typeof groups)[number] | null = null;
 
   for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    const prevMsg = i < messages.length - 1 ? messages[i + 1] : null; // older neighbor
+    const message = messages[i];
+    const role = getRole(message);
+    if (!currentGroup || currentGroup.role !== role) {
+      currentGroup = {
+        messageIds: [message.id],
+        primaryMessageId: message.id,
+        createdAt: message.createdAt,
+        role,
+      };
+      groups.push(currentGroup);
+    } else {
+      currentGroup.messageIds.push(message.id);
+      currentGroup.primaryMessageId = message.id;
+      currentGroup.createdAt = message.createdAt;
+    }
+  }
+
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    const prevGroup = i > 0 ? groups[i - 1] : null;
 
     // Date separator: if this message is on a different day from the previous one
-    if (!prevMsg || !isSameDay(msg.createdAt, prevMsg.createdAt)) {
+    if (!prevGroup || !isSameDay(group.createdAt, prevGroup.createdAt)) {
       items.push({
         type: 'date-separator',
-        label: formatDateLabel(msg.createdAt),
-        key: `date-${getLocalDayKey(msg.createdAt)}-${msg.id}`,
+        label: formatDateLabel(group.createdAt),
+        key: `date-${getLocalDayKey(group.createdAt)}-${group.primaryMessageId}`,
       });
     }
 
     // Time gap separator: same day but > TIME_GAP_THRESHOLD_MS since previous message
     if (
-      prevMsg &&
-      isSameDay(msg.createdAt, prevMsg.createdAt) &&
-      msg.createdAt - prevMsg.createdAt > TIME_GAP_THRESHOLD_MS
+      prevGroup &&
+      isSameDay(group.createdAt, prevGroup.createdAt) &&
+      group.createdAt - prevGroup.createdAt > TIME_GAP_THRESHOLD_MS
     ) {
       items.push({
         type: 'time-separator',
-        label: formatTime(msg.createdAt),
-        key: `time-${msg.id}`,
+        label: formatTime(group.createdAt),
+        key: `time-${group.primaryMessageId}`,
       });
     }
 
-    items.push({ type: 'message', messageId: msg.id });
+    items.push({
+      type: 'message-group',
+      key: `group-${group.primaryMessageId}`,
+      messageIds: [...group.messageIds].reverse(),
+      primaryMessageId: group.primaryMessageId,
+      createdAt: group.createdAt,
+      role: group.role,
+    });
   }
 
   // Reverse so newest is at index 0 (matches inverted FlatList expectation)
@@ -240,19 +324,13 @@ const ChatFab = React.memo(
 
 /** Stacks FABs vertically from the bottom-right corner (first child = bottom). */
 const ChatFabStack = React.memo((props: { children: React.ReactNode }) => {
-  const { width: screenWidth } = useWindowDimensions();
-  // Align FAB with the right edge of the maxWidth content area on wide screens
-  const fabRight =
-    layout.maxWidth < screenWidth
-      ? Math.max(16, (screenWidth - layout.maxWidth) / 2 + 16)
-      : 16;
   return (
     <View
       pointerEvents="box-none"
       style={{
         position: 'absolute',
         bottom: 16,
-        right: fabRight,
+        right: 16,
         zIndex: 20,
         flexDirection: 'column-reverse',
         alignItems: 'center',
@@ -297,6 +375,48 @@ const UnreadBadge = React.memo((props: { count: number }) => {
   );
 });
 
+const NewMessagesPill = React.memo((props: { count: number; onPress: () => void }) => {
+  const { theme } = useUnistyles();
+  if (props.count <= 0) return null;
+  return (
+    <Pressable
+      onPress={props.onPress}
+      style={({ pressed }) => ({
+        position: 'absolute',
+        right: 16,
+        bottom: FAB_SIZE * 2 + FAB_GAP * 2 + 20,
+        zIndex: 19,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 999,
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(18, 28, 45, 0.08)',
+        shadowColor: '#000',
+        shadowOpacity: 0.12,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: 6,
+        opacity: pressed ? 0.8 : 1,
+      })}
+    >
+      <Ionicons name="sparkles-outline" size={14} color={theme.colors.button.primary.background} />
+      <Text
+        style={{
+          fontSize: 12,
+          color: theme.colors.text,
+          ...Typography.default('semiBold'),
+        }}
+      >
+        {props.count === 1 ? '1 new message' : `${props.count} new messages`}
+      </Text>
+    </Pressable>
+  );
+});
+
 // ---------------------------------------------------------------------------
 // User-message navigation panel (command-palette style)
 // ---------------------------------------------------------------------------
@@ -308,20 +428,83 @@ const UserMessageNavPanel = React.memo(
     onJumpTo: (messageId: string) => void;
     onClose: () => void;
     hasMoreMessages: boolean;
+    activeMessageId?: string | null;
   }) => {
     const { theme } = useUnistyles();
-    const { items, onJumpTo, onClose, hasMoreMessages } = props;
+    const { items, onJumpTo, onClose, hasMoreMessages, activeMessageId } = props;
     const [query, setQuery] = useState('');
+    const [selectedIndex, setSelectedIndex] = useState(0);
     const hasSearch = items.length > 8;
     const borderColor = theme.dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
     const subtleBackground = theme.dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
     const pressedBackground = theme.dark ? 'rgba(255,255,255,0.08)' : '#F0F7FF';
+    const scrollRef = useRef<ScrollView>(null);
 
     const filtered = useMemo(() => {
       if (!query.trim()) return items;
       const lowerQ = query.trim().toLowerCase();
       return items.filter((it) => it.preview.toLowerCase().includes(lowerQ));
     }, [items, query]);
+
+    useEffect(() => {
+      if (filtered.length === 0) {
+        setSelectedIndex(0);
+        return;
+      }
+      const activeIndex = activeMessageId
+        ? filtered.findIndex(item => item.messageId === activeMessageId)
+        : -1;
+      setSelectedIndex(prev => {
+        if (activeIndex >= 0) return activeIndex;
+        return Math.min(prev, filtered.length - 1);
+      });
+    }, [activeMessageId, filtered]);
+
+    useEffect(() => {
+      if (selectedIndex < 0 || filtered.length === 0) return;
+      const rowHeight = 58;
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, selectedIndex * rowHeight - rowHeight * 2),
+        animated: true,
+      });
+    }, [selectedIndex, filtered.length]);
+
+    const handleSubmitSelected = useCallback(() => {
+      const selectedItem = filtered[selectedIndex];
+      if (selectedItem) onJumpTo(selectedItem.messageId);
+    }, [filtered, onJumpTo, selectedIndex]);
+
+    const handleSearchKeyPress = useCallback(
+      (e: { nativeEvent?: { key?: string } }) => {
+        const key = e.nativeEvent?.key;
+        if (!key) return;
+        if (key === 'ArrowDown') {
+          setSelectedIndex(prev => (filtered.length === 0 ? 0 : Math.min(prev + 1, filtered.length - 1)));
+        } else if (key === 'ArrowUp') {
+          setSelectedIndex(prev => Math.max(prev - 1, 0));
+        } else if (key === 'Home') {
+          setSelectedIndex(0);
+        } else if (key === 'End') {
+          setSelectedIndex(Math.max(filtered.length - 1, 0));
+        } else if (key === 'PageDown') {
+          setSelectedIndex(prev => (filtered.length === 0 ? 0 : Math.min(prev + 6, filtered.length - 1)));
+        } else if (key === 'PageUp') {
+          setSelectedIndex(prev => Math.max(prev - 6, 0));
+        } else if (key === 'Enter') {
+          handleSubmitSelected();
+        } else if (key === 'Escape') {
+          onClose();
+        }
+      },
+      [filtered.length, handleSubmitSelected, onClose]
+    );
+
+    const shortcutHint =
+      Platform.OS === 'web'
+        ? navigator.platform.toLowerCase().includes('mac')
+          ? 'Cmd+K'
+          : 'Ctrl+K'
+        : null;
 
     return (
       <View
@@ -334,7 +517,7 @@ const UserMessageNavPanel = React.memo(
           zIndex: 25,
           justifyContent: 'flex-start',
           alignItems: 'center',
-          paddingTop: Platform.OS === 'web' ? ('20%' as any) : 120,
+          paddingTop: Platform.OS === 'web' ? 96 : 120,
           paddingHorizontal: 20,
         }}
       >
@@ -347,7 +530,7 @@ const UserMessageNavPanel = React.memo(
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(15, 15, 15, 0.5)',
+            backgroundColor: Platform.OS === 'web' ? 'rgba(12, 16, 24, 0.56)' : 'rgba(15, 15, 15, 0.5)',
           }}
         />
 
@@ -356,18 +539,18 @@ const UserMessageNavPanel = React.memo(
           style={{
             zIndex: 1,
             width: '100%',
-            maxWidth: 480,
-            maxHeight: Platform.OS === 'web' ? ('50vh' as any) : 400,
+            maxWidth: Platform.OS === 'web' ? 560 : 480,
+            maxHeight: Platform.OS === 'web' ? ('min(70vh, 640px)' as any) : 400,
             backgroundColor: theme.colors.surface,
-            borderRadius: 16,
+            borderRadius: Platform.OS === 'web' ? 22 : 16,
             overflow: 'hidden',
             shadowColor: '#000',
-            shadowOffset: { width: 0, height: 20 },
-            shadowOpacity: 0.25,
-            shadowRadius: 40,
+            shadowOffset: { width: 0, height: 24 },
+            shadowOpacity: Platform.OS === 'web' ? 0.18 : 0.25,
+            shadowRadius: Platform.OS === 'web' ? 48 : 40,
             elevation: 20,
             borderWidth: 1,
-            borderColor: theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+            borderColor: theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(18, 28, 45, 0.08)',
           }}
         >
           {/* Header — search input only appears when > 8 messages */}
@@ -375,12 +558,13 @@ const UserMessageNavPanel = React.memo(
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingLeft: 16,
-              paddingRight: 14,
-              paddingVertical: 4,
+              paddingLeft: 18,
+              paddingRight: 16,
+              paddingVertical: 8,
               borderBottomWidth: 1,
               borderBottomColor: borderColor,
-              gap: 8,
+              gap: 10,
+              backgroundColor: Platform.OS === 'web' ? subtleBackground : theme.colors.surface,
             }}
           >
             <Ionicons
@@ -392,7 +576,7 @@ const UserMessageNavPanel = React.memo(
               <TextInput
                 style={{
                   flex: 1,
-                  paddingVertical: 12,
+                  paddingVertical: 10,
                   fontSize: 15,
                   color: theme.colors.text,
                   letterSpacing: -0.2,
@@ -405,12 +589,15 @@ const UserMessageNavPanel = React.memo(
                 autoCorrect={false}
                 autoCapitalize="none"
                 returnKeyType="done"
+                onSubmitEditing={handleSubmitSelected}
+                onKeyPress={handleSearchKeyPress}
+                autoFocus={Platform.OS === 'web'}
               />
             ) : (
               <Text
                 style={{
                   flex: 1,
-                  paddingVertical: 12,
+                  paddingVertical: 10,
                   fontSize: 14,
                   color: theme.colors.textSecondary,
                   ...Typography.default(),
@@ -440,7 +627,7 @@ const UserMessageNavPanel = React.memo(
             <View
               style={{
                 paddingHorizontal: 16,
-                paddingVertical: 6,
+                paddingVertical: 8,
                 backgroundColor: theme.dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
                 borderBottomWidth: 1,
                 borderBottomColor: borderColor,
@@ -460,9 +647,31 @@ const UserMessageNavPanel = React.memo(
 
           {/* Message list */}
           <ScrollView
+            ref={scrollRef}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingVertical: 4 }}
+            contentContainerStyle={{ paddingVertical: 8 }}
           >
+            {!query && filtered.length > 0 && (
+              <View
+                style={{
+                  paddingHorizontal: 18,
+                  paddingTop: 4,
+                  paddingBottom: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: theme.colors.textSecondary,
+                    letterSpacing: 0.4,
+                    textTransform: 'uppercase',
+                    ...Typography.default('semiBold'),
+                  }}
+                >
+                  Recent Prompts
+                </Text>
+              </View>
+            )}
             {filtered.length === 0 ? (
               <View style={{ paddingVertical: 32, alignItems: 'center' }}>
                 <Text
@@ -476,21 +685,34 @@ const UserMessageNavPanel = React.memo(
                 </Text>
               </View>
             ) : (
-              filtered.map((item, i) => (
+              filtered.map((item, i) => {
+                const isSelected = i === selectedIndex;
+                const isActive = item.messageId === activeMessageId;
+                const isLatest = item.seq === items.length;
+                return (
                 <Pressable
                   key={`unav-${item.listIndex}`}
-                  onPress={() => onJumpTo(item.messageId)}
+                  onPress={() => {
+                    setSelectedIndex(i);
+                    onJumpTo(item.messageId);
+                  }}
                   style={({ pressed }) => ({
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
-                    marginHorizontal: 8,
-                    borderRadius: 8,
-                    backgroundColor: pressed ? pressedBackground : 'transparent',
+                    paddingHorizontal: 18,
+                    paddingVertical: 12,
+                    marginHorizontal: 10,
+                    borderRadius: 12,
+                    backgroundColor: pressed
+                      ? pressedBackground
+                      : isSelected
+                        ? subtleBackground
+                        : 'transparent',
                     flexDirection: 'row',
-                    alignItems: 'center',
+                    alignItems: 'flex-start',
                     gap: 12,
                     borderBottomWidth: i < filtered.length - 1 ? 0.5 : 0,
                     borderBottomColor: borderColor,
+                    borderWidth: isActive ? 1 : 0,
+                    borderColor: isActive ? theme.colors.button.primary.background : 'transparent',
                   })}
                 >
                   <View
@@ -516,22 +738,78 @@ const UserMessageNavPanel = React.memo(
                   </View>
 
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text
-                      numberOfLines={1}
+                    <View
                       style={{
-                        fontSize: 14,
-                        color: theme.colors.text,
-                        lineHeight: 20,
-                        letterSpacing: -0.2,
-                        ...Typography.default(),
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
                       }}
                     >
-                      {item.preview}
-                    </Text>
+                      <View style={{ flex: 1 }}>
+                        {renderHighlightedText(item.preview, query, {
+                          fontSize: 14,
+                          color: theme.colors.text,
+                          lineHeight: 20,
+                          letterSpacing: -0.2,
+                          ...Typography.default(),
+                        }, {
+                          backgroundColor: theme.dark ? 'rgba(255,255,255,0.12)' : 'rgba(46, 144, 250, 0.18)',
+                          color: theme.colors.text,
+                          borderRadius: 4,
+                          ...Typography.default('semiBold'),
+                        })}
+                      </View>
+                      {isActive && (
+                        <View
+                          style={{
+                            borderRadius: 999,
+                            paddingHorizontal: 6,
+                            paddingVertical: 2,
+                            backgroundColor: theme.dark
+                              ? 'rgba(255,255,255,0.08)'
+                              : 'rgba(46, 144, 250, 0.12)',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: theme.colors.button.primary.background,
+                              ...Typography.default('semiBold'),
+                            }}
+                          >
+                            Current
+                          </Text>
+                        </View>
+                      )}
+                      {isLatest && !isActive && (
+                        <View
+                          style={{
+                            borderRadius: 999,
+                            paddingHorizontal: 6,
+                            paddingVertical: 2,
+                            backgroundColor: theme.dark
+                              ? 'rgba(255,255,255,0.06)'
+                              : 'rgba(15, 23, 42, 0.06)',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              color: theme.colors.textSecondary,
+                              ...Typography.default('semiBold'),
+                            }}
+                          >
+                            Latest
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                     <Text
                       style={{
                         fontSize: 11,
-                        color: theme.colors.textSecondary,
+                        color: isActive
+                          ? theme.colors.button.primary.background
+                          : theme.colors.textSecondary,
                         ...Typography.default(),
                       }}
                     >
@@ -539,9 +817,57 @@ const UserMessageNavPanel = React.memo(
                     </Text>
                   </View>
                 </Pressable>
-              ))
+              );
+            })
             )}
           </ScrollView>
+
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              borderTopWidth: 1,
+              borderTopColor: borderColor,
+              backgroundColor: Platform.OS === 'web' ? subtleBackground : theme.colors.surface,
+            }}
+          >
+            <Text
+            style={{
+              fontSize: 11,
+              color: theme.colors.textSecondary,
+              ...Typography.default(),
+            }}
+          >
+              ↑↓ Navigate  Home/End Jump List  Enter Open
+            </Text>
+            <View style={{ alignItems: 'flex-end', gap: 2 }}>
+              {shortcutHint ? (
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: theme.colors.textSecondary,
+                    ...Typography.default('semiBold'),
+                  }}
+                >
+                  {shortcutHint}
+                </Text>
+              ) : null}
+              <Text
+                style={{
+                  fontSize: 10,
+                  color: theme.colors.textSecondary,
+                  ...Typography.default(),
+                }}
+              >
+                {filtered.length === 0
+                  ? '0 results'
+                  : `${selectedIndex + 1} / ${filtered.length}`}
+              </Text>
+            </View>
+          </View>
         </View>
       </View>
     );
@@ -601,12 +927,17 @@ const TimeSeparator = React.memo((props: { label: string }) => {
 // List chrome
 // ---------------------------------------------------------------------------
 
-export const ChatList = React.memo((props: { session: Session; footerNotice?: string | null }) => {
+export const ChatList = React.memo((props: {
+  session: Session;
+  footerNotice?: string | null;
+  jumpToRecentUserSignal?: number;
+}) => {
   return (
     <ChatListInternal
       metadata={props.session.metadata}
       sessionId={props.session.id}
       footerNotice={props.footerNotice}
+      jumpToRecentUserSignal={props.jumpToRecentUserSignal ?? 0}
     />
   );
 });
@@ -635,7 +966,12 @@ const ListFooter = React.memo((props: { sessionId: string; notice?: string | nul
 // ---------------------------------------------------------------------------
 
 const MessageRow = React.memo(
-  (props: { sessionId: string; messageId: string; metadata: Metadata | null }) => {
+  (props: {
+    sessionId: string;
+    messageId: string;
+    metadata: Metadata | null;
+    collapseToolsSignal?: number;
+  }) => {
     const message = useMessage(props.sessionId, props.messageId);
     if (!message) return null;
     return (
@@ -643,7 +979,68 @@ const MessageRow = React.memo(
         message={message}
         metadata={props.metadata}
         sessionId={props.sessionId}
+        hideTimestamp={true}
+        collapseToolsSignal={props.collapseToolsSignal}
       />
+    );
+  }
+);
+
+const TurnGroupRow = React.memo(
+  (props: {
+    sessionId: string;
+    messageIds: string[];
+    metadata: Metadata | null;
+    createdAt: number;
+    role: 'user' | 'assistant';
+    isHighlighted?: boolean;
+    collapseToolsSignal?: number;
+  }) => {
+    const { theme } = useUnistyles();
+    return (
+      <View
+        style={{
+          marginHorizontal: 8,
+          marginVertical: 2,
+          borderRadius: 16,
+          backgroundColor: props.isHighlighted
+            ? theme.dark
+              ? 'rgba(255,255,255,0.06)'
+              : 'rgba(46, 144, 250, 0.10)'
+            : 'transparent',
+          borderWidth: props.isHighlighted ? 1 : 0,
+          borderColor: props.isHighlighted
+            ? theme.dark
+              ? 'rgba(255,255,255,0.12)'
+              : 'rgba(46, 144, 250, 0.26)'
+            : 'transparent',
+          paddingVertical: props.isHighlighted ? 4 : 0,
+        }}
+      >
+        {props.messageIds.map(messageId => (
+          <MessageRow
+            key={messageId}
+            messageId={messageId}
+            metadata={props.metadata}
+            sessionId={props.sessionId}
+            collapseToolsSignal={props.collapseToolsSignal}
+          />
+        ))}
+        <Text
+          style={{
+            alignSelf: props.role === 'user' ? 'flex-end' : 'flex-start',
+            marginHorizontal: 16,
+            marginTop: 2,
+            marginBottom: 10,
+            color: theme.colors.textSecondary,
+            fontSize: 11,
+            opacity: 0.75,
+            ...Typography.default(),
+          }}
+        >
+          {formatTime(props.createdAt)}
+        </Text>
+      </View>
     );
   }
 );
@@ -657,6 +1054,7 @@ const ChatListInternal = React.memo(
     metadata: Metadata | null;
     sessionId: string;
     footerNotice?: string | null;
+    jumpToRecentUserSignal: number;
   }) => {
     const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.sessionId);
     useEffect(() => {
@@ -712,9 +1110,14 @@ const ChatListInternal = React.memo(
     const [showScrollFab, setShowScrollFab] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
     const [navOpen, setNavOpen] = useState(false);
+    const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const { theme } = useUnistyles();
     const showScrollFabRef = useRef(false);
     const unreadCountRef = useRef(0);
+    const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const recentUserJumpIndexRef = useRef(-1);
+    const lastHandledJumpSignalRef = useRef(0);
+    const shouldFollowBottomRef = useRef(true);
 
     const updateShowScrollFab = useCallback((next: boolean) => {
       if (showScrollFabRef.current === next) return;
@@ -744,9 +1147,14 @@ const ChatListInternal = React.memo(
 
         // Show/hide scroll-to-bottom FAB
         if (isAtBottom.current) {
+          shouldFollowBottomRef.current = true;
+          recentUserJumpIndexRef.current = -1;
           updateShowScrollFab(false);
           if (!wasAtBottom) updateUnreadCount(0);
         } else {
+          if (!isProgrammaticScrollRef.current) {
+            shouldFollowBottomRef.current = false;
+          }
           updateShowScrollFab(true);
         }
 
@@ -804,7 +1212,12 @@ const ChatListInternal = React.memo(
       }
 
       if (relevantNewMessages.length > 0) {
-        if (isAtBottom.current) {
+        const hasNewUserMessage = relevantNewMessages.some(message => message.kind === 'user-text');
+        if (hasNewUserMessage) {
+          shouldFollowBottomRef.current = true;
+          recentUserJumpIndexRef.current = -1;
+        }
+        if (shouldFollowBottomRef.current && (isAtBottom.current || hasNewUserMessage)) {
           requestAnimationFrame(() => {
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           });
@@ -816,24 +1229,59 @@ const ChatListInternal = React.memo(
       prevMessageIdsRef.current = new Set(messages.map(message => message.id));
     }, [messages, updateUnreadCount]);
 
+    useEffect(
+      () => () => {
+        if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+      },
+      []
+    );
+
+    useEffect(() => {
+      if (Platform.OS !== 'web') return;
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+          event.preventDefault();
+          setNavOpen(open => !open);
+          return;
+        }
+        if (event.key === 'Escape') {
+          setNavOpen(false);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
     const handleScrollToBottom = useCallback(() => {
+      shouldFollowBottomRef.current = true;
+      recentUserJumpIndexRef.current = -1;
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
       updateShowScrollFab(false);
       updateUnreadCount(0);
     }, [updateShowScrollFab, updateUnreadCount]);
 
+    const highlightMessage = useCallback((messageId: string) => {
+      setHighlightedMessageId(messageId);
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightedMessageId(current => (current === messageId ? null : current));
+      }, MESSAGE_HIGHLIGHT_MS);
+    }, []);
+
     /** Jump to a message by id. Looks up the current index to avoid stale-index bugs. */
     const handleJumpToUserMessage = useCallback((messageId: string) => {
       const index = listItemsRef.current.findIndex(
-        (item) => item.type === 'message' && item.messageId === messageId
+        (item) => item.type === 'message-group' && item.messageIds.includes(messageId)
       );
       if (index === -1) return;
+      shouldFollowBottomRef.current = false;
+      highlightMessage(messageId);
       isProgrammaticScrollRef.current = true;
       flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
       setTimeout(() => {
         isProgrammaticScrollRef.current = false;
       }, 500);
-    }, []);
+    }, [highlightMessage]);
 
     /** Fallback when scrollToIndex targets an unmeasured item. */
     const handleScrollToIndexFailed = useCallback(
@@ -852,9 +1300,11 @@ const ChatListInternal = React.memo(
           }
           // Find the item's current index (it may have shifted if older messages were loaded)
           const currentIndex =
-            targetItem.type === 'message'
+            targetItem.type === 'message-group'
               ? listItemsRef.current.findIndex(
-                  (item) => item.type === 'message' && item.messageId === targetItem.messageId
+                  (item) =>
+                    item.type === 'message-group' &&
+                    item.primaryMessageId === targetItem.primaryMessageId
                 )
               : info.index;
           flatListRef.current?.scrollToIndex({
@@ -916,18 +1366,50 @@ const ChatListInternal = React.memo(
       let seq = 1;
       for (let i = listItems.length - 1; i >= 0; i--) {
         const item = listItems[i];
-        if (item.type === 'message' && infoById.has(item.messageId)) {
-          const { text, createdAt } = infoById.get(item.messageId)!;
+        if (item.type === 'message-group' && item.role === 'user' && infoById.has(item.primaryMessageId)) {
+          const { text, createdAt } = infoById.get(item.primaryMessageId)!;
           const preview = text.split('\n').slice(0, 2).join(' ').trim() || '…';
-          items.push({ listIndex: i, messageId: item.messageId, seq: seq++, preview, time: formatTime(createdAt) });
+          items.push({
+            listIndex: i,
+            messageId: item.primaryMessageId,
+            seq: seq++,
+            preview,
+            time: formatTime(createdAt),
+            createdAt,
+          });
         }
       }
       return items;
     }, [messages, listItems]);
 
+    useEffect(() => {
+      if (!props.jumpToRecentUserSignal) return;
+      if (props.jumpToRecentUserSignal === lastHandledJumpSignalRef.current) return;
+      lastHandledJumpSignalRef.current = props.jumpToRecentUserSignal;
+      const recentUserItems = [...userNavItems].sort((a, b) => b.createdAt - a.createdAt);
+      if (recentUserItems.length === 0) return;
+      const nextIndex = Math.min(recentUserJumpIndexRef.current + 1, recentUserItems.length - 1);
+      recentUserJumpIndexRef.current = nextIndex;
+      handleJumpToUserMessage(recentUserItems[nextIndex].messageId);
+    }, [handleJumpToUserMessage, props.jumpToRecentUserSignal, userNavItems]);
+
+    useEffect(() => {
+      recentUserJumpIndexRef.current = -1;
+    }, [props.sessionId]);
+
+    useEffect(() => {
+      if (userNavItems.length === 0) {
+        recentUserJumpIndexRef.current = -1;
+        return;
+      }
+      if (recentUserJumpIndexRef.current >= userNavItems.length) {
+        recentUserJumpIndexRef.current = userNavItems.length - 1;
+      }
+    }, [userNavItems]);
+
     // ----- render items -----
     const keyExtractor = useCallback((item: ListItem) => {
-      if (item.type === 'message') return item.messageId;
+      if (item.type === 'message-group') return item.key;
       return item.key;
     }, []);
 
@@ -936,14 +1418,18 @@ const ChatListInternal = React.memo(
         if (item.type === 'date-separator') return <DateSeparator label={item.label} />;
         if (item.type === 'time-separator') return <TimeSeparator label={item.label} />;
         return (
-          <MessageRow
-            messageId={item.messageId}
+          <TurnGroupRow
+            createdAt={item.createdAt}
+            messageIds={item.messageIds}
             metadata={props.metadata}
+            role={item.role}
             sessionId={props.sessionId}
+            isHighlighted={item.messageIds.includes(highlightedMessageId ?? '')}
+            collapseToolsSignal={props.jumpToRecentUserSignal}
           />
         );
       },
-      [props.metadata, props.sessionId]
+      [highlightedMessageId, props.jumpToRecentUserSignal, props.metadata, props.sessionId]
     );
 
     // onEndReached: load older (fires on both platforms when near visual top)
@@ -964,8 +1450,19 @@ const ChatListInternal = React.memo(
       [props.sessionId, props.footerNotice]
     );
 
+    const contentContainerStyle = useMemo(
+      () =>
+        Platform.OS === 'web' && showScrollFab
+          ? {
+              paddingRight: FAB_SIZE + 24,
+              paddingBottom: FAB_SIZE * 3 + FAB_GAP * 3 + 44,
+            }
+          : undefined,
+      [showScrollFab]
+    );
+
     return (
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, position: 'relative' }}>
         <FlatList
           ref={flatListRef}
           data={listItems}
@@ -987,10 +1484,15 @@ const ChatListInternal = React.memo(
           }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
+          contentContainerStyle={contentContainerStyle}
           renderItem={renderItem}
           ListHeaderComponent={footer}
           ListFooterComponent={olderLoader}
         />
+
+        {showScrollFab && unreadCount > 0 && (
+          <NewMessagesPill count={unreadCount} onPress={handleScrollToBottom} />
+        )}
 
         <ChatFabStack>
           {showScrollFab && (
@@ -1015,6 +1517,7 @@ const ChatListInternal = React.memo(
             }}
             onClose={() => setNavOpen(false)}
             hasMoreMessages={hasOlderMessages}
+            activeMessageId={highlightedMessageId}
           />
         )}
 

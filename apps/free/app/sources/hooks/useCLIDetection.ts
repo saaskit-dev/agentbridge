@@ -5,7 +5,6 @@ import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/hooks/useCLIDetection');
 
 interface CLIAvailability {
-  claudeNative: boolean | null; // null = unknown/loading, true = installed, false = not installed
   claude: boolean | null;
   codex: boolean | null;
   gemini: boolean | null;
@@ -17,11 +16,10 @@ interface CLIAvailability {
 }
 
 /**
- * Detects if classic and ACP-backed CLIs are installed on a remote machine.
+ * Detects if agent CLIs are installed on a remote machine.
  *
  * Detection sources:
- * - `claude` CLI for Claude Native (classic PTY/SDK)
- * - `free` CLI for ACP-backed agents (`claude`, `codex`, `gemini`, `opencode`, `cursor`)
+ * - `free` CLI for `claude`, `codex`, `gemini`, and `opencode`
  * - `cursor-agent` CLI for Cursor agent
  *
  * NON-BLOCKING: Detection runs asynchronously in useEffect. UI keeps agent choices visible
@@ -35,7 +33,7 @@ interface CLIAvailability {
  * User discovers CLI availability when attempting to spawn.
  *
  * @param machineId - The machine to detect CLIs on (null = no detection)
- * @returns CLI availability status for classic and ACP-backed agents
+ * @returns CLI availability status for supported agents
  *
  * @example
  * const cliAvailability = useCLIDetection(selectedMachineId);
@@ -45,7 +43,6 @@ interface CLIAvailability {
  */
 export function useCLIDetection(machineId: string | null): CLIAvailability {
   const [availability, setAvailability] = useState<CLIAvailability>({
-    claudeNative: null,
     claude: null,
     codex: null,
     gemini: null,
@@ -58,7 +55,6 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
   useEffect(() => {
     if (!machineId) {
       setAvailability({
-        claudeNative: null,
         claude: null,
         codex: null,
         gemini: null,
@@ -81,7 +77,6 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
         const result = await machineBash(
           machineId,
           [
-            'command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false"',
             'command -v free >/dev/null 2>&1 && echo "free:true" || echo "free:false"',
             'command -v cursor-agent >/dev/null 2>&1 && echo "cursor-agent:true" || echo "cursor-agent:false"',
           ].join('; '),
@@ -98,17 +93,14 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
 
         if (result.success && result.exitCode === 0) {
           const output = result.stdout.trim();
-          const classicClaudeAvailable = output.includes('claude:true');
           const freeAvailable = output.includes('free:true');
           const cursorAgentAvailable = output.includes('cursor-agent:true');
           logger.debug('[useCLIDetection] Parsed availability', {
-            classicClaudeAvailable,
             freeAvailable,
             cursorAgentAvailable,
           });
 
           setAvailability({
-            claudeNative: classicClaudeAvailable,
             claude: freeAvailable,
             codex: freeAvailable,
             gemini: freeAvailable,
@@ -124,7 +116,6 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
             result
           );
           setAvailability({
-            claudeNative: null,
             claude: null,
             codex: null,
             gemini: null,
@@ -141,7 +132,6 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
         // Network/RPC error - CONSERVATIVE fallback (don't assume availability)
         logger.debug('[useCLIDetection] Network/RPC error:', error);
         setAvailability({
-          claudeNative: null,
           claude: null,
           codex: null,
           gemini: null,

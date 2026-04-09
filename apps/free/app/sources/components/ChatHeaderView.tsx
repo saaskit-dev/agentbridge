@@ -14,6 +14,7 @@ interface ChatHeaderViewProps {
   title: string;
   subtitle?: string;
   onBackPress?: () => void;
+  onTitleDoublePress?: () => void;
   onAvatarPress?: () => void;
   avatarId?: string;
   backgroundColor?: string;
@@ -69,6 +70,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
   title,
   subtitle,
   onBackPress,
+  onTitleDoublePress,
   onAvatarPress,
   avatarId,
   isConnected = true,
@@ -79,6 +81,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
+  const lastTitlePressRef = React.useRef(0);
 
   const handleBackPress = () => {
     if (onBackPress) {
@@ -87,6 +90,17 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
       navigation.goBack();
     }
   };
+
+  const handleTitlePress = React.useCallback(() => {
+    if (!onTitleDoublePress) return;
+    const now = Date.now();
+    if (now - lastTitlePressRef.current < 320) {
+      lastTitlePressRef.current = 0;
+      onTitleDoublePress();
+      return;
+    }
+    lastTitlePressRef.current = now;
+  }, [onTitleDoublePress]);
 
   return (
     <View
@@ -105,7 +119,14 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
             />
           </Pressable>
 
-          <View style={styles.titleContainer}>
+          <Pressable
+            onPress={handleTitlePress}
+            disabled={!onTitleDoublePress}
+            style={({ pressed }) => [
+              styles.titleContainer,
+              onTitleDoublePress ? { opacity: pressed ? 0.8 : 1 } : null,
+            ]}
+          >
             <Text
               numberOfLines={1}
               ellipsizeMode="tail"
@@ -138,7 +159,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
             {!!devSessionId && (
               <CopyableBadge label="sid" value={devSessionId} />
             )}
-          </View>
+          </Pressable>
 
           {avatarId && onAvatarPress && (
             <Pressable onPress={onAvatarPress} hitSlop={15} style={styles.avatarButton}>

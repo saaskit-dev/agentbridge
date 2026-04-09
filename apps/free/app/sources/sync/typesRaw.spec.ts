@@ -1878,6 +1878,35 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
       });
     });
 
+    it('normalizes top-level token_count events instead of dropping them', () => {
+      const normalized = normalizeRawMessage('evt-usage-1', 1, {
+        role: 'event',
+        content: {
+          type: 'token_count',
+          usage: {
+            input_tokens: 120,
+            output_tokens: 45,
+            cache_read_input_tokens: 30,
+            context_window_size: 200000,
+          },
+        },
+      });
+
+      expect(normalized).toMatchObject({
+        id: 'evt-usage-1',
+        role: 'event',
+        content: {
+          type: 'token_count',
+          usage: {
+            input_tokens: 120,
+            output_tokens: 45,
+            cache_read_input_tokens: 30,
+            context_window_size: 200000,
+          },
+        },
+      });
+    });
+
     it('marks subagent-linked messages as sidechain messages', () => {
       const subagent = createId();
       const normalized = normalizeRawMessage('db-7', 1, {

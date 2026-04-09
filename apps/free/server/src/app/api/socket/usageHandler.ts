@@ -10,7 +10,8 @@ export function usageHandler(userId: string, socket: Socket) {
   socket.on('usage-report', async (data: any, callback?: (response: any) => void) => {
     await receiveUsageLock.inLock(async () => {
       try {
-        const { key, sessionId, tokens, cost, timestamp, agentType, model, startedBy } = data;
+        const { key, sessionId, tokens, cost, timestamp, agentType, model, startedBy, localOnly } =
+          data;
 
         // Validate required fields
         if (!key || typeof key !== 'string') {
@@ -71,6 +72,13 @@ export function usageHandler(userId: string, socket: Socket) {
           return;
         }
 
+        if (localOnly !== undefined && typeof localOnly !== 'boolean') {
+          if (callback) {
+            callback({ success: false, error: 'Invalid localOnly flag' });
+          }
+          return;
+        }
+
         try {
           // If sessionId provided, verify it belongs to the user
           if (sessionId) {
@@ -97,7 +105,36 @@ export function usageHandler(userId: string, socket: Socket) {
             agentType,
             model,
             startedBy,
+            ...(localOnly ? { localOnly: true } : {}),
           };
+
+          // Emit usage ephemeral update if sessionId is provided
+          if (sessionId) {
+            const usageEvent = buildUsageEphemeral(
+              sessionId,
+              key,
+              usageData.tokens,
+              usageData.cost
+            );
+            eventRouter.emitEphemeral({
+              userId,
+              payload: usageEvent,
+              recipientFilter: { type: 'user-scoped-only' },
+            });
+          }
+
+          if (localOnly) {
+            log.info(
+              `Usage report handled locally only: key=${key}, sessionId=${sessionId || 'none'}, userId=${userId}`
+            );
+            if (callback) {
+              callback({
+                success: true,
+                localOnly: true,
+              });
+            }
+            return;
+          }
 
           // Upsert the usage report
           const report = await db.usageReport.upsert({
@@ -121,23 +158,8 @@ export function usageHandler(userId: string, socket: Socket) {
           });
 
           log.info(
-            `Usage report saved: key=${key}, sessionId=${sessionId || 'none'}, userId=${userId}`
+            `Usage report saved: key=${key}, sessionId=${sessionId || 'none'}, userId=${userId}, localOnly=${localOnly ? 'true' : 'false'}`
           );
-
-          // Emit usage ephemeral update if sessionId is provided
-          if (sessionId) {
-            const usageEvent = buildUsageEphemeral(
-              sessionId,
-              key,
-              usageData.tokens,
-              usageData.cost
-            );
-            eventRouter.emitEphemeral({
-              userId,
-              payload: usageEvent,
-              recipientFilter: { type: 'user-scoped-only' },
-            });
-          }
 
           if (callback) {
             callback({
@@ -145,6 +167,7 @@ export function usageHandler(userId: string, socket: Socket) {
               reportId: report.id,
               createdAt: report.createdAt.getTime(),
               updatedAt: report.updatedAt.getTime(),
+              ...(localOnly ? { localOnly: true } : {}),
             });
           }
         } catch (error) {

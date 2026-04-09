@@ -84,7 +84,6 @@ interface AgentInputProps {
     dotColor: string;
     isPulsing?: boolean;
     cliStatus?: {
-      'claude-native': boolean | null;
       claude?: boolean | null;
       codex?: boolean | null;
       gemini?: boolean | null;
@@ -139,11 +138,17 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
   },
   unifiedPanel: {
     backgroundColor: theme.colors.input.background,
-    borderRadius: Platform.select({ default: 16, android: 20 }),
+    borderRadius: Platform.select({ default: 20, android: 20 }),
     overflow: 'hidden',
-    paddingVertical: 2,
-    paddingBottom: 8,
-    paddingHorizontal: 8,
+    paddingTop: Platform.OS === 'web' ? 8 : 2,
+    paddingBottom: Platform.OS === 'web' ? 10 : 8,
+    paddingHorizontal: Platform.OS === 'web' ? 10 : 8,
+    borderWidth: Platform.OS === 'web' ? 1 : 0,
+    borderColor: Platform.OS === 'web' ? 'rgba(18, 28, 45, 0.08)' : 'transparent',
+    shadowColor: Platform.OS === 'web' ? '#0f172a' : 'transparent',
+    shadowOpacity: Platform.OS === 'web' ? 0.08 : 0,
+    shadowRadius: Platform.OS === 'web' ? 18 : 0,
+    shadowOffset: Platform.OS === 'web' ? { width: 0, height: 10 } : { width: 0, height: 0 },
   },
   inputContainer: {
     flexDirection: 'row',
@@ -298,14 +303,36 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
   actionButtonsLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Platform.OS === 'web' ? 8 : 6,
     flex: 1,
+    flexWrap: 'wrap',
   },
   actionButtonsTrailing: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     flexShrink: 0,
+  },
+  toolbarGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: Platform.OS === 'web' ? 14 : 0,
+    paddingHorizontal: Platform.OS === 'web' ? 4 : 0,
+    paddingVertical: Platform.OS === 'web' ? 4 : 0,
+    backgroundColor:
+      Platform.OS === 'web'
+        ? theme.dark
+          ? 'rgba(255,255,255,0.04)'
+          : 'rgba(15,23,42,0.04)'
+        : 'transparent',
+    borderWidth: Platform.OS === 'web' ? 1 : 0,
+    borderColor:
+      Platform.OS === 'web'
+        ? theme.dark
+          ? 'rgba(255,255,255,0.05)'
+          : 'rgba(18, 28, 45, 0.06)'
+        : 'transparent',
   },
   agentChipButton: {
     flexDirection: 'row',
@@ -316,6 +343,12 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     justifyContent: 'center',
     height: 32,
     gap: 6,
+    backgroundColor:
+      Platform.OS === 'web'
+        ? theme.dark
+          ? 'rgba(255,255,255,0.04)'
+          : 'rgba(255,255,255,0.88)'
+        : 'transparent',
   },
   agentChipLabel: {
     fontSize: 13,
@@ -338,9 +371,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     color: theme.colors.button.secondary.tint,
   },
   sendButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: Platform.OS === 'web' ? 36 : 32,
+    height: Platform.OS === 'web' ? 36 : 32,
+    borderRadius: Platform.OS === 'web' ? 18 : 16,
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
@@ -1389,27 +1422,44 @@ export const AgentInput = React.memo(
             props.pendingCapabilityLabel) && (
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
+                flexDirection: Platform.OS === 'web' ? 'column' : 'row',
+                alignItems: Platform.OS === 'web' ? 'stretch' : 'center',
                 justifyContent: 'space-between',
-                paddingHorizontal: 16,
-                paddingBottom: 4,
-                minHeight: 20, // Fixed minimum height to prevent jumping
+                paddingHorizontal: Platform.OS === 'web' ? 14 : 16,
+                paddingTop: Platform.OS === 'web' ? 2 : 0,
+                paddingBottom: Platform.OS === 'web' ? 10 : 4,
+                minHeight: 20,
+                gap: Platform.OS === 'web' ? 6 : 0,
               }}
             >
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  flex: 1,
+                  flex: Platform.OS === 'web' ? 0 : 1,
                   flexWrap: 'wrap',
-                  gap: 11,
-                  rowGap: 2,
+                  gap: Platform.OS === 'web' ? 8 : 11,
+                  rowGap: Platform.OS === 'web' ? 6 : 2,
                 }}
               >
                 {props.connectionStatus && (
                   <>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        paddingHorizontal: Platform.OS === 'web' ? 8 : 0,
+                        paddingVertical: Platform.OS === 'web' ? 4 : 0,
+                        borderRadius: Platform.OS === 'web' ? 999 : 0,
+                        backgroundColor:
+                          Platform.OS === 'web'
+                            ? theme.dark
+                              ? 'rgba(255,255,255,0.05)'
+                              : 'rgba(15,23,42,0.05)'
+                            : 'transparent',
+                      }}
+                    >
                       <StatusDot
                         color={props.connectionStatus.dotColor}
                         isPulsing={props.connectionStatus.isPulsing}
@@ -1436,7 +1486,20 @@ export const AgentInput = React.memo(
                           return (
                             <View
                               key={item.key}
-                              style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                                paddingHorizontal: Platform.OS === 'web' ? 8 : 0,
+                                paddingVertical: Platform.OS === 'web' ? 4 : 0,
+                                borderRadius: Platform.OS === 'web' ? 999 : 0,
+                                backgroundColor:
+                                  Platform.OS === 'web'
+                                    ? theme.dark
+                                      ? 'rgba(255,255,255,0.04)'
+                                      : 'rgba(15,23,42,0.04)'
+                                    : 'transparent',
+                              }}
                             >
                               <Text
                                 style={{
@@ -1463,7 +1526,7 @@ export const AgentInput = React.memo(
                     )}
                   </>
                 )}
-                {contextWarning && (
+                {contextWarning && !contextUsageDisplay && (
                   <Text
                     style={{
                       fontSize: 11,
@@ -1480,9 +1543,9 @@ export const AgentInput = React.memo(
               <View
                 style={{
                   flexDirection: 'column',
-                  alignItems: 'flex-end',
+                  alignItems: Platform.OS === 'web' ? 'flex-start' : 'flex-end',
                   flexShrink: 1,
-                  gap: 1,
+                  gap: Platform.OS === 'web' ? 4 : 1,
                 }}
               >
                 {contextUsageDisplay ? (
@@ -1529,28 +1592,62 @@ export const AgentInput = React.memo(
                     {props.pendingCapabilityLabel}
                   </Text>
                 ) : null}
-                {props.actualModeLabel ? (
-                  <Text
+                {(props.actualModeLabel || props.actualModelLabel) && (
+                  <View
                     style={{
-                      fontSize: 11,
-                      color: theme.colors.textSecondary,
-                      ...Typography.default(),
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      justifyContent: Platform.OS === 'web' ? 'flex-start' : 'flex-end',
+                      gap: 6,
                     }}
                   >
-                    Mode: {props.actualModeLabel}
-                  </Text>
-                ) : null}
-                {props.actualModelLabel ? (
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      color: theme.colors.textSecondary,
-                      ...Typography.default(),
-                    }}
-                  >
-                    Model: {props.actualModelLabel}
-                  </Text>
-                ) : null}
+                    {props.actualModeLabel ? (
+                      <View
+                        style={{
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          backgroundColor: theme.dark
+                            ? 'rgba(255,255,255,0.05)'
+                            : 'rgba(15,23,42,0.05)',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: theme.colors.textSecondary,
+                            ...Typography.default(),
+                          }}
+                        >
+                          Mode: {props.actualModeLabel}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {props.actualModelLabel ? (
+                      <View
+                        style={{
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          backgroundColor: theme.dark
+                            ? 'rgba(255,255,255,0.05)'
+                            : 'rgba(15,23,42,0.05)',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            color: theme.colors.textSecondary,
+                            ...Typography.default(),
+                          }}
+                        >
+                          Model: {props.actualModelLabel}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                )}
               </View>
             </View>
           )}
@@ -1740,7 +1837,25 @@ export const AgentInput = React.memo(
             )}
 
             {/* Action buttons below input */}
-            <View style={[styles.actionButtonsContainer, { position: 'relative', minHeight: 40 }]}>
+            <View
+                style={[
+                  styles.actionButtonsContainer,
+                  {
+                    position: 'relative',
+                    minHeight: Platform.OS === 'web' ? 44 : 40,
+                    marginTop: 2,
+                    paddingTop: Platform.OS === 'web' ? 8 : 4,
+                    paddingHorizontal: Platform.OS === 'web' ? 4 : 0,
+                    paddingBottom: Platform.OS === 'web' ? 2 : 0,
+                    borderTopWidth: 1,
+                    borderTopColor: Platform.OS === 'web'
+                      ? theme.dark
+                        ? 'rgba(255,255,255,0.06)'
+                      : 'rgba(18, 28, 45, 0.08)'
+                    : 'transparent',
+                },
+              ]}
+            >
 
               {/* Recording bar - fades in when isSpeechInputActive */}
               <Animated.View
@@ -1808,92 +1923,114 @@ export const AgentInput = React.memo(
                     pointerEvents={composerChromeLocked ? 'none' : 'auto'}
                     style={styles.actionButtonsLeft}
                   >
-                    {props.agentType && (props.onAgentChange || props.onAgentClick) && (
-                      <Pressable
-                        onPress={() => {
-                          inputRef.current?.blur();
-                          hapticsLight();
-                          if (props.availableAgentTypes && props.onAgentChange) {
-                            setShowAgentPicker(prev => !prev);
-                            setShowSettings(false);
-                          } else {
-                            props.onAgentClick?.();
-                          }
-                        }}
-                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                        style={p => [styles.agentChipButton, { opacity: p.pressed ? 0.7 : 1 }]}
-                      >
-                        <AgentFlavorIcon flavor={props.agentType} size={14} />
-                        <Text style={[styles.agentChipLabel, { color: theme.colors.button.secondary.tint }]}>
-                          {getAgentDisplayName(props.agentType)}
-                        </Text>
-                      </Pressable>
-                    )}
+                    {(props.agentType && (props.onAgentChange || props.onAgentClick)) ||
+                    showLocalPermissionModeControls ||
+                    hasDiscoveredCapabilities ? (
+                      <View style={styles.toolbarGroup}>
+                        {props.agentType && (props.onAgentChange || props.onAgentClick) && (
+                          <Pressable
+                            onPress={() => {
+                              inputRef.current?.blur();
+                              hapticsLight();
+                              if (props.availableAgentTypes && props.onAgentChange) {
+                                setShowAgentPicker(prev => !prev);
+                                setShowSettings(false);
+                              } else {
+                                props.onAgentClick?.();
+                              }
+                            }}
+                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                            style={p => [styles.agentChipButton, { opacity: p.pressed ? 0.7 : 1 }]}
+                          >
+                            <AgentFlavorIcon flavor={props.agentType} size={14} />
+                            <Text style={[styles.agentChipLabel, { color: theme.colors.button.secondary.tint }]}>
+                              {getAgentDisplayName(props.agentType)}
+                            </Text>
+                          </Pressable>
+                        )}
 
-                    {(showLocalPermissionModeControls || hasDiscoveredCapabilities) && (
-                      <Pressable
-                        onPress={handleSettingsPress}
-                        disabled={props.isSettingsBusy || composerChromeLocked}
-                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                        style={p => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          borderRadius: Platform.select({ default: 16, android: 20 }),
-                          paddingHorizontal: 10,
-                          paddingVertical: 6,
-                          justifyContent: 'center',
-                          height: 32,
-                          opacity: props.isSettingsBusy ? 0.4 : p.pressed ? 0.7 : 1,
-                          flexShrink: 0,
-                        })}
-                      >
-                        <Octicons
-                          name={'gear'}
-                          size={16}
-                          color={theme.colors.button.secondary.tint}
-                        />
-                      </Pressable>
-                    )}
+                        {(showLocalPermissionModeControls || hasDiscoveredCapabilities) && (
+                          <Pressable
+                            onPress={handleSettingsPress}
+                            disabled={props.isSettingsBusy || composerChromeLocked}
+                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                            style={p => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              borderRadius: Platform.select({ default: 16, android: 20 }),
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              justifyContent: 'center',
+                              height: 32,
+                              opacity: props.isSettingsBusy ? 0.4 : p.pressed ? 0.7 : 1,
+                              flexShrink: 0,
+                              backgroundColor:
+                                Platform.OS === 'web'
+                                  ? theme.dark
+                                    ? 'rgba(255,255,255,0.04)'
+                                    : 'rgba(255,255,255,0.88)'
+                                  : 'transparent',
+                            })}
+                          >
+                            <Octicons
+                              name={'gear'}
+                              size={16}
+                              color={theme.colors.button.secondary.tint}
+                            />
+                          </Pressable>
+                        )}
+                      </View>
+                    ) : null}
 
-                    {props.onPickImages && (
-                      <Pressable
-                        onPress={() => {
-                          inputRef.current?.blur();
-                          hapticsLight();
-                          props.onPickImages?.();
-                        }}
-                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                        style={p => ({
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          borderRadius: Platform.select({ default: 16, android: 20 }),
-                          paddingHorizontal: 8,
-                          paddingVertical: 6,
-                          justifyContent: 'center',
-                          height: 32,
-                          opacity: p.pressed ? 0.7 : 1,
-                        })}
-                      >
-                        <Ionicons
-                          name="image-outline"
-                          size={18}
-                          color={theme.colors.button.secondary.tint}
-                        />
-                      </Pressable>
-                    )}
+                    {props.onPickImages || (props.sessionId && props.onFileViewerPress) ? (
+                      <View style={styles.toolbarGroup}>
+                        {props.onPickImages && (
+                          <Pressable
+                            onPress={() => {
+                              inputRef.current?.blur();
+                              hapticsLight();
+                              props.onPickImages?.();
+                            }}
+                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                            style={p => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              borderRadius: Platform.select({ default: 16, android: 20 }),
+                              paddingHorizontal: 8,
+                              paddingVertical: 6,
+                              justifyContent: 'center',
+                              height: 32,
+                              opacity: p.pressed ? 0.7 : 1,
+                              backgroundColor:
+                                Platform.OS === 'web'
+                                  ? theme.dark
+                                    ? 'rgba(255,255,255,0.04)'
+                                    : 'rgba(255,255,255,0.88)'
+                                  : 'transparent',
+                            })}
+                          >
+                            <Ionicons
+                              name="image-outline"
+                              size={18}
+                              color={theme.colors.button.secondary.tint}
+                            />
+                          </Pressable>
+                        )}
 
-                    <View
-                      pointerEvents={composerChromeLocked ? 'none' : 'auto'}
-                      style={{ flexShrink: 0 }}
-                    >
-                      <GitStatusButton
-                        sessionId={props.sessionId}
-                        onPress={() => {
-                          inputRef.current?.blur();
-                          props.onFileViewerPress?.();
-                        }}
-                      />
-                    </View>
+                        <View
+                          pointerEvents={composerChromeLocked ? 'none' : 'auto'}
+                          style={{ flexShrink: 0 }}
+                        >
+                          <GitStatusButton
+                            sessionId={props.sessionId}
+                            onPress={() => {
+                              inputRef.current?.blur();
+                              props.onFileViewerPress?.();
+                            }}
+                          />
+                        </View>
+                      </View>
+                    ) : null}
                   </View>
 
                   <View style={styles.actionButtonsTrailing}>
@@ -1909,6 +2046,12 @@ export const AgentInput = React.memo(
                             justifyContent: 'center',
                             height: 32,
                             opacity: p.pressed ? 0.7 : 1,
+                            backgroundColor:
+                              Platform.OS === 'web'
+                                ? theme.dark
+                                  ? 'rgba(255,255,255,0.04)'
+                                  : 'rgba(255,255,255,0.88)'
+                                : 'transparent',
                           })}
                           hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                           onPress={handleAbortPress}
@@ -2026,8 +2169,12 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string; onPress?:
         opacity: p.pressed ? 0.7 : 1,
         flexShrink: 0,
         minWidth: 32,
-        maxWidth: 88,
-        overflow: 'hidden',
+        backgroundColor:
+          Platform.OS === 'web'
+            ? theme.dark
+              ? 'rgba(255,255,255,0.04)'
+              : 'rgba(255,255,255,0.88)'
+            : 'transparent',
       })}
       hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
       onPress={() => {
