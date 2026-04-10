@@ -263,7 +263,25 @@ describe('CodexBackend', () => {
     );
   });
 
-  it('surfaces resume failures instead of silently falling back to a fresh session', async () => {
+  it('surfaces resume failures when strict resume is required', async () => {
+    const backend = new CodexBackend();
+    mockLoadSession.mockRejectedValueOnce(new Error('session not found'));
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      resumeSessionId: 'previous-session-id',
+      requireResumeSuccess: true,
+      mcpServerUrl: '',
+      freeMcpToolNames: [],
+      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() }, updateAgentState: vi.fn() } as never,
+    });
+
+    await expect(backend.sendMessage('hello')).rejects.toBeInstanceOf(SessionResumeError);
+    expect(mockSendPrompt).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a fresh session when strict resume is not required', async () => {
     const backend = new CodexBackend();
     mockLoadSession.mockRejectedValueOnce(new Error('session not found'));
 
@@ -276,8 +294,14 @@ describe('CodexBackend', () => {
       session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() }, updateAgentState: vi.fn() } as never,
     });
 
-    await expect(backend.sendMessage('hello')).rejects.toBeInstanceOf(SessionResumeError);
-    expect(mockSendPrompt).not.toHaveBeenCalled();
+    await backend.sendMessage('hello');
+
+    expect(mockLoadSession).toHaveBeenCalledWith('previous-session-id', '/tmp', undefined);
+    expect(mockSendPrompt).toHaveBeenCalledWith(
+      'acp-session-1',
+      [{ type: 'text', text: 'hello' }],
+      expect.any(Object)
+    );
   });
 
   it('runs capability commands through ACP prompts', async () => {

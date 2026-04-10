@@ -188,6 +188,7 @@ export class ApiMachineClient {
         mode,
         token,
         resumeAgentSessionId,
+        requireResumeSuccess,
       } = params || {};
       logger.debug('[API MACHINE] Spawning session', {
         machineId: this.machine.id,
@@ -197,6 +198,7 @@ export class ApiMachineClient {
         model,
         mode,
         resumeAgentSessionId,
+        requireResumeSuccess,
       });
 
       if (!directory) {
@@ -213,6 +215,7 @@ export class ApiMachineClient {
         mode,
         token,
         resumeAgentSessionId,
+        requireResumeSuccess,
       });
 
       switch (result.type) {

@@ -232,6 +232,7 @@ export default function MachineDetailScreen() {
         machineId: machineId!,
         directory: absolutePath,
         approvedNewDirectoryCreation,
+        returnStructuredErrors: true,
       });
       switch (result.type) {
         case 'success':

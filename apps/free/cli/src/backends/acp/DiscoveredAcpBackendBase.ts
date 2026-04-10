@@ -64,6 +64,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   protected permissionHandler: AcpPermissionHandler | null = null;
   protected requestedPermissionMode: PermissionMode = 'accept-edits';
   private resumeSessionId: string | null = null;
+  private requireResumeSuccess = false;
   private startCwd: string = '';
   private startMcpServerUrl: string = '';
   private onSessionIdResolved: ((id: string) => void) | null = null;
@@ -172,6 +173,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.isFirstMessage = true;
     this.desiredConfigSelections.clear();
     this.resumeSessionId = opts.resumeSessionId ?? null;
+    this.requireResumeSuccess = opts.requireResumeSuccess === true;
     this.startCwd = opts.cwd;
     this.startMcpServerUrl = opts.mcpServerUrl;
     this.onSessionIdResolved = opts.onSessionIdResolved ?? null;
@@ -419,11 +421,13 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
           freshSessionId,
           error: safeStringify(err),
         });
-        throw new SessionResumeError(
-          this.agentType,
-          this.resumeSessionId,
-          err instanceof Error ? err.message : safeStringify(err)
-        );
+        if (this.requireResumeSuccess) {
+          throw new SessionResumeError(
+            this.agentType,
+            this.resumeSessionId,
+            err instanceof Error ? err.message : safeStringify(err)
+          );
+        }
       } finally {
         this.isLoadingSession = false;
       }

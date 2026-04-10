@@ -463,6 +463,7 @@ export type Metadata = {
   };
   machineId?: string;
   agentSessionId?: string; // Agent backend's internal session ID (e.g. Claude Code session UUID)
+  importedAgentSessionId?: string; // Original external listSessions ID used to import this session
   /** @deprecated Use agentSessionId. Kept for backward compat with existing encrypted metadata. */
   claudeSessionId?: string;
   tools?: string[];

@@ -20,7 +20,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { useMachineStatus } from '@/hooks/useMachineStatus';
-import { useSocketStatus, useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
+import { useLocalSetting, useSocketStatus, useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
 import { t } from '@/text';
 import { useIsTablet } from '@/utils/responsive';
 import { useSocketConnectionStatus } from '@/utils/socketConnectionStatus';
@@ -114,14 +114,31 @@ type ActiveTabType = 'sessions' | 'settings';
 
 // Header title component with connection status + machine count
 const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => {
+  const router = useRouter();
   const { theme } = useUnistyles();
   const socketStatus = useSocketStatus();
   const { machines, onlineCount } = useMachineStatus();
   const connectionStatus = useSocketConnectionStatus();
+  const focusAudioEnabled = useLocalSetting('focusAudioEnabled');
 
   const machineStatusText = t('status.machinesOnline', { count: onlineCount });
   const machineStatusColor =
     onlineCount > 0 ? theme.colors.status.connected : theme.colors.status.disconnected;
+  const backgroundPlaybackText = focusAudioEnabled
+    ? t('focusAudio.homeBackgroundPlaybackCompactEnabled')
+    : null;
+
+  const handleOpenServer = React.useCallback(() => {
+    router.push('/server');
+  }, [router]);
+
+  const handleOpenSettings = React.useCallback(() => {
+    router.push('/settings');
+  }, [router]);
+
+  const handleOpenFocusAudio = React.useCallback(() => {
+    router.push('/settings/focus-audio');
+  }, [router]);
 
   return (
     <View style={styles.titleContainer}>
@@ -134,17 +151,33 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
             size={6}
             style={{ marginRight: 4 }}
           />
-          <Text style={[styles.statusText, { color: connectionStatus.color }]}>
-            {connectionStatus.text}
-          </Text>
+          <Pressable onPress={handleOpenServer} hitSlop={8}>
+            <Text style={[styles.statusText, { color: connectionStatus.color }]}>
+              {connectionStatus.text}
+            </Text>
+          </Pressable>
           {socketStatus.status === 'connected' && machines.length > 0 && (
             <>
               <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginHorizontal: 4 }]}>
                 ·
               </Text>
-              <Text style={[styles.statusText, { color: machineStatusColor }]}>
-                {machineStatusText}
+              <Pressable onPress={handleOpenSettings} hitSlop={8}>
+                <Text style={[styles.statusText, { color: machineStatusColor }]}>
+                  {machineStatusText}
+                </Text>
+              </Pressable>
+            </>
+          )}
+          {activeTab === 'sessions' && backgroundPlaybackText && (
+            <>
+              <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginHorizontal: 4 }]}>
+                ·
               </Text>
+              <Pressable onPress={handleOpenFocusAudio} hitSlop={8}>
+                <Text style={[styles.statusText, { color: theme.colors.status.connected }]}>
+                  {backgroundPlaybackText}
+                </Text>
+              </Pressable>
             </>
           )}
         </View>

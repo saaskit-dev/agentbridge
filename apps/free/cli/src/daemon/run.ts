@@ -332,6 +332,8 @@ export async function startDaemon(): Promise<void> {
           startedBy: opts.startedBy ?? 'cli',
           cwd: opts.directory,
           resumeSessionId: opts.resumeAgentSessionId,
+          importedAgentSessionId: opts.requireResumeSuccess ? opts.resumeAgentSessionId : undefined,
+          requireResumeSuccess: opts.requireResumeSuccess === true,
           env: extraEnv,
           permissionMode: opts.permissionMode,
           model: opts.model,
@@ -341,7 +343,7 @@ export async function startDaemon(): Promise<void> {
           daemonInstanceId,
         };
 
-        if (opts.resumeAgentSessionId) {
+        if (opts.resumeAgentSessionId && opts.requireResumeSuccess) {
           const probeSession = AgentSessionFactory.create(agentType, sessionOpts);
           await probeSession.preflightResume();
         }
@@ -436,6 +438,7 @@ export async function startDaemon(): Promise<void> {
         model: options.model,
         mode: options.mode,
         resumeAgentSessionId: options.resumeAgentSessionId,
+        requireResumeSuccess: options.requireResumeSuccess,
         startedBy: options.startedBy ?? 'app',
         token: options.token,
         startingMode: 'remote',

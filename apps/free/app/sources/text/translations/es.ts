@@ -225,11 +225,9 @@ export const es: TranslationStructure = {
     mixWithOthersSubtitle: 'Let music, podcasts, or other apps keep playing at the same time.',
     mixWithOthersFooter:
       'Turn this off only if you want Focus Audio to take over the audio session.',
-    whiteNoise: 'White Noise',
-    pinkNoise: 'Pink Noise',
-    brownNoise: 'Brown Noise',
     settingsSubtitleEnabled: ({ sound }: { sound: string }) => `On · ${sound}`,
     settingsSubtitleDisabled: 'Audible background ambience',
+    homeBackgroundPlaybackCompactEnabled: 'background playback',
   },
 
   backgroundReconnect: {
@@ -687,10 +685,15 @@ export const es: TranslationStructure = {
       recording: 'Escuchando...',
       permissionTitle: 'Se requiere acceso al micrófono',
       permissionMessage: 'Permite el acceso al micrófono y al reconocimiento de voz en los ajustes del sistema.',
+      permissionBrowserMessage:
+        'Permite el acceso al micrófono y al reconocimiento de voz en la configuración del sitio del navegador.',
       permissionCancel: 'Cancelar',
       permissionOpenSettings: 'Abrir ajustes',
       errorTitle: 'Error de reconocimiento de voz',
       errorMessage: ({ error }: { error: string }) => `No se pudo iniciar el reconocimiento de voz (${error}).`,
+      unsupportedTitle: 'La entrada por voz no está disponible',
+      unsupportedMessage:
+        'Este navegador aún no admite la entrada por voz. Usa un navegador compatible o escribe tu mensaje.',
       languageUnavailableTitle: 'Paquete de idioma no instalado',
       languageUnavailableMessage: 'El paquete de reconocimiento de voz para el idioma seleccionado no está descargado. Abre ajustes para instalarlo o cambia al inglés.',
       languageUnavailableCancel: 'Cancelar',

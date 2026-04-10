@@ -273,7 +273,7 @@ export const PermissionsSettingsView = React.memo(function PermissionsSettingsVi
         <Text style={styles.introText}>{t('permissions.pageDescription')}</Text>
       </View>
 
-      {Platform.OS === 'web' ? (
+      {Platform.OS === 'web' && (
         <ItemGroup title={t('permissions.browserTitle')} footer={t('permissions.browserMessage')}>
           <Item
             title={t('permissions.browserTitle')}
@@ -283,42 +283,40 @@ export const PermissionsSettingsView = React.memo(function PermissionsSettingsVi
             showChevron={false}
           />
         </ItemGroup>
-      ) : (
-        <>
-          <ItemGroup
-            title={t('permissions.recommendedTitle')}
-            footer={t('permissions.recommendedFooter')}
-          >
-            {loading ? (
-              <View style={styles.loadingWrap}>
-                <ActivityIndicator size="small" />
-              </View>
-            ) : (
-              recommended.map(item => (
-                <PermissionRow
-                  key={item.id}
-                  item={item}
-                  loading={actingPermissionId === item.id}
-                  onPress={() => void handleAction(item)}
-                />
-              ))
-            )}
-          </ItemGroup>
-
-          {optional.length > 0 ? (
-            <ItemGroup title={t('permissions.optionalTitle')} footer={t('permissions.optionalFooter')}>
-              {optional.map(item => (
-                <PermissionRow
-                  key={item.id}
-                  item={item}
-                  loading={actingPermissionId === item.id}
-                  onPress={() => void handleAction(item)}
-                />
-              ))}
-            </ItemGroup>
-          ) : null}
-        </>
       )}
+
+      <ItemGroup
+        title={t('permissions.recommendedTitle')}
+        footer={t('permissions.recommendedFooter')}
+      >
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="small" />
+          </View>
+        ) : (
+          recommended.map(item => (
+            <PermissionRow
+              key={item.id}
+              item={item}
+              loading={actingPermissionId === item.id}
+              onPress={() => void handleAction(item)}
+            />
+          ))
+        )}
+      </ItemGroup>
+
+      {optional.length > 0 ? (
+        <ItemGroup title={t('permissions.optionalTitle')} footer={t('permissions.optionalFooter')}>
+          {optional.map(item => (
+            <PermissionRow
+              key={item.id}
+              item={item}
+              loading={actingPermissionId === item.id}
+              onPress={() => void handleAction(item)}
+            />
+          ))}
+        </ItemGroup>
+      ) : null}
     </ItemList>
   );
 });

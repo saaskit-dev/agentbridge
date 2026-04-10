@@ -53,6 +53,7 @@ export interface AgentStartOpts {
   /** ApiSessionClient for the current session (Claude launcher needs this wrapped in Session) */
   session: ApiSessionClient;
   resumeSessionId?: string;
+  requireResumeSuccess?: boolean;
   permissionMode?: PermissionMode;
   model?: string;
   mode?: string;

@@ -56,16 +56,7 @@ const stylesheet = StyleSheet.create(theme => ({
 }));
 
 function getSoundLabel(sound: FocusAudioSound): string {
-  switch (sound) {
-    case 'white-noise':
-      return t('focusAudio.whiteNoise');
-    case 'pink-noise':
-      return t('focusAudio.pinkNoise');
-    case 'brown-noise':
-      return t('focusAudio.brownNoise');
-    default:
-      return getFocusAudioSound(sound).label;
-  }
+  return getFocusAudioSound(sound).label;
 }
 
 export default function FocusAudioSettingsScreen() {
@@ -144,13 +135,7 @@ export default function FocusAudioSettingsScreen() {
         <ItemGroup
           key={category.id}
           title={category.label}
-          footer={
-            category.id === 'noise'
-              ? enabled
-                ? t('focusAudio.soundFooter')
-                : t('focusAudio.soundFooterDisabled')
-              : undefined
-          }
+          footer={enabled ? t('focusAudio.soundFooter') : t('focusAudio.soundFooterDisabled')}
         >
           {FOCUS_AUDIO_CATALOG.filter(option => option.category === category.id).map(option => (
             <Item

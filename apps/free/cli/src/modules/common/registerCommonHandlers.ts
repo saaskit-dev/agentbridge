@@ -144,6 +144,8 @@ export interface SpawnSessionOptions {
   startedBy?: 'cli' | 'daemon' | 'app';
   /** Claude Code session ID to resume (passed as --resume-session-id). Only applies to claude agent. */
   resumeAgentSessionId?: string;
+  /** When true, session creation fails if the upstream resume target cannot be restored. */
+  requireResumeSuccess?: boolean;
   approvedNewDirectoryCreation?: boolean;
   agent?: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
   model?: string;

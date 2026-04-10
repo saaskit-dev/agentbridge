@@ -11,6 +11,7 @@ import { ImagePreviewModal } from '../ImagePreviewModal';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Text } from '../StyledText';
 import { MermaidRenderer } from './MermaidRenderer';
+import { isLocalMarkdownImageSource, resolveLocalMarkdownImagePath } from './markdownImageSource';
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
@@ -80,19 +81,6 @@ function isDataImageUri(source: string): boolean {
   return /^data:image\//i.test(source);
 }
 
-function isLocalMarkdownImageSource(source: string): boolean {
-  const trimmed = sanitizeMarkdownPathCandidate(source);
-  if (!trimmed) return false;
-  if (isRemoteImageUri(trimmed) || isDataImageUri(trimmed)) return false;
-  return (
-    trimmed.startsWith('file://') ||
-    trimmed.startsWith('/') ||
-    trimmed.startsWith('./') ||
-    trimmed.startsWith('../') ||
-    !/^[a-z][a-z0-9+.-]*:/i.test(trimmed)
-  );
-}
-
 function isLocalMarkdownFileTarget(target: string): boolean {
   const trimmed = sanitizeMarkdownPathCandidate(target);
   if (!trimmed) return false;
@@ -123,13 +111,11 @@ export const MarkdownView = React.memo(
   }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
 
-    // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
-    // It made each of the individual text elements selectable. When we enable the markdownCopyV2 feature,
-    // we disable the selectable property on individual text segments on mobile only. Instead, the long press
-    // will be handled by a wrapper Pressable. If we don't disable the selectable property, then you will see
-    // the native copy modal come up at the same time as the long press handler is fired.
+    // Prefer inline text selection across platforms when markdownCopyV2 is enabled.
+    // The legacy fallback keeps the old native long-press selection screen only when the
+    // experiment is turned off on mobile.
     const markdownCopyV2 = useLocalSetting('markdownCopyV2');
-    const selectable = Platform.OS === 'web' || !markdownCopyV2;
+    const selectable = Platform.OS === 'web' || markdownCopyV2;
     const router = useRouter();
 
     const handleLongPress = React.useCallback(() => {
@@ -268,11 +254,7 @@ export const MarkdownView = React.memo(
       );
     };
 
-    if (!markdownCopyV2) {
-      return renderContent();
-    }
-
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' || markdownCopyV2) {
       return renderContent();
     }
 
@@ -302,11 +284,10 @@ function useResolvedMarkdownImage(source: string, assetContext?: MarkdownAssetCo
   const [resolvedUri, setResolvedUri] = React.useState<string | null>(null);
   const [loadFailed, setLoadFailed] = React.useState(false);
   const sanitizedSource = React.useMemo(() => sanitizeMarkdownPathCandidate(source), [source]);
-  const localSourcePath = React.useMemo(() => {
-    if (!isLocalMarkdownImageSource(source)) return null;
-    if (!assetContext?.markdownFilePath) return null;
-    return resolveSessionMarkdownAssetPath(assetContext.markdownFilePath, source);
-  }, [assetContext?.markdownFilePath, source]);
+  const localSourcePath = React.useMemo(
+    () => resolveLocalMarkdownImagePath(source, assetContext?.markdownFilePath),
+    [assetContext?.markdownFilePath, source]
+  );
 
   React.useEffect(() => {
     let cancelled = false;
@@ -319,7 +300,7 @@ function useResolvedMarkdownImage(source: string, assetContext?: MarkdownAssetCo
         return;
       }
 
-      if (sanitizedSource.startsWith('file://')) {
+      if (sanitizedSource.startsWith('file://') && !assetContext?.sessionId) {
         setResolvedUri(sanitizedSource);
         return;
       }

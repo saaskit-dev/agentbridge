@@ -11,6 +11,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { MarkdownView } from './markdown/MarkdownView';
 import type { Option } from './markdown/MarkdownView';
+import { buildMarkdownViewProps } from './markdown/markdownViewProps';
 import { useStreamingText } from '@/hooks/useStreamingText';
 
 /**
@@ -134,7 +135,7 @@ export function StreamingText({
   return (
     <View style={[styles.container, containerStyle]}>
       {useMarkdown ? (
-        <MarkdownView markdown={displayText} onOptionPress={onOptionPress} />
+        <MarkdownView {...buildMarkdownViewProps(displayText, sessionId, onOptionPress)} />
       ) : (
         <Text style={[styles.text, textStyle]}>{displayText}</Text>
       )}

@@ -178,6 +178,8 @@ export interface SpawnSessionOptions {
   model?: string;
   mode?: string;
   resumeAgentSessionId?: string;
+  returnStructuredErrors?: boolean;
+  requireResumeSuccess?: boolean;
 }
 
 export interface ExternalAgentSessionSummary {
@@ -212,6 +214,8 @@ export async function machineSpawnNewSession(
     model,
     mode,
     resumeAgentSessionId,
+    returnStructuredErrors = false,
+    requireResumeSuccess,
   } = options;
 
   logger.info('[ops] machineSpawnNewSession', {
@@ -235,6 +239,7 @@ export async function machineSpawnNewSession(
         model?: string;
         mode?: string;
         resumeAgentSessionId?: string;
+        requireResumeSuccess?: boolean;
       }
     >(machineId, 'spawn-free-session', {
       type: 'spawn-in-directory',
@@ -245,6 +250,7 @@ export async function machineSpawnNewSession(
       model,
       mode,
       resumeAgentSessionId,
+      requireResumeSuccess,
     });
     logger.info('[ops] machineSpawnNewSession result', {
       machineId,
@@ -256,17 +262,29 @@ export async function machineSpawnNewSession(
       type: result.type,
       sessionId: result.type === 'success' ? result.sessionId : undefined,
     });
+    if (result.type === 'error' && !returnStructuredErrors) {
+      const err = new Error(result.errorMessage);
+      if (result.errorCode) {
+        (err as Error & { code?: string }).code = result.errorCode;
+      }
+      throw err;
+    }
     return result;
   } catch (error) {
-    // Handle RPC errors
     logger.error('[ops] machineSpawnNewSession failed', toError(error), {
       machineId,
       directory,
       resumeAgentSessionId,
     });
+    if (!returnStructuredErrors) {
+      throw error;
+    }
     return {
       type: 'error',
       errorMessage: safeStringify(error),
+      ...((error as Error & { code?: string })?.code === 'resume_failed'
+        ? { errorCode: 'resume_failed' as const }
+        : {}),
     };
   }
 }

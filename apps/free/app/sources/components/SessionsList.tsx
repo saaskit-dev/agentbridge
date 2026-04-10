@@ -15,6 +15,7 @@ import { Avatar } from './Avatar';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { SessionRowActionButton } from './SessionRowActionButton';
 import { t } from '@/text';
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
@@ -460,6 +461,15 @@ const SessionItem = React.memo(
             </Text>
           </View>
         </View>
+        {!swipeEnabled && (
+          <SessionRowActionButton
+            label={t('sessionInfo.deleteSession')}
+            icon="trash-outline"
+            onPress={handleDelete}
+            destructive={true}
+            disabled={deletingSession}
+          />
+        )}
       </Pressable>
     );
 

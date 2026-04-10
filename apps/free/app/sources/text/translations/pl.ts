@@ -240,11 +240,9 @@ export const pl: TranslationStructure = {
     mixWithOthersSubtitle: 'Let music, podcasts, or other apps keep playing at the same time.',
     mixWithOthersFooter:
       'Turn this off only if you want Focus Audio to take over the audio session.',
-    whiteNoise: 'White Noise',
-    pinkNoise: 'Pink Noise',
-    brownNoise: 'Brown Noise',
     settingsSubtitleEnabled: ({ sound }: { sound: string }) => `On · ${sound}`,
     settingsSubtitleDisabled: 'Audible background ambience',
+    homeBackgroundPlaybackCompactEnabled: 'background playback',
   },
 
   backgroundReconnect: {
@@ -702,10 +700,15 @@ export const pl: TranslationStructure = {
       recording: 'Słucham...',
       permissionTitle: 'Wymagany dostęp do mikrofonu',
       permissionMessage: 'Zezwól na dostęp do mikrofonu i rozpoznawania mowy w ustawieniach systemowych.',
+      permissionBrowserMessage:
+        'Zezwól na dostęp do mikrofonu i rozpoznawania mowy w ustawieniach witryny w przeglądarce.',
       permissionCancel: 'Anuluj',
       permissionOpenSettings: 'Otwórz ustawienia',
       errorTitle: 'Błąd rozpoznawania mowy',
       errorMessage: ({ error }: { error: string }) => `Nie można uruchomić rozpoznawania mowy (${error}).`,
+      unsupportedTitle: 'Wprowadzanie głosowe jest niedostępne',
+      unsupportedMessage:
+        'Ta przeglądarka nie obsługuje jeszcze wprowadzania głosowego. Użyj obsługiwanej przeglądarki albo wpisz wiadomość.',
       languageUnavailableTitle: 'Pakiet językowy nie jest zainstalowany',
       languageUnavailableMessage: 'Pakiet rozpoznawania mowy dla wybranego języka nie został pobrany. Otwórz ustawienia, aby go zainstalować, lub przełącz się na angielski.',
       languageUnavailableCancel: 'Anuluj',

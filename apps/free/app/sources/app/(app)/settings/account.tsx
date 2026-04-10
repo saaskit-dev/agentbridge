@@ -33,7 +33,7 @@ export default React.memo(() => {
   const [showSecret, setShowSecret] = useState(false);
   const [copiedRecently, setCopiedRecently] = useState(false);
   const [analyticsEnabled, setAnalyticsEnabledSetting] = useSettingMutable('analyticsEnabled');
-  const { connectAccount, isLoading: isConnecting } = useConnectAccount();
+  const { connectAccount, connectWithUrl, isLoading: isConnecting } = useConnectAccount();
   const profile = useProfile();
 
   // Get the current secret key
@@ -106,6 +106,32 @@ export default React.memo(() => {
     }
   };
 
+  const handleLinkNewDevice = React.useCallback(() => {
+    Modal.alert(t('settingsAccount.linkNewDevice'), undefined, [
+      { text: t('common.cancel'), style: 'cancel' },
+      ...(Platform.OS === 'web'
+        ? []
+        : [
+            {
+              text: t('settings.scanQrCodeToAuthenticate'),
+              onPress: connectAccount,
+            },
+          ]),
+      {
+        text: t('connect.enterUrlManually'),
+        onPress: async () => {
+          const url = await Modal.prompt(t('settingsAccount.linkNewDevice'), undefined, {
+            placeholder: 'free:///account?...',
+            confirmText: t('common.authenticate'),
+          });
+          if (url?.trim()) {
+            void connectWithUrl(url.trim());
+          }
+        },
+      },
+    ]);
+  }, [connectAccount, connectWithUrl]);
+
   return (
     <>
       <ItemList>
@@ -132,18 +158,22 @@ export default React.memo(() => {
             showChevron={false}
             copy={!!sync.accountId}
           />
-          {Platform.OS !== 'web' && (
-            <Item
-              title={t('settingsAccount.linkNewDevice')}
-              subtitle={
-                isConnecting ? t('common.scanning') : t('settingsAccount.linkNewDeviceSubtitle')
-              }
-              icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
-              onPress={connectAccount}
-              disabled={isConnecting}
-              showChevron={false}
-            />
-          )}
+          <Item
+            title={t('settingsAccount.linkNewDevice')}
+            subtitle={
+              isConnecting ? t('common.scanning') : t('settingsAccount.linkNewDeviceSubtitle')
+            }
+            icon={
+              <Ionicons
+                name={Platform.OS === 'web' ? 'link-outline' : 'qr-code-outline'}
+                size={29}
+                color="#007AFF"
+              />
+            }
+            onPress={handleLinkNewDevice}
+            disabled={isConnecting}
+            showChevron={false}
+          />
         </ItemGroup>
 
         {/* Profile Section */}

@@ -1,6 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { storage } from '@/sync/storage';
+import {
+  showSpeechPermissionDeniedAlert,
+  showSpeechRecognitionErrorAlert,
+  showSpeechUnsupportedAlert,
+} from '@/utils/speechInputAlerts';
 import type { SpeechInputHook } from './useSpeechInput';
 
 const logger = new Logger('app/hooks/useSpeechInput.web');
@@ -21,6 +26,7 @@ export function useSpeechInput(onTextChange: (text: string) => void): SpeechInpu
 
       if (!SpeechRecognition) {
         logger.error('SpeechRecognition not supported in this browser');
+        showSpeechUnsupportedAlert();
         return;
       }
 
@@ -49,9 +55,23 @@ export function useSpeechInput(onTextChange: (text: string) => void): SpeechInpu
       recognition.onerror = (event: any) => {
         logger.error('Speech recognition error', { error: event.error });
         setIsListening(false);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          showSpeechPermissionDeniedAlert({ openSettings: false });
+          return;
+        }
+        if (event.error === 'no-speech' || event.error === 'aborted') {
+          return;
+        }
+        showSpeechRecognitionErrorAlert(String(event.error || 'unknown'));
       };
 
-      recognition.start();
+      try {
+        recognition.start();
+      } catch (error) {
+        logger.error('Speech recognition start failed', { error: String(error) });
+        setIsListening(false);
+        showSpeechRecognitionErrorAlert(String(error));
+      }
     },
     [onTextChange]
   );

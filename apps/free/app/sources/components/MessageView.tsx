@@ -6,6 +6,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from './layout';
 import { MarkdownView } from './markdown/MarkdownView';
 import { Option } from './markdown/MarkdownView';
+import { buildMarkdownViewProps } from './markdown/markdownViewProps';
 import { StreamingAgentText } from './StreamingText';
 import { ToolView } from './tools/ToolView';
 import { Typography } from '@/constants/Typography';
@@ -302,8 +303,11 @@ function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
         )}
         {props.message.text ? (
           <MarkdownView
-            markdown={props.message.displayText || props.message.text}
-            onOptionPress={handleOptionPress}
+            {...buildMarkdownViewProps(
+              props.message.displayText || props.message.text,
+              props.sessionId,
+              handleOptionPress
+            )}
           />
         ) : null}
       </View>

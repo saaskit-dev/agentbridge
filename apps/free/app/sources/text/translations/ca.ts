@@ -225,11 +225,9 @@ export const ca: TranslationStructure = {
     mixWithOthersSubtitle: 'Let music, podcasts, or other apps keep playing at the same time.',
     mixWithOthersFooter:
       'Turn this off only if you want Focus Audio to take over the audio session.',
-    whiteNoise: 'White Noise',
-    pinkNoise: 'Pink Noise',
-    brownNoise: 'Brown Noise',
     settingsSubtitleEnabled: ({ sound }: { sound: string }) => `On · ${sound}`,
     settingsSubtitleDisabled: 'Audible background ambience',
+    homeBackgroundPlaybackCompactEnabled: 'background playback',
   },
 
   backgroundReconnect: {
@@ -687,10 +685,15 @@ export const ca: TranslationStructure = {
       recording: 'Escoltant...',
       permissionTitle: 'Cal accés al micròfon',
       permissionMessage: "Permet l'accés al micròfon i al reconeixement de veu a la configuració del sistema.",
+      permissionBrowserMessage:
+        "Permet l'accés al micròfon i al reconeixement de veu a la configuració del lloc del navegador.",
       permissionCancel: 'Cancel·lar',
       permissionOpenSettings: 'Obre la configuració',
       errorTitle: 'Error de reconeixement de veu',
       errorMessage: ({ error }: { error: string }) => `No s'ha pogut iniciar el reconeixement de veu (${error}).`,
+      unsupportedTitle: 'L’entrada de veu no està disponible',
+      unsupportedMessage:
+        'Aquest navegador encara no admet l’entrada de veu. Prova un navegador compatible o escriu el missatge.',
       languageUnavailableTitle: "Paquet d'idioma no instal·lat",
       languageUnavailableMessage: "El paquet de reconeixement de veu per a l'idioma seleccionat no s'ha descarregat. Obriu els ajustos per instal·lar-lo o canvieu a l'anglès.",
       languageUnavailableCancel: 'Cancel·la',

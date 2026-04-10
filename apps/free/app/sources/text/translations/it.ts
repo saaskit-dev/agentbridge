@@ -226,11 +226,9 @@ export const it: TranslationStructure = {
     mixWithOthersSubtitle: 'Let music, podcasts, or other apps keep playing at the same time.',
     mixWithOthersFooter:
       'Turn this off only if you want Focus Audio to take over the audio session.',
-    whiteNoise: 'White Noise',
-    pinkNoise: 'Pink Noise',
-    brownNoise: 'Brown Noise',
     settingsSubtitleEnabled: ({ sound }: { sound: string }) => `On · ${sound}`,
     settingsSubtitleDisabled: 'Audible background ambience',
+    homeBackgroundPlaybackCompactEnabled: 'background playback',
   },
 
   backgroundReconnect: {
@@ -688,10 +686,15 @@ export const it: TranslationStructure = {
       recording: 'In ascolto...',
       permissionTitle: 'Accesso al microfono richiesto',
       permissionMessage: "Consenti l'accesso al microfono e al riconoscimento vocale nelle impostazioni di sistema.",
+      permissionBrowserMessage:
+        "Consenti l'accesso al microfono e al riconoscimento vocale nelle impostazioni del sito del browser.",
       permissionCancel: 'Annulla',
       permissionOpenSettings: 'Apri impostazioni',
       errorTitle: 'Riconoscimento vocale non riuscito',
       errorMessage: ({ error }: { error: string }) => `Impossibile avviare il riconoscimento vocale (${error}).`,
+      unsupportedTitle: 'Input vocale non disponibile',
+      unsupportedMessage:
+        'Questo browser non supporta ancora l’input vocale. Prova un browser supportato o digita il messaggio.',
       languageUnavailableTitle: 'Pacchetto lingua non installato',
       languageUnavailableMessage: 'Il pacchetto di riconoscimento vocale per la lingua selezionata non è stato scaricato. Apri le impostazioni per installarlo o passa all\'inglese.',
       languageUnavailableCancel: 'Annulla',

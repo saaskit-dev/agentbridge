@@ -33,6 +33,7 @@ export interface PersistedSession {
   agentType: AgentType;
   cwd: string;
   resumeSessionId?: string;
+  importedAgentSessionId?: string;
   permissionMode?: PermissionMode;
   model?: string;
   mode?: string;

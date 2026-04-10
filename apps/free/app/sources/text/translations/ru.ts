@@ -206,11 +206,9 @@ export const ru: TranslationStructure = {
     mixWithOthersSubtitle: 'Let music, podcasts, or other apps keep playing at the same time.',
     mixWithOthersFooter:
       'Turn this off only if you want Focus Audio to take over the audio session.',
-    whiteNoise: 'White Noise',
-    pinkNoise: 'Pink Noise',
-    brownNoise: 'Brown Noise',
     settingsSubtitleEnabled: ({ sound }: { sound: string }) => `On · ${sound}`,
     settingsSubtitleDisabled: 'Audible background ambience',
+    homeBackgroundPlaybackCompactEnabled: 'background playback',
   },
 
   backgroundReconnect: {
@@ -704,10 +702,15 @@ export const ru: TranslationStructure = {
       recording: 'Слушаю...',
       permissionTitle: 'Требуется доступ к микрофону',
       permissionMessage: 'Разрешите доступ к микрофону и распознаванию речи в системных настройках.',
+      permissionBrowserMessage:
+        'Разрешите доступ к микрофону и распознаванию речи в настройках сайта браузера.',
       permissionCancel: 'Отмена',
       permissionOpenSettings: 'Открыть настройки',
       errorTitle: 'Ошибка распознавания речи',
       errorMessage: ({ error }: { error: string }) => `Не удалось запустить распознавание речи (${error}).`,
+      unsupportedTitle: 'Голосовой ввод недоступен',
+      unsupportedMessage:
+        'Этот браузер пока не поддерживает голосовой ввод. Используйте поддерживаемый браузер или введите сообщение вручную.',
       languageUnavailableTitle: 'Языковой пакет не установлен',
       languageUnavailableMessage: 'Языковой пакет для распознавания речи не загружен. Откройте настройки для установки или переключитесь на английский.',
       languageUnavailableCancel: 'Отмена',

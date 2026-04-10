@@ -83,6 +83,10 @@ export interface AgentSessionOpts {
   cwd: string;
   /** Resume a previous Claude Code session */
   resumeSessionId?: string;
+  /** Original external session identifier used for imports; preserved for deduping imported sessions. */
+  importedAgentSessionId?: string;
+  /** When true, fail session creation if resume cannot be completed. */
+  requireResumeSuccess?: boolean;
   /** Client-generated session ID (UUID generated if omitted) */
   sessionId?: string;
   /** Extra env vars passed to the agent process */
@@ -287,6 +291,7 @@ export abstract class AgentSession<TMode> {
         freeMcpToolNames: freeServer.toolNames,
         session: probeSession,
         resumeSessionId: this.opts.resumeSessionId,
+        requireResumeSuccess: this.opts.requireResumeSuccess,
         permissionMode: this.opts.permissionMode,
         model: this.opts.model,
         mode: this.opts.mode,
@@ -411,6 +416,7 @@ export abstract class AgentSession<TMode> {
       agentType: this.agentType,
       cwd: this.opts.cwd,
       resumeSessionId: this.opts.resumeSessionId,
+      importedAgentSessionId: this.opts.importedAgentSessionId,
       permissionMode: this.opts.permissionMode,
       model: this.opts.model,
       mode: this.opts.mode,
@@ -1574,6 +1580,7 @@ export abstract class AgentSession<TMode> {
       freeMcpToolNames: this.freeServer?.toolNames ?? [],
       session: this.session,
       resumeSessionId: this.opts.resumeSessionId,
+      requireResumeSuccess: this.opts.requireResumeSuccess,
       permissionMode: this.opts.permissionMode,
       model: this.opts.model,
       mode: this.opts.mode,
@@ -1594,6 +1601,7 @@ export abstract class AgentSession<TMode> {
       version: packageJson.version,
       os: os.platform(),
       machineId: this.opts.machineId,
+      importedAgentSessionId: this.opts.importedAgentSessionId,
       homeDir: os.homedir(),
       freeHomeDir: configuration.freeHomeDir,
       freeLibDir: projectPath(),

@@ -1,16 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as React from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  StyleProp,
-  ViewStyle,
-  TextStyle,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, Pressable, StyleProp, ViewStyle, TextStyle, Platform, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
@@ -119,9 +110,6 @@ export const Item = React.memo<ItemProps>(props => {
   const isAndroid = Platform.OS === 'android';
   const isWeb = Platform.OS === 'web';
 
-  // Timer ref for long press copy functionality
-  const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const {
     title,
     subtitle,
@@ -149,7 +137,7 @@ export const Item = React.memo<ItemProps>(props => {
 
   // Handle copy functionality
   const handleCopy = React.useCallback(async () => {
-    if (!copy || isWeb) return;
+    if (!copy) return;
 
     let textToCopy: string;
 
@@ -168,38 +156,11 @@ export const Item = React.memo<ItemProps>(props => {
     } catch (error) {
       logger.error('Failed to copy:', toError(error));
     }
-  }, [copy, isWeb, title, subtitle, detail]);
+  }, [copy, title, subtitle, detail]);
 
-  // Handle long press for copy functionality
-  const handlePressIn = React.useCallback(() => {
-    if (copy && !isWeb && !onPress) {
-      longPressTimer.current = setTimeout(() => {
-        handleCopy();
-      }, 500); // 500ms delay for long press
-    }
-  }, [copy, isWeb, onPress, handleCopy]);
+  const handlePress = onPress ?? (copy ? () => void handleCopy() : undefined);
 
-  const handlePressOut = React.useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  }, []);
-
-  // Clean up timer on unmount
-  React.useEffect(() => {
-    return () => {
-      if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
-      }
-    };
-  }, []);
-
-  // If copy is enabled and no onPress is provided, don't set a regular press handler
-  // The copy will be handled by long press instead
-  const handlePress = onPress;
-
-  const isInteractive = handlePress || onLongPress || (copy && !isWeb);
+  const isInteractive = handlePress || onLongPress || !!copy;
   const showAccessory = isInteractive && showChevron && !rightElement;
   const chevronSize = isIOS && !isWeb ? 17 : 24;
 
@@ -294,8 +255,6 @@ export const Item = React.memo<ItemProps>(props => {
       <Pressable
         onPress={handlePress}
         onLongPress={onLongPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
         disabled={disabled || loading}
         style={({ pressed }) => [
           {

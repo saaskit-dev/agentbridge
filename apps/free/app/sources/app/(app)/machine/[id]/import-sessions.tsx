@@ -299,10 +299,14 @@ export default function ImportSessionsScreen() {
       const session = item as Session;
       if (!sessionBelongsToMachine(session, machineId!)) continue;
       const agentSessionId = session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId;
-      if (agentSessionId && session.metadata?.flavor) {
-        map.set(`${session.metadata.flavor}:${agentSessionId}`, session.id);
-      } else if (agentSessionId) {
-        map.set(agentSessionId, session.id);
+      const importedAgentSessionId = session.metadata?.importedAgentSessionId;
+      const flavor = session.metadata?.flavor;
+      for (const sessionKey of [agentSessionId, importedAgentSessionId]) {
+        if (!sessionKey) continue;
+        if (flavor) {
+          map.set(`${flavor}:${sessionKey}`, session.id);
+        }
+        map.set(sessionKey, session.id);
       }
     }
     return map;
@@ -398,6 +402,8 @@ export default function ImportSessionsScreen() {
           directory: session.cwd,
           agent: session.agentType,
           resumeAgentSessionId: session.sessionId,
+          requireResumeSuccess: true,
+          returnStructuredErrors: true,
         });
 
         if (result.type === 'success') {
@@ -419,6 +425,8 @@ export default function ImportSessionsScreen() {
             agent: session.agentType,
             resumeAgentSessionId: session.sessionId,
             approvedNewDirectoryCreation: true,
+            requireResumeSuccess: true,
+            returnStructuredErrors: true,
           });
           if (retried.type === 'success') {
             navigateToSession(retried.sessionId);

@@ -1,7 +1,5 @@
 import { Octicons } from '@expo/vector-icons';
-import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import * as Sharing from 'expo-sharing';
 import * as React from 'react';
 import {
   View,
@@ -10,8 +8,6 @@ import {
   TextInput,
   Pressable,
   RefreshControl,
-  ActionSheetIOS,
-  Alert,
 } from 'react-native';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { FileIcon } from '@/components/FileIcon';
@@ -30,18 +26,11 @@ import {
 import { useSession } from '@/sync/storage';
 import { invalidateSessionFileSearchCache, searchFiles, FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
+import { downloadBase64File } from '@/utils/fileDownload';
+import { getImageMimeType } from '@/utils/filePreview';
 import { encodeSessionFilePathForRoute } from '@/utils/sessionFilePath';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/session/files');
-
-/** Simple string hash for generating unique cache filenames. */
-function hashCode(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  }
-  return h;
-}
 
 /**
  * Joins an absolute directory path with a single entry name (POSIX-style).
@@ -239,7 +228,7 @@ export default function FilesScreen() {
   );
 
   /**
-   * Download a single file from the daemon machine to the device via share sheet.
+   * Download a single file from the daemon machine to the current client device.
    */
   const downloadFile = React.useCallback(
     async (absolutePath: string, fileName: string) => {
@@ -257,18 +246,8 @@ export default function FilesScreen() {
           Modal.alert(t('common.error'), t('files.downloadError'));
           return;
         }
-        // Use a hash prefix to avoid collision between same-named files in different dirs
-        const pathHash = Math.abs(hashCode(absolutePath)).toString(36);
-        const localUri = cacheDirectory + `${pathHash}-${fileName}`;
-        await writeAsStringAsync(localUri, response.content, {
-          encoding: EncodingType.Base64,
-        });
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(localUri, { dialogTitle: fileName });
-        } else {
-          Modal.alert(t('common.error'), t('files.downloadError'));
-        }
+        const mimeType = getImageMimeType(fileName) ?? 'application/octet-stream';
+        await downloadBase64File(fileName, response.content, mimeType);
       } catch (error) {
         logger.error('downloadFile failed', toError(error));
         Modal.alert(t('common.error'), t('files.downloadError'));
@@ -309,60 +288,27 @@ export default function FilesScreen() {
         }
       };
 
-      if (Platform.OS === 'ios') {
-        if (isDir) {
-          ActionSheetIOS.showActionSheetWithOptions(
-            {
-              title: name,
-              options: [t('files.delete'), t('common.cancel')],
-              destructiveButtonIndex: 0,
-              cancelButtonIndex: 1,
-            },
-            async buttonIndex => {
-              if (buttonIndex === 0) await handleDelete();
-            }
-          );
-        } else {
-          ActionSheetIOS.showActionSheetWithOptions(
-            {
-              title: name,
-              options: [t('files.download'), t('files.delete'), t('common.cancel')],
-              destructiveButtonIndex: 1,
-              cancelButtonIndex: 2,
-            },
-            async buttonIndex => {
-              if (buttonIndex === 0) {
-                await downloadFile(absolutePath, name);
-              } else if (buttonIndex === 1) {
-                await handleDelete();
-              }
-            }
-          );
-        }
-      } else {
-        // Android / Web: use Alert for action menu, then Modal.confirm for delete
-        const buttons = [
-          ...(!isDir
-            ? [
-                {
-                  text: t('files.download'),
-                  onPress: () => {
-                    downloadFile(absolutePath, name).catch(() => {});
-                  },
+      const buttons = [
+        ...(!isDir
+          ? [
+              {
+                text: t('files.download'),
+                onPress: () => {
+                  void downloadFile(absolutePath, name);
                 },
-              ]
-            : []),
-          {
-            text: t('files.delete'),
-            style: 'destructive' as const,
-            onPress: () => {
-              handleDelete().catch(() => {});
-            },
+              },
+            ]
+          : []),
+        {
+          text: t('files.delete'),
+          style: 'destructive' as const,
+          onPress: () => {
+            void handleDelete();
           },
-          { text: t('common.cancel'), style: 'cancel' as const },
-        ];
-        Alert.alert(name, undefined, buttons);
-      }
+        },
+        { text: t('common.cancel'), style: 'cancel' as const },
+      ];
+      Modal.alert(name, undefined, buttons);
     },
     [downloadFile, isBusy, refreshFileState, sessionId]
   );

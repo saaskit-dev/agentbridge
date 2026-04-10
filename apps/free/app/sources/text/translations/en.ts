@@ -192,7 +192,7 @@ export const en: TranslationStructure = {
     enabledState: 'Playing in a loop until you turn it off',
     disabledState: 'Off',
     sound: 'Sound',
-    soundFooter: 'Choose the ambient noise profile you want to hear while Focus Audio is active.',
+    soundFooter: 'Choose the ambient sound you want to hear while Focus Audio is active.',
     soundFooterDisabled: 'You can choose a sound now and start playback whenever you are ready.',
     selectedSound: 'Selected',
     volume: 'Volume',
@@ -203,11 +203,9 @@ export const en: TranslationStructure = {
     mixWithOthersSubtitle: 'Let music, podcasts, or other apps keep playing at the same time.',
     mixWithOthersFooter:
       'Turn this off only if you want Focus Audio to take over the audio session.',
-    whiteNoise: 'White Noise',
-    pinkNoise: 'Pink Noise',
-    brownNoise: 'Brown Noise',
     settingsSubtitleEnabled: ({ sound }: { sound: string }) => `On · ${sound}`,
     settingsSubtitleDisabled: 'Audible background ambience',
+    homeBackgroundPlaybackCompactEnabled: 'background playback',
   },
 
   backgroundReconnect: {
@@ -321,7 +319,7 @@ export const en: TranslationStructure = {
     commandPaletteEnabled: 'Press ⌘K to open',
     commandPaletteDisabled: 'Quick command access disabled',
     markdownCopyV2: 'Markdown Copy v2',
-    markdownCopyV2Subtitle: 'Long press opens copy modal',
+    markdownCopyV2Subtitle: 'Use inline text selection for Markdown',
     hideInactiveSessions: 'Hide inactive sessions',
     hideInactiveSessionsSubtitle: 'Show only active chats in your list',
     enhancedSessionWizard: 'Enhanced Session Wizard',
@@ -499,7 +497,7 @@ export const en: TranslationStructure = {
     sendBlockedDaemonOffline: 'Session offline, cannot send message',
     addImage: 'Add Image',
     pickLatestPhoto: 'Latest Photo',
-    chooseFromLibrary: 'Choose from Library',
+    chooseFromLibrary: 'Choose Image',
     latestPhotoUnavailable:
       'Could not load a photo. Allow library access or add photos to your library.',
   },
@@ -661,11 +659,16 @@ export const en: TranslationStructure = {
       permissionTitle: 'Microphone Access Required',
       permissionMessage:
         'Please allow microphone and speech recognition access in system settings.',
+      permissionBrowserMessage:
+        'Please allow microphone and speech recognition access in your browser site settings.',
       permissionCancel: 'Cancel',
       permissionOpenSettings: 'Open Settings',
       errorTitle: 'Speech Recognition Failed',
       errorMessage: ({ error }: { error: string }) =>
         `Could not start speech recognition (${error}).`,
+      unsupportedTitle: 'Speech Input Not Available',
+      unsupportedMessage:
+        'This browser does not support speech input yet. Try a supported browser or type your message instead.',
       languageUnavailableTitle: 'Language Pack Not Installed',
       languageUnavailableMessage:
         'Speech recognition for the selected language needs to be downloaded. Open Settings to install it, or switch to English.',
@@ -809,7 +812,7 @@ export const en: TranslationStructure = {
     imageTooLargeToPreview: 'This image is too large to preview inline',
     largeFilePreviewTruncated: 'Large file: only the first portion is shown',
     symlinkTo: ({ target }: { target: string }) => `Symlink to ${target}`,
-    download: 'Download',
+    download: 'Save File',
     downloadFolder: 'Download as ZIP',
     delete: 'Delete',
     deleteFileConfirm: ({ name }: { name: string }) => `Delete "${name}"? This cannot be undone.`,
@@ -817,7 +820,7 @@ export const en: TranslationStructure = {
       `Delete folder "${name}" and all its contents? This cannot be undone.`,
     deleteSuccess: 'Deleted successfully',
     deleteError: 'Failed to delete',
-    downloadError: 'Failed to download file',
+    downloadError: 'Failed to save file',
     fileTooLargeToDownload: 'File is too large to download (max 10 MB)',
     downloadFolderError: 'Failed to download folder',
     preparingDownload: 'Preparing download...',
@@ -843,7 +846,7 @@ export const en: TranslationStructure = {
     publicId: 'Public ID',
     notAvailable: 'Not available',
     linkNewDevice: 'Link New Device',
-    linkNewDeviceSubtitle: 'Scan QR code to link device',
+    linkNewDeviceSubtitle: 'Scan a QR code or enter a link manually',
     profile: 'Profile',
     name: 'Name',
     github: 'GitHub',

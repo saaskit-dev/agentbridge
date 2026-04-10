@@ -7,6 +7,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { Avatar } from './Avatar';
 import { CompactGitStatus } from './CompactGitStatus';
 import { ProjectGitStatus } from './ProjectGitStatus';
+import { SessionRowActionButton } from './SessionRowActionButton';
 import { StatusDot } from './StatusDot';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
@@ -495,6 +496,14 @@ const CompactSessionRow = React.memo(
             </View>
           </View>
         </View>
+        {!swipeEnabled && (
+          <SessionRowActionButton
+            label={t('sessionInfo.archiveSession')}
+            icon="archive-outline"
+            onPress={handleArchive}
+            disabled={archivingSession}
+          />
+        )}
       </Pressable>
     );
 

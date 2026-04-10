@@ -1,9 +1,7 @@
 import { Octicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
-import * as Sharing from 'expo-sharing';
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { ImagePreviewModal } from '@/components/ImagePreviewModal';
@@ -19,6 +17,16 @@ import { Modal } from '@/modal';
 import { sessionReadFile, sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
+import { downloadBase64File } from '@/utils/fileDownload';
+import {
+  detectImageMimeType,
+  getImageMimeType,
+  getPathExtension,
+  getPreviewKind,
+  isDelimitedTablePath,
+  isMarkdownPreviewPath,
+  type PreviewKind,
+} from '@/utils/filePreview';
 import { decodeSessionFilePathFromRoute } from '@/utils/sessionFilePath';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/session/file');
@@ -28,9 +36,9 @@ interface FileContent {
   encoding: 'utf8' | 'base64';
   isBinary: boolean;
   truncated?: boolean;
+  previewKind: PreviewKind;
+  mimeType?: string | null;
 }
-
-type PreviewKind = 'text' | 'image' | 'table' | 'binary';
 type FileErrorKind =
   | 'permission'
   | 'directory'
@@ -45,109 +53,6 @@ const MAX_IMAGE_PREVIEW_BYTES = 12 * 1024 * 1024;
 interface FileErrorState {
   kind: FileErrorKind;
   message: string;
-}
-
-/**
- * Whether this path should be shown as rendered Markdown (same pipeline as chat messages)
- * instead of a syntax-highlighted source block.
- */
-/** Simple string hash for generating unique cache filenames. */
-function hashCode(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  }
-  return h;
-}
-
-function isMarkdownPreviewPath(path: string): boolean {
-  const ext = path.split('.').pop()?.toLowerCase();
-  return ext === 'md' || ext === 'mdx' || ext === 'markdown';
-}
-
-function isDelimitedTablePath(path: string): boolean {
-  const ext = getPathExtension(path);
-  return ext === 'csv' || ext === 'tsv';
-}
-
-function getPathExtension(path: string): string | null {
-  const ext = path.split('.').pop()?.toLowerCase();
-  return ext || null;
-}
-
-function getImageMimeType(path: string): string | null {
-  switch (getPathExtension(path)) {
-    case 'png':
-      return 'image/png';
-    case 'jpg':
-    case 'jpeg':
-      return 'image/jpeg';
-    case 'gif':
-      return 'image/gif';
-    case 'webp':
-      return 'image/webp';
-    case 'bmp':
-      return 'image/bmp';
-    case 'svg':
-      return 'image/svg+xml';
-    case 'ico':
-      return 'image/x-icon';
-    case 'heic':
-      return 'image/heic';
-    case 'heif':
-      return 'image/heif';
-    case 'avif':
-      return 'image/avif';
-    default:
-      return null;
-  }
-}
-
-function isOpaqueBinaryFile(path: string): boolean {
-  const ext = getPathExtension(path);
-  const binaryExtensions = [
-    'mp4',
-    'avi',
-    'mov',
-    'wmv',
-    'flv',
-    'webm',
-    'mp3',
-    'wav',
-    'flac',
-    'aac',
-    'ogg',
-    'pdf',
-    'doc',
-    'docx',
-    'xls',
-    'xlsx',
-    'ppt',
-    'pptx',
-    'zip',
-    'tar',
-    'gz',
-    'rar',
-    '7z',
-    'exe',
-    'dmg',
-    'deb',
-    'rpm',
-    'woff',
-    'woff2',
-    'ttf',
-    'otf',
-    'db',
-    'sqlite',
-    'sqlite3',
-  ];
-  return ext ? binaryExtensions.includes(ext) : false;
-}
-
-function getPreviewKind(path: string): PreviewKind {
-  if (getImageMimeType(path)) return 'image';
-  if (isDelimitedTablePath(path)) return 'table';
-  return isOpaqueBinaryFile(path) ? 'binary' : 'text';
 }
 
 function mapFileError(
@@ -465,11 +370,7 @@ export default function FileScreen() {
         const previewKind = getPreviewKind(filePath);
 
         const readLimit =
-          previewKind === 'image'
-            ? MAX_IMAGE_PREVIEW_BYTES
-            : previewKind === 'binary'
-              ? 1
-              : MAX_TEXT_PREVIEW_BYTES;
+          previewKind === 'image' ? MAX_IMAGE_PREVIEW_BYTES : MAX_TEXT_PREVIEW_BYTES;
 
         // Fetch git diff for the file (if in git repo)
         if (sessionPath && sessionId) {
@@ -503,20 +404,6 @@ export default function FileScreen() {
               setFileSizeBytes(response.size);
             }
 
-            if (previewKind === 'binary') {
-              setFileContent({
-                content: '',
-                encoding: 'base64',
-                isBinary: true,
-              });
-              return;
-            }
-
-            if (previewKind === 'image' && response.truncated) {
-              setError({ kind: 'too-large', message: t('files.imageTooLargeToPreview') });
-              return;
-            }
-
             // Daemon returns raw file bytes as base64; decode to bytes first (whitespace-tolerant), then UTF-8 for display.
             let bytes: Uint8Array;
             try {
@@ -527,22 +414,30 @@ export default function FileScreen() {
               return;
             }
 
-            if (previewKind === 'image') {
-              const mimeType = getImageMimeType(filePath) ?? 'application/octet-stream';
+            const detectedImageMimeType = detectImageMimeType(filePath, bytes);
+
+            if (detectedImageMimeType) {
+              if (response.truncated) {
+                setError({ kind: 'too-large', message: t('files.imageTooLargeToPreview') });
+                return;
+              }
               setFileContent({
-                content: `data:${mimeType};base64,${response.content}`,
+                content: `data:${detectedImageMimeType};base64,${response.content}`,
                 encoding: 'base64',
                 isBinary: false,
+                previewKind: 'image',
+                mimeType: detectedImageMimeType,
                 truncated: response.truncated,
               });
               return;
             }
 
-            if (looksLikeBinaryBytes(bytes)) {
+            if (previewKind === 'binary' || looksLikeBinaryBytes(bytes)) {
               setFileContent({
                 content: '',
                 encoding: 'base64',
                 isBinary: true,
+                previewKind: 'binary',
               });
               return;
             }
@@ -553,6 +448,7 @@ export default function FileScreen() {
               content: decodedContent,
               encoding: 'utf8',
               isBinary: false,
+              previewKind,
               truncated: response.truncated,
             });
           } else {
@@ -594,7 +490,7 @@ export default function FileScreen() {
 
   const fileName = filePath.split('/').pop() || filePath;
   const language = getFileLanguage(filePath);
-  const previewKind = getPreviewKind(filePath);
+  const previewKind = fileContent?.previewKind ?? getPreviewKind(filePath);
 
   /** Copy the full file path to clipboard and show a brief toast. */
   const copyFilePath = React.useCallback(async () => {
@@ -606,7 +502,7 @@ export default function FileScreen() {
     }
   }, [filePath]);
 
-  /** Download the current file to the device via the share sheet. */
+  /** Save the current file to the client device. */
   const downloadFile = React.useCallback(async () => {
     try {
       const MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
@@ -619,22 +515,14 @@ export default function FileScreen() {
         Modal.alert(t('common.error'), t('files.downloadError'));
         return;
       }
-      const pathHash = Math.abs(hashCode(filePath)).toString(36);
-      const localUri = cacheDirectory + `${pathHash}-${fileName}`;
-      await writeAsStringAsync(localUri, response.content, {
-        encoding: EncodingType.Base64,
-      });
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(localUri, { dialogTitle: fileName });
-      } else {
-        Modal.alert(t('common.error'), t('files.downloadError'));
-      }
+      const mimeType =
+        fileContent?.mimeType ?? getImageMimeType(filePath) ?? 'application/octet-stream';
+      await downloadBase64File(fileName, response.content, mimeType);
     } catch (e) {
       logger.error('Failed to download file', toError(e));
       Modal.alert(t('common.error'), t('files.downloadError'));
     }
-  }, [filePath, fileName, sessionId, fileSizeBytes]);
+  }, [fileContent?.mimeType, filePath, fileName, sessionId, fileSizeBytes]);
 
   if (isLoading) {
     return (
@@ -745,9 +633,13 @@ export default function FileScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+      <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
       {imagePreviewUri && (
-        <ImagePreviewModal uri={imagePreviewUri} onClose={() => setImagePreviewUri(null)} />
+        <ImagePreviewModal
+          uri={imagePreviewUri}
+          onClose={() => setImagePreviewUri(null)}
+          onDownload={downloadFile}
+        />
       )}
       {/* File path header — tap to copy path */}
       <View

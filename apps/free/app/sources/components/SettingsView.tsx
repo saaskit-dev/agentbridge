@@ -51,14 +51,7 @@ export const SettingsView = React.memo(function SettingsView() {
   const bio = getBio(profile);
 
   const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
-  const focusAudioSoundLabel =
-    focusAudioSound === 'white-noise'
-      ? t('focusAudio.whiteNoise')
-      : focusAudioSound === 'pink-noise'
-        ? t('focusAudio.pinkNoise')
-        : focusAudioSound === 'brown-noise'
-          ? t('focusAudio.brownNoise')
-          : getFocusAudioSound(focusAudioSound).label;
+  const focusAudioSoundLabel = getFocusAudioSound(focusAudioSound).label;
 
   const handleGitHub = async () => {
     const url = 'https://github.com/saaskit-dev/agentbridge';
@@ -210,9 +203,8 @@ export const SettingsView = React.memo(function SettingsView() {
         </View>
       </View>
 
-      {/* Connect Terminal - Only show on native platforms */}
-      {Platform.OS !== 'web' && (
-        <ItemGroup>
+      <ItemGroup>
+        {Platform.OS !== 'web' && (
           <Item
             title={t('settings.scanQrCodeToAuthenticate')}
             icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
@@ -220,26 +212,26 @@ export const SettingsView = React.memo(function SettingsView() {
             loading={isLoading}
             showChevron={false}
           />
-          <Item
-            title={t('connect.enterUrlManually')}
-            icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
-            onPress={async () => {
-              const url = await Modal.prompt(
-                t('modals.authenticateTerminal'),
-                t('modals.pasteUrlFromTerminal'),
-                {
-                  placeholder: 'free://terminal?...',
-                  confirmText: t('common.authenticate'),
-                }
-              );
-              if (url?.trim()) {
-                connectWithUrl(url.trim());
+        )}
+        <Item
+          title={t('connect.enterUrlManually')}
+          icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
+          onPress={async () => {
+            const url = await Modal.prompt(
+              t('modals.authenticateTerminal'),
+              t('modals.pasteUrlFromTerminal'),
+              {
+                placeholder: 'free://terminal?...',
+                confirmText: t('common.authenticate'),
               }
-            }}
-            showChevron={false}
-          />
-        </ItemGroup>
-      )}
+            );
+            if (url?.trim()) {
+              connectWithUrl(url.trim());
+            }
+          }}
+          showChevron={false}
+        />
+      </ItemGroup>
 
       {/* Support Us - only visible in local development */}
       {__DEV__ && (

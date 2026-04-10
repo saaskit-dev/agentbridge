@@ -191,11 +191,9 @@ export const ja: TranslationStructure = {
     mixWithOthersSubtitle: 'Let music, podcasts, or other apps keep playing at the same time.',
     mixWithOthersFooter:
       'Turn this off only if you want Focus Audio to take over the audio session.',
-    whiteNoise: 'White Noise',
-    pinkNoise: 'Pink Noise',
-    brownNoise: 'Brown Noise',
     settingsSubtitleEnabled: ({ sound }: { sound: string }) => `On · ${sound}`,
     settingsSubtitleDisabled: 'Audible background ambience',
+    homeBackgroundPlaybackCompactEnabled: 'background playback',
   },
 
   backgroundReconnect: {
@@ -648,10 +646,15 @@ export const ja: TranslationStructure = {
       recording: '聞いています...',
       permissionTitle: 'マイクへのアクセスが必要です',
       permissionMessage: 'システム設定でマイクと音声認識へのアクセスを許可してください。',
+      permissionBrowserMessage:
+        'ブラウザのサイト設定でマイクと音声認識へのアクセスを許可してください。',
       permissionCancel: 'キャンセル',
       permissionOpenSettings: '設定を開く',
       errorTitle: '音声認識に失敗しました',
       errorMessage: ({ error }: { error: string }) => `音声認識を開始できませんでした（${error}）。`,
+      unsupportedTitle: '音声入力は利用できません',
+      unsupportedMessage:
+        'このブラウザはまだ音声入力に対応していません。対応ブラウザを使うか、メッセージを入力してください。',
       languageUnavailableTitle: '音声認識パックが未インストール',
       languageUnavailableMessage: '選択した言語の音声認識パックがダウンロードされていません。設定を開いてインストールするか、英語に切り替えてください。',
       languageUnavailableCancel: 'キャンセル',

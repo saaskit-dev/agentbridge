@@ -85,6 +85,22 @@ async function getMicrophoneItem(): Promise<PermissionItem> {
 }
 
 async function getSpeechRecognitionItem(): Promise<PermissionItem> {
+  if (Platform.OS === 'web') {
+    const supported =
+      typeof window !== 'undefined' &&
+      Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+    return {
+      id: 'speechRecognition',
+      group: 'recommended',
+      icon: 'chatbox-ellipses-outline',
+      titleKey: 'permissions.speechTitle',
+      purposeKey: 'permissions.speechPurpose',
+      minimizeKey: 'permissions.speechMinimize',
+      state: supported ? 'notAsked' : 'unavailable',
+      action: supported ? 'none' : 'none',
+    };
+  }
+
   const permissions = await ExpoSpeechRecognitionModule.getSpeechRecognizerPermissionsAsync();
   const state = toPermissionState({
     granted: permissions.granted,
@@ -140,17 +156,12 @@ async function getCameraItem(): Promise<PermissionItem> {
 }
 
 export async function loadPermissionItems(): Promise<PermissionItem[]> {
-  if (Platform.OS === 'web') {
-    return [];
-  }
-
   const items: PermissionItem[] = [];
-  items.push(await getNotificationsItem());
-  items.push(await getMicrophoneItem());
-
-  if (Platform.OS === 'ios') {
-    items.push(await getSpeechRecognitionItem());
+  if (Platform.OS !== 'web') {
+    items.push(await getNotificationsItem());
   }
+  items.push(await getMicrophoneItem());
+  items.push(await getSpeechRecognitionItem());
 
   items.push(await getPhotosItem());
 
@@ -190,6 +201,9 @@ export async function performPermissionAction(item: PermissionItem): Promise<voi
       return;
     }
     case 'speechRecognition': {
+      if (Platform.OS === 'web') {
+        return;
+      }
       if (item.action === 'allow') {
         const result = await ExpoSpeechRecognitionModule.requestSpeechRecognizerPermissionsAsync();
         if (!result.granted && result.canAskAgain === false) {

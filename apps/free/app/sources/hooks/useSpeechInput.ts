@@ -4,10 +4,14 @@ import {
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
 import { getLocales } from 'expo-localization';
-import { Alert, Linking } from 'react-native';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { t } from '@/text';
 import { useSetting } from '@/sync/storage';
+import {
+  showSpeechLanguageUnavailableAlert,
+  showSpeechPermissionDeniedAlert,
+  showSpeechRecognitionErrorAlert,
+} from '@/utils/speechInputAlerts';
 
 const logger = new Logger('app/hooks/useSpeechInput');
 
@@ -49,23 +53,18 @@ export function useSpeechInput(onTextChange: (text: string) => void): SpeechInpu
     // Don't alert for expected non-errors
     if (errorCode === 'no-speech' || errorCode === 'aborted') return;
     if (errorCode === 'language-not-supported') {
-      Alert.alert(
-        t('agentInput.speechInput.languageUnavailableTitle'),
-        t('agentInput.speechInput.languageUnavailableMessage'),
-        [
-          { text: t('agentInput.speechInput.languageUnavailableCancel'), style: 'cancel' },
-          { text: t('agentInput.speechInput.languageUnavailableOpenSettings'), onPress: () => Linking.openSettings() },
-          { text: t('agentInput.speechInput.languageUnavailableUseEnglish'), onPress: () => {
-            ExpoSpeechRecognitionModule.start({ interimResults: true, continuous: false, lang: 'en-US' });
-          }},
-        ]
-      );
+      showSpeechLanguageUnavailableAlert({
+        onUseEnglish: () => {
+          ExpoSpeechRecognitionModule.start({
+            interimResults: true,
+            continuous: false,
+            lang: 'en-US',
+          });
+        },
+      });
       return;
     }
-    Alert.alert(
-      t('agentInput.speechInput.errorTitle'),
-      t('agentInput.speechInput.errorMessage', { error: errorCode }),
-    );
+    showSpeechRecognitionErrorAlert(errorCode);
   });
 
   const start = useCallback(
@@ -74,14 +73,7 @@ export function useSpeechInput(onTextChange: (text: string) => void): SpeechInpu
         const { status } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
         if (status !== 'granted') {
           logger.error('Speech recognition permission denied', undefined, { status });
-          Alert.alert(
-            t('agentInput.speechInput.permissionTitle'),
-            t('agentInput.speechInput.permissionMessage'),
-            [
-              { text: t('agentInput.speechInput.permissionCancel'), style: 'cancel' },
-              { text: t('agentInput.speechInput.permissionOpenSettings'), onPress: () => Linking.openSettings() },
-            ]
-          );
+          showSpeechPermissionDeniedAlert();
           return;
         }
         baseTextRef.current = baseText;

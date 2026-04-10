@@ -19,6 +19,7 @@ export const MetadataSchema = z.object({
     .optional(),
   machineId: z.string().optional(),
   agentSessionId: z.string().optional(), // Agent backend's internal session ID
+  importedAgentSessionId: z.string().optional(), // Original external listSessions ID used for import
   /** @deprecated Use agentSessionId. Kept for backward compat with existing encrypted metadata. */
   claudeSessionId: z.string().optional(),
   tools: z.array(z.string()).optional(),
