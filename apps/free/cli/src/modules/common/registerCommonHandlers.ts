@@ -145,7 +145,7 @@ export interface SpawnSessionOptions {
   /** Claude Code session ID to resume (passed as --resume-session-id). Only applies to claude agent. */
   resumeAgentSessionId?: string;
   approvedNewDirectoryCreation?: boolean;
-  agent?: 'claude' | 'codex' | 'gemini' | 'opencode';
+  agent?: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
   model?: string;
   mode?: string;
   token?: string; // OAuth token for authentication
@@ -154,7 +154,7 @@ export interface SpawnSessionOptions {
 export type SpawnSessionResult =
   | { type: 'success'; sessionId: string }
   | { type: 'requestToApproveDirectoryCreation'; directory: string }
-  | { type: 'error'; errorMessage: string };
+  | { type: 'error'; errorMessage: string; errorCode?: 'resume_failed' };
 
 /**
  * Register all RPC handlers with the session

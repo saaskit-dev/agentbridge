@@ -234,7 +234,12 @@ export class ApiMachineClient {
           return { type: 'requestToApproveDirectoryCreation', directory: result.directory };
 
         case 'error':
-          throw new Error(result.errorMessage);
+          logger.debug('[API MACHINE] Session spawn failed', {
+            machineId: this.machine.id,
+            errorCode: result.errorCode,
+            errorMessage: result.errorMessage,
+          });
+          return result;
       }
     });
 

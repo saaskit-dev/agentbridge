@@ -998,6 +998,9 @@ export const ja: TranslationStructure = {
     continueTitle: 'Continue here?',
     continueBody: ({ agent }: { agent: string }) =>
       `This will import the existing ${agent} chat into AgentBridge and continue it here.`,
+    resumeFailedTitle: 'Could not restore session',
+    resumeFailedBody: ({ agent }: { agent: string }) =>
+      `This ${agent} session could not be restored right now. It may no longer exist, may be corrupted, or the current agent version may no longer support restoring it. Refresh and try again, or start a new session in the same directory.`,
     openImportedTitle: 'Open imported session',
     openImportedBody: 'This chat is already imported into AgentBridge.',
     prototypeTitle: 'Prototype only',

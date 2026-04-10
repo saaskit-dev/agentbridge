@@ -59,6 +59,10 @@ export function setCurrentTurnTrace(ctx: TraceContext | undefined): void {
 /** Sticky acpSessionId — survives turn transitions and multi-turn conversations. */
 let _acpSessionId: string | undefined;
 
+export function getAcpSessionId(): string | undefined {
+  return _acpSessionId;
+}
+
 /**
  * Called by ACP backends after createSession/loadSession to inject the ACP protocol
  * session ID into the global trace context. All subsequent logs automatically include it.

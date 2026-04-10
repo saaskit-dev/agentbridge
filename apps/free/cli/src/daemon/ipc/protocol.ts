@@ -47,7 +47,7 @@ export interface SpawnSessionOptions {
 
 export type SpawnSessionResult =
   | { type: 'success'; sessionId: string }
-  | { type: 'error'; error: string };
+  | { type: 'error'; error: string; errorCode?: 'resume_failed' };
 
 // ---------------------------------------------------------------------------
 // IPC message types

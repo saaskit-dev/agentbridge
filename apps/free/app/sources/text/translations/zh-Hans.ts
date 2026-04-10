@@ -1022,6 +1022,9 @@ export const zhHans: TranslationStructure = {
     continueTitle: '继续到这里？',
     continueBody: ({ agent }: { agent: string }) =>
       `这会把现有的 ${agent} 对话导入 AgentBridge，并在这里继续。`,
+    resumeFailedTitle: '无法恢复历史会话',
+    resumeFailedBody: ({ agent }: { agent: string }) =>
+      `这个 ${agent} 历史会话暂时无法恢复。它可能已经不存在、数据已损坏，或者当前 Agent 版本已不再支持恢复。请刷新后重试，或在同一目录新建一个会话。`,
     openImportedTitle: '打开已导入会话',
     openImportedBody: '这个对话已经导入到 AgentBridge。',
     prototypeTitle: '仅原型',

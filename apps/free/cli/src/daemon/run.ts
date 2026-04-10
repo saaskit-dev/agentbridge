@@ -16,6 +16,7 @@ import type {
 } from './ipc/protocol';
 import { SessionManager } from './sessions/SessionManager';
 import { AgentSessionFactory } from './sessions/AgentSessionFactory';
+import type { AgentSessionOpts } from './sessions/AgentSession';
 import { GeminiSession } from './sessions/GeminiSession';
 import { OpenCodeSession } from './sessions/OpenCodeSession';
 import { ClaudeSession } from './sessions/ClaudeSession';
@@ -58,6 +59,7 @@ import {
 } from './sessions/sessionPersistence';
 import type { AgentType } from './sessions/types';
 import { cleanStaleAttachments } from './sessions/cleanAttachments';
+import { SessionResumeError } from './sessions/AgentBackend';
 
 // Register all agent session types at module load time
 AgentSessionFactory.register('claude', ClaudeSession);
@@ -324,7 +326,7 @@ export async function startDaemon(): Promise<void> {
       }
 
       try {
-        const session = AgentSessionFactory.create(agentType, {
+        const sessionOpts: AgentSessionOpts = {
           credential: credentials,
           machineId,
           startedBy: opts.startedBy ?? 'cli',
@@ -337,7 +339,14 @@ export async function startDaemon(): Promise<void> {
           startingMode: opts.startingMode,
           broadcast: (sid, msg) => ipcServer!.broadcast(sid, msg),
           daemonInstanceId,
-        });
+        };
+
+        if (opts.resumeAgentSessionId) {
+          const probeSession = AgentSessionFactory.create(agentType, sessionOpts);
+          await probeSession.preflightResume();
+        }
+
+        const session = AgentSessionFactory.create(agentType, sessionOpts);
 
         await session.initialize();
         const sessionId = session.sessionId;
@@ -374,7 +383,11 @@ export async function startDaemon(): Promise<void> {
           agentType,
           traceId: getProcessTraceContext()?.traceId,
         });
-        return { type: 'error', error: msg };
+        return {
+          type: 'error',
+          error: msg,
+          ...(error instanceof SessionResumeError ? { errorCode: 'resume_failed' as const } : {}),
+        };
       }
     };
 
@@ -431,7 +444,11 @@ export async function startDaemon(): Promise<void> {
       if (result.type === 'success') {
         return { type: 'success', sessionId: result.sessionId };
       }
-      return { type: 'error', errorMessage: result.error };
+      return {
+        type: 'error',
+        errorMessage: result.error,
+        ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+      };
     };
 
     // Stop a session by ID (used by control server HTTP endpoint — fire-and-forget).

@@ -43,9 +43,10 @@ import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler'
 import { Logger, getCollector, isCollectorReady } from '@saaskit-dev/agentbridge/telemetry';
 import type { LogEntry, LogSink } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify, toError } from '@saaskit-dev/agentbridge';
-import { getProcessTraceContext } from '@/telemetry';
+import { getAcpSessionId, getProcessTraceContext, setAcpSessionId } from '@/telemetry';
 import { hashObject } from '@/utils/deterministicJson';
 import { getChildPids } from '@/utils/childProcessUtils';
+import { SessionResumeError } from './AgentBackend';
 import type { AgentBackend, AgentStartOpts, LocalAttachment } from './AgentBackend';
 import type { NormalizedMessage, AgentType, SessionSummary, SessionInitiator } from './types';
 import { createNormalizedEvent } from './types';
@@ -242,6 +243,67 @@ export abstract class AgentSession<TMode> {
   async flushOutbox(): Promise<void> {
     if (!this.session) return;
     await this.session.flush();
+  }
+
+  async preflightResume(): Promise<void> {
+    if (!this.opts.resumeSessionId) {
+      return;
+    }
+
+    logger.info('[AgentSession] preflighting resume session', {
+      agentType: this.agentType,
+      resumeSessionId: this.opts.resumeSessionId,
+      cwd: this.opts.cwd,
+    });
+
+    const backend = this.createBackend();
+    const previousAcpSessionId = getAcpSessionId();
+    const probeSession = {
+      sessionId: 'resume-preflight',
+      rpcHandlerManager: {
+        registerHandler: () => undefined,
+        unregisterHandler: () => undefined,
+      },
+      updateAgentState: (updater: (currentState: AgentState) => AgentState) =>
+        updater({ controlledByUser: false }),
+      updateMetadata: (updater: (metadata: Metadata) => Metadata) =>
+        updater({
+          path: this.opts.cwd,
+          host: 'resume-preflight',
+          homeDir: os.homedir(),
+          freeHomeDir: configuration.freeHomeDir,
+          freeLibDir: projectPath(),
+          freeToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
+        }),
+    } as unknown as ApiSessionClient;
+
+    const freeServer = await startFreeServer(probeSession);
+
+    try {
+      await backend.start({
+        cwd: this.opts.cwd,
+        env: this.opts.env ?? {},
+        mcpServerUrl: freeServer.url,
+        freeMcpToolNames: freeServer.toolNames,
+        session: probeSession,
+        resumeSessionId: this.opts.resumeSessionId,
+        permissionMode: this.opts.permissionMode,
+        model: this.opts.model,
+        mode: this.opts.mode,
+        startingMode: this.opts.startingMode,
+        broadcast: this.opts.broadcast,
+      });
+      const resolvedSessionId = await backend.resolveSession?.();
+      if (typeof resolvedSessionId === 'string' && resolvedSessionId.length > 0) {
+        this.opts.resumeSessionId = resolvedSessionId;
+      }
+    } finally {
+      await backend.stop().catch(err =>
+        logger.warn('[AgentSession] preflight backend stop failed', { error: String(err) })
+      );
+      freeServer.stop();
+      setAcpSessionId(previousAcpSessionId ?? null);
+    }
   }
 
   /** Stop only the backend subprocess without running full shutdown (preserves persisted state).
@@ -1102,6 +1164,9 @@ export abstract class AgentSession<TMode> {
           sessionId: this.session?.sessionId,
           traceId: getProcessTraceContext()?.traceId,
         });
+        if (err instanceof SessionResumeError) {
+          this.publishVisibleInfo(err.message);
+        }
         if (this.lastStatus === 'working') {
           this.forwardOutputMessage(createNormalizedEvent({ type: 'status', state: 'idle' }));
         }

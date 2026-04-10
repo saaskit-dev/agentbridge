@@ -166,7 +166,7 @@ interface SessionKillResponse {
 export type SpawnSessionResult =
   | { type: 'success'; sessionId: string }
   | { type: 'requestToApproveDirectoryCreation'; directory: string }
-  | { type: 'error'; errorMessage: string };
+  | { type: 'error'; errorMessage: string; errorCode?: 'resume_failed' };
 
 // Options for spawning a session
 export interface SpawnSessionOptions {

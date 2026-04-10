@@ -16,7 +16,7 @@ import type { NormalizedMessage } from './types';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import type { SessionCapabilities } from './capabilities';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
-import { initCliTelemetry } from '@/telemetry';
+import { getAcpSessionId, initCliTelemetry, setAcpSessionId } from '@/telemetry';
 
 // ---------------------------------------------------------------------------
 // Minimal concrete subclass for testing
@@ -189,6 +189,52 @@ describe('AgentSession.shutdown()', () => {
     await session.shutdown('user_kill');
 
     expect(mockSession.sendSessionDeath).toHaveBeenCalled();
+  });
+});
+
+describe('AgentSession.preflightResume()', () => {
+  it('resolves resume sessions before creating the managed session', async () => {
+    const session = new TestAgentSession({ ...makeOpts(), resumeSessionId: 'resume-123' });
+    const backend = {
+      agentType: 'claude' as const,
+      output: new PushableAsyncIterable<NormalizedMessage>(),
+      start: vi.fn().mockResolvedValue(undefined),
+      resolveSession: vi.fn().mockImplementation(async () => {
+        setAcpSessionId('probe-session');
+        return 'resolved-456';
+      }),
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      abort: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+    } satisfies AgentBackend;
+
+    vi.spyOn(session, 'createBackend').mockReturnValue(backend);
+    setAcpSessionId('existing-session');
+
+    await session.preflightResume();
+
+    expect(backend.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: '/tmp/test',
+        resumeSessionId: 'resume-123',
+        session: expect.objectContaining({ sessionId: 'resume-preflight' }),
+        mcpServerUrl: expect.stringContaining('http://127.0.0.1:'),
+        freeMcpToolNames: ['change_title'],
+      })
+    );
+    expect(backend.resolveSession).toHaveBeenCalled();
+    expect(backend.stop).toHaveBeenCalled();
+    expect((session as any).opts.resumeSessionId).toBe('resolved-456');
+    expect(getAcpSessionId()).toBe('existing-session');
+  });
+
+  it('is a no-op when there is no resume session id', async () => {
+    const session = new TestAgentSession(makeOpts());
+    const createBackendSpy = vi.spyOn(session, 'createBackend');
+
+    await session.preflightResume();
+
+    expect(createBackendSpy).not.toHaveBeenCalled();
   });
 });
 

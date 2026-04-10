@@ -8,11 +8,12 @@ import { setAcpSessionId } from '@/telemetry';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import type { AgentBackend as IAgentBackend, AgentMessage } from '@/agent';
-import type {
+import {
   AgentBackend,
   AgentStartOpts,
   BackendExitInfo,
   LocalAttachment,
+  SessionResumeError,
 } from '@/daemon/sessions/AgentBackend';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
 import type { AgentType, NormalizedMessage } from '@/daemon/sessions/types';
@@ -413,11 +414,16 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         this.onSessionIdResolved?.(sessionId);
         return { sessionId, resumed: true };
       } catch (err) {
-        this.logger.warn(`[${this.agentType}] loadSession failed, keeping fresh session`, {
+        this.logger.warn(`[${this.agentType}] loadSession failed`, {
           resumeSessionId: this.resumeSessionId,
           freshSessionId,
           error: safeStringify(err),
         });
+        throw new SessionResumeError(
+          this.agentType,
+          this.resumeSessionId,
+          err instanceof Error ? err.message : safeStringify(err)
+        );
       } finally {
         this.isLoadingSession = false;
       }
@@ -438,6 +444,16 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       return [{ name: 'free', command: config.command, args: config.args }];
     }
     return undefined;
+  }
+
+  async resolveSession(): Promise<string> {
+    if (this.acpSessionId) {
+      return this.acpSessionId;
+    }
+    const { sessionId } = await this.resolveAcpSession();
+    this.acpSessionId = sessionId;
+    setAcpSessionId(sessionId);
+    return sessionId;
   }
 
   async abort(): Promise<void> {

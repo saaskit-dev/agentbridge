@@ -14,6 +14,7 @@ import {
   machineListSupportedAgents,
   machineSpawnNewSession,
   type ExternalAgentSessionSummary,
+  type SpawnSessionResult,
 } from '@/sync/ops';
 import { useMachine, useSessions } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
@@ -119,6 +120,23 @@ function formatAgentLabel(agent: string): string {
 
 function sessionBelongsToMachine(session: Session, machineId: string): boolean {
   return session.metadata?.machineId === machineId;
+}
+
+function getImportErrorAlert(
+  result: Extract<SpawnSessionResult, { type: 'error' }>,
+  agentType: string
+): { title: string; message: string } {
+  if (result.errorCode === 'resume_failed') {
+    return {
+      title: t('machineImport.resumeFailedTitle'),
+      message: t('machineImport.resumeFailedBody', { agent: formatAgentLabel(agentType) }),
+    };
+  }
+
+  return {
+    title: t('common.error'),
+    message: result.errorMessage,
+  };
 }
 
 export default function ImportSessionsScreen() {
@@ -280,7 +298,7 @@ export default function ImportSessionsScreen() {
       if (typeof item === 'string') continue;
       const session = item as Session;
       if (!sessionBelongsToMachine(session, machineId!)) continue;
-      const agentSessionId = session.metadata?.agentSessionId;
+      const agentSessionId = session.metadata?.agentSessionId ?? session.metadata?.claudeSessionId;
       if (agentSessionId && session.metadata?.flavor) {
         map.set(`${session.metadata.flavor}:${agentSessionId}`, session.id);
       } else if (agentSessionId) {
@@ -405,12 +423,14 @@ export default function ImportSessionsScreen() {
           if (retried.type === 'success') {
             navigateToSession(retried.sessionId);
           } else if (retried.type === 'error') {
-            Modal.alert(t('common.error'), retried.errorMessage);
+            const alert = getImportErrorAlert(retried, session.agentType);
+            Modal.alert(alert.title, alert.message);
           }
           return;
         }
 
-        Modal.alert(t('common.error'), result.errorMessage);
+        const alert = getImportErrorAlert(result, session.agentType);
+        Modal.alert(alert.title, alert.message);
       } finally {
         setImportingId(null);
       }

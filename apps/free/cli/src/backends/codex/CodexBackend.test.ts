@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodexBackend } from './CodexBackend';
 import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
+import { SessionResumeError } from '@/daemon/sessions/AgentBackend';
 
 const mockOnMessage = vi.fn();
 const mockOnSessionStarted = vi.fn();
@@ -31,6 +32,7 @@ vi.mock('@saaskit-dev/agentbridge', () => ({
     setSessionModel: mockSetSessionModel,
     setSessionMode: mockSetSessionMode,
   })),
+  safeStringify: (value: unknown) => (value instanceof Error ? value.message : String(value)),
 }));
 
 describe('CodexBackend', () => {
@@ -259,6 +261,23 @@ describe('CodexBackend', () => {
     expect(collected.at(-1)?.configOptions?.find(option => option.id === 'mode')?.currentValue).toBe(
       'full-auto'
     );
+  });
+
+  it('surfaces resume failures instead of silently falling back to a fresh session', async () => {
+    const backend = new CodexBackend();
+    mockLoadSession.mockRejectedValueOnce(new Error('session not found'));
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      resumeSessionId: 'previous-session-id',
+      mcpServerUrl: '',
+      freeMcpToolNames: [],
+      session: { sessionId: 'sess-1', rpcHandlerManager: { registerHandler: vi.fn() }, updateAgentState: vi.fn() } as never,
+    });
+
+    await expect(backend.sendMessage('hello')).rejects.toBeInstanceOf(SessionResumeError);
+    expect(mockSendPrompt).not.toHaveBeenCalled();
   });
 
   it('runs capability commands through ACP prompts', async () => {

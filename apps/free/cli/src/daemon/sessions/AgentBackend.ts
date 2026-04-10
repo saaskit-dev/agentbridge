@@ -19,6 +19,18 @@ import type { IPCServerMessage } from '@/daemon/ipc/protocol';
 import type { AgentType, NormalizedMessage } from './types';
 import type { SessionCapabilities } from './capabilities';
 
+export class SessionResumeError extends Error {
+  readonly agentType: AgentType;
+  readonly resumeSessionId: string;
+
+  constructor(agentType: AgentType, resumeSessionId: string, reason: string) {
+    super(`Failed to resume ${agentType} session "${resumeSessionId}": ${reason}`);
+    this.name = 'SessionResumeError';
+    this.agentType = agentType;
+    this.resumeSessionId = resumeSessionId;
+  }
+}
+
 /** Structured exit information from a backend process/SDK. */
 export interface BackendExitInfo {
   /** Process exit code (PTY backends only). */
@@ -110,6 +122,13 @@ export interface AgentBackend {
    * Implementations should push the complete current snapshot, not partial patches.
    */
   readonly capabilities?: PushableAsyncIterable<SessionCapabilities>;
+
+  /**
+   * Optionally resolve/create the agent-level session ahead of the first prompt.
+   * ACP backends implement this so the daemon can preflight resume requests
+   * before creating a managed AgentBridge session.
+   */
+  resolveSession?(): Promise<string | void>;
 
   /**
    * Called when the AgentSession swaps to a new ApiSessionClient after offline reconnection.
