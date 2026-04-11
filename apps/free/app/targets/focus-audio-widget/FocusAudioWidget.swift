@@ -3,7 +3,6 @@ import SwiftUI
 import WidgetKit
 
 private let widgetKind = "FocusAudioWidget"
-private let widgetSoundDeepLink = URL(string: "free:///settings/focus-audio")!
 
 private struct FocusAudioWidgetState: Codable {
   struct Preset: Codable, Hashable {
@@ -124,8 +123,6 @@ private struct FocusAudioWidgetView: View {
   let entry: FocusAudioWidgetEntry
 
   private var state: FocusAudioWidgetState { entry.state }
-  private let actionQueryKey = "focusAudioWidgetAction"
-  private let soundQueryKey = "focusAudioWidgetSound"
   private let accentColor = Color(red: 0.15, green: 0.76, blue: 0.63)
   private let surfaceColor = Color.white.opacity(0.07)
   private let borderColor = Color.white.opacity(0.09)
@@ -189,42 +186,18 @@ private struct FocusAudioWidgetView: View {
   }
 
   private var toggleRow: some View {
-    Link(destination: actionURL(action: "toggle")) {
-      HStack(spacing: 12) {
-        VStack(alignment: .leading, spacing: 3) {
-          Text(state.enabled ? "Playing" : "Stopped")
-            .font(.system(size: 16, weight: .bold, design: .rounded))
-            .foregroundStyle(.white)
+    Toggle(isOn: state.enabled, intent: ToggleFocusAudioIntent()) {
+      VStack(alignment: .leading, spacing: 3) {
+        Text(state.enabled ? "Playing" : "Stopped")
+          .font(.system(size: 16, weight: .bold, design: .rounded))
+          .foregroundStyle(.white)
 
-          Text(state.enabled ? "Tap to pause" : "Tap to resume")
-            .font(.system(size: 11, weight: .medium, design: .rounded))
-            .foregroundStyle(Color.white.opacity(0.58))
-        }
-
-        Spacer(minLength: 12)
-
-        ZStack(alignment: state.enabled ? .trailing : .leading) {
-          Capsule()
-            .fill(state.enabled ? accentColor : Color.white.opacity(0.14))
-            .frame(width: 52, height: 32)
-
-          Circle()
-            .fill(.white)
-            .frame(width: 24, height: 24)
-            .padding(4)
-        }
+        Text(state.enabled ? "Tap to pause" : "Tap to resume")
+          .font(.system(size: 11, weight: .medium, design: .rounded))
+          .foregroundStyle(Color.white.opacity(0.58))
       }
-      .padding(.horizontal, 14)
-      .frame(height: 62)
-      .background(
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-          .fill(surfaceColor)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 20, style: .continuous)
-          .stroke(borderColor, lineWidth: 1)
-      )
     }
+    .toggleStyle(FocusAudioWidgetToggleStyle(accentColor: accentColor, surfaceColor: surfaceColor, borderColor: borderColor))
   }
 
   private var statusLabel: String {
@@ -233,26 +206,11 @@ private struct FocusAudioWidgetView: View {
     }
     return state.isMuted ? "Muted" : "Live"
   }
-
-  private func actionURL(action: String, soundID: String? = nil) -> URL {
-    var components = URLComponents()
-    components.scheme = "free"
-    components.path = "/"
-    components.queryItems = [
-      URLQueryItem(name: actionQueryKey, value: action),
-    ]
-
-    if let soundID {
-      components.queryItems?.append(URLQueryItem(name: soundQueryKey, value: soundID))
-    }
-
-    return components.url ?? widgetSoundDeepLink
-  }
 }
 
 struct ToggleFocusAudioIntent: AppIntent {
   static var title: LocalizedStringResource = "Toggle Focus Audio"
-  static var openAppWhenRun: Bool = true
+  static var openAppWhenRun: Bool = false
 
   func perform() async throws -> some IntentResult {
     var state = FocusAudioWidgetStore.read()
@@ -273,66 +231,38 @@ struct ToggleFocusAudioIntent: AppIntent {
   }
 }
 
-struct ToggleFocusAudioMuteIntent: AppIntent {
-  static var title: LocalizedStringResource = "Toggle Focus Audio Mute"
-  static var openAppWhenRun: Bool = true
+private struct FocusAudioWidgetToggleStyle: ToggleStyle {
+  let accentColor: Color
+  let surfaceColor: Color
+  let borderColor: Color
 
-  func perform() async throws -> some IntentResult {
-    let current = FocusAudioWidgetStore.read()
-    let isMuting = !current.isMuted
-    let restoredVolume = max(current.lastAudibleVolume, 0.05)
-    let nextVolume = isMuting ? 0 : restoredVolume
+  func makeBody(configuration: Configuration) -> some View {
+    HStack(spacing: 12) {
+      configuration.label
 
-    let nextState = FocusAudioWidgetState(
-      enabled: current.enabled || !isMuting,
-      sound: current.sound,
-      soundLabel: current.soundLabel,
-      soundUri: current.soundUri,
-      volume: nextVolume,
-      lastAudibleVolume: isMuting ? restoredVolume : restoredVolume,
-      isMuted: isMuting,
-      mixWithOthers: current.mixWithOthers,
-      presets: current.presets,
-      updatedAt: Date().timeIntervalSince1970
+      Spacer(minLength: 12)
+
+      ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+        Capsule()
+          .fill(configuration.isOn ? accentColor : Color.white.opacity(0.14))
+          .frame(width: 52, height: 32)
+
+        Circle()
+          .fill(.white)
+          .frame(width: 24, height: 24)
+          .padding(4)
+      }
+    }
+    .padding(.horizontal, 14)
+    .frame(height: 62)
+    .background(
+      RoundedRectangle(cornerRadius: 20, style: .continuous)
+        .fill(surfaceColor)
     )
-
-    FocusAudioWidgetStore.write(nextState)
-    return .result()
-  }
-}
-
-struct SelectFocusAudioSoundIntent: AppIntent {
-  static var title: LocalizedStringResource = "Select Focus Audio Sound"
-  static var openAppWhenRun: Bool = true
-
-  @Parameter(title: "Sound ID")
-  var soundID: String
-
-  init() {}
-
-  init(soundID: String) {
-    self.soundID = soundID
-  }
-
-  func perform() async throws -> some IntentResult {
-    let current = FocusAudioWidgetStore.read()
-    let nextPreset = current.presets.first(where: { $0.id == soundID })
-      ?? FocusAudioWidgetState.Preset(id: soundID, label: soundID, uri: current.soundUri)
-    let nextState = FocusAudioWidgetState(
-      enabled: true,
-      sound: nextPreset.id,
-      soundLabel: nextPreset.label,
-      soundUri: nextPreset.uri,
-      volume: current.isMuted ? max(current.lastAudibleVolume, 0.05) : current.volume,
-      lastAudibleVolume: max(current.lastAudibleVolume, 0.05),
-      isMuted: false,
-      mixWithOthers: current.mixWithOthers,
-      presets: current.presets,
-      updatedAt: Date().timeIntervalSince1970
+    .overlay(
+      RoundedRectangle(cornerRadius: 20, style: .continuous)
+        .stroke(borderColor, lineWidth: 1)
     )
-
-    FocusAudioWidgetStore.write(nextState)
-    return .result()
   }
 }
 
