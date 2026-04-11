@@ -4,17 +4,41 @@ import { ApiClient } from './api';
 import { connectionState } from '@/utils/serverConnectionErrors';
 
 // Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
-const { mockPost, mockIsAxiosError } = vi.hoisted(() => ({
-  mockPost: vi.fn(),
-  mockIsAxiosError: vi.fn(() => true),
-}));
+const {
+  mockGet,
+  mockPost,
+  mockIsAxiosError,
+  mockEncryptToWireString,
+  mockDecryptFromWireString,
+  mockTweetnaclBoxOpen,
+} =
+  vi.hoisted(() => ({
+    mockGet: vi.fn(),
+    mockPost: vi.fn(),
+    mockIsAxiosError: vi.fn(() => true),
+    mockEncryptToWireString: vi.fn((_key: any, _variant: any, data: any) => JSON.stringify(data)),
+    mockDecryptFromWireString: vi.fn((_key: any, _variant: any, wireStr: string) =>
+      JSON.parse(wireStr)
+    ),
+    mockTweetnaclBoxOpen: vi.fn(),
+  }));
 
 vi.mock('axios', () => ({
   default: {
+    get: mockGet,
     post: mockPost,
     isAxiosError: mockIsAxiosError,
   },
+  get: mockGet,
   isAxiosError: mockIsAxiosError,
+}));
+
+vi.mock('tweetnacl', () => ({
+  default: {
+    box: {
+      open: mockTweetnaclBoxOpen,
+    },
+  },
 }));
 
 // Mock encryption utilities
@@ -23,8 +47,8 @@ vi.mock('./encryption', () => ({
   encodeBase64: vi.fn((data: any) => data),
   decrypt: vi.fn((data: any) => data),
   encrypt: vi.fn((data: any) => data),
-  encryptToWireString: vi.fn((_key: any, _variant: any, data: any) => JSON.stringify(data)),
-  decryptFromWireString: vi.fn((_key: any, _variant: any, wireStr: string) => JSON.parse(wireStr)),
+  encryptToWireString: mockEncryptToWireString,
+  decryptFromWireString: mockDecryptFromWireString,
 }));
 
 // Mock configuration
@@ -64,6 +88,9 @@ describe('Api server error handling', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     connectionState.reset(); // Reset offline state between tests
+    mockDecryptFromWireString.mockImplementation((_key: any, _variant: any, wireStr: string) =>
+      JSON.parse(wireStr)
+    );
 
     // Create a mock credential
     const mockCredential = {
@@ -230,6 +257,132 @@ describe('Api server error handling', () => {
         expect.stringContaining('⚠️  Free server unreachable')
       );
       consoleSpy.mockRestore();
+    });
+
+    it('keeps primary decrypted metadata when fallback dataEncryptionKey is stale', async () => {
+      const primaryKey = new Uint8Array([1]);
+      const staleRecoveredKey = new Uint8Array([2]);
+      const decryptMock = mockDecryptFromWireString.mockImplementation(
+        (key: Uint8Array, _variant: any, wireStr: string) => {
+          if (wireStr === '{"path":"/repo","host":"localhost"}' && key[0] === primaryKey[0]) {
+            return { path: '/repo', host: 'localhost' };
+          }
+          if (wireStr === '{"state":"idle"}' && key[0] === primaryKey[0]) {
+            return { state: 'idle' };
+          }
+          if (wireStr === '{"tools":["rg"]}' && key[0] === primaryKey[0]) {
+            return { tools: ['rg'] };
+          }
+          return null;
+        }
+      );
+
+      const dataKeyCredential = {
+        token: 'fake-token',
+        encryption: {
+          type: 'dataKey' as const,
+          publicKey: new Uint8Array(32),
+          machineKey: new Uint8Array(32),
+        },
+      };
+      const dataKeyApi = await ApiClient.create(dataKeyCredential as any);
+      vi.spyOn<any, any>(dataKeyApi as any, 'createSessionEncryptionContext').mockResolvedValue({
+        dataEncryptionKey: new Uint8Array([9]),
+        encryptionKey: primaryKey,
+        encryptionVariant: 'dataKey',
+      });
+      mockPost.mockResolvedValue({
+        status: 200,
+        data: {
+          session: {
+            id: 'sess-1',
+            seq: 3,
+            metadata: '{"path":"/repo","host":"localhost"}',
+            metadataVersion: 1,
+            agentState: '{"state":"idle"}',
+            agentStateVersion: 2,
+            capabilities: '{"tools":["rg"]}',
+            capabilitiesVersion: 1,
+            dataEncryptionKey: 'stale-dek',
+          },
+        },
+      });
+      const decodeBase64Module = await import('./encryption');
+      const bundle = new Uint8Array(209);
+      bundle[105] = 1;
+      vi.spyOn(decodeBase64Module, 'decodeBase64').mockReturnValue(bundle);
+      mockTweetnaclBoxOpen.mockReturnValue(staleRecoveredKey);
+
+      const result = await dataKeyApi.getOrCreateSession({
+        id: 'sess-1',
+        metadata: testMetadata,
+        state: null,
+      });
+
+      expect(result?.metadata).toEqual({ path: '/repo', host: 'localhost' });
+      expect(result?.agentState).toEqual({ state: 'idle' });
+      expect(result?.capabilities).toEqual({ tools: ['rg'] });
+      expect(decryptMock).toHaveBeenCalled();
+    });
+  });
+
+  describe('fetchOfflineSessions', () => {
+    it('fetches each requested session directly by id', async () => {
+      mockGet.mockImplementation((url: string) => {
+        if (url.endsWith('/v1/sessions/sess-a')) {
+          return Promise.resolve({
+            data: {
+              session: {
+                id: 'sess-a',
+                seq: 11,
+                status: 'offline',
+                metadata: '{"path":"/repo-a","flavor":"codex"}',
+                dataEncryptionKey: null,
+                createdAt: 123,
+              },
+            },
+          });
+        }
+        if (url.endsWith('/v1/sessions/sess-b')) {
+          return Promise.resolve({
+            data: {
+              session: {
+                id: 'sess-b',
+                seq: 12,
+                status: 'offline',
+                metadata: '{"path":"/repo-b","flavor":"claude"}',
+                dataEncryptionKey: null,
+                createdAt: 456,
+              },
+            },
+          });
+        }
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      });
+
+      const result = await api.fetchOfflineSessions(['sess-a', 'sess-b']);
+
+      expect(mockGet).toHaveBeenCalledTimes(2);
+      expect(mockGet).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining('/v1/sessions/sess-a'),
+        expect.any(Object)
+      );
+      expect(mockGet).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('/v1/sessions/sess-b'),
+        expect.any(Object)
+      );
+      expect(result.get('sess-a')).toEqual({
+        metadata: { path: '/repo-a', flavor: 'codex' },
+        seq: 11,
+        createdAt: 123,
+      });
+      expect(result.get('sess-b')).toEqual({
+        metadata: { path: '/repo-b', flavor: 'claude' },
+        seq: 12,
+        createdAt: 456,
+      });
     });
   });
 

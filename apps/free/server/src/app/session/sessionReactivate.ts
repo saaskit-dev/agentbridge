@@ -13,7 +13,6 @@ export async function sessionReactivate(
   ctx: Context,
   opts: {
     sessionId: string;
-    metadata?: string;
     machineId?: string;
   }
 ) {
@@ -33,8 +32,6 @@ export async function sessionReactivate(
   }
 
   const now = new Date();
-  const nextMetadataVersion =
-    opts.metadata !== undefined ? session.metadataVersion + 1 : session.metadataVersion;
   const nextAgentStateVersion = session.agentStateVersion + 1;
 
   const activeSession = await db.session.update({
@@ -43,12 +40,6 @@ export async function sessionReactivate(
       status: 'active',
       lastActiveAt: now,
       ...(session.status === 'archived' ? { archivedAt: null } : {}),
-      ...(opts.metadata !== undefined
-        ? {
-            metadata: opts.metadata,
-            metadataVersion: nextMetadataVersion,
-          }
-        : {}),
       ...(opts.machineId ? { machineId: opts.machineId } : {}),
       // Reset pending requests from the previous daemon instance or archived snapshot.
       agentState: null,
@@ -68,7 +59,7 @@ export async function sessionReactivate(
     session.id,
     updateSeq,
     randomKeyNaked(12),
-    opts.metadata !== undefined ? { value: opts.metadata, version: nextMetadataVersion } : undefined,
+    undefined,
     { value: null, version: nextAgentStateVersion },
     undefined,
     undefined,

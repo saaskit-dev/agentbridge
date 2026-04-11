@@ -156,7 +156,7 @@ describe('sessionRoutes', () => {
 
     expect(mockReactivate).toHaveBeenCalledWith(
       { uid: 'user-1' },
-      { sessionId: 'sess-1', metadata: 'enc-meta', machineId: 'machine-1' }
+      { sessionId: 'sess-1', machineId: 'machine-1' }
     );
     expect(result).toEqual({
       session: {

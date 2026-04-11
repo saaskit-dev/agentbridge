@@ -110,18 +110,21 @@ export class ApiClient {
     encryptionKey: Uint8Array,
     encryptionVariant: 'legacy' | 'dataKey'
   ): Promise<Session> {
+    const metadata = await decryptFromWireString(encryptionKey, encryptionVariant, raw.metadata);
+    const agentState = raw.agentState
+      ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.agentState)
+      : null;
+    const capabilities = raw.capabilities
+      ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.capabilities)
+      : null;
     const session: Session = {
       id: raw.id,
       seq: raw.seq,
-      metadata: await decryptFromWireString(encryptionKey, encryptionVariant, raw.metadata),
+      metadata,
       metadataVersion: raw.metadataVersion,
-      agentState: raw.agentState
-        ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.agentState)
-        : null,
+      agentState,
       agentStateVersion: raw.agentStateVersion,
-      capabilities: raw.capabilities
-        ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.capabilities)
-        : null,
+      capabilities,
       capabilitiesVersion: raw.capabilitiesVersion ?? 0,
       encryptionKey,
       encryptionVariant,
@@ -132,16 +135,26 @@ export class ApiClient {
         this.credential.encryption.machineKey
       );
       if (recovered) {
-        session.encryptionKey = recovered;
-        session.metadata = await decryptFromWireString(recovered, encryptionVariant, raw.metadata);
-        if (raw.agentState) {
-          session.agentState = await decryptFromWireString(
-            recovered,
-            encryptionVariant,
-            raw.agentState
-          );
+        const recoveredMetadata =
+          session.metadata ?? (await decryptFromWireString(recovered, encryptionVariant, raw.metadata));
+        if (recoveredMetadata) {
+          session.encryptionKey = recovered;
+          session.metadata = recoveredMetadata;
+          if (raw.agentState) {
+            session.agentState =
+              session.agentState ??
+              (await decryptFromWireString(recovered, encryptionVariant, raw.agentState));
+          }
+          if (raw.capabilities) {
+            session.capabilities =
+              session.capabilities ??
+              (await decryptFromWireString(recovered, encryptionVariant, raw.capabilities));
+          }
         }
       }
+    }
+    if (!session.metadata) {
+      throw new Error(`Failed to decrypt session metadata for session ${raw.id}`);
     }
     return session;
   }
@@ -631,7 +644,7 @@ export class ApiClient {
   /**
    * Fetch sessions by ID from the server and decrypt their metadata.
    * Used to repair corrupted local persistence files — the server is the source of truth.
-   * Makes a single GET /v1/sessions call and filters client-side by the requested IDs.
+   * Fetches each requested session directly so recovery does not depend on the first list page.
    * Returns a map of sessionId → decrypted data for sessions that could be recovered.
    */
   async fetchOfflineSessions(
@@ -641,44 +654,56 @@ export class ApiClient {
     if (sessionIds.length === 0) return result;
 
     try {
-      const response = await axios.get<{
-        sessions: Array<{
-          id: string;
-          seq: number;
-          status: string;
-          metadata: string | null;
-          dataEncryptionKey: string | null;
-          createdAt: number;
-        }>;
-      }>(`${configuration.serverUrl}/v1/sessions`, {
-        headers: { Authorization: `Bearer ${this.credential.token}` },
-        timeout: 15000,
-      });
-
-      const targetIds = new Set(sessionIds);
-      for (const raw of response.data.sessions) {
-        if (!targetIds.has(raw.id) || raw.status !== 'offline' || !raw.metadata) continue;
-        try {
-          let encryptionKey: Uint8Array;
-          const encryptionVariant: 'legacy' | 'dataKey' =
-            this.credential.encryption.type === 'dataKey' ? 'dataKey' : 'legacy';
-          if (this.credential.encryption.type === 'dataKey') {
-            if (!raw.dataEncryptionKey) continue;
-            const recovered = tryRecoverSessionKey(
-              raw.dataEncryptionKey,
-              this.credential.encryption.machineKey
+      await Promise.all(
+        sessionIds.map(async sessionId => {
+          try {
+            const response = await axios.get<{
+              session: {
+                id: string;
+                seq: number;
+                status: string;
+                metadata: string | null;
+                dataEncryptionKey: string | null;
+                createdAt: number;
+              };
+            }>(`${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+              headers: { Authorization: `Bearer ${this.credential.token}` },
+              timeout: 15000,
+            });
+            const raw = response.data.session;
+            if (!raw || raw.status !== 'offline' || !raw.metadata) return;
+            let encryptionKey: Uint8Array;
+            const encryptionVariant: 'legacy' | 'dataKey' =
+              this.credential.encryption.type === 'dataKey' ? 'dataKey' : 'legacy';
+            if (this.credential.encryption.type === 'dataKey') {
+              if (!raw.dataEncryptionKey) return;
+              const recovered = tryRecoverSessionKey(
+                raw.dataEncryptionKey,
+                this.credential.encryption.machineKey
+              );
+              if (!recovered) return;
+              encryptionKey = recovered;
+            } else {
+              encryptionKey = this.credential.encryption.secret;
+            }
+            const metadata = await decryptFromWireString(
+              encryptionKey,
+              encryptionVariant,
+              raw.metadata
             );
-            if (!recovered) continue;
-            encryptionKey = recovered;
-          } else {
-            encryptionKey = this.credential.encryption.secret;
+            if (!metadata) return;
+            result.set(raw.id, { metadata, seq: raw.seq, createdAt: raw.createdAt });
+          } catch (err) {
+            if (axios.isAxiosError(err) && err.response?.status === 404) {
+              return;
+            }
+            logger.warn('[API] fetchOfflineSessions: failed to fetch session', {
+              sessionId,
+              error: String(err),
+            });
           }
-          const metadata = await decryptFromWireString(encryptionKey, encryptionVariant, raw.metadata);
-          result.set(raw.id, { metadata, seq: raw.seq, createdAt: raw.createdAt });
-        } catch {
-          // Skip sessions we can't decrypt
-        }
-      }
+        })
+      );
     } catch (err) {
       logger.warn('[API] fetchOfflineSessions failed', { error: String(err) });
     }

@@ -283,7 +283,6 @@ export function sessionRoutes(app: Fastify) {
             { uid: userId },
             {
               sessionId: session.id,
-              metadata,
               machineId: machineId ?? undefined,
             }
           );
@@ -536,7 +535,7 @@ export function sessionRoutes(app: Fastify) {
           sessionId: z.string(),
         }),
         body: z.object({
-          metadata: z.string(),
+          metadata: z.string().nullish(),
           machineId: z.string().nullish(),
         }),
       },
@@ -545,7 +544,7 @@ export function sessionRoutes(app: Fastify) {
     async (request, reply) => {
       const userId = request.userId;
       const { sessionId } = request.params;
-      const { metadata, machineId } = request.body;
+      const { machineId } = request.body;
 
       log.debug('[sessions] restore requested', { userId, sessionId });
 
@@ -553,7 +552,6 @@ export function sessionRoutes(app: Fastify) {
         { uid: userId },
         {
           sessionId,
-          metadata,
           machineId: machineId ?? undefined,
         }
       );

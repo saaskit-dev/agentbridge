@@ -636,6 +636,7 @@ export async function startDaemon(): Promise<void> {
               // agentSessionId is the agent's internal session ID (e.g. Claude Code --resume ID).
               resumeSessionId:
                 serverData.metadata.agentSessionId ?? serverData.metadata.claudeSessionId,
+              importedAgentSessionId: serverData.metadata.importedAgentSessionId,
               // Restore agent session opts stored in server metadata at session creation.
               model: serverData.metadata.agentModel,
               mode: serverData.metadata.agentMode,
@@ -734,12 +735,14 @@ export async function startDaemon(): Promise<void> {
             startedBy: 'daemon',
             cwd: data.cwd,
             resumeSessionId: data.resumeSessionId,
+            importedAgentSessionId: data.importedAgentSessionId,
             sessionId: data.sessionId,
             permissionMode: data.permissionMode,
             model: data.model,
             mode: data.mode,
             startingMode: data.startingMode,
             env: data.env,
+            requireResumeSuccess: Boolean(data.resumeSessionId),
             broadcast: (sid: string, msg: any) => ipcServer!.broadcast(sid, msg),
             daemonInstanceId,
             lastSeq: data.lastSeq,
