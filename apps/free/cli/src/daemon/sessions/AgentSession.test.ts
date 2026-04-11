@@ -316,6 +316,22 @@ describe('AgentSession.initialize()', () => {
     expect(sessionSyncClient).toHaveBeenCalled();
     expect(mockStartFreeServer).toHaveBeenCalledWith(apiSession);
   });
+
+  it('does not throw when initialize falls back to the offline session stub', async () => {
+    const session = new TestAgentSession(makeOpts());
+    const getOrCreateSession = vi.fn().mockResolvedValue(null);
+    const sessionSyncClient = vi.fn();
+    vi.spyOn(ApiClient, 'create').mockResolvedValue({
+      getOrCreateSession,
+      sessionSyncClient,
+    } as unknown as ApiClient);
+
+    await expect(session.initialize()).resolves.toBeUndefined();
+    expect(sessionSyncClient).not.toHaveBeenCalled();
+    expect(mockStartFreeServer).not.toHaveBeenCalled();
+
+    await session.shutdown('test_cleanup');
+  });
 });
 
 describe('AgentSession.sendInput()', () => {
@@ -356,6 +372,39 @@ describe('AgentSession.abort()', () => {
 
     await session.abort();
     expect(backend.abort).toHaveBeenCalled();
+  });
+});
+
+describe('AgentSession session RPC handlers', () => {
+  it('restartAgent does not leak unhandled rejections when forceRestart fails', async () => {
+    const session = new TestAgentSession(makeOpts());
+    const mockSession = makeMockSession('sess-restart');
+    session.injectSession(mockSession);
+
+    const forceRestartSpy = vi
+      .spyOn(session, 'forceRestart')
+      .mockRejectedValue(new Error('boom'));
+    const unhandledRejection = vi.fn();
+
+    process.once('unhandledRejection', unhandledRejection);
+
+    (session as any).registerSessionRpcHandlers();
+
+    const restartCall = (mockSession.rpcHandlerManager.registerHandler as any).mock.calls.find(
+      ([name]: [string]) => name === 'restartAgent'
+    );
+    expect(restartCall).toBeTruthy();
+
+    const handler = restartCall[1];
+    await expect(handler()).resolves.toEqual({
+      success: true,
+      message: 'Restarting agent process',
+    });
+
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(forceRestartSpy).toHaveBeenCalledTimes(1);
+    expect(unhandledRejection).not.toHaveBeenCalled();
   });
 });
 

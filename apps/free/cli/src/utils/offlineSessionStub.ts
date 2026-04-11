@@ -48,6 +48,7 @@ export function createOfflineSessionStub(sessionId: string): ApiSessionClient {
     updateAgentState: () => {},
     onUserMessage: () => {},
     onFileTransfer: () => {},
+    onFetchAttachment: () => {},
     once: () => {},
     on: () => {},
     off: () => {},
