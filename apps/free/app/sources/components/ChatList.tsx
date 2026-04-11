@@ -901,6 +901,7 @@ const TurnGroupRow = React.memo(
     return (
       <View
         style={{
+          width: '100%',
           marginHorizontal: 8,
           marginVertical: 2,
           borderRadius: 16,
@@ -918,29 +919,31 @@ const TurnGroupRow = React.memo(
           paddingVertical: props.isHighlighted ? 4 : 0,
         }}
       >
-        {props.messageIds.map(messageId => (
-          <MessageRow
-            key={messageId}
-            messageId={messageId}
-            metadata={props.metadata}
-            sessionId={props.sessionId}
-            collapseToolsSignal={props.collapseToolsSignal}
-          />
-        ))}
-        <Text
-          style={{
-            alignSelf: props.role === 'user' ? 'flex-end' : 'flex-start',
-            marginHorizontal: 16,
-            marginTop: 2,
-            marginBottom: 10,
-            color: theme.colors.textSecondary,
-            fontSize: 11,
-            opacity: 0.75,
-            ...Typography.default(),
-          }}
-        >
-          {formatTime(props.createdAt)}
-        </Text>
+        <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center' }}>
+          {props.messageIds.map(messageId => (
+            <MessageRow
+              key={messageId}
+              messageId={messageId}
+              metadata={props.metadata}
+              sessionId={props.sessionId}
+              collapseToolsSignal={props.collapseToolsSignal}
+            />
+          ))}
+          <Text
+            style={{
+              alignSelf: props.role === 'user' ? 'flex-end' : 'flex-start',
+              marginHorizontal: 16,
+              marginTop: 2,
+              marginBottom: 10,
+              color: theme.colors.textSecondary,
+              fontSize: 11,
+              opacity: 0.75,
+              ...Typography.default(),
+            }}
+          >
+            {formatTime(props.createdAt)}
+          </Text>
+        </View>
       </View>
     );
   }

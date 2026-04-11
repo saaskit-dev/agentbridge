@@ -1422,21 +1422,21 @@ export const AgentInput = React.memo(
             props.pendingCapabilityLabel) && (
             <View
               style={{
-                flexDirection: Platform.OS === 'web' ? 'column' : 'row',
-                alignItems: Platform.OS === 'web' ? 'stretch' : 'center',
+                flexDirection: 'row',
+                alignItems: 'flex-start',
                 justifyContent: 'space-between',
                 paddingHorizontal: Platform.OS === 'web' ? 14 : 16,
                 paddingTop: Platform.OS === 'web' ? 2 : 0,
                 paddingBottom: Platform.OS === 'web' ? 10 : 4,
                 minHeight: 20,
-                gap: Platform.OS === 'web' ? 6 : 0,
+                gap: Platform.OS === 'web' ? 12 : 0,
               }}
             >
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  flex: Platform.OS === 'web' ? 0 : 1,
+                  flex: 1,
                   flexWrap: 'wrap',
                   gap: Platform.OS === 'web' ? 8 : 11,
                   rowGap: Platform.OS === 'web' ? 6 : 2,
@@ -1543,7 +1543,7 @@ export const AgentInput = React.memo(
               <View
                 style={{
                   flexDirection: 'column',
-                  alignItems: Platform.OS === 'web' ? 'flex-start' : 'flex-end',
+                  alignItems: 'flex-end',
                   flexShrink: 1,
                   gap: Platform.OS === 'web' ? 4 : 1,
                 }}
@@ -1595,24 +1595,13 @@ export const AgentInput = React.memo(
                 {(props.actualModeLabel || props.actualModelLabel) && (
                   <View
                     style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      justifyContent: Platform.OS === 'web' ? 'flex-start' : 'flex-end',
-                      gap: 6,
+                      flexDirection: 'column',
+                      alignItems: 'flex-end',
+                      gap: Platform.OS === 'web' ? 2 : 6,
                     }}
                   >
                     {props.actualModeLabel ? (
-                      <View
-                        style={{
-                          borderRadius: 999,
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          backgroundColor: theme.dark
-                            ? 'rgba(255,255,255,0.05)'
-                            : 'rgba(15,23,42,0.05)',
-                        }}
-                      >
+                      <View>
                         <Text
                           style={{
                             fontSize: 11,
@@ -1625,16 +1614,7 @@ export const AgentInput = React.memo(
                       </View>
                     ) : null}
                     {props.actualModelLabel ? (
-                      <View
-                        style={{
-                          borderRadius: 999,
-                          paddingHorizontal: 8,
-                          paddingVertical: 3,
-                          backgroundColor: theme.dark
-                            ? 'rgba(255,255,255,0.05)'
-                            : 'rgba(15,23,42,0.05)',
-                        }}
-                      >
+                      <View>
                         <Text
                           style={{
                             fontSize: 11,

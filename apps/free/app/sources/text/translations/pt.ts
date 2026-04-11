@@ -548,6 +548,8 @@ export const pt: TranslationStructure = {
     serverReturnedError: 'O servidor retornou um erro',
     failedToConnectToServer: 'Falha ao conectar com o servidor',
     currentlyUsingCustomServer: 'Atualmente usando servidor personalizado',
+    devIgnoringProductionServer:
+      'O modo de desenvolvimento está ignorando a URL do servidor de produção e usando o servidor local de desenvolvimento.',
     customServerUrlLabel: 'URL do servidor personalizado',
     advancedFeatureFooter:
       'Este é um recurso avançado. Altere o servidor apenas se souber o que está fazendo. Você precisará sair e entrar novamente após alterar servidores.',

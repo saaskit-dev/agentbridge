@@ -1,18 +1,22 @@
 import { Dimensions, Platform } from 'react-native';
-import { isRunningOnMac } from '@/utils/platform';
+import { isDesktopPlatform, isRunningOnMac } from '@/utils/platform';
 import { getDeviceType } from '@/utils/responsive';
+
+function isWebRuntime(): boolean {
+  return Platform.OS === 'web';
+}
 
 // Calculate max width based on device type
 function getMaxWidth(): number {
   const deviceType = getDeviceType();
 
   // For phones, use the max dimension (width or height)
-  if (deviceType === 'phone' && Platform.OS !== 'web') {
+  if (deviceType === 'phone' && !isWebRuntime()) {
     const { width, height } = Dimensions.get('window');
     return Math.max(width, height);
   }
 
-  if (isRunningOnMac()) {
+  if (isDesktopPlatform()) {
     return Number.POSITIVE_INFINITY;
   }
 
@@ -25,7 +29,7 @@ function getMaxLayoutWidth(): number {
   const deviceType = getDeviceType();
 
   // For phones, use the max dimension (width or height)
-  if (deviceType === 'phone' && Platform.OS !== 'web') {
+  if (deviceType === 'phone' && !isWebRuntime()) {
     const { width, height } = Dimensions.get('window');
     return Math.max(width, height);
   }
@@ -45,7 +49,7 @@ export const layout = {
 
 // On web, update layout values when the window resizes so that inline style
 // references (not StyleSheet captures) pick up the new value on next render.
-if (Platform.OS === 'web') {
+if (isWebRuntime()) {
   Dimensions.addEventListener('change', () => {
     layout.maxWidth = getMaxLayoutWidth();
     layout.headerMaxWidth = getMaxWidth();

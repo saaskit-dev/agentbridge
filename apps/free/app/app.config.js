@@ -40,6 +40,7 @@ const configs = {
 
 const config = configs[variant] || configs.development;
 const { name, bundleId, serverUrl, googleServicesFile } = config;
+const appGroup = `group.${bundleId}`;
 
 export default {
   expo: {
@@ -60,6 +61,9 @@ export default {
       supportsTablet: true,
       bundleIdentifier: bundleId,
       appleTeamId: process.env.APPLE_TEAM_ID || 'SD58V5WA54',
+      entitlements: {
+        'com.apple.security.application-groups': [appGroup],
+      },
       config: {
         usesNonExemptEncryption: false,
       },
@@ -131,7 +135,13 @@ export default {
       require('./plugins/withXcodeDefaults.js'), // Scheme Run→Release + App Category→Developer Tools
       require('./plugins/withPushNotificationEntitlements.js'), // 自动配置推送 entitlements
       require('./plugins/withEinkCompatibility.js'),
-      // '@bacons/apple-targets', // watchOS app target (targets/watch/) — 暂未配置 Watch 签名，跳过
+      [
+        '@bacons/apple-targets',
+        {
+          match: 'focus-audio-widget',
+        },
+      ],
+      require('./plugins/withFocusAudioNativeModule.js'),
       require('./plugins/withSourceBuildRN.js'),
       require('./plugins/withFmtConsteval.js'),
       [

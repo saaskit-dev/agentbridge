@@ -548,6 +548,8 @@ export const it: TranslationStructure = {
     serverReturnedError: 'Il server ha restituito un errore',
     failedToConnectToServer: 'Impossibile connettersi al server',
     currentlyUsingCustomServer: 'Attualmente si usa un server personalizzato',
+    devIgnoringProductionServer:
+      'La modalità di sviluppo sta ignorando l’URL del server di produzione e sta usando invece il server locale di sviluppo.',
     customServerUrlLabel: 'URL server personalizzato',
     advancedFeatureFooter:
       'Questa è una funzionalità avanzata. Cambia il server solo se sai cosa stai facendo. Dovrai disconnetterti e accedere di nuovo dopo aver cambiato server.',

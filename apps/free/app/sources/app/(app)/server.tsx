@@ -9,7 +9,13 @@ import { RoundButton } from '@/components/RoundButton';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
-import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/sync/serverConfig';
+import {
+  getServerUrl,
+  setServerUrl,
+  validateServerUrl,
+  getServerInfo,
+  isIgnoringProductionCustomServerInDev,
+} from '@/sync/serverConfig';
 import { t } from '@/text';
 
 const stylesheet = StyleSheet.create(theme => ({
@@ -77,6 +83,7 @@ export default function ServerConfigScreen() {
   const styles = stylesheet;
   const router = useRouter();
   const serverInfo = getServerInfo();
+  const ignoringProductionServerInDev = isIgnoringProductionCustomServerInDev();
   const [inputUrl, setInputUrl] = useState(serverInfo.isCustom ? getServerUrl() : '');
   const [error, setError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -210,6 +217,11 @@ export default function ServerConfigScreen() {
               </View>
               {serverInfo.isCustom && (
                 <Text style={styles.statusText}>{t('server.currentlyUsingCustomServer')}</Text>
+              )}
+              {ignoringProductionServerInDev && (
+                <Text style={styles.statusText}>
+                  {t('server.devIgnoringProductionServer')}
+                </Text>
               )}
             </View>
           </ItemGroup>

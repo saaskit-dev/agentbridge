@@ -562,6 +562,8 @@ export const pl: TranslationStructure = {
     serverReturnedError: 'Serwer zwrócił błąd',
     failedToConnectToServer: 'Nie udało się połączyć z serwerem',
     currentlyUsingCustomServer: 'Aktualnie używany jest niestandardowy serwer',
+    devIgnoringProductionServer:
+      'Tryb deweloperski ignoruje adres produkcyjnego serwera i używa zamiast niego lokalnego serwera deweloperskiego.',
     customServerUrlLabel: 'URL niestandardowego serwera',
     advancedFeatureFooter:
       'To jest zaawansowana funkcja. Zmieniaj serwer tylko jeśli wiesz, co robisz. Po zmianie serwera będziesz musiał się wylogować i zalogować ponownie.',

@@ -15,13 +15,20 @@ import { ItemList } from '@/components/ItemList';
 import { layout } from '@/components/layout';
 import { Typography } from '@/constants/Typography';
 import { useFreeAction } from '@/hooks/useFreeAction';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete, sessionRestart, sessionArchiveViaServer } from '@/sync/ops';
+import {
+  sessionKill,
+  sessionDelete,
+  sessionRestart,
+  sessionArchiveViaServer,
+} from '@/sync/ops';
 import { useSession, useIsDataReady } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { FreeError } from '@/utils/errors';
+import { resumeIntoManagedSession } from '@/utils/resumeIntoManagedSession';
 import {
   getSessionName,
   useSessionStatus,
@@ -141,6 +148,7 @@ function formatDangerouslySkipPermissionsMetadata(
 function SessionInfoContent({ session }: { session: Session }) {
   const { theme } = useUnistyles();
   const router = useRouter();
+  const navigateToSession = useNavigateToSession();
   const devModeEnabled = useLocalSetting('devModeEnabled');
   const showDebugIds = useLocalSetting('showDebugIds');
   const sessionName = getSessionName(session);
@@ -169,6 +177,37 @@ function SessionInfoContent({ session }: { session: Session }) {
       Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
     }
   }, [session]);
+
+  const resumeAgentSessionId =
+    session.metadata?.agentSessionId ??
+    session.metadata?.claudeSessionId ??
+    session.metadata?.importedAgentSessionId;
+  const canRestoreArchivedSession = Boolean(
+    session.status === 'archived' &&
+      session.metadata?.machineId &&
+      session.metadata?.path &&
+      resumeAgentSessionId
+  );
+  const resumeAgentLabel = getAgentDisplayName(normalizeAgentFlavor(session.metadata?.flavor));
+
+  const [restoringSession, performRestore] = useFreeAction(async () => {
+    if (!canRestoreArchivedSession) {
+      throw new FreeError(t('machineImport.resumeFailedTitle'), false);
+    }
+
+    await resumeIntoManagedSession({
+      machineId: session.metadata!.machineId!,
+      directory: session.metadata!.path,
+      agent: session.metadata?.flavor,
+      resumeAgentSessionId: resumeAgentSessionId!,
+      targetSessionId: session.id,
+      model: session.metadata?.agentModel,
+      mode: session.metadata?.agentMode,
+      permissionMode: session.metadata?.agentPermissionMode,
+      navigateToSession,
+      confirmTitle: t('common.continue'),
+    });
+  });
 
   // Use FreeAction for archiving - it handles errors automatically
   const [archivingSession, performArchive] = useFreeAction(async () => {
@@ -474,6 +513,15 @@ function SessionInfoContent({ session }: { session: Session }) {
                   ? handleArchiveRecoveryFailed
                   : handleArchiveSession
               }
+            />
+          )}
+          {canRestoreArchivedSession && (
+            <Item
+              title={t('machineImport.continueHere')}
+              subtitle={t('machineImport.continueBody', { agent: resumeAgentLabel })}
+              icon={<Ionicons name="play-circle-outline" size={29} color="#34C759" />}
+              onPress={performRestore}
+              disabled={restoringSession}
             />
           )}
           {session.status === 'archived' && (

@@ -9,6 +9,77 @@
 
 ---
 
+## packages/core/package.json / scripts/dev.sh — 清理 macOS `uchg` 不可变 dist 目录
+
+**问题**：在 macOS 上，`packages/core/dist` 偶发会被打上 `uchg`（user immutable）标记，导致即使文件归属正确，
+`rm -rf dist` 仍报 `Operation not permitted`，从而让 `pnpm build` 和 `./run dev` 卡死在 core 构建阶段。
+
+**触发条件**：
+
+- 运行 `pnpm --filter @saaskit-dev/agentbridge build`
+- 或运行 `./run dev`
+- 且 `packages/core/dist` 或其子文件带有 `uchg` 标记
+
+**修复内容**：
+
+- 在 `packages/core` 的 `build` 脚本里，删除 `dist` 前先执行 `chflags -R nouchg dist`
+- 在 `scripts/dev.sh` 的 cleanup / build core 流程里，对 `packages/core/dist` 和 `apps/free/cli/dist` 同样先解锁再删除
+
+**上游**：不是第三方库 bug，更像是本地文件系统 / 历史脚本留下的不可变标记副作用。
+
+**删除条件**：确认不会再有构建产物被打上 `uchg`，且连续多轮 `./run dev` / `pnpm build` 都无需解锁时可移除。
+
+---
+
+## apps/free/app/src-tauri/tauri.conf.json — Tauri 通过 Expo Web 固定 8081 端口启动
+
+**问题**：Tauri 桌面壳需要一个稳定可预测的前端地址。Expo 默认开发端口会漂移，而且原先配置使用 `yarn start`，
+既不符合本仓库的 `pnpm` 工作区，也会启动原生开发服务器而不是 Web 前端。
+
+**触发条件**：
+
+- 运行 `pnpm tauri:dev` 启动桌面开发版
+- 或运行 `pnpm tauri:build:*` 构建桌面包
+
+**修复内容**：
+
+- 新增专用脚本：
+  - `desktop:web:dev` → `scripts/desktop-web-dev.sh`
+  - 该脚本内部启动 `expo start --web --port 8081 --host localhost`，并等待 `http://localhost:8081` 真正 ready 后再继续
+  - `desktop:web:build` / `desktop:web:build:dev` → 导出桌面前端静态资源
+- Tauri `beforeDevCommand` / `beforeBuildCommand` 改为调用上述 `pnpm` 脚本
+- Tauri `devUrl` 固定为 `http://localhost:8081`，与 Expo Web dev server 同源；通过启动脚本等待 server ready，
+  避免桌面 WebView 首次加载失败后落到 `chrome-error://chromewebdata/`
+
+**上游**：不是第三方 bug，而是本仓库桌面集成对 Expo Web 启动方式的约束。
+
+**删除条件**：若未来改为独立桌面前端构建链，或 Tauri 集成不再依赖 Expo Web dev server / export 产物，可移除。
+
+---
+
+## apps/free/app/sources/sync/serverConfig.ts — development 模式忽略生产 `custom-server-url`
+
+**问题**：Web/desktop 开发时，用户之前保存过的 `custom-server-url=https://free-server.saaskit.app`
+会覆盖掉 dev 默认的本地 server，导致页面虽然由 `./run dev` 提供，API 却仍然打到线上。
+
+**触发条件**：
+
+- `APP_ENV=development` / `__DEV__ === true`
+- 且本地缓存里存在 `custom-server-url`
+- 且该地址指向 `https://free-server.saaskit.app`
+
+**修复内容**：
+
+- development 模式下检测到生产 host 时，`getServerUrl()` 直接回退到 dev 默认 server
+- Server 设置页显示提示文案，明确说明“开发模式已忽略生产服务器地址”
+- 其他自定义测试地址不受影响，仍可正常覆盖默认值
+
+**上游**：不是第三方 bug，而是本地开发与持久化 server 配置之间的运行时优先级冲突。
+
+**删除条件**：如果未来 server 配置切换改成显式环境隔离，不再共享同一份持久化 `custom-server-url`，可移除。
+
+---
+
 ## patches/@babel__runtime@7.28.6.patch
 
 **问题**：`class X extends Error` 在 Hermes 新架构下 crash。
@@ -66,6 +137,30 @@ Hermes 通过了测试，但实际调用 `Reflect.construct(Error, <Arguments>, 
 **上游**：React Native 预构建 XCFrameworks 的命名 bug，等官方修复。
 
 **删除条件**：升级 `react-native` 到预构建 XCFrameworks 头文件命名修复的版本后移除。
+
+---
+
+## apps/free/app/plugins/withFocusAudioNativeModule.js
+
+**问题**：本地 Expo module `FocusAudioNative` 能被 `expo-modules-autolinking` 发现，但当前生成链路没有把它稳定注册进
+`ExpoModulesProvider.swift`，导致 JS 侧拿不到 `FocusAudioNative` 原生模块。
+
+**触发条件**：
+
+- `expo prebuild -p ios --clean`
+- 或重新安装 iOS Pods
+- 且 app 依赖 `apps/free/app/modules/focus-audio-native`
+
+**修复内容**：
+
+1. 向生成的 `ios/Podfile` 注入 `pod 'FocusAudioNative', :path => '../modules/focus-audio-native/ios'`
+2. 在 `post_install` 中 patch `ExpoModulesProvider.swift`，补上 `import FocusAudioNative`
+3. 同时把 `FocusAudioNativeModule.self` 注入 provider 返回数组，确保 Expo runtime 能注册该模块
+
+**上游**：Expo local module / autolinking 与当前工程生成链路的集成问题，待确认是 Expo 54 还是 `@bacons/apple-targets`
+共同作用下的边界情况。
+
+**删除条件**：当 `expo prebuild` 生成的 iOS 工程能够稳定自动注册 `FocusAudioNativeModule`，且不再需要 Podfile/Provider patch 时移除。
 
 ---
 

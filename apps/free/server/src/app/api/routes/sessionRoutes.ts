@@ -4,6 +4,7 @@ import { type Fastify } from '../types';
 import { eventRouter, buildNewSessionUpdate } from '@/app/events/eventRouter';
 import { sessionDelete } from '@/app/session/sessionDelete';
 import { sessionArchive } from '@/app/session/sessionArchive';
+import { sessionReactivate } from '@/app/session/sessionReactivate';
 import { activityCache } from '@/app/presence/sessionCache';
 import { db } from '@/storage/db';
 import { allocateUserSeq } from '@/storage/seq';
@@ -266,6 +267,7 @@ export function sessionRoutes(app: Fastify) {
           sessionId: session.id,
           userId,
           traceId,
+          existingStatus: session.status,
         });
 
         // Re-activate offline sessions on daemon restart/crash recovery.
@@ -275,22 +277,21 @@ export function sessionRoutes(app: Fastify) {
             sessionId: session.id,
             userId,
             traceId,
+            previousStatus: session.status,
           });
-          activeSession = await db.session.update({
-            where: { id: session.id },
-            data: {
-              status: 'active',
-              lastActiveAt: new Date(),
-              // Track which machine is now owning this session (may differ from original creator
-              // if the user moved to a different machine, or after daemon crash recovery).
-              ...(machineId ? { machineId } : {}),
-              // Clear agentState to remove stale pending requests from previous daemon instance.
-              // The new daemon will rebuild fresh state. This prevents UI showing old permission
-              // requests that the new daemon's memory doesn't know about.
-              agentState: null,
-            },
-          });
-          activityCache.evictSession(session.id);
+          const reactivated = await sessionReactivate(
+            { uid: userId },
+            {
+              sessionId: session.id,
+              metadata,
+              machineId: machineId ?? undefined,
+            }
+          );
+          if (!reactivated) {
+            reply.code(404);
+            return { error: 'session_not_found' };
+          }
+          activeSession = reactivated;
         }
 
         return reply.send({
@@ -524,6 +525,62 @@ export function sessionRoutes(app: Fastify) {
       }
 
       return reply.send({ success: true });
+    }
+  );
+
+  app.post(
+    '/v1/sessions/:sessionId/restore',
+    {
+      schema: {
+        params: z.object({
+          sessionId: z.string(),
+        }),
+        body: z.object({
+          metadata: z.string(),
+          machineId: z.string().nullish(),
+        }),
+      },
+      preHandler: app.authenticate,
+    },
+    async (request, reply) => {
+      const userId = request.userId;
+      const { sessionId } = request.params;
+      const { metadata, machineId } = request.body;
+
+      log.debug('[sessions] restore requested', { userId, sessionId });
+
+      const restored = await sessionReactivate(
+        { uid: userId },
+        {
+          sessionId,
+          metadata,
+          machineId: machineId ?? undefined,
+        }
+      );
+
+      if (!restored) {
+        log.debug('[sessions] restore: not found', { userId, sessionId });
+        return reply.code(404).send({ error: 'Session not found' });
+      }
+
+      return reply.send({
+        session: {
+          id: restored.id,
+          seq: restored.seq,
+          metadata: restored.metadata,
+          metadataVersion: restored.metadataVersion,
+          agentState: restored.agentState,
+          agentStateVersion: restored.agentStateVersion,
+          capabilities: restored.capabilities,
+          capabilitiesVersion: restored.capabilitiesVersion,
+          dataEncryptionKey: restored.dataEncryptionKey,
+          status: restored.status,
+          activeAt: restored.lastActiveAt.getTime(),
+          createdAt: restored.createdAt.getTime(),
+          updatedAt: restored.updatedAt.getTime(),
+          lastMessage: null,
+        },
+      });
     }
   );
 

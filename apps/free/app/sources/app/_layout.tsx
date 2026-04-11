@@ -4,6 +4,7 @@ import { initAppTelemetry, setTelemetryAuthToken, setAnalyticsEnabled } from '@/
 import { FontAwesome } from '@expo/vector-icons';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import * as Fonts from 'expo-font';
+import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import * as React from 'react';
@@ -29,9 +30,14 @@ import { ModalProvider } from '@/modal';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { initKVStores } from '@/sync/cachedKVStore';
 import { syncRestore } from '@/sync/sync';
-import { loadCachedSessions, loadSettings } from '@/sync/persistence';
+import { loadCachedSessions, loadLocalSettings, loadSettings, saveLocalSettings } from '@/sync/persistence';
 import { storage, useSetting } from '@/sync/storage';
 import { getCurrentLanguage, resolveLanguage, setLanguage } from '@/text';
+import {
+  applyFocusAudioWidgetAction,
+  mergeFocusAudioWidgetState,
+  parseFocusAudioWidgetActionURL,
+} from '@/widget/focusAudioWidget';
 // import * as SystemUI from 'expo-system-ui';
 import { AsyncLock } from '@/utils/lock';
 import { useWatchConnectivity } from '@/hooks/useWatchConnectivity';
@@ -106,6 +112,26 @@ function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) 
 
 const lock = new AsyncLock();
 let loaded = false;
+
+function applyFocusAudioWidgetURL(url: string | null) {
+  if (!url) {
+    return;
+  }
+
+  const action = parseFocusAudioWidgetActionURL(url);
+  if (!action) {
+    return;
+  }
+
+  const current = storage.getState().localSettings;
+  const nextLocalSettings = applyFocusAudioWidgetAction(current, action);
+  saveLocalSettings(nextLocalSettings);
+  storage.setState(state => ({
+    ...state,
+    localSettings: nextLocalSettings,
+  }));
+}
+
 async function loadFonts() {
   await lock.inLock(async () => {
     if (loaded) {
@@ -224,11 +250,22 @@ export default function RootLayout() {
         // Wire RemoteSink auth token so telemetry can upload after login (RFC §21.2)
         // Respect the user's analytics opt-in preference from synced Settings (RFC §8.1)
         const { settings, version } = loadSettings();
+        const localSettingsResult = mergeFocusAudioWidgetState(loadLocalSettings());
+        const localSettings = localSettingsResult.nextLocalSettings;
+        if (localSettingsResult.changed) {
+          saveLocalSettings(localSettings);
+        }
         // Refresh Zustand with real KV data — the store was created before initKVStores()
         // ran, so it loaded stale defaults. Without this, useSetting('preferredLanguage')
         // returns 'zh-Hans' (default) even when the stored value is e.g. 'en', making
         // the language settings page show the wrong selection and block switching.
-        storage.setState(state => ({ ...state, settings, settingsVersion: version }));
+        storage.setState(state => ({
+          ...state,
+          settings,
+          settingsVersion: version,
+          localSettings,
+        }));
+        applyFocusAudioWidgetURL(await Linking.getInitialURL());
         setAnalyticsEnabled(settings.analyticsEnabled !== false, credentials?.token);
         // Apply stored language preference now that KV store is ready
         setLanguage(resolveLanguage(settings.preferredLanguage));
@@ -266,6 +303,16 @@ export default function RootLayout() {
       }, 100);
     }
   }, [initState]);
+
+  React.useEffect(() => {
+    const subscription = Linking.addEventListener('url', event => {
+      applyFocusAudioWidgetURL(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   //
   // Not inited

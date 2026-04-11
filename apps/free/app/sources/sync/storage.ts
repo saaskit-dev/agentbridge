@@ -427,6 +427,7 @@ export const storage = create<StorageState>()((set, get) => {
           const savedDesiredConfigOption = savedDesiredConfigOptions[session.id];
           const existingModelMode = state.sessions[session.id]?.modelMode;
           const savedModelMode = savedModelModes[session.id];
+          const existingLatestUsage = state.sessions[session.id]?.latestUsage;
           const fallbackPermissionMode: PermissionMode = isSandboxEnabled(session.metadata)
             ? 'yolo'
             : 'accept-edits';
@@ -444,6 +445,7 @@ export const storage = create<StorageState>()((set, get) => {
             desiredAgentMode: existingDesiredAgentMode || savedDesiredAgentMode || null,
             desiredConfigOptions: existingDesiredConfigOptions || savedDesiredConfigOption || null,
             modelMode: existingModelMode || savedModelMode || session.modelMode || null,
+            latestUsage: session.latestUsage || existingLatestUsage,
           };
         });
 

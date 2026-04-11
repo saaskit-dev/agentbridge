@@ -9,7 +9,7 @@
   </p>
   <p align="center">
     Control Claude Code, Codex, Gemini, and OpenCode from anywhere.<br/>
-    Monitor progress, handle permissions, manage sessions — all from your phone.
+    Monitor progress, handle permissions, manage sessions — from mobile or desktop.
   </p>
   <p align="center">
     <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"></a>
@@ -41,7 +41,7 @@ AI coding agents like Claude Code and Codex are powerful — but they run in a t
 ```mermaid
 flowchart LR
     subgraph Phone["📱 Mobile App"]
-        App["React Native<br/>(iOS / Android / Web)"]
+        App["React Native<br/>(iOS / Android / Web / Desktop)"]
     end
 
     subgraph Cloud["☁️ Server"]
@@ -144,11 +144,21 @@ agentbridge/
     │   ├── auth/             #   Challenge-response authentication
     │   └── storage/          #   Database abstraction (PostgreSQL / PGlite)
     │
-    └── app/                  # Mobile client (React Native / Expo)
+    └── app/                  # Mobile/Desktop client (React Native / Expo / Tauri)
         ├── app/(app)/        #   Page components (Expo Router)
         ├── components/       #   UI components (messages, tools, markdown, ...)
         ├── sync/             #   State management, encryption, WebSocket
         └── realtime/         #   Voice assistant & WebRTC
+```
+
+### Desktop App
+
+The desktop app reuses the Expo web frontend and packages it with Tauri:
+
+```bash
+cd apps/free/app
+pnpm tauri:dev
+pnpm tauri:build:production
 ```
 
 ## Self-Hosted Deployment
@@ -236,13 +246,14 @@ git clone https://github.com/saaskit-dev/agentbridge.git
 cd agentbridge
 pnpm install
 
-# One-command setup: builds core + CLI, starts server + daemon + web
+# One-command setup: builds core + CLI, starts server + daemon + desktop
 ./run dev
 
 # Or start individual services:
 ./run dev server            # Server + daemon only
 ./run dev web               # Web app only
 ./run dev quick             # Skip build, fast restart
+./run desktop               # Desktop app (Tauri dev)
 ```
 
 ### Testing
@@ -260,6 +271,14 @@ pnpm install
 ./run android               # Android debug (connects to Metro)
 ./run ios release           # iOS release (production server, embedded bundle)
 ./run android release       # Android release (production server, embedded bundle)
+```
+
+### Desktop Development
+
+```bash
+./run desktop               # Desktop debug (Tauri + Expo Web)
+./run desktop build         # Build desktop production app
+./run desktop build-dev     # Build desktop development app
 ```
 
 ### Build & Publish

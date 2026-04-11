@@ -11,8 +11,33 @@ const withDevelopmentTeam = config => {
     const teamId = process.env.APPLE_TEAM_ID || 'SD58V5WA54';
     const project = config.modResults;
     const buildConfigSection = project.pbxXCBuildConfigurationSection();
+    const projectSection = project.pbxProjectSection();
+    const nativeTargets = project.pbxNativeTargetSection();
 
-    const targets = project.pbxNativeTargetSection();
+    for (const key of Object.keys(projectSection)) {
+      if (key.endsWith('_comment')) continue;
+      const projectEntry = projectSection[key];
+      if (!projectEntry?.attributes) continue;
+
+      if (!projectEntry.attributes.TargetAttributes) {
+        projectEntry.attributes.TargetAttributes = {};
+      }
+
+      for (const targetKey of Object.keys(nativeTargets)) {
+        if (targetKey.endsWith('_comment')) continue;
+        const target = nativeTargets[targetKey];
+        if (!target?.name) continue;
+
+        const existing = projectEntry.attributes.TargetAttributes[targetKey] || {};
+        projectEntry.attributes.TargetAttributes[targetKey] = {
+          ...existing,
+          DevelopmentTeam: teamId,
+          ProvisioningStyle: 'Automatic',
+        };
+      }
+    }
+
+    const targets = nativeTargets;
     for (const key of Object.keys(targets)) {
       if (key.endsWith('_comment')) continue;
       const target = targets[key];

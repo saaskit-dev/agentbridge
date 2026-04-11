@@ -508,6 +508,8 @@ export const ja: TranslationStructure = {
     serverReturnedError: 'サーバーがエラーを返しました',
     failedToConnectToServer: 'サーバーへの接続に失敗しました',
     currentlyUsingCustomServer: '現在カスタムサーバーを使用中',
+    devIgnoringProductionServer:
+      '開発モードでは本番サーバー URL を無視し、代わりにローカル開発サーバーを使用しています。',
     customServerUrlLabel: 'カスタムサーバーURL',
     advancedFeatureFooter:
       'これは高度な機能です。何をしているか理解している場合のみサーバーを変更してください。サーバー変更後は再度ログインが必要です。',

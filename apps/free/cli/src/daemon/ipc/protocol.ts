@@ -27,6 +27,8 @@ export type { SessionLifecycleState, SessionSummary };
 // ---------------------------------------------------------------------------
 
 export interface SpawnSessionOptions {
+  sessionId?: string;
+  restoreSession?: boolean;
   agent?: AgentType;
   directory: string;
   resumeAgentSessionId?: string;

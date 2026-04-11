@@ -179,8 +179,8 @@ export function StreamingAgentText({
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    width: '100%',
+    minWidth: 0,
     alignItems: 'flex-start',
   },
   text: {

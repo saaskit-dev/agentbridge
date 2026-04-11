@@ -5,7 +5,7 @@
  * using a minimal concrete TestAgentSession subclass.
  */
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { AgentSession, type AgentSessionOpts } from './AgentSession';
 import type { AgentBackend } from './AgentBackend';
 import type { IPCServerMessage } from '@/daemon/ipc/protocol';
@@ -17,6 +17,40 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import type { SessionCapabilities } from './capabilities';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { getAcpSessionId, initCliTelemetry, setAcpSessionId } from '@/telemetry';
+import { ApiClient } from '@/api/api';
+
+const {
+  mockStartFreeServer,
+  mockRegisterKillSessionHandler,
+  mockPersistSession,
+  mockEraseSession,
+} = vi.hoisted(() => ({
+  mockStartFreeServer: vi.fn(async () => ({
+    stop: vi.fn(),
+    url: 'http://127.0.0.1:4317',
+    toolNames: ['change_title'],
+  })),
+  mockRegisterKillSessionHandler: vi.fn(),
+  mockPersistSession: vi.fn().mockResolvedValue(undefined),
+  mockEraseSession: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/claude/utils/startFreeServer', () => ({
+  startFreeServer: mockStartFreeServer,
+}));
+
+vi.mock('@/claude/registerKillSessionHandler', () => ({
+  registerKillSessionHandler: mockRegisterKillSessionHandler,
+}));
+
+vi.mock('./sessionPersistence', () => ({
+  persistSession: mockPersistSession,
+  eraseSession: mockEraseSession,
+}));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 // ---------------------------------------------------------------------------
 // Minimal concrete subclass for testing
@@ -97,6 +131,11 @@ function makeMockSession(sessionId = 'test-session-id'): ApiSessionClient {
     updateCapabilities: vi.fn(),
     updateMetadata: vi.fn(),
     sendSessionDeath: vi.fn(),
+    onUserMessage: vi.fn(),
+    onFileTransfer: vi.fn(),
+    onFetchAttachment: vi.fn(),
+    keepAlive: vi.fn(),
+    once: vi.fn(),
     flush: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
   } as unknown as ApiSessionClient;
@@ -235,6 +274,47 @@ describe('AgentSession.preflightResume()', () => {
     await session.preflightResume();
 
     expect(createBackendSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('AgentSession.initialize()', () => {
+  it('uses api.restoreSession when restoreSession is enabled', async () => {
+    const session = new TestAgentSession({
+      ...makeOpts(),
+      sessionId: 'managed-restore',
+      restoreSession: true,
+      resumeSessionId: 'upstream-123',
+    });
+    const apiSession = makeMockSession('managed-restore');
+    const restoreSession = vi.fn().mockResolvedValue({
+      id: 'managed-restore',
+      seq: 1,
+      metadata: {},
+      metadataVersion: 1,
+      agentState: null,
+      agentStateVersion: 1,
+      capabilities: null,
+      capabilitiesVersion: 0,
+    });
+    const getOrCreateSession = vi.fn();
+    const sessionSyncClient = vi.fn().mockReturnValue(apiSession);
+    vi.spyOn(ApiClient, 'create').mockResolvedValue({
+      restoreSession,
+      getOrCreateSession,
+      sessionSyncClient,
+    } as unknown as ApiClient);
+
+    await session.initialize();
+
+    expect(restoreSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'managed-restore',
+        machineId: 'test-machine',
+      })
+    );
+    expect(getOrCreateSession).not.toHaveBeenCalled();
+    expect(sessionSyncClient).toHaveBeenCalled();
+    expect(mockStartFreeServer).toHaveBeenCalledWith(apiSession);
   });
 });
 

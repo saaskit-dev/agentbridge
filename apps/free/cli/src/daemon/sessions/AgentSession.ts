@@ -89,6 +89,8 @@ export interface AgentSessionOpts {
   requireResumeSuccess?: boolean;
   /** Client-generated session ID (UUID generated if omitted) */
   sessionId?: string;
+  /** Restore an archived managed session instead of creating/reusing via getOrCreateSession. */
+  restoreSession?: boolean;
   /** Extra env vars passed to the agent process */
   env?: Record<string, string>;
   permissionMode?: PermissionMode;
@@ -667,12 +669,18 @@ export abstract class AgentSession<TMode> {
     }
     const { metadata, state } = this.buildSessionMetadata();
 
-    const response = await this.api.getOrCreateSession({
-      id: sid,
-      metadata,
-      state,
-      machineId: this.opts.machineId,
-    });
+    const response = this.opts.restoreSession
+      ? await this.api.restoreSession({
+          id: sid,
+          metadata,
+          machineId: this.opts.machineId,
+        })
+      : await this.api.getOrCreateSession({
+          id: sid,
+          metadata,
+          state,
+          machineId: this.opts.machineId,
+        });
 
     // Restore lastSeq from persistence so replay/fetch starts from the right point
     if (response && this.opts.lastSeq != null && this.opts.lastSeq > 0) {

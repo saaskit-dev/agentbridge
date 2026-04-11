@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Avatar } from './Avatar';
 import { CompactGitStatus } from './CompactGitStatus';
 import { ProjectGitStatus } from './ProjectGitStatus';
@@ -205,9 +206,153 @@ interface ActiveSessionsGroupProps {
   selectedSessionId?: string;
 }
 
+type ContextMenuState = {
+  x: number;
+  y: number;
+  sessionId: string;
+  sessionName: string;
+};
+
+const SessionContextMenu = React.memo(
+  ({
+    position,
+    onClose,
+    onOpen,
+    onArchive,
+    onCopyTitle,
+  }: {
+    position: ContextMenuState;
+    onClose: () => void;
+    onOpen: () => void;
+    onArchive: () => void;
+    onCopyTitle: () => void;
+  }) => {
+    const { theme } = useUnistyles();
+    const menuWidth = 260;
+    const fallbackMenuHeight = 220;
+    const [menuHeight, setMenuHeight] = React.useState(fallbackMenuHeight);
+    const viewportWidth =
+      typeof window !== 'undefined' ? window.innerWidth : position.x + menuWidth + 16;
+    const viewportHeight =
+      typeof window !== 'undefined' ? window.innerHeight : position.y + menuHeight + 16;
+    const cursorOffset = 10;
+    const preferredLeft = position.x + cursorOffset;
+    const preferredTop = position.y + cursorOffset;
+    const left =
+      preferredLeft + menuWidth <= viewportWidth - 8
+        ? preferredLeft
+        : Math.max(8, position.x - menuWidth - cursorOffset);
+    const top =
+      preferredTop + menuHeight <= viewportHeight - 8
+        ? preferredTop
+        : Math.max(8, position.y - menuHeight - cursorOffset);
+    const itemStyle = {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    };
+
+    return (
+      <>
+        <Pressable
+          onPress={onClose}
+          // @ts-ignore - Web-only right click support on overlay
+          onContextMenu={(event: any) => {
+            event.preventDefault();
+            onClose();
+          }}
+          style={{
+            position: 'fixed' as any,
+            inset: 0,
+            zIndex: 999,
+          }}
+        />
+        <View
+          onLayout={event => {
+            const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+            if (nextHeight > 0 && nextHeight !== menuHeight) {
+              setMenuHeight(nextHeight);
+            }
+          }}
+          style={{
+            position: 'fixed' as any,
+            left,
+            top,
+            zIndex: 1000,
+            width: menuWidth,
+            maxHeight: viewportHeight - 16,
+            backgroundColor: theme.colors.surface,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: theme.colors.divider,
+            shadowColor: '#000',
+            shadowOpacity: 0.14,
+            shadowRadius: 18,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 10,
+            overflow: 'hidden',
+          }}
+        >
+          <View
+            style={[
+              itemStyle,
+              {
+                alignItems: 'flex-start',
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: theme.colors.divider,
+              },
+            ]}
+          >
+            <Ionicons name="document-text-outline" size={16} color={theme.colors.textSecondary} />
+            <Text
+              numberOfLines={2}
+              style={{
+                flex: 1,
+                color: theme.colors.text,
+                ...Typography.default('semiBold'),
+                fontSize: 13,
+                lineHeight: 18,
+              }}
+            >
+              {position.sessionName}
+            </Text>
+          </View>
+          <Pressable onPress={onOpen} style={itemStyle}>
+            <Ionicons name="open-outline" size={16} color={theme.colors.text} />
+            <Text style={{ color: theme.colors.text, ...Typography.default() }}>打开会话</Text>
+          </Pressable>
+          <Pressable onPress={onCopyTitle} style={itemStyle}>
+            <Ionicons name="copy-outline" size={16} color={theme.colors.text} />
+            <Text style={{ color: theme.colors.text, ...Typography.default() }}>{t('common.copy')}</Text>
+          </Pressable>
+          <Pressable
+            onPress={onArchive}
+            style={[
+              itemStyle,
+              {
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: theme.colors.divider,
+              },
+            ]}
+          >
+            <Ionicons name="archive-outline" size={16} color={theme.colors.status.error} />
+            <Text style={{ color: theme.colors.status.error, ...Typography.default() }}>
+              {t('sessionInfo.archiveSession')}
+            </Text>
+          </Pressable>
+        </View>
+      </>
+    );
+  }
+);
+
 export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
   const styles = stylesheet;
   const machines = useAllMachines();
+  const navigateToSession = useNavigateToSession();
+  const [contextMenu, setContextMenu] = React.useState<ContextMenuState | null>(null);
   const machinesMap = React.useMemo(() => {
     const map: Record<string, Machine> = {};
     machines.forEach(machine => {
@@ -334,6 +479,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                         key={session.id}
                         session={session}
                         selected={selectedSessionId === session.id}
+                        onOpenContextMenu={setContextMenu}
                         showBorder={
                           index < machineGroup.sessions.length - 1 ||
                           Array.from(projectGroup.machines.keys()).indexOf(machineId) <
@@ -347,6 +493,45 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
           </View>
         );
       })}
+      {contextMenu ? (
+        <SessionContextMenu
+          position={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onOpen={() => {
+            setContextMenu(null);
+            navigateToSession(contextMenu.sessionId);
+          }}
+          onArchive={() => {
+            const session = sessions.find(item => item.id === contextMenu.sessionId);
+            setContextMenu(null);
+            if (!session) return;
+            Modal.alert(t('sessionInfo.archiveSession'), t('sessionInfo.archiveSessionConfirm'), [
+              { text: t('common.cancel'), style: 'cancel' },
+              {
+                text: t('sessionInfo.archiveSession'),
+                style: 'destructive',
+                onPress: async () => {
+                  const result = await sessionKill(session.id);
+                  if (!result.success) {
+                    throw new FreeError(
+                      result.message || t('sessionInfo.failedToArchiveSession'),
+                      false
+                    );
+                  }
+                },
+              },
+            ]);
+          }}
+          onCopyTitle={async () => {
+            await Clipboard.setStringAsync(contextMenu.sessionName);
+            setContextMenu(null);
+            Modal.alert(
+              t('common.copied'),
+              t('items.copiedToClipboard', { label: contextMenu.sessionName })
+            );
+          }}
+        />
+      ) : null}
     </View>
   );
 }
@@ -356,10 +541,12 @@ const CompactSessionRow = React.memo(
   ({
     session,
     selected,
+    onOpenContextMenu,
     showBorder,
   }: {
     session: Session;
     selected?: boolean;
+    onOpenContextMenu: React.Dispatch<React.SetStateAction<ContextMenuState | null>>;
     showBorder?: boolean;
   }) => {
     const styles = stylesheet;
@@ -369,7 +556,6 @@ const CompactSessionRow = React.memo(
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
-
     const [archivingSession, performArchive] = useFreeAction(async () => {
       const result = await sessionKill(session.id);
       if (!result.success) {
@@ -379,6 +565,7 @@ const CompactSessionRow = React.memo(
 
     const handleArchive = React.useCallback(() => {
       swipeableRef.current?.close();
+      onOpenContextMenu(null);
       Modal.alert(t('sessionInfo.archiveSession'), t('sessionInfo.archiveSessionConfirm'), [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -387,11 +574,22 @@ const CompactSessionRow = React.memo(
           onPress: performArchive,
         },
       ]);
-    }, [performArchive]);
+    }, [onOpenContextMenu, performArchive]);
 
     const avatarId = React.useMemo(() => {
       return getSessionAvatarId(session);
     }, [session]);
+
+    const handleOpen = React.useCallback(() => {
+      onOpenContextMenu(null);
+      navigateToSession(session.id);
+    }, [navigateToSession, onOpenContextMenu, session.id]);
+
+    const handleCopyTitle = React.useCallback(async () => {
+      onOpenContextMenu(null);
+      await Clipboard.setStringAsync(sessionName);
+      Modal.alert(t('common.copied'), t('items.copiedToClipboard', { label: sessionName }));
+    }, [onOpenContextMenu, sessionName]);
 
     const itemContent = (
       <Pressable
@@ -410,6 +608,20 @@ const CompactSessionRow = React.memo(
             navigateToSession(session.id);
           }
         }}
+        // @ts-ignore - Web-only right click support
+        onContextMenu={
+          Platform.OS === 'web'
+            ? (event: any) => {
+                event.preventDefault();
+                onOpenContextMenu({
+                  x: event.nativeEvent?.clientX ?? event.clientX ?? 0,
+                  y: event.nativeEvent?.clientY ?? event.clientY ?? 0,
+                  sessionId: session.id,
+                  sessionName,
+                });
+              }
+            : undefined
+        }
       >
         <View style={styles.avatarContainer}>
           <Avatar
@@ -496,14 +708,6 @@ const CompactSessionRow = React.memo(
             </View>
           </View>
         </View>
-        {!swipeEnabled && (
-          <SessionRowActionButton
-            label={t('sessionInfo.archiveSession')}
-            icon="archive-outline"
-            onPress={handleArchive}
-            disabled={archivingSession}
-          />
-        )}
       </Pressable>
     );
 

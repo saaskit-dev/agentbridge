@@ -8,17 +8,16 @@ import { AgentFlavorIcon } from '@/components/AgentFlavorIcon';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Typography } from '@/constants/Typography';
-import { Modal } from '@/modal';
 import {
   machineListExternalAgentSessionsForAgent,
   machineListSupportedAgents,
-  machineSpawnNewSession,
   type ExternalAgentSessionSummary,
-  type SpawnSessionResult,
 } from '@/sync/ops';
+import { getAgentDisplayName, normalizeAgentFlavor } from '@/sync/agentFlavor';
 import { useMachine, useSessions } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
+import { resumeIntoManagedSession } from '@/utils/resumeIntoManagedSession';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 
@@ -110,33 +109,11 @@ const styles = StyleSheet.create(theme => ({
 }));
 
 function formatAgentLabel(agent: string): string {
-  if (agent === 'claude') return 'Claude';
-  if (agent === 'codex') return 'Codex';
-  if (agent === 'opencode') return 'OpenCode';
-  if (agent === 'cursor') return 'Cursor';
-  if (agent === 'gemini') return 'Gemini';
-  return agent;
+  return getAgentDisplayName(normalizeAgentFlavor(agent));
 }
 
 function sessionBelongsToMachine(session: Session, machineId: string): boolean {
   return session.metadata?.machineId === machineId;
-}
-
-function getImportErrorAlert(
-  result: Extract<SpawnSessionResult, { type: 'error' }>,
-  agentType: string
-): { title: string; message: string } {
-  if (result.errorCode === 'resume_failed') {
-    return {
-      title: t('machineImport.resumeFailedTitle'),
-      message: t('machineImport.resumeFailedBody', { agent: formatAgentLabel(agentType) }),
-    };
-  }
-
-  return {
-    title: t('common.error'),
-    message: result.errorMessage,
-  };
 }
 
 export default function ImportSessionsScreen() {
@@ -385,60 +362,15 @@ export default function ImportSessionsScreen() {
         return;
       }
 
-      const confirmed = await Modal.confirm(
-        t('machineImport.continueTitle'),
-        t('machineImport.continueBody', { agent: formatAgentLabel(session.agentType) }),
-        {
-          cancelText: t('common.cancel'),
-          confirmText: t('machineImport.continueHere'),
-        }
-      );
-      if (!confirmed) return;
-
       setImportingId(session.sessionId);
       try {
-        const result = await machineSpawnNewSession({
+        await resumeIntoManagedSession({
           machineId: machineId!,
           directory: session.cwd,
           agent: session.agentType,
           resumeAgentSessionId: session.sessionId,
-          requireResumeSuccess: true,
-          returnStructuredErrors: true,
+          navigateToSession,
         });
-
-        if (result.type === 'success') {
-          navigateToSession(result.sessionId);
-          return;
-        }
-
-        if (result.type === 'requestToApproveDirectoryCreation') {
-          const approved = await Modal.confirm(
-            t('machineImport.directoryMissingTitle'),
-            t('machineImport.directoryMissingBody', { directory: result.directory }),
-            { cancelText: t('common.cancel'), confirmText: t('common.create') }
-          );
-          if (!approved) return;
-
-          const retried = await machineSpawnNewSession({
-            machineId: machineId!,
-            directory: result.directory,
-            agent: session.agentType,
-            resumeAgentSessionId: session.sessionId,
-            approvedNewDirectoryCreation: true,
-            requireResumeSuccess: true,
-            returnStructuredErrors: true,
-          });
-          if (retried.type === 'success') {
-            navigateToSession(retried.sessionId);
-          } else if (retried.type === 'error') {
-            const alert = getImportErrorAlert(retried, session.agentType);
-            Modal.alert(alert.title, alert.message);
-          }
-          return;
-        }
-
-        const alert = getImportErrorAlert(result, session.agentType);
-        Modal.alert(alert.title, alert.message);
       } finally {
         setImportingId(null);
       }

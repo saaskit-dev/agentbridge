@@ -5,7 +5,7 @@ import { Link } from 'expo-router';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { Pressable, ScrollView, View, Platform } from 'react-native';
-import { Gesture, GestureDetector, NativeViewGestureHandler } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { ImagePreviewModal } from '../ImagePreviewModal';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
@@ -360,10 +360,6 @@ function RenderTextBlock(props: {
       assetContext={props.assetContext}
     />
   );
-  // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
-  if (props.selectable && Platform.OS !== 'web') {
-    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
-  }
   return content;
 }
 
@@ -428,10 +424,6 @@ function RenderHeaderBlock(props: {
       assetContext={props.assetContext}
     />
   );
-  // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
-  if (props.selectable && Platform.OS !== 'web') {
-    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
-  }
   return content;
 }
 
@@ -460,10 +452,6 @@ function RenderListBlock(props: {
       ))}
     </View>
   );
-  // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
-  if (props.selectable && Platform.OS !== 'web') {
-    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
-  }
   return content;
 }
 
@@ -492,10 +480,6 @@ function RenderNumberedListBlock(props: {
       ))}
     </View>
   );
-  // NativeViewGestureHandler is needed for text selection to work inside GestureHandlerRootView
-  if (props.selectable && Platform.OS !== 'web') {
-    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
-  }
   return content;
 }
 
@@ -614,9 +598,6 @@ function RenderBlockquoteBlock(props: {
       />
     </View>
   );
-  if (props.selectable && Platform.OS !== 'web') {
-    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
-  }
   return content;
 }
 
@@ -646,9 +627,6 @@ function RenderChecklistBlock(props: {
       ))}
     </View>
   );
-  if (props.selectable && Platform.OS !== 'web') {
-    return <NativeViewGestureHandler>{content}</NativeViewGestureHandler>;
-  }
   return content;
 }
 
@@ -840,17 +818,33 @@ const style = StyleSheet.create(theme => ({
     lineHeight: 24, // Reduced from 28 to 24
     color: theme.colors.text,
     fontWeight: '400',
+    ...(Platform.OS === 'web'
+      ? ({
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        } as any)
+      : {}),
   },
   textBlock: {
     marginTop: 8,
     marginBottom: 8,
+    width: '100%',
+    minWidth: 0,
   },
   inlineContent: {
+    width: '100%',
+    minWidth: 0,
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     columnGap: 0,
     rowGap: 6,
+    ...(Platform.OS === 'web'
+      ? ({
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+        } as any)
+      : {}),
   },
   listRow: {
     flexDirection: 'row',

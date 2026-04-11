@@ -9,7 +9,7 @@
   </p>
   <p align="center">
     随时随地控制 Claude Code、Codex、Gemini 和 OpenCode。<br/>
-    用手机监控进度、处理权限请求、管理多个 AI 会话。
+    用手机或桌面端监控进度、处理权限请求、管理多个 AI 会话。
   </p>
   <p align="center">
     <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"></a>
@@ -41,7 +41,7 @@ Claude Code、Codex 这些 AI 编程助手功能很强 —— 但它们跑在你
 ```mermaid
 flowchart LR
     subgraph Phone["📱 手机客户端"]
-        App["React Native<br/>(iOS / Android / Web)"]
+        App["React Native<br/>(iOS / Android / Web / Desktop)"]
     end
 
     subgraph Cloud["☁️ 中继服务器"]
@@ -144,11 +144,21 @@ agentbridge/
     │   ├── auth/             #   挑战-响应认证
     │   └── storage/          #   数据库抽象（PostgreSQL / PGlite）
     │
-    └── app/                  # 手机客户端（React Native / Expo）
+    └── app/                  # 手机/桌面客户端（React Native / Expo / Tauri）
         ├── app/(app)/        #   页面组件（Expo Router）
         ├── components/       #   UI 组件（消息、工具、Markdown 等）
         ├── sync/             #   状态管理、加密、WebSocket
         └── realtime/         #   语音助手 & WebRTC
+```
+
+### 桌面端开发
+
+桌面端复用 Expo Web 前端，再由 Tauri 打包：
+
+```bash
+cd apps/free/app
+pnpm tauri:dev
+pnpm tauri:build:production
 ```
 
 ## 自托管部署
@@ -236,13 +246,14 @@ git clone https://github.com/saaskit-dev/agentbridge.git
 cd agentbridge
 pnpm install
 
-# 一键启动：构建 core + CLI、启动 server + daemon + web
+# 一键启动：构建 core + CLI、启动 server + daemon + 桌面端
 ./run dev
 
 # 或单独启动某个服务：
 ./run dev server            # 只启动后端 + daemon
 ./run dev web               # 只启动 Web 应用
 ./run dev quick             # 跳过构建，快速重启
+./run desktop               # 启动桌面开发版（Tauri）
 ```
 
 ### 测试
@@ -260,6 +271,14 @@ pnpm install
 ./run android               # Android 调试（连 Metro）
 ./run ios release           # iOS 发布（连生产服务器，嵌入 bundle）
 ./run android release       # Android 发布（连生产服务器，嵌入 bundle）
+```
+
+### 桌面端开发
+
+```bash
+./run desktop               # 桌面调试版（Tauri + Expo Web）
+./run desktop build         # 构建桌面生产包
+./run desktop build-dev     # 构建桌面开发包
 ```
 
 ### 构建 & 发包

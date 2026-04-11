@@ -46,6 +46,11 @@ export const LocalSettingsSchema = z.object({
     .min(0)
     .max(1)
     .describe('Focus audio playback volume from 0.0 to 1.0'),
+  focusAudioLastAudibleVolume: z
+    .number()
+    .min(0.05)
+    .max(1)
+    .describe('Last non-zero focus audio volume, used for one-tap unmute'),
   focusAudioMixWithOthers: z
     .boolean()
     .describe('Whether focus audio should mix with other app audio'),
@@ -76,6 +81,7 @@ export const localSettingsDefaults: LocalSettings = {
   focusAudioEnabled: false,
   focusAudioSound: DEFAULT_FOCUS_AUDIO_SOUND,
   focusAudioVolume: 0.35,
+  focusAudioLastAudibleVolume: 0.35,
   focusAudioMixWithOthers: true,
 };
 Object.freeze(localSettingsDefaults);

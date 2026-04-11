@@ -2,6 +2,9 @@
   "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Free (dev)",
   "identifier": "app.saaskit.freecode.dev",
+  "build": {
+    "beforeBuildCommand": "pnpm run desktop:web:build:dev"
+  },
   "app": {
     "windows": [
       {

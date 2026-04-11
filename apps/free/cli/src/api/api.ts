@@ -69,38 +69,23 @@ export class ApiClient {
     this.pushClient = new PushNotificationClient(credential.token, configuration.serverUrl);
   }
 
-  /**
-   * Get or create a session by client-generated ID.
-   * If the server returns 409 (ID taken by archived/deleted session or another user),
-   * generates a new UUID and retries (up to 3 attempts).
-   */
-  async getOrCreateSession(opts: {
-    id: string;
-    metadata: Metadata;
-    state: AgentState | null;
-    machineId?: string;
-  }): Promise<Session | null> {
-    // Resolve encryption key
+  private async createSessionEncryptionContext() {
     let dataEncryptionKey: Uint8Array | null = null;
     let encryptionKey: Uint8Array;
     let encryptionVariant: 'legacy' | 'dataKey';
     if (this.credential.encryption.type === 'dataKey') {
-      // Generate new encryption key
       encryptionKey = getRandomBytes(32);
       encryptionVariant = 'dataKey';
 
-      // Version 0x00: encrypt for mobile app's public key
       const encryptedForPublicKey = libsodiumEncryptForPublicKey(
         encryptionKey,
         this.credential.encryption.publicKey
       );
-      // Version 0x01: encrypt for machine-key-derived box keypair (enables CLI-side key recovery)
       const machineBoxPubKey = libsodiumPublicKeyFromSecretKey(
         this.credential.encryption.machineKey
       );
       const encryptedForMachineKey = libsodiumEncryptForPublicKey(encryptionKey, machineBoxPubKey);
 
-      // Bundle format: [0x00][block0(104 bytes)][0x01][block1(104 bytes)]
       dataEncryptionKey = new Uint8Array(
         1 + encryptedForPublicKey.length + 1 + encryptedForMachineKey.length
       );
@@ -112,6 +97,68 @@ export class ApiClient {
       encryptionKey = this.credential.encryption.secret;
       encryptionVariant = 'legacy';
     }
+
+    return {
+      dataEncryptionKey,
+      encryptionKey,
+      encryptionVariant,
+    };
+  }
+
+  private async decodeSessionResponse(
+    raw: CreateSessionResponse['session'],
+    encryptionKey: Uint8Array,
+    encryptionVariant: 'legacy' | 'dataKey'
+  ): Promise<Session> {
+    const session: Session = {
+      id: raw.id,
+      seq: raw.seq,
+      metadata: await decryptFromWireString(encryptionKey, encryptionVariant, raw.metadata),
+      metadataVersion: raw.metadataVersion,
+      agentState: raw.agentState
+        ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.agentState)
+        : null,
+      agentStateVersion: raw.agentStateVersion,
+      capabilities: raw.capabilities
+        ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.capabilities)
+        : null,
+      capabilitiesVersion: raw.capabilitiesVersion ?? 0,
+      encryptionKey,
+      encryptionVariant,
+    };
+    if (this.credential.encryption.type === 'dataKey' && raw.dataEncryptionKey) {
+      const recovered = tryRecoverSessionKey(
+        raw.dataEncryptionKey,
+        this.credential.encryption.machineKey
+      );
+      if (recovered) {
+        session.encryptionKey = recovered;
+        session.metadata = await decryptFromWireString(recovered, encryptionVariant, raw.metadata);
+        if (raw.agentState) {
+          session.agentState = await decryptFromWireString(
+            recovered,
+            encryptionVariant,
+            raw.agentState
+          );
+        }
+      }
+    }
+    return session;
+  }
+
+  /**
+   * Get or create a session by client-generated ID.
+   * If the server returns 409 (ID taken by a deleted session or another user),
+   * generates a new UUID and retries (up to 3 attempts).
+   */
+  async getOrCreateSession(opts: {
+    id: string;
+    metadata: Metadata;
+    state: AgentState | null;
+    machineId?: string;
+  }): Promise<Session | null> {
+    const { dataEncryptionKey, encryptionKey, encryptionVariant } =
+      await this.createSessionEncryptionContext();
 
     // Get or create session — retry with new UUID on 409 conflict
     let sessionId = opts.id;
@@ -153,50 +200,7 @@ export class ApiClient {
 
         logger.debug(`Session created/loaded: ${response.data.session.id}`);
         const raw = response.data.session;
-        const session: Session = {
-          id: raw.id,
-          seq: raw.seq,
-          metadata: await decryptFromWireString(encryptionKey, encryptionVariant, raw.metadata),
-          metadataVersion: raw.metadataVersion,
-          agentState: raw.agentState
-            ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.agentState)
-            : null,
-          agentStateVersion: raw.agentStateVersion,
-          capabilities: raw.capabilities
-            ? await decryptFromWireString(encryptionKey, encryptionVariant, raw.capabilities)
-            : null,
-          capabilitiesVersion: raw.capabilitiesVersion ?? 0,
-          encryptionKey: encryptionKey,
-          encryptionVariant: encryptionVariant,
-        };
-        // For dataKey sessions: try to recover the session key from the v1 block
-        // if the server returned a pre-existing session (key was set by a previous caller).
-        // This allows the daemon to reuse a session created by the test.
-        if (this.credential.encryption.type === 'dataKey' && raw.dataEncryptionKey) {
-          const recovered = tryRecoverSessionKey(
-            raw.dataEncryptionKey,
-            this.credential.encryption.machineKey
-          );
-          if (recovered) {
-            // Session existed with a v1 block; use the recovered key for consistency.
-            // Also re-decrypt metadata/agentState, since the initial decrypt above used the
-            // wrong ephemeral key (which only works for sessions we created ourselves).
-            session.encryptionKey = recovered;
-            session.metadata = await decryptFromWireString(
-              recovered,
-              encryptionVariant,
-              raw.metadata
-            );
-            if (raw.agentState) {
-              session.agentState = await decryptFromWireString(
-                recovered,
-                encryptionVariant,
-                raw.agentState
-              );
-            }
-          }
-        }
-        return session;
+        return this.decodeSessionResponse(raw, encryptionKey, encryptionVariant);
       } catch (error) {
         logger.debug('[API] [ERROR] Failed to get or create session:', error);
 
@@ -248,6 +252,84 @@ export class ApiClient {
       }
     } // end for loop
     throw new Error('Failed to create session: ID conflict after 3 attempts');
+  }
+
+  async restoreSession(opts: {
+    id: string;
+    metadata: Metadata;
+    machineId?: string;
+  }): Promise<Session | null> {
+    const { encryptionKey, encryptionVariant } = await this.createSessionEncryptionContext();
+    const encryptedMetadata = await encryptToWireString(
+      encryptionKey,
+      encryptionVariant,
+      opts.metadata
+    );
+
+    try {
+      const response = await axios.post<CreateSessionResponse>(
+        `${configuration.serverUrl}/v1/sessions/${opts.id}/restore`,
+        {
+          metadata: encryptedMetadata,
+          ...(opts.machineId ? { machineId: opts.machineId } : {}),
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${this.credential.token}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 60000,
+        }
+      );
+
+      logger.debug(`Session restored: ${response.data.session.id}`);
+      return this.decodeSessionResponse(response.data.session, encryptionKey, encryptionVariant);
+    } catch (error) {
+      logger.debug('[API] [ERROR] Failed to restore session:', error);
+
+      if (error && typeof error === 'object' && 'code' in error) {
+        const errorCode = (error as any).code;
+        if (isNetworkError(errorCode)) {
+          connectionState.fail({
+            operation: 'Session restore',
+            caller: 'api.restoreSession',
+            errorCode,
+            url: `${configuration.serverUrl}/v1/sessions/${opts.id}/restore`,
+          });
+          return null;
+        }
+      }
+
+      const is404Error =
+        (axios.isAxiosError(error) && error.response?.status === 404) ||
+        (error &&
+          typeof error === 'object' &&
+          'response' in error &&
+          (error as any).response?.status === 404);
+      if (is404Error) {
+        connectionState.fail({
+          operation: 'Session restore',
+          errorCode: '404',
+          url: `${configuration.serverUrl}/v1/sessions/${opts.id}/restore`,
+        });
+        return null;
+      }
+
+      if (axios.isAxiosError(error) && error.response?.status) {
+        const status = error.response.status;
+        if (status >= 500) {
+          connectionState.fail({
+            operation: 'Session restore',
+            errorCode: String(status),
+            url: `${configuration.serverUrl}/v1/sessions/${opts.id}/restore`,
+            details: ['Server encountered an error, will retry automatically'],
+          });
+          return null;
+        }
+      }
+
+      throw new Error(`Failed to restore session: ${safeStringify(error)}`);
+    }
   }
 
   /**

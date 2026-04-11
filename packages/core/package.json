@@ -93,7 +93,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "rm -rf dist && tsc --noEmit && pkgroll",
+    "build": "sh -c 'if command -v chflags >/dev/null 2>&1; then chflags -R nouchg dist 2>/dev/null || true; fi; rm -rf dist && tsc --noEmit && pkgroll'",
     "dev": "tsc --watch"
   },
   "dependencies": {

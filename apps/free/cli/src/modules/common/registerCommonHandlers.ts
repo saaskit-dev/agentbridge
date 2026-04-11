@@ -9,6 +9,7 @@ import { run as runDifftastic } from '@/modules/difftastic/index';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify } from '@saaskit-dev/agentbridge';
+import type { PermissionMode } from '@/api/types';
 const logger = new Logger('modules/common/registerCommonHandlers');
 
 const execAsync = promisify(exec);
@@ -141,6 +142,7 @@ export interface SpawnSessionOptions {
   machineId?: string;
   directory: string;
   sessionId?: string;
+  restoreSession?: boolean;
   startedBy?: 'cli' | 'daemon' | 'app';
   /** Claude Code session ID to resume (passed as --resume-session-id). Only applies to claude agent. */
   resumeAgentSessionId?: string;
@@ -150,6 +152,7 @@ export interface SpawnSessionOptions {
   agent?: 'claude' | 'codex' | 'gemini' | 'opencode' | 'cursor';
   model?: string;
   mode?: string;
+  permissionMode?: PermissionMode;
   token?: string; // OAuth token for authentication
 }
 

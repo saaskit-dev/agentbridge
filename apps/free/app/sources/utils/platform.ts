@@ -3,6 +3,10 @@ import { getDeviceType } from 'react-native-device-info';
 
 const deviceType = getDeviceType();
 
+export function isWebPlatform(): boolean {
+  return Platform.OS === 'web';
+}
+
 export function isRunningOnMac(): boolean {
   if (Platform.OS !== 'ios') {
     return false;
@@ -20,4 +24,8 @@ export function isRunningOnMac(): boolean {
     typeof Platform.Version === 'string' &&
     Platform.Version.includes('Mac')
   );
+}
+
+export function isDesktopPlatform(): boolean {
+  return isWebPlatform() || isRunningOnMac();
 }

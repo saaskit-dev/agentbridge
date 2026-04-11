@@ -30,6 +30,10 @@ export const MetadataSchema = z.object({
   flavor: z.string().nullish(), // Session flavor/variant identifier
   sandbox: z.any().nullish(), // Sandbox config metadata from CLI (or null when disabled)
   dangerouslySkipPermissions: z.boolean().nullish(), // Claude --dangerously-skip-permissions mode (or null when unknown)
+  agentModel: z.string().optional(),
+  agentMode: z.string().optional(),
+  agentPermissionMode: z.enum(['read-only', 'accept-edits', 'yolo']).optional(),
+  agentStartingMode: z.enum(['local', 'remote']).optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

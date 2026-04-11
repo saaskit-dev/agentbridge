@@ -5,6 +5,12 @@ import type { AudioPlayer } from 'expo-audio';
 import { Platform } from 'react-native';
 import { AsyncLock } from '@/utils/lock';
 import { getFocusAudioSound, type FocusAudioSound } from '@/audio/focusAudioCatalog';
+import {
+  isFocusAudioNativeAvailable,
+  stopFocusAudioNative,
+  syncFocusAudioNative,
+} from '@/audio/focusAudioNative';
+import { buildFocusAudioWidgetState } from '@/widget/focusAudioWidget';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/audio/focusAudio');
@@ -196,7 +202,21 @@ export async function prepareFocusAudioSound(sound: FocusAudioSound): Promise<vo
 export async function syncFocusAudio(config: FocusAudioConfig): Promise<void> {
   await lock.inLock(async () => {
     if (!config.enabled) {
+      if (await stopFocusAudioNative()) {
+        return;
+      }
       await stopInternal();
+      return;
+    }
+
+    if (isFocusAudioNativeAvailable()) {
+      await syncFocusAudioNative(config, buildFocusAudioWidgetState({
+        focusAudioEnabled: config.enabled,
+        focusAudioSound: config.sound,
+        focusAudioVolume: config.volume,
+        focusAudioLastAudibleVolume: config.volume <= 0.001 ? 0.35 : config.volume,
+        focusAudioMixWithOthers: config.mixWithOthers,
+      }));
       return;
     }
 
@@ -225,6 +245,9 @@ export async function syncFocusAudio(config: FocusAudioConfig): Promise<void> {
 
 export async function stopFocusAudio(): Promise<void> {
   await lock.inLock(async () => {
+    if (await stopFocusAudioNative()) {
+      return;
+    }
     await stopInternal();
   });
 }

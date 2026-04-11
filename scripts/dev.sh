@@ -22,6 +22,7 @@ cd "$PROJECT_ROOT"
 # 端口配置
 SERVER_PORT=3000
 WEB_PORT=8081
+DESKTOP_PID=""
 
 # Dev 环境变量 — 全局设置，确保 cleanup 和 start 阶段都使用 dev variant
 export APP_ENV=development
@@ -102,6 +103,18 @@ ensure_dependencies() {
     log_success "依赖安装完成"
 }
 
+unlock_path() {
+    local target="$1"
+
+    if [ ! -e "$target" ]; then
+        return 0
+    fi
+
+    if command -v chflags >/dev/null 2>&1; then
+        chflags -R nouchg "$target" 2>/dev/null || true
+    fi
+}
+
 # ============================================================================
 # 清理函数
 # ============================================================================
@@ -148,6 +161,15 @@ stop_all() {
 
     # Web/Expo 不需要 graceful shutdown，直接杀
     kill_port $WEB_PORT "Web"
+
+    if [ -n "${DESKTOP_PID:-}" ] && ps -p "$DESKTOP_PID" > /dev/null 2>&1; then
+        log_info "停止桌面应用 (PID: $DESKTOP_PID)..."
+        kill "$DESKTOP_PID" 2>/dev/null || true
+        wait "$DESKTOP_PID" 2>/dev/null || true
+    fi
+
+    pkill -f "tauri dev" 2>/dev/null || true
+    pkill -f "/src-tauri/target/" 2>/dev/null || true
 }
 
 cleanup_all() {
@@ -162,6 +184,8 @@ cleanup_all() {
     pkill -f "free-server" 2>/dev/null || true
     pkill -f "free/app" 2>/dev/null || true
     pkill -f "expo" 2>/dev/null || true
+    pkill -f "tauri dev" 2>/dev/null || true
+    pkill -f "/src-tauri/target/" 2>/dev/null || true
     pkill -f "node.*standalone" 2>/dev/null || true
 
     # 停止 daemon — 直接 launchctl unload，不依赖 free-dev（cli/dist 可能已被上次清理删掉）
@@ -179,6 +203,8 @@ cleanup_all() {
 
     # 清理所有中间构建文件
     log_info "清理中间构建文件..."
+    unlock_path "$PROJECT_ROOT/packages/core/dist"
+    unlock_path "$PROJECT_ROOT/apps/free/cli/dist"
     rm -rf "$PROJECT_ROOT/packages/core/dist" 2>/dev/null || true
     rm -rf "$PROJECT_ROOT/apps/free/cli/dist" 2>/dev/null || true
     rm -rf "$PROJECT_ROOT/apps/free/server/.next" 2>/dev/null || true
@@ -201,6 +227,7 @@ build_core() {
 
     log_info "构建 @saaskit-dev/agentbridge..."
     cd "$PROJECT_ROOT/packages/core"
+    unlock_path "$PROJECT_ROOT/packages/core/dist"
     pnpm build 2>&1 | tee "$LOG_DIR/build-core.log"
 
     log_success "Core 包构建完成"
@@ -346,6 +373,35 @@ start_web() {
     fi
 }
 
+start_desktop() {
+    log_section "启动桌面应用"
+
+    cd "$PROJECT_ROOT/apps/free/app"
+
+    log_info "启动 Tauri 桌面应用..."
+
+    pnpm tauri:dev 2>&1 | tee "$LOG_DIR/desktop.log" &
+    DESKTOP_PID=$!
+
+    echo $DESKTOP_PID > "$LOG_DIR/desktop.pid"
+
+    log_info "等待桌面前端启动..."
+    for i in {1..60}; do
+        if curl -s "http://localhost:$WEB_PORT" > /dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+
+    if ps -p "$DESKTOP_PID" > /dev/null 2>&1; then
+        log_success "桌面应用启动中 (PID: $DESKTOP_PID)"
+        echo "  - http://localhost:$WEB_PORT (桌面前端 dev server)"
+    else
+        log_error "桌面应用启动失败，请检查 $LOG_DIR/desktop.log"
+        return 1
+    fi
+}
+
 # ============================================================================
 # 健康检查
 # ============================================================================
@@ -371,6 +427,14 @@ health_check() {
         echo -e "Web App:         ${RED}✗ Not running${NC}"
     fi
 
+    if [ -f "$LOG_DIR/desktop.pid" ]; then
+        local desktop_pid
+        desktop_pid=$(cat "$LOG_DIR/desktop.pid" 2>/dev/null || true)
+        if [ -n "$desktop_pid" ] && ps -p "$desktop_pid" > /dev/null 2>&1; then
+            echo -e "Desktop App:     ${GREEN}✓ Running${NC} (Tauri dev PID: $desktop_pid)"
+        fi
+    fi
+
     # Metrics (now integrated into server on port 3001)
     if curl -s "http://localhost:$SERVER_PORT/metrics" > /dev/null 2>&1; then
         echo -e "Metrics:         ${GREEN}✓ Running${NC} (http://localhost:$SERVER_PORT/metrics)"
@@ -394,13 +458,16 @@ show_help() {
     echo "  --clear          清除 Metro 缓存后启动"
     echo "  --server-only    只启动服务器"
     echo "  --web-only       只启动 Web"
+    echo "  --desktop        显式启动桌面端（Tauri，默认开启）"
     echo "  --no-clean       不清理历史进程"
     echo "  --help           显示帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0                    # 完整启动（清理 + 构建 + CLI链接 + 启动所有服务）"
+    echo "  $0                    # 完整启动（默认拉起后端 + daemon + 桌面端）"
     echo "  $0 --skip-build       # 跳过构建，只启动服务"
     echo "  $0 --server-only      # 只启动后端服务器"
+    echo "  $0 --desktop          # 显式启动后端 + daemon + 桌面端"
+    echo "  $0 --web-only         # 只启动 Web，不拉起桌面窗口"
     echo "  $0 --no-clean         # 不杀死历史进程"
     echo ""
     echo "全局命令:"
@@ -418,6 +485,7 @@ main() {
     local skip_build=false
     local server_only=false
     local web_only=false
+    local desktop=true
     local no_clean=false
     local clear_cache=false
 
@@ -434,6 +502,11 @@ main() {
                 ;;
             --web-only)
                 web_only=true
+                desktop=false
+                shift
+                ;;
+            --desktop)
+                desktop=true
                 shift
                 ;;
             --no-clean)
@@ -478,6 +551,10 @@ main() {
     elif [ "$server_only" = true ]; then
         start_server
         start_daemon
+    elif [ "$desktop" = true ]; then
+        start_server
+        start_daemon
+        start_desktop
     else
         start_server
         start_daemon

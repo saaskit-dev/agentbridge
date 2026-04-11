@@ -545,6 +545,8 @@ export const en = {
     serverReturnedError: 'Server returned an error',
     failedToConnectToServer: 'Failed to connect to server',
     currentlyUsingCustomServer: 'Currently using custom server',
+    devIgnoringProductionServer:
+      'Development mode is ignoring the production server URL and using the local dev server instead.',
     customServerUrlLabel: 'Custom Server URL',
     advancedFeatureFooter:
       "This is an advanced feature. Only change the server if you know what you're doing. You will need to log out and log in again after changing servers.",

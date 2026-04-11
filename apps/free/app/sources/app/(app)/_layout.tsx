@@ -6,7 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { createHeader } from '@/components/navigation/Header';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { isRunningOnMac } from '@/utils/platform';
+import { isDesktopPlatform } from '@/utils/platform';
 
 export const unstable_settings = {
   initialRouteName: 'index',
@@ -14,8 +14,7 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
-  const shouldUseCustomHeader =
-    Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
+  const shouldUseCustomHeader = Platform.OS === 'android' || isDesktopPlatform();
   const { theme } = useUnistyles();
 
   return (

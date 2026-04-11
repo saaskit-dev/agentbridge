@@ -512,6 +512,8 @@ export const ru: TranslationStructure = {
     serverReturnedError: 'Сервер вернул ошибку',
     failedToConnectToServer: 'Не удалось подключиться к серверу',
     currentlyUsingCustomServer: 'Сейчас используется пользовательский сервер',
+    devIgnoringProductionServer:
+      'В режиме разработки адрес production-сервера игнорируется, вместо него используется локальный dev-сервер.',
     customServerUrlLabel: 'URL пользовательского сервера',
     advancedFeatureFooter:
       'Это расширенная функция. Изменяйте сервер только если знаете, что делаете. Вам нужно будет выйти и войти снова после изменения серверов.',

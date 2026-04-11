@@ -6,6 +6,7 @@
 import { apiSocket } from './apiSocket';
 import { getSessionTrace, sessionLogger } from './appTraceStore';
 import { deleteSessionAttachments } from './attachmentUpload';
+import type { PermissionMode } from './sessionCapabilities';
 import type { MachineMetadata } from './storageTypes';
 import { safeStringify } from '@saaskit-dev/agentbridge/common';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
@@ -170,6 +171,8 @@ export type SpawnSessionResult =
 
 // Options for spawning a session
 export interface SpawnSessionOptions {
+  sessionId?: string;
+  restoreSession?: boolean;
   machineId: string;
   directory: string;
   approvedNewDirectoryCreation?: boolean;
@@ -177,6 +180,7 @@ export interface SpawnSessionOptions {
   agent?: string;
   model?: string;
   mode?: string;
+  permissionMode?: PermissionMode;
   resumeAgentSessionId?: string;
   returnStructuredErrors?: boolean;
   requireResumeSuccess?: boolean;
@@ -213,6 +217,8 @@ export async function machineSpawnNewSession(
     agent,
     model,
     mode,
+    permissionMode,
+    restoreSession,
     resumeAgentSessionId,
     returnStructuredErrors = false,
     requireResumeSuccess,
@@ -224,6 +230,8 @@ export async function machineSpawnNewSession(
     agent,
     model,
     mode,
+    permissionMode,
+    restoreSession,
     resumeAgentSessionId,
   });
 
@@ -233,22 +241,28 @@ export async function machineSpawnNewSession(
       {
         type: 'spawn-in-directory';
         directory: string;
+        sessionId?: string;
+        restoreSession?: boolean;
         approvedNewDirectoryCreation?: boolean;
         token?: string;
         agent?: string;
         model?: string;
         mode?: string;
+        permissionMode?: PermissionMode;
         resumeAgentSessionId?: string;
         requireResumeSuccess?: boolean;
       }
     >(machineId, 'spawn-free-session', {
       type: 'spawn-in-directory',
       directory,
+      sessionId: options.sessionId,
+      restoreSession,
       approvedNewDirectoryCreation,
       token,
       agent,
       model,
       mode,
+      permissionMode,
       resumeAgentSessionId,
       requireResumeSuccess,
     });
@@ -258,6 +272,7 @@ export async function machineSpawnNewSession(
       agent,
       model,
       mode,
+      permissionMode,
       resumeAgentSessionId,
       type: result.type,
       sessionId: result.type === 'success' ? result.sessionId : undefined,
@@ -274,6 +289,8 @@ export async function machineSpawnNewSession(
     logger.error('[ops] machineSpawnNewSession failed', toError(error), {
       machineId,
       directory,
+      sessionId: options.sessionId,
+      restoreSession,
       resumeAgentSessionId,
     });
     if (!returnStructuredErrors) {
