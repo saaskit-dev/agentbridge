@@ -188,6 +188,9 @@ export abstract class AgentSession<TMode> {
   private readonly attachmentsDir = path.join(configuration.freeHomeDir, 'attachments');
   /** Forwards daemon error-level logs to the App as daemon-log events. */
   private devErrorSink: DaemonLogSink | null = null;
+  private lastSeqPersistTimer: ReturnType<typeof setTimeout> | null = null;
+  private detachLastSeqListener: (() => void) | null = null;
+  private static readonly LAST_SEQ_PERSIST_DEBOUNCE_MS = 250;
 
   constructor(protected readonly opts: AgentSessionOpts) {
     this.userId = decodeUserId(opts.credential.token);
@@ -467,6 +470,32 @@ export abstract class AgentSession<TMode> {
     await persistSession(this.buildPersistedData());
   }
 
+  private attachLastSeqPersistence(session: ApiSessionClient): void {
+    this.detachLastSeqListener?.();
+    if (typeof (session as ApiSessionClient & { onLastSeqChanged?: unknown }).onLastSeqChanged !== 'function') {
+      this.detachLastSeqListener = null;
+      return;
+    }
+    this.detachLastSeqListener = session.onLastSeqChanged(() => {
+      if (this._isShuttingDown) {
+        return;
+      }
+      if (this.lastSeqPersistTimer) {
+        clearTimeout(this.lastSeqPersistTimer);
+      }
+      this.lastSeqPersistTimer = setTimeout(() => {
+        this.lastSeqPersistTimer = null;
+        this.persistCurrentState().catch(err =>
+          logger.warn('[AgentSession] failed to persist advanced lastSeq', {
+            sessionId: this.session?.sessionId,
+            error: String(err),
+          })
+        );
+      }, AgentSession.LAST_SEQ_PERSIST_DEBOUNCE_MS);
+      this.lastSeqPersistTimer.unref?.();
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Hooks for subclasses
   // ---------------------------------------------------------------------------
@@ -720,6 +749,11 @@ export abstract class AgentSession<TMode> {
     // Restore lastSeq from persistence so replay/fetch starts from the right point
     if (response && this.opts.lastSeq != null && this.opts.lastSeq > 0) {
       response.lastSeq = this.opts.lastSeq;
+      logger.info('[AgentSession] restored persisted lastSeq for recovery', {
+        sessionId: sid,
+        agentType: this.agentType,
+        restoredLastSeq: this.opts.lastSeq,
+      });
     }
 
     const result = setupOfflineReconnection({
@@ -737,6 +771,7 @@ export abstract class AgentSession<TMode> {
           const oldFreeServer = this.freeServer;
           this.session = newSession;
           this.freeServer = newFreeServer;
+          this.attachLastSeqPersistence(newSession);
           // Stop old server AFTER swap — failure here is non-fatal
           try {
             oldFreeServer?.stop();
@@ -810,6 +845,7 @@ export abstract class AgentSession<TMode> {
 
     this.session = result.session;
     this.reconnectionHandle = result.reconnectionHandle;
+    this.attachLastSeqPersistence(this.session);
 
     if (!result.isOffline) {
       this.freeServer = await startFreeServer(this.session);
@@ -1251,6 +1287,20 @@ export abstract class AgentSession<TMode> {
     if (this.keepAliveInterval) {
       clearInterval(this.keepAliveInterval);
       this.keepAliveInterval = null;
+    }
+    if (this.lastSeqPersistTimer) {
+      clearTimeout(this.lastSeqPersistTimer);
+      this.lastSeqPersistTimer = null;
+    }
+    this.detachLastSeqListener?.();
+    this.detachLastSeqListener = null;
+    if (this.session && this._keepStateForRecovery) {
+      await this.persistCurrentState().catch(err =>
+        logger.warn('[AgentSession] failed to persist final recovery state', {
+          sessionId: this.session?.sessionId,
+          error: String(err),
+        })
+      );
     }
 
     this.messageQueue?.close();

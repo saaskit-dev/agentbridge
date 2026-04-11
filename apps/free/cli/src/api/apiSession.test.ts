@@ -751,6 +751,8 @@ describe('ApiSessionClient v3 messages API migration', () => {
   it('updates lastSeq after successful outbox flush and never moves it backward', async () => {
     const client = new ApiSessionClient('fake-token', session);
     (client as any).lastSeq = 10;
+    const lastSeqUpdates: number[] = [];
+    client.onLastSeqChanged(lastSeq => lastSeqUpdates.push(lastSeq));
 
     mockSocket.emitWithAck.mockResolvedValueOnce({
       ok: true,
@@ -773,6 +775,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
       expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
     });
     expect((client as any).lastSeq).toBe(11);
+    expect(lastSeqUpdates).toEqual([11]);
   });
 
   it('flushOutbox sends in batches when outbox exceeds FLUSH_BATCH_SIZE', async () => {
@@ -886,6 +889,30 @@ describe('ApiSessionClient v3 messages API migration', () => {
       expect(receivedMessages).toHaveLength(1);
     });
     expect(receivedMessages[0]).toBe('missed-message');
+    expect((client as any).lastSeq).toBe(2);
+  });
+
+  it('reconnect replay skips messages at or below current lastSeq', async () => {
+    const client = new ApiSessionClient('fake-token', session);
+    const receivedMessages: string[] = [];
+    client.onUserMessage(msg => receivedMessages.push(msg.content.text));
+
+    emitSocketEvent('connect');
+    (client as any).lastSeq = 2;
+    emitSocketEvent('connect');
+
+    const duplicateUserMsg = await encryptContent(session, {
+      role: 'user',
+      content: { type: 'text', text: 'duplicate-replay' },
+    });
+    emitSocketEvent('replay', {
+      sessionId: 'test-session-id',
+      messages: [{ id: 'msg-2', seq: 2, content: { t: 'encrypted', c: duplicateUserMsg } }],
+      hasMore: false,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(receivedMessages).toHaveLength(0);
     expect((client as any).lastSeq).toBe(2);
   });
 

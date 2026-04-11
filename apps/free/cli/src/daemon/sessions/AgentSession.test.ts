@@ -5,7 +5,7 @@
  * using a minimal concrete TestAgentSession subclass.
  */
 
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { AgentSession, type AgentSessionOpts } from './AgentSession';
 import type { AgentBackend } from './AgentBackend';
 import type { IPCServerMessage } from '@/daemon/ipc/protocol';
@@ -50,6 +50,10 @@ vi.mock('./sessionPersistence', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 // ---------------------------------------------------------------------------
@@ -117,7 +121,12 @@ class TestAgentSession extends AgentSession<string> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeMockSession(sessionId = 'test-session-id'): ApiSessionClient {
+function makeMockSession(sessionId = 'test-session-id'): ApiSessionClient & {
+  __emitLastSeqChanged: (lastSeq: number) => void;
+} {
+  let lastSeq = 0;
+  let onLastSeqChangedHandler: ((nextLastSeq: number) => void) | null = null;
+
   return {
     sessionId,
     rpcHandlerManager: {
@@ -134,11 +143,26 @@ function makeMockSession(sessionId = 'test-session-id'): ApiSessionClient {
     onUserMessage: vi.fn(),
     onFileTransfer: vi.fn(),
     onFetchAttachment: vi.fn(),
+    onLastSeqChanged: vi.fn((handler: (nextLastSeq: number) => void) => {
+      onLastSeqChangedHandler = handler;
+      return () => {
+        if (onLastSeqChangedHandler === handler) {
+          onLastSeqChangedHandler = null;
+        }
+      };
+    }),
+    getLastSeq: vi.fn(() => lastSeq),
     keepAlive: vi.fn(),
     once: vi.fn(),
     flush: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
-  } as unknown as ApiSessionClient;
+    __emitLastSeqChanged: (nextLastSeq: number) => {
+      lastSeq = nextLastSeq;
+      onLastSeqChangedHandler?.(nextLastSeq);
+    },
+  } as unknown as ApiSessionClient & {
+    __emitLastSeqChanged: (lastSeq: number) => void;
+  };
 }
 
 function makeOpts(broadcast?: (sid: string, msg: IPCServerMessage) => void): AgentSessionOpts {
@@ -354,6 +378,42 @@ describe('AgentSession.initialize()', () => {
     expect(getOrCreateSession).not.toHaveBeenCalled();
     expect(sessionSyncClient).not.toHaveBeenCalled();
     expect(mockStartFreeServer).not.toHaveBeenCalled();
+  });
+
+  it('persists advanced lastSeq after initialize for crash recovery', async () => {
+    vi.useFakeTimers();
+
+    const session = new TestAgentSession(makeOpts());
+    const apiSession = makeMockSession('managed-last-seq');
+    const getOrCreateSession = vi.fn().mockResolvedValue({
+      id: 'managed-last-seq',
+      seq: 0,
+      metadata: {},
+      metadataVersion: 1,
+      agentState: null,
+      agentStateVersion: 1,
+      capabilities: null,
+      capabilitiesVersion: 0,
+    });
+    const sessionSyncClient = vi.fn().mockReturnValue(apiSession);
+    vi.spyOn(ApiClient, 'create').mockResolvedValue({
+      getOrCreateSession,
+      sessionSyncClient,
+    } as unknown as ApiClient);
+
+    await session.initialize();
+    expect(mockPersistSession).toHaveBeenCalledTimes(1);
+
+    apiSession.__emitLastSeqChanged(42);
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(mockPersistSession).toHaveBeenCalledTimes(2);
+    expect(mockPersistSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sessionId: 'managed-last-seq',
+        lastSeq: 42,
+      })
+    );
   });
 });
 

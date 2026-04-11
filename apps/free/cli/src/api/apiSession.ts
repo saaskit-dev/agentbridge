@@ -137,6 +137,7 @@ export class ApiSessionClient extends EventEmitter {
   private readonly outboxPersistenceLock = new AsyncLock();
   private readonly outboxReady: Promise<void>;
   private plannedReconnect: PlannedReconnectState | null = null;
+  private readonly lastSeqListeners = new Set<(lastSeq: number) => void>();
 
   constructor(token: string, session: Session) {
     super();
@@ -316,26 +317,46 @@ export class ApiSessionClient extends EventEmitter {
       async (data: { sessionId: string; messages: any[]; hasMore: boolean }) => {
         if (data?.sessionId !== this.sessionId || !Array.isArray(data.messages)) return;
         const mode = this.nextReplayMode;
+        const replayLastSeqBefore = this.lastSeq;
         logger.info('[CLI] Replay received', {
           sessionId: this.sessionId,
           count: data.messages.length,
           hasMore: data.hasMore,
           replayMode: mode,
+          lastSeqBefore: replayLastSeqBefore,
         });
 
         if (mode === 'recovery' && this.lastSeq > 0) {
           // Crash recovery (first connect, agent already has history via --resume):
           // only update lastSeq — routing would cause duplicate responses since the
           // agent has already seen these messages.
+          let advancedCount = 0;
           for (const message of data.messages) {
-            if (message.seq > this.lastSeq) this.lastSeq = message.seq;
+            const previousLastSeq = this.lastSeq;
+            this.advanceLastSeq(message.seq);
+            if (this.lastSeq > previousLastSeq) advancedCount++;
           }
+          logger.info('[CLI] Replay processed in recovery mode', {
+            sessionId: this.sessionId,
+            count: data.messages.length,
+            advancedCount,
+            lastSeqBefore: replayLastSeqBefore,
+            lastSeqAfter: this.lastSeq,
+            hasMore: data.hasMore,
+          });
           if (data.hasMore) this.fetchRemainingSeqs();
         } else {
           // Reconnect, OR first connect on a brand-new session (lastSeq === 0):
           // agent has no prior history, so route messages so the agent sees them.
+          let routedCount = 0;
+          let skippedBySeqCount = 0;
           for (const message of data.messages) {
-            if (message.seq > this.lastSeq) this.lastSeq = message.seq;
+            const messageSeq = typeof message.seq === 'number' ? message.seq : null;
+            if (messageSeq != null && messageSeq <= this.lastSeq) {
+              skippedBySeqCount++;
+              continue;
+            }
+            if (messageSeq != null) this.advanceLastSeq(messageSeq);
             if (message.content?.t !== 'encrypted') continue;
             if (message.traceId) setCurrentTurnTrace(resumeTrace(message.traceId));
             try {
@@ -345,6 +366,7 @@ export class ApiSessionClient extends EventEmitter {
                 message.content.c
               );
               this.routeIncomingMessage(body);
+              routedCount++;
             } catch (error) {
               logger.error('[CLI] Replay decrypt failed', undefined, {
                 sessionId: this.sessionId,
@@ -353,6 +375,15 @@ export class ApiSessionClient extends EventEmitter {
               });
             }
           }
+          logger.info('[CLI] Replay processed in routing mode', {
+            sessionId: this.sessionId,
+            count: data.messages.length,
+            routedCount,
+            skippedBySeqCount,
+            lastSeqBefore: replayLastSeqBefore,
+            lastSeqAfter: this.lastSeq,
+            hasMore: data.hasMore,
+          });
           if (data.hasMore) this.receiveSync.invalidate();
         }
       }
@@ -417,7 +448,7 @@ export class ApiSessionClient extends EventEmitter {
               traceId: data._trace?.tid,
             });
             this.routeIncomingMessage(body);
-            this.lastSeq = messageSeq;
+            this.advanceLastSeq(messageSeq);
           } catch (decryptError) {
             logger.error(
               '[SOCKET] Fast-path processing failed, falling back to slow path',
@@ -502,6 +533,13 @@ export class ApiSessionClient extends EventEmitter {
 
   getLastSeq(): number {
     return this.lastSeq;
+  }
+
+  onLastSeqChanged(listener: (lastSeq: number) => void): () => void {
+    this.lastSeqListeners.add(listener);
+    return () => {
+      this.lastSeqListeners.delete(listener);
+    };
   }
 
   onUserMessage(callback: (data: UserMessage) => void) {
@@ -654,7 +692,7 @@ export class ApiSessionClient extends EventEmitter {
         }
       }
 
-      this.lastSeq = Math.max(this.lastSeq, maxSeq);
+      this.advanceLastSeq(maxSeq);
       const hasMore = !!ack.hasMore;
       if (hasMore && maxSeq === afterSeq) {
         logger.debug('[API] fetchMessages pagination stalled, stopping to avoid infinite loop', {
@@ -706,7 +744,7 @@ export class ApiSessionClient extends EventEmitter {
       for (const message of messages) {
         if (message.seq > maxSeq) maxSeq = message.seq;
       }
-      this.lastSeq = Math.max(this.lastSeq, maxSeq);
+      this.advanceLastSeq(maxSeq);
 
       const hasMore = !!ack.hasMore;
       if (!hasMore || maxSeq === afterSeq) break;
@@ -776,7 +814,7 @@ export class ApiSessionClient extends EventEmitter {
         (acc, message) => (message.seq > acc ? message.seq : acc),
         this.lastSeq
       );
-      this.lastSeq = maxSeq;
+      this.advanceLastSeq(maxSeq);
       logger.debug('[apiSession] outbox batch flushed', {
         userId: this.userId,
         sessionId: this.sessionId,
@@ -1323,6 +1361,23 @@ export class ApiSessionClient extends EventEmitter {
   private async waitForOperationalSocket(): Promise<void> {
     if (this.plannedReconnect) {
       await this.plannedReconnect.promise;
+    }
+  }
+
+  private advanceLastSeq(nextSeq: number): void {
+    if (!Number.isFinite(nextSeq) || nextSeq <= this.lastSeq) {
+      return;
+    }
+    this.lastSeq = nextSeq;
+    for (const listener of this.lastSeqListeners) {
+      try {
+        listener(this.lastSeq);
+      } catch (error) {
+        logger.warn('[apiSession] lastSeq listener failed', {
+          sessionId: this.sessionId,
+          error: safeStringify(error),
+        });
+      }
     }
   }
 }

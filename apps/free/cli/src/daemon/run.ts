@@ -723,6 +723,7 @@ export async function startDaemon(): Promise<void> {
             agentType: data.agentType,
             cwd: data.cwd,
             resumeSessionId: data.resumeSessionId,
+            persistedLastSeq: data.lastSeq ?? 0,
             startingMode: data.startingMode,
             createdAt: new Date(data.createdAt).toISOString(),
             previousDaemonInstanceId: data.daemonInstanceId,
