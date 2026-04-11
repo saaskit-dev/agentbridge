@@ -8,16 +8,17 @@
  * instead of waiting up to 60s for the heartbeat to detect the version change.
  *
  * Strategy:
- * 1. Read daemon.state.json to find the running daemon's PID
- * 2. Send SIGTERM to gracefully stop it
- * 3. The LaunchAgent/systemd KeepAlive will automatically restart with the new binary
+ * 1. Read daemon.state.json to confirm a daemon is currently running
+ * 2. Restart the managed service directly via launchctl/systemctl when possible
+ * 3. Fall back to SIGTERM only for unmanaged daemons
  *
  * If no daemon is running, this is a no-op.
  */
 
+const { execFileSync } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 const os = require('os');
+const path = require('path');
 
 // Determine FREE_HOME_DIR (same logic as configuration.ts)
 function getFreeHomeDir() {
@@ -25,6 +26,126 @@ function getFreeHomeDir() {
     return process.env.FREE_HOME_DIR.replace(/^~/, os.homedir());
   }
   return path.join(os.homedir(), '.free');
+}
+
+function getVariant() {
+  if (process.env.APP_ENV === 'development') {
+    return 'development';
+  }
+
+  const freeHomeDir = process.env.FREE_HOME_DIR?.replace(/^~/, os.homedir());
+  if (freeHomeDir && /(^|\/)\.free-dev(\/|$)/.test(freeHomeDir)) {
+    return 'development';
+  }
+
+  return 'production';
+}
+
+function getServiceConfig() {
+  const variant = getVariant();
+  const variantSuffix = variant === 'development' ? '-dev' : '';
+  const daemonServiceLabel = `app.saaskit.free.daemon${variantSuffix}`;
+  const daemonSystemdServiceName = `free-daemon${variantSuffix}`;
+
+  return {
+    daemonServiceLabel,
+    daemonPlistFile: path.join(
+      os.homedir(),
+      'Library',
+      'LaunchAgents',
+      `${daemonServiceLabel}.plist`
+    ),
+    daemonSystemdServiceName,
+    daemonSystemdFile: path.join(
+      os.homedir(),
+      '.config',
+      'systemd',
+      'user',
+      `${daemonSystemdServiceName}.service`
+    ),
+  };
+}
+
+function isLaunchAgentLoaded(daemonServiceLabel) {
+  if (typeof process.getuid !== 'function') {
+    return false;
+  }
+
+  try {
+    execFileSync('launchctl', ['print', `gui/${process.getuid()}/${daemonServiceLabel}`], {
+      stdio: 'pipe',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function restartViaLaunchAgent(serviceConfig) {
+  if (process.platform !== 'darwin') {
+    return false;
+  }
+
+  if (!fs.existsSync(serviceConfig.daemonPlistFile)) {
+    return false;
+  }
+
+  if (!isLaunchAgentLoaded(serviceConfig.daemonServiceLabel)) {
+    return false;
+  }
+
+  const launchTarget = `gui/${process.getuid()}/${serviceConfig.daemonServiceLabel}`;
+
+  try {
+    console.log(
+      `[postinstall] Restarting LaunchAgent ${serviceConfig.daemonServiceLabel} via launchctl kickstart...`
+    );
+    execFileSync('launchctl', ['kickstart', '-k', launchTarget], { stdio: 'pipe' });
+    console.log('[postinstall] Daemon restarted via LaunchAgent');
+    return true;
+  } catch (err) {
+    console.log(`[postinstall] Could not restart LaunchAgent: ${err.message}`);
+    return false;
+  }
+}
+
+function isSystemdUserServiceActive(daemonSystemdServiceName) {
+  try {
+    execFileSync('systemctl', ['--user', 'is-active', '--quiet', daemonSystemdServiceName], {
+      stdio: 'pipe',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function restartViaSystemd(serviceConfig) {
+  if (process.platform !== 'linux') {
+    return false;
+  }
+
+  if (!fs.existsSync(serviceConfig.daemonSystemdFile)) {
+    return false;
+  }
+
+  if (!isSystemdUserServiceActive(serviceConfig.daemonSystemdServiceName)) {
+    return false;
+  }
+
+  try {
+    console.log(
+      `[postinstall] Restarting systemd user service ${serviceConfig.daemonSystemdServiceName}...`
+    );
+    execFileSync('systemctl', ['--user', 'restart', serviceConfig.daemonSystemdServiceName], {
+      stdio: 'pipe',
+    });
+    console.log('[postinstall] Daemon restarted via systemd');
+    return true;
+  } catch (err) {
+    console.log(`[postinstall] Could not restart systemd service: ${err.message}`);
+    return false;
+  }
 }
 
 function tryRestartDaemon() {
@@ -55,13 +176,16 @@ function tryRestartDaemon() {
     return;
   }
 
-  // Send SIGTERM for graceful shutdown
-  // The system service manager (LaunchAgent/systemd) will auto-restart it
-  // with the newly installed binary
+  const serviceConfig = getServiceConfig();
+  if (restartViaLaunchAgent(serviceConfig) || restartViaSystemd(serviceConfig)) {
+    return;
+  }
+
+  // Fallback for manually started daemons or machines without a configured service manager.
   try {
-    console.log(`[postinstall] Restarting daemon (pid ${state.pid})...`);
+    console.log(`[postinstall] Signaling daemon (pid ${state.pid})...`);
     process.kill(state.pid, 'SIGTERM');
-    console.log('[postinstall] Daemon will restart automatically via system service');
+    console.log('[postinstall] Daemon signaled; restart depends on the active supervisor');
   } catch (err) {
     // EPERM or other errors — not critical, daemon heartbeat will catch up
     console.log(`[postinstall] Could not signal daemon: ${err.message}`);
