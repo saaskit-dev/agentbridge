@@ -332,6 +332,29 @@ describe('AgentSession.initialize()', () => {
 
     await session.shutdown('test_cleanup');
   });
+
+  it('throws when managed restore cannot reach the server', async () => {
+    const session = new TestAgentSession({
+      ...makeOpts(),
+      sessionId: 'managed-restore',
+      restoreSession: true,
+    });
+    const restoreSession = vi.fn().mockResolvedValue(null);
+    const getOrCreateSession = vi.fn();
+    const sessionSyncClient = vi.fn();
+    vi.spyOn(ApiClient, 'create').mockResolvedValue({
+      restoreSession,
+      getOrCreateSession,
+      sessionSyncClient,
+    } as unknown as ApiClient);
+
+    await expect(session.initialize()).rejects.toThrow(
+      'Failed to restore managed session "managed-restore": server unavailable'
+    );
+    expect(getOrCreateSession).not.toHaveBeenCalled();
+    expect(sessionSyncClient).not.toHaveBeenCalled();
+    expect(mockStartFreeServer).not.toHaveBeenCalled();
+  });
 });
 
 describe('AgentSession.sendInput()', () => {
@@ -376,17 +399,19 @@ describe('AgentSession.abort()', () => {
 });
 
 describe('AgentSession session RPC handlers', () => {
-  it('restartAgent does not leak unhandled rejections when forceRestart fails', async () => {
+  it('restartAgent returns before waiting for a stuck backend stop', async () => {
     const session = new TestAgentSession(makeOpts());
     const mockSession = makeMockSession('sess-restart');
     session.injectSession(mockSession);
-
-    const forceRestartSpy = vi
-      .spyOn(session, 'forceRestart')
-      .mockRejectedValue(new Error('boom'));
-    const unhandledRejection = vi.fn();
-
-    process.once('unhandledRejection', unhandledRejection);
+    session.injectBackend({
+      ...session.createBackend(),
+      stop: vi.fn(
+        () =>
+          new Promise<void>(() => {
+            // Intentionally never resolves to simulate a stuck backend stop.
+          })
+      ),
+    });
 
     (session as any).registerSessionRpcHandlers();
 
@@ -400,11 +425,6 @@ describe('AgentSession session RPC handlers', () => {
       success: true,
       message: 'Restarting agent process',
     });
-
-    await new Promise(resolve => setImmediate(resolve));
-
-    expect(forceRestartSpy).toHaveBeenCalledTimes(1);
-    expect(unhandledRejection).not.toHaveBeenCalled();
   });
 });
 

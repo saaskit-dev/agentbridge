@@ -109,7 +109,7 @@ export async function startDaemon(): Promise<void> {
   // In case the setup malfunctions - our signal handlers will not properly
   // shut down. We will force exit the process with code 1.
   let requestShutdown: (
-    source: 'free-app' | 'free-cli' | 'os-signal' | 'exception',
+    source: 'free-app' | 'free-cli' | 'os-signal' | 'exception' | 'superseded',
     errorMessage?: string
   ) => void;
   let clearShutdownFallback: (() => void) | undefined;
@@ -118,7 +118,7 @@ export async function startDaemon(): Promise<void> {
   let sessionManager: SessionManager | undefined;
   let ipcServer: IPCServer | undefined;
   const resolvesWhenShutdownRequested = new Promise<{
-    source: 'free-app' | 'free-cli' | 'os-signal' | 'exception';
+    source: 'free-app' | 'free-cli' | 'os-signal' | 'exception' | 'superseded';
     errorMessage?: string;
   }>(resolve => {
     requestShutdown = (source, errorMessage) => {
@@ -882,153 +882,158 @@ export async function startDaemon(): Promise<void> {
       heartbeatRunning = true;
       heartbeatStartTime = Date.now();
 
-      logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
+      try {
+        logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
 
-      // Check if daemon needs update
-      // If version on disk is different from the one in package.json - we need to restart
-      const projectVersion = JSON.parse(
-        readFileSync(join(projectPath(), 'package.json'), 'utf-8')
-      ).version;
-      if (projectVersion !== configuration.currentCliVersion) {
-        // Guard against concurrent heartbeats both triggering restart
-        if (restartInitiated) return;
-        restartInitiated = true;
+        // Check if daemon needs update
+        // If version on disk is different from the one in package.json - we need to restart
+        const projectVersion = JSON.parse(
+          readFileSync(join(projectPath(), 'package.json'), 'utf-8')
+        ).version;
+        if (projectVersion !== configuration.currentCliVersion) {
+          // Guard against concurrent heartbeats both triggering restart
+          if (restartInitiated) return;
+          restartInitiated = true;
 
-        logger.debug(
-          '[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version'
-        );
-        logger.debug(
-          `[DAEMON RUN] Version change: ${configuration.currentCliVersion} -> ${projectVersion}`
-        );
+          logger.debug(
+            '[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version'
+          );
+          logger.debug(
+            `[DAEMON RUN] Version change: ${configuration.currentCliVersion} -> ${projectVersion}`
+          );
 
-        clearInterval(restartOnStaleVersionAndHeartbeat);
+          clearInterval(restartOnStaleVersionAndHeartbeat);
 
-        // Wait for all agents to finish their current turn before restarting.
-        // Version updates are not urgent — avoid losing in-flight responses.
-        if (sessionManager) {
-          const activeSessions = sessionManager.list();
-          const busySessions = activeSessions.filter(s => s.isWorking);
-          if (busySessions.length > 0) {
-            logger.info(
-              '[DAEMON RUN] Waiting for busy sessions to finish current turn before restart',
-              {
-                busyCount: busySessions.length,
-                busySessionIds: busySessions.map(s => s.sessionId),
-              }
-            );
-            const WAIT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max wait
-            const POLL_INTERVAL_MS = 1000;
-            const deadline = Date.now() + WAIT_TIMEOUT_MS;
-            while (Date.now() < deadline) {
-              const stillBusy = activeSessions.filter(s => s.isWorking);
-              if (stillBusy.length === 0) break;
-              await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-            }
-            const timedOut = activeSessions.filter(s => s.isWorking);
-            if (timedOut.length > 0) {
-              logger.warn(
-                '[DAEMON RUN] Timed out waiting for sessions to finish, proceeding with restart',
+          // Wait for all agents to finish their current turn before restarting.
+          // Version updates are not urgent — avoid losing in-flight responses.
+          if (sessionManager) {
+            let activeSessions = sessionManager.list();
+            const busySessions = activeSessions.filter(s => s.isWorking);
+            if (busySessions.length > 0) {
+              logger.info(
+                '[DAEMON RUN] Waiting for busy sessions to finish current turn before restart',
                 {
-                  timedOutCount: timedOut.length,
-                  timedOutSessionIds: timedOut.map(s => s.sessionId),
+                  busyCount: busySessions.length,
+                  busySessionIds: busySessions.map(s => s.sessionId),
                 }
               );
-            } else {
-              logger.info(
-                '[DAEMON RUN] All sessions finished current turn, proceeding with restart'
-              );
+              const WAIT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max wait
+              const POLL_INTERVAL_MS = 1000;
+              const deadline = Date.now() + WAIT_TIMEOUT_MS;
+              while (Date.now() < deadline) {
+                activeSessions = sessionManager.list();
+                const stillBusy = activeSessions.filter(s => s.isWorking);
+                if (stillBusy.length === 0) break;
+                await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+              }
+              activeSessions = sessionManager.list();
+              const timedOut = activeSessions.filter(s => s.isWorking);
+              if (timedOut.length > 0) {
+                logger.warn(
+                  '[DAEMON RUN] Timed out waiting for sessions to finish, proceeding with restart',
+                  {
+                    timedOutCount: timedOut.length,
+                    timedOutSessionIds: timedOut.map(s => s.sessionId),
+                  }
+                );
+              } else {
+                logger.info(
+                  '[DAEMON RUN] All sessions finished current turn, proceeding with restart'
+                );
+              }
+            }
+
+            // Refresh after the drain window so sessions created while we were waiting
+            // are also flushed and suspended before the old daemon exits.
+            activeSessions = sessionManager.list();
+
+            // Flush all outbox messages to the server before stopping backends.
+            if (activeSessions.length > 0) {
+              logger.info('[DAEMON RUN] Flushing outbox for all sessions before restart');
+              await Promise.allSettled(activeSessions.map(s => s.flushOutbox()));
+            }
+
+            // Stop agent backends but keep persisted state for recovery by the new daemon.
+            // We do NOT call session.shutdown() here (which would delete persisted files).
+            if (activeSessions.length > 0) {
+              const sessionIds = activeSessions.map(s => s.sessionId);
+              logger.info('[DAEMON RUN] Suspending sessions for recovery after restart', {
+                count: activeSessions.length,
+                sessionIds,
+              });
+              const results = await Promise.allSettled(activeSessions.map(s => s.stopBackend()));
+              const failed = results.filter(r => r.status === 'rejected').length;
+              logger.info('[DAEMON RUN] Backend suspend complete', {
+                total: activeSessions.length,
+                succeeded: activeSessions.length - failed,
+                failed,
+              });
             }
           }
 
-          // Flush all outbox messages to the server before stopping backends.
-          if (activeSessions.length > 0) {
-            logger.info('[DAEMON RUN] Flushing outbox for all sessions before restart');
-            await Promise.allSettled(activeSessions.map(s => s.flushOutbox()));
+          // Spawn new daemon through the CLI
+          try {
+            spawnFreeCLI(['daemon', 'start'], {
+              detached: true,
+              stdio: 'ignore',
+              env: process.env,
+            });
+          } catch (error) {
+            logger.debug(
+              '[DAEMON RUN] Failed to spawn new daemon, this is quite likely to happen during integration tests as we are cleaning out dist/ directory',
+              error
+            );
           }
 
-          // Stop agent backends but keep persisted state for recovery by the new daemon.
-          // We do NOT call session.shutdown() here (which would delete persisted files).
-          if (activeSessions.length > 0) {
-            const sessionIds = activeSessions.map(s => s.sessionId);
-            logger.info('[DAEMON RUN] Suspending sessions for recovery after restart', {
-              count: activeSessions.length,
-              sessionIds,
-            });
-            const results = await Promise.allSettled(activeSessions.map(s => s.stopBackend()));
-            const failed = results.filter(r => r.status === 'rejected').length;
-            logger.info('[DAEMON RUN] Backend suspend complete', {
-              total: activeSessions.length,
-              succeeded: activeSessions.length - failed,
-              failed,
-            });
-          }
+          logger.info('[DAEMON RUN] Daemon restart initiated, exiting');
+          await shutdownTelemetry();
+          process.exit(0);
         }
 
-        // Spawn new daemon through the CLI
-        try {
-          spawnFreeCLI(['daemon', 'start'], {
-            detached: true,
-            stdio: 'ignore',
-            env: process.env,
-          });
-        } catch (error) {
+        // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it
+        // Race condition is possible, but thats okay for the time being :D
+        const daemonState = await readDaemonState();
+        if (daemonState && daemonState.pid !== process.pid) {
           logger.debug(
-            '[DAEMON RUN] Failed to spawn new daemon, this is quite likely to happen during integration tests as we are cleaning out dist/ directory',
-            error
+            '[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.'
+          );
+          requestShutdown(
+            'superseded',
+            'A different daemon was started without killing us. We should kill ourselves.'
           );
         }
 
-        logger.info('[DAEMON RUN] Daemon restart initiated, exiting');
-        await shutdownTelemetry();
-        process.exit(0);
-      }
+        // Memory metrics — daemon + all child processes, guarded by analytics opt-in.
+        if (isAnalyticsEnabledSync()) {
+          const mem = process.memoryUsage();
+          const sessions = sessionManager?.list() ?? [];
 
-      // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it
-      // Race condition is possible, but thats okay for the time being :D
-      const daemonState = await readDaemonState();
-      if (daemonState && daemonState.pid !== process.pid) {
-        logger.debug(
-          '[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.'
-        );
-        requestShutdown(
-          'exception',
-          'A different daemon was started without killing us. We should kill ourselves.'
-        );
-      }
-
-      // Memory metrics — daemon + all child processes, guarded by analytics opt-in.
-      if (isAnalyticsEnabledSync()) {
-        const mem = process.memoryUsage();
-        const sessions = sessionManager?.list() ?? [];
-
-        logger.debug('[DAEMON RUN] mem_metrics:daemon', {
-          pid: process.pid,
-          rssKB: Math.round(mem.rss / 1024),
-          heapUsedKB: Math.round(mem.heapUsed / 1024),
-          heapTotalKB: Math.round(mem.heapTotal / 1024),
-          externalKB: Math.round(mem.external / 1024),
-          arrayBuffersKB: Math.round(mem.arrayBuffers / 1024),
-          activeSessions: sessions.length,
-        });
-
-        // Collect child process memory async (non-blocking, fire-and-forget).
-        const pidToSessionId = new Map<number, string>();
-        for (const s of sessions) {
-          if (s.childPid) pidToSessionId.set(s.childPid, s.sessionId);
-        }
-        getChildProcStats(process.pid, pidToSessionId)
-          .then(children => {
-            if (children.length > 0) {
-              logger.debug('[DAEMON RUN] mem_metrics:children', { children });
-            }
-          })
-          .catch(() => {
-            /* non-critical, ignore */
+          logger.debug('[DAEMON RUN] mem_metrics:daemon', {
+            pid: process.pid,
+            rssKB: Math.round(mem.rss / 1024),
+            heapUsedKB: Math.round(mem.heapUsed / 1024),
+            heapTotalKB: Math.round(mem.heapTotal / 1024),
+            externalKB: Math.round(mem.external / 1024),
+            arrayBuffersKB: Math.round(mem.arrayBuffers / 1024),
+            activeSessions: sessions.length,
           });
-      }
 
-      // Heartbeat
-      try {
+          // Collect child process memory async (non-blocking, fire-and-forget).
+          const pidToSessionId = new Map<number, string>();
+          for (const s of sessions) {
+            if (s.childPid) pidToSessionId.set(s.childPid, s.sessionId);
+          }
+          getChildProcStats(process.pid, pidToSessionId)
+            .then(children => {
+              if (children.length > 0) {
+                logger.debug('[DAEMON RUN] mem_metrics:children', { children });
+              }
+            })
+            .catch(() => {
+              /* non-critical, ignore */
+            });
+        }
+
         const updatedState: DaemonLocallyPersistedState = {
           pid: process.pid,
           httpPort: controlPort,
@@ -1042,16 +1047,23 @@ export async function startDaemon(): Promise<void> {
         writeDaemonState(updatedState);
         logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
       } catch (error) {
-        logger.debug('[DAEMON RUN] Failed to write heartbeat', error);
+        const err = toError(error);
+        logger.error('[DAEMON RUN] Health check failed', err, {
+          restartInitiated,
+          heartbeatRunning,
+        });
+        if (restartInitiated) {
+          requestShutdown('exception', err.message);
+        }
+      } finally {
+        heartbeatRunning = false;
+        heartbeatStartTime = 0;
       }
-
-      heartbeatRunning = false;
-      heartbeatStartTime = 0;
     }, heartbeatIntervalMs); // Every 60 seconds in production
 
     // Setup signal handlers
     const cleanupAndShutdown = async (
-      source: 'free-app' | 'free-cli' | 'os-signal' | 'exception',
+      source: 'free-app' | 'free-cli' | 'os-signal' | 'exception' | 'superseded',
       errorMessage?: string
     ) => {
       logger.debug(
@@ -1105,9 +1117,13 @@ export async function startDaemon(): Promise<void> {
       await stopCaffeinate();
       await releaseDaemonLock(daemonLockHandle);
 
-      logger.info('[DAEMON RUN] Cleanup completed, exiting process');
+      const exitCode = source === 'exception' ? 1 : 0;
+      logger.info('[DAEMON RUN] Cleanup completed, exiting process', {
+        exitCode,
+        source,
+      });
       await shutdownTelemetry();
-      process.exit(0);
+      process.exit(exitCode);
     };
 
     logger.info('[DAEMON RUN] Daemon started successfully, waiting for shutdown request');

@@ -370,6 +370,37 @@ export abstract class AgentSession<TMode> {
     }
   }
 
+  requestForceRestart(): void {
+    if (this._isShuttingDown || this.pendingExit) {
+      throw new Error('Session is shutting down');
+    }
+    if (this.forceRestartTask) {
+      logger.info('[AgentSession] forceRestart already in progress', {
+        sessionId: this.session?.sessionId,
+        agentType: this.agentType,
+      });
+      return;
+    }
+
+    const task = this.forceRestart()
+      .catch(err => {
+        this._isForceRestarting = false;
+        logger.error('[AgentSession] forceRestart failed', toError(err), {
+          sessionId: this.session?.sessionId,
+          agentType: this.agentType,
+          traceId: getProcessTraceContext()?.traceId,
+        });
+        this.publishVisibleInfo('Agent restart failed. Try again.');
+      })
+      .finally(() => {
+        if (this.forceRestartTask === task) {
+          this.forceRestartTask = null;
+        }
+      });
+
+    this.forceRestartTask = task;
+  }
+
   get sessionId(): string {
     if (!this.session) throw new Error('AgentSession.sessionId accessed before initialize()');
     return this.session.sessionId;
@@ -682,6 +713,10 @@ export abstract class AgentSession<TMode> {
           machineId: this.opts.machineId,
         });
 
+    if (this.opts.restoreSession && !response) {
+      throw new Error(`Failed to restore managed session "${sid}": server unavailable`);
+    }
+
     // Restore lastSeq from persistence so replay/fetch starts from the right point
     if (response && this.opts.lastSeq != null && this.opts.lastSeq > 0) {
       response.lastSeq = this.opts.lastSeq;
@@ -754,7 +789,7 @@ export abstract class AgentSession<TMode> {
             this.pendingExit = true; // prevent auto-restart
             this.shouldExit = true;
             this.messageQueue?.close();
-            await this.backend.abort();
+            await this.abort();
           });
           // Re-register DB-archived fallback on new session
           this.listenForServerArchived();
@@ -919,7 +954,7 @@ export abstract class AgentSession<TMode> {
           sessionId: this.session.sessionId,
           agentType: this.agentType,
         });
-        void this.forceRestart();
+        this.requestForceRestart();
         return { success: true, message: 'Restarting agent process' };
       }
     );
@@ -930,6 +965,7 @@ export abstract class AgentSession<TMode> {
   private backendRestartCount = 0;
   private lastBackendStartTime = 0;
   private _isForceRestarting = false;
+  private forceRestartTask: Promise<void> | null = null;
 
   async run(): Promise<void> {
     // Attach a sink that forwards error-level log entries to the App as
@@ -1006,7 +1042,7 @@ export abstract class AgentSession<TMode> {
           this.pendingExit = true; // prevent auto-restart
           this.shouldExit = true;
           this.messageQueue?.close();
-          await this.backend.abort();
+          await this.abort();
         });
         this.registerSessionRpcHandlers();
       }

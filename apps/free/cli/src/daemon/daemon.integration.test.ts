@@ -27,7 +27,7 @@ import {
   stopDaemon,
   isDaemonRunningCurrentlyInstalledFreeVersion,
 } from '@/daemon/controlClient';
-import { readDaemonState, clearDaemonState } from '@/persistence';
+import { readDaemonState, clearDaemonState, writeDaemonState } from '@/persistence';
 import { getLatestDaemonLog } from '@/utils/daemonLogs';
 import { spawnFreeCLI } from '@/utils/spawnFreeCLI';
 import {
@@ -259,6 +259,57 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
     // Clean up state file if it still exists (should have been cleaned by SIGTERM handler)
     await clearDaemonState();
   });
+
+  it(
+    'should exit zero when superseded by another daemon instance',
+    { timeout: 20_000 },
+    async () => {
+      await stopDaemon();
+      await waitFor(async () => (await readDaemonState()) === null, 5_000, 200);
+
+      const child = spawnFreeCLI(['daemon', 'start-sync'], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          FREE_DAEMON_HEARTBEAT_INTERVAL: '1000',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      const output: string[] = [];
+      child.stdout?.on('data', data => output.push(data.toString()));
+      child.stderr?.on('data', data => output.push(data.toString()));
+
+      await waitFor(async () => {
+        const state = await readDaemonState();
+        return state?.pid === child.pid;
+      }, 10_000, 200);
+
+      const daemonState = await readDaemonState();
+      if (!daemonState) {
+        throw new Error('Daemon state missing after tracked startup');
+      }
+
+      writeDaemonState({
+        ...daemonState,
+        pid: daemonState.pid + 100_000,
+      });
+
+      const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+        resolve => {
+          child.once('exit', (code, signal) => resolve({ code, signal }));
+        }
+      );
+
+      expect(exit.signal).toBeNull();
+      expect(exit.code).toBe(0);
+      await waitFor(async () => !existsSync(configuration.daemonStateFile), 5_000, 200);
+
+      const latestLog = await getLatestDaemonLog();
+      const logContent = latestLog ? readFileSync(latestLog.path, 'utf8') : output.join('');
+      expect(logContent).toContain('source: superseded');
+    }
+  );
 
   /**
    * Version mismatch detection test - control flow:

@@ -22,7 +22,7 @@ export function registerKillSessionHandler(
       logger.debug('Kill session request received');
 
       // This will start the cleanup process
-      void killThisFree();
+      await killThisFree();
 
       // We should still be able to respond the the client, though they
       // should optimistically assume the session is dead.
