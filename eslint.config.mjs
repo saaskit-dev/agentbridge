@@ -13,6 +13,8 @@ export default tseslint.config(
       'dist/',
       'build/',
       '**/dist/**',
+      '**/target/**',
+      '**/src-tauri/target/**',
       '**/node_modules/**',
       '**/.expo/**',
       'coverage/',
