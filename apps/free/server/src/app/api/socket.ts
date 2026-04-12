@@ -40,6 +40,7 @@ import {
 } from '@/utils/shutdown';
 import { db } from '@/storage/db';
 import { delay } from '@/utils/delay';
+import { productionCorsOrigins } from './cors';
 
 const log = new Logger('app/api/socket');
 const SERVER_DRAIN_BROADCAST_MS = 1500;
@@ -51,14 +52,7 @@ const inFlightDisconnects = new Set<Promise<void>>();
 export async function startSocket(app: Fastify) {
   const io = new Server(app.server, {
     cors: {
-      origin:
-        process.env.APP_ENV === 'development'
-          ? true
-          : [
-              'https://free.saaskit.app',
-              'https://free-server.saaskit.app',
-              'https://app.happy.engineering',
-            ],
+      origin: process.env.APP_ENV === 'development' ? true : productionCorsOrigins,
       methods: ['GET', 'POST', 'OPTIONS'],
       credentials: true,
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Trace-Id', 'X-Socket-Id'],

@@ -31,6 +31,7 @@ import { Logger, resumeTrace } from '@saaskit-dev/agentbridge/telemetry';
 import { createFastifyLogger } from '@/utils/fastifyLogger';
 import { runWithTrace } from '@/utils/requestTrace';
 import { onShutdown, SHUTDOWN_PHASE } from '@/utils/shutdown';
+import { productionCorsOrigins } from './cors';
 
 const log = new Logger('app/api/api');
 export async function startApi() {
@@ -43,14 +44,7 @@ export async function startApi() {
     bodyLimit: 1024 * 1024 * 100, // 100MB
   });
   app.register(import('@fastify/cors'), {
-    origin:
-      process.env.APP_ENV === 'development'
-        ? true
-        : [
-            'https://free.saaskit.app',
-            'https://free-server.saaskit.app',
-            'https://app.happy.engineering',
-          ],
+    origin: process.env.APP_ENV === 'development' ? true : productionCorsOrigins,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Trace-Id', 'X-Socket-Id'],
     methods: ['GET', 'POST', 'DELETE'],
   });
