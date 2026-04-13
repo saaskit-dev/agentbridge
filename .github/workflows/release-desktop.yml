@@ -1,7 +1,9 @@
 name: Release Desktop
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - 'desktop-v*'
 
 jobs:
   release:
@@ -13,9 +15,9 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: ""
-          - platform: windows-latest
-            args: ""
+            bundle-target: ""
+          - platform: ubuntu-24.04
+            bundle-target: "appimage deb"
 
     runs-on: ${{ matrix.platform }}
 
@@ -31,6 +33,18 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libsoup-3.0-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -53,8 +67,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/free/app
-          tagName: desktop-v__VERSION__
-          releaseName: Desktop v__VERSION__
+          tagName: ${{ github.ref_name }}
+          releaseName: Desktop ${{ github.ref_name }}
           releaseBody: |
             Desktop release for Free.
 
@@ -62,4 +76,4 @@ jobs:
             - `latest.json` is attached for in-app auto-update
           releaseDraft: false
           prerelease: false
-          args: --config src-tauri/tauri.updater.conf.json ${{ matrix.args }}
+          args: --config src-tauri/tauri.updater.conf.json ${{ matrix.bundle-target }}

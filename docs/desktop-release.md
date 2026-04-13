@@ -9,7 +9,7 @@ Current scope:
 - Local production packaging
 - Release artifact staging
 - SHA256 checksum generation
-- Manual GitHub Actions release for macOS / Windows
+- Tag-triggered GitHub Actions release for macOS / Linux
 - GitHub Releases based desktop auto-update
 
 ## Commands
@@ -98,14 +98,21 @@ Then:
 
 ## GitHub Actions
 
-Use the manual workflow:
+Push a tag matching:
+
+```bash
+git tag desktop-v0.2.0
+git push origin desktop-v0.2.0
+```
+
+The workflow is:
 
 - `.github/workflows/release-desktop.yml`
 
 It creates / updates a GitHub Release on:
 
 - `macos-latest`
-- `windows-latest`
+- `ubuntu-24.04`
 
 The workflow attaches release assets and `latest.json`, which the desktop app queries for in-app updates.
 
@@ -114,7 +121,7 @@ The workflow attaches release assets and `latest.json`, which the desktop app qu
 1. Bump version with `./run version ...`
 2. Run `./run desktop ship`
 3. Install and smoke-test the produced package
-4. Trigger `Release Desktop`
+4. Create and push `desktop-v<version>` tag
 5. Verify the GitHub Release contains installers and `latest.json`
 6. Publish checksums together with the binaries
 
