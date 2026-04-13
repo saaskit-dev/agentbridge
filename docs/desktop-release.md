@@ -124,6 +124,7 @@ It creates / updates a GitHub Release on:
 - `macos-latest`
 - `ubuntu-24.04`
 
+For macOS, the workflow builds the updater-compatible `.app` bundle first, then packages a plain drag-install `.dmg` in a separate CI step and uploads it to the same release.
 The workflow attaches release assets and `latest.json`, which the desktop app queries for in-app updates.
 
 ## Release Checklist

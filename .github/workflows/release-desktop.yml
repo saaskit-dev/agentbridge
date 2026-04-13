@@ -84,3 +84,25 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: --config src-tauri/tauri.updater.conf.json ${{ matrix.bundle-args }}
+
+      - name: Create macOS DMG
+        if: matrix.platform-name == 'macos-arm64-self-hosted'
+        working-directory: apps/free/app
+        run: |
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          DMG_PATH="src-tauri/target/release/bundle/dmg/Free_${VERSION}_aarch64.dmg"
+          bash ../../../scripts/create-macos-dmg.sh \
+            "src-tauri/target/release/bundle/macos/Free.app" \
+            "$DMG_PATH"
+
+      - name: Upload macOS DMG
+        if: matrix.platform-name == 'macos-arm64-self-hosted'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: apps/free/app
+        run: |
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          gh release upload "${{ github.ref_name }}" \
+            "src-tauri/target/release/bundle/dmg/Free_${VERSION}_aarch64.dmg" \
+            --repo "${{ github.repository }}" \
+            --clobber
