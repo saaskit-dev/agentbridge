@@ -9,6 +9,7 @@ import { Avatar } from './Avatar';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { SessionRowActionButton } from './SessionRowActionButton';
 import { StatusDot } from './StatusDot';
+import { WebPortal } from './web/WebPortal';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
@@ -211,7 +212,7 @@ const SessionContextMenu = React.memo(
     };
 
     return (
-      <>
+      <WebPortal>
         <Pressable
           onPress={onClose}
           // @ts-ignore - Web-only right click support on overlay
@@ -299,7 +300,7 @@ const SessionContextMenu = React.memo(
             </Text>
           </Pressable>
         </View>
-      </>
+      </WebPortal>
     );
   }
 );

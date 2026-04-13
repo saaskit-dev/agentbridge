@@ -9,11 +9,13 @@ import { FABWide } from './FABWide';
 import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { useMachineStatus } from '@/hooks/useMachineStatus';
+import { useDesktopSidebarWidth } from '@/hooks/useDesktopSidebarWidth';
 import { useSocketStatus, useFriendRequests, useSettings, useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { t } from '@/text';
 import { useHeaderHeight } from '@/utils/responsive';
+import { clampSidebarWidth } from '@/utils/sidebarSizing';
 import { useSocketConnectionStatus } from '@/utils/socketConnectionStatus';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { MainView } from './MainView';
@@ -150,7 +152,8 @@ export const SidebarView = React.memo(() => {
   // Calculate sidebar width and determine title positioning
   // Uses same formula as SidebarNavigator.tsx:18 for consistency
   const { width: windowWidth } = useWindowDimensions();
-  const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+  const { width: preferredSidebarWidth } = useDesktopSidebarWidth();
+  const sidebarWidth = clampSidebarWidth(preferredSidebarWidth);
   // With experiments: 4 icons (148px total), threshold 408px > max 360px → always left-justify
   // Without experiments: 3 icons (108px total), threshold 328px → left-justify below ~340px
   const shouldLeftJustify = settings.experiments || sidebarWidth < 340;

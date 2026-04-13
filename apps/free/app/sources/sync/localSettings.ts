@@ -26,6 +26,24 @@ export const LocalSettingsSchema = z.object({
     .describe('Tracks whether Show Debug IDs has been auto-initialized for developer mode'),
   // Note: analyticsEnabled moved to sync'd Settings for cross-device sync with CLI
   commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
+  sidebarWidth: z
+    .number()
+    .min(0)
+    .max(1200)
+    .nullable()
+    .describe('Preferred desktop sidebar width; values below threshold collapse the sidebar'),
+  sidebarCollapsed: z
+    .boolean()
+    .describe('Whether the desktop sidebar is currently collapsed'),
+  sessionFilesSidebarWidth: z
+    .number()
+    .min(0)
+    .max(1200)
+    .nullable()
+    .describe('Preferred desktop file tree sidebar width'),
+  sessionFilesSidebarCollapsed: z
+    .boolean()
+    .describe('Whether the desktop session file tree sidebar is collapsed'),
   themePreference: z
     .enum(['light', 'dark', 'adaptive'])
     .describe('Theme preference: light, dark, or adaptive (follows system)'),
@@ -74,6 +92,10 @@ export const localSettingsDefaults: LocalSettings = {
   showDebugIds: false,
   debugIdsInitializedForDevMode: false,
   commandPaletteEnabled: false,
+  sidebarWidth: null,
+  sidebarCollapsed: false,
+  sessionFilesSidebarWidth: null,
+  sessionFilesSidebarCollapsed: false,
   themePreference: 'adaptive',
   markdownCopyV2: true,
   acknowledgedCliVersions: {},
