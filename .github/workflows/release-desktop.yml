@@ -63,10 +63,18 @@ jobs:
           DESKTOP_UPDATER_REPOSITORY: ${{ github.repository }}
         run: node ./scripts/prepare-desktop-updater-config.js --require-key
 
+      - name: Materialize updater signing key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_RAW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/tauri-updater.key"
+          printf '%s\n' "$TAURI_SIGNING_PRIVATE_KEY_RAW" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "TAURI_SIGNING_PRIVATE_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/free/app
