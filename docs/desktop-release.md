@@ -92,9 +92,16 @@ pnpm tauri signer generate -w ~/.tauri/free-desktop.key
 
 Then:
 
-- put the public key content in `TAURI_UPDATER_PUBLIC_KEY`
+- put the public key in `TAURI_UPDATER_PUBLIC_KEY`
 - put the private key content in `TAURI_SIGNING_PRIVATE_KEY`
 - put the password in `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+For `TAURI_UPDATER_PUBLIC_KEY`, either of these formats works:
+
+- the raw base64 public key string
+- the full `.pub` file content from `tauri signer generate`
+
+The release script normalizes the full `.pub` file format down to the actual key line before writing `tauri.updater.conf.json`.
 
 ## GitHub Actions
 
