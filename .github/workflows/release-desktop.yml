@@ -15,9 +15,9 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            bundle-target: ""
+            bundle-args: ""
           - platform: ubuntu-24.04
-            bundle-target: "appimage deb"
+            bundle-args: "--bundles appimage,deb"
 
     runs-on: ${{ matrix.platform }}
 
@@ -76,4 +76,4 @@ jobs:
             - `latest.json` is attached for in-app auto-update
           releaseDraft: false
           prerelease: false
-          args: --config src-tauri/tauri.updater.conf.json ${{ matrix.bundle-target }}
+          args: --config src-tauri/tauri.updater.conf.json ${{ matrix.bundle-args }}
