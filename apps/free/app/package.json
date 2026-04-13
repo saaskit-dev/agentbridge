@@ -35,6 +35,7 @@
     "desktop:web:build:dev": "cross-env APP_ENV=development expo export --platform web --output-dir dist",
     "desktop:web:build": "cross-env APP_ENV=production expo export --platform web --output-dir dist",
     "// ==== macOS Desktop (Tauri) Variants ====": "",
+    "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "tauri:build:dev": "tauri build --config src-tauri/tauri.dev.conf.json",
     "tauri:build:production": "tauri build"
