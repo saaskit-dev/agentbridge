@@ -91,6 +91,7 @@ jobs:
         run: |
           VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           DMG_PATH="src-tauri/target/release/bundle/dmg/Free_${VERSION}_aarch64.dmg"
+          mkdir -p "$(dirname "$DMG_PATH")"
           bash ../../../scripts/create-macos-dmg.sh \
             "src-tauri/target/release/bundle/macos/Free.app" \
             "$DMG_PATH"
