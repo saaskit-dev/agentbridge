@@ -10,9 +10,14 @@ import { AgentInput } from '@/components/AgentInput';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
+import { DesktopSessionTabs } from '@/components/DesktopSessionTabs';
 import { EmptyMessages } from '@/components/EmptyMessages';
+import { SessionFilePreviewPane } from '@/components/SessionFilePreviewPane';
+import { SessionFilesSidebar } from '@/components/SessionFilesSidebar';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
+import { Typography } from '@/constants/Typography';
 import { useDraft } from '@/hooks/useDraft';
+import { useDesktopSessionTabs } from '@/hooks/useDesktopSessionTabs';
 import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
@@ -46,6 +51,7 @@ import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
+import { isTauriDesktop } from '@/utils/tauri';
 import {
   formatPathRelativeToHome,
   getSessionAvatarId,
@@ -227,12 +233,17 @@ function SessionViewLoaded(props: {
   session: Session;
   jumpToRecentUserSignal: number;
 }) {
+  type SessionContentTab =
+    | { id: 'chat'; type: 'chat'; title: string }
+    | { id: string; type: 'file'; title: string; path: string };
+
   const { sessionId, session, jumpToRecentUserSignal } = props;
   const { theme } = useUnistyles();
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
   const isLandscape = useIsLandscape();
   const deviceType = useDeviceType();
+  const isTablet = useIsTablet();
   const [message, setMessage] = React.useState('');
   const { isListening: isSpeechActive, start: startSpeech, stop: stopSpeech, cancel: cancelSpeech } = useSpeechInput(setMessage);
   const handleSpeechInputPress = React.useCallback(() => {
@@ -377,6 +388,41 @@ function SessionViewLoaded(props: {
   const sessionUsage = useSessionUsage(sessionId);
   const alwaysShowContextSize = useSetting('alwaysShowContextSize');
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
+  const showDesktopFilesSidebar =
+    isTauriDesktop() && isTablet && !!session.metadata?.path && deviceType !== 'phone';
+  const { upsertTab: upsertSessionTab } = useDesktopSessionTabs();
+  const [contentTabs, setContentTabs] = React.useState<SessionContentTab[]>([
+    { id: 'chat', type: 'chat', title: t('tabs.sessions') },
+  ]);
+  const [activeContentTabId, setActiveContentTabId] = React.useState<string>('chat');
+
+  const activeContentTab = React.useMemo(() => {
+    return contentTabs.find(tab => tab.id === activeContentTabId) ?? contentTabs[0]!;
+  }, [activeContentTabId, contentTabs]);
+
+  const openFileTab = React.useCallback((path: string) => {
+    const title = path.split('/').pop() || path;
+    const tabId = `file:${path}`;
+    setContentTabs(current => {
+      if (current.some(tab => tab.id === tabId)) {
+        return current;
+      }
+      return [...current, { id: tabId, type: 'file', title, path }];
+    });
+    setActiveContentTabId(tabId);
+  }, []);
+
+  const closeFileTab = React.useCallback((tabId: string) => {
+    setContentTabs(current => current.filter(tab => tab.id !== tabId));
+    setActiveContentTabId(current => (current === tabId ? 'chat' : current));
+  }, []);
+
+  React.useEffect(() => {
+    if (!showDesktopFilesSidebar) {
+      return;
+    }
+    upsertSessionTab({ id: sessionId, title: getSessionName(session) });
+  }, [session, sessionId, showDesktopFilesSidebar, upsertSessionTab]);
 
   React.useEffect(() => {
     const availableModels = session.capabilities?.models?.available ?? [];
@@ -923,6 +969,87 @@ function SessionViewLoaded(props: {
     </>
   );
 
+  const desktopContentTabs =
+    showDesktopFilesSidebar && contentTabs.length > 0 ? (
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-end',
+          paddingHorizontal: 10,
+          paddingTop: 8,
+          gap: 6,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.colors.divider,
+          backgroundColor: theme.colors.surface,
+        }}
+      >
+        {contentTabs.map(tab => {
+          const active = tab.id === activeContentTabId;
+          return (
+            <Pressable
+              key={tab.id}
+              onPress={() => setActiveContentTabId(tab.id)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                maxWidth: 220,
+                minWidth: 116,
+                paddingLeft: 12,
+                paddingRight: tab.type === 'file' ? 8 : 12,
+                paddingVertical: 9,
+                borderTopLeftRadius: 12,
+                borderTopRightRadius: 12,
+                backgroundColor: active ? theme.colors.surfaceSelected : theme.colors.surfaceHigh,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderBottomWidth: 0,
+                borderColor: theme.colors.divider,
+                opacity: active ? 1 : 0.88,
+              }}
+            >
+              <Ionicons
+                name={tab.type === 'chat' ? 'chatbubble-ellipses-outline' : 'document-text-outline'}
+                size={14}
+                color={active ? theme.colors.text : theme.colors.textSecondary}
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                numberOfLines={1}
+                style={{
+                  flexShrink: 1,
+                  color: active ? theme.colors.text : theme.colors.textSecondary,
+                  ...Typography.default(active ? 'semiBold' : 'regular'),
+                }}
+              >
+                {tab.title}
+              </Text>
+              {tab.type === 'file' ? (
+                <Pressable
+                  hitSlop={8}
+                  onPress={(event: any) => {
+                    event?.stopPropagation?.();
+                    closeFileTab(tab.id);
+                  }}
+                  style={{
+                    marginLeft: 8,
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="close" size={14} color={theme.colors.textSecondary} />
+                </Pressable>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+    ) : null;
+
+  const activeDesktopFilePath =
+    activeContentTab?.type === 'file' ? activeContentTab.path : null;
+
   return (
     <>
       {/* CLI Version Warning Overlay - Subtle centered pill */}
@@ -969,7 +1096,30 @@ function SessionViewLoaded(props: {
           paddingBottom: safeArea.bottom + (isRunningOnMac() || Platform.OS === 'web' ? 32 : 0),
         }}
       >
-        <AgentContentView content={content} input={input} placeholder={placeholder} />
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <View style={{ flexBasis: 0, flexGrow: 1, minWidth: 0 }}>
+            {showDesktopFilesSidebar ? <DesktopSessionTabs activeSessionId={sessionId} /> : null}
+            {desktopContentTabs}
+            <View style={{ flex: 1, minHeight: 0 }}>
+              {showDesktopFilesSidebar && activeContentTab?.type === 'file' ? (
+                <SessionFilePreviewPane
+                  sessionId={sessionId}
+                  filePath={activeContentTab.path}
+                />
+              ) : (
+                <AgentContentView content={content} input={input} placeholder={placeholder} />
+              )}
+            </View>
+          </View>
+          {showDesktopFilesSidebar ? (
+            <SessionFilesSidebar
+              sessionId={sessionId}
+              rootPath={session.metadata?.path ?? ''}
+              activeFilePath={activeDesktopFilePath}
+              onOpenFile={openFileTab}
+            />
+          ) : null}
+        </View>
       </View>
 
       {/* Back button for landscape phone mode when header is hidden */}
