@@ -19,12 +19,19 @@ function normalizeUpdaterPublicKey(value) {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  if (lines.length <= 1) {
-    return value.trim();
+  const candidates = lines
+    .filter((line) => !line.startsWith('untrusted comment:'))
+    .flatMap((line) => {
+      const trimmed = line.replace(/^['"]|['"]$/g, '');
+      const matches = trimmed.match(/[A-Za-z0-9+/=]{16,}/g);
+      return matches || [];
+    });
+
+  if (candidates.length > 0) {
+    return candidates[candidates.length - 1];
   }
 
-  const nonCommentLines = lines.filter((line) => !line.startsWith('untrusted comment:'));
-  return (nonCommentLines[nonCommentLines.length - 1] || lines[lines.length - 1]).trim();
+  return value.trim();
 }
 
 if (!publicKey) {
