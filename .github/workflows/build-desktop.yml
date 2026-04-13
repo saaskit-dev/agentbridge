@@ -60,4 +60,4 @@ jobs:
 
       - name: Build desktop app
         working-directory: apps/free/app
-        run: pnpm tauri:build:production -- --no-bundle
+        run: pnpm exec tauri build --config src-tauri/tauri.conf.json --no-bundle
