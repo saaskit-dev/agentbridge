@@ -10,24 +10,25 @@ function normalizeSigningKey(value) {
     return value;
   }
 
-  const lines = value
+  const trimmed = value.trim();
+
+  try {
+    const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
+    if (decoded.includes('untrusted comment:')) {
+      return trimmed;
+    }
+  } catch {}
+
+  const normalizedText = trimmed
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .map((line) => line.trimEnd())
+    .join('\n');
 
-  const candidates = lines
-    .filter((line) => !line.startsWith('untrusted comment:'))
-    .flatMap((line) => {
-      const trimmed = line.replace(/^['"]|['"]$/g, '');
-      const matches = trimmed.match(/[A-Za-z0-9+/=]{16,}/g);
-      return matches || [];
-    });
-
-  if (candidates.length > 0) {
-    return candidates[candidates.length - 1];
+  if (!normalizedText.includes('untrusted comment:')) {
+    return trimmed;
   }
 
-  return value.trim();
+  return Buffer.from(normalizedText, 'utf8').toString('base64');
 }
 
 if (!rawKey) {

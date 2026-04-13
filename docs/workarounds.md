@@ -127,26 +127,27 @@
 
 ---
 
-## .github/workflows/release-desktop.yml — 桌面发布流程先规范化 Tauri updater 私钥 secret 再传给 tauri-action
+## .github/workflows/release-desktop.yml — 桌面发布流程先把 Tauri updater 私钥 secret 转成 CLI 真正要求的 base64 格式
 
 **问题**：`TAURI_SIGNING_PRIVATE_KEY` 以 GitHub secret 多行内容直接注入环境变量时，
-`tauri-action` 在发布阶段会按 base64 私钥内容解析，遇到带注释或完整文件内容时可能报：
-`failed to decode base64 secret key: Invalid symbol 32`。
+`tauri-action` / Tauri CLI 在发布阶段会把它当成“base64 编码后的完整私钥文本”解析。
+如果 secret 里直接保存的是 `tauri signer generate` 产出的两行 `.key` 文件内容，就会报：
+`failed to decode base64 secret key`。
 
 **触发条件**：
 
 - 运行 `Release Desktop` GitHub Actions workflow
-- `TAURI_SIGNING_PRIVATE_KEY` 保存的是完整私钥文件内容，而不是单行裸 key
+- `TAURI_SIGNING_PRIVATE_KEY` 保存的是 `tauri signer generate` 产出的完整私钥文件内容
 
 **修复内容**：
 
-- workflow 先从完整 secret 内容里提取真实的 minisign/base64 私钥行
-- 再将规范化后的单行 key 写入 `GITHUB_ENV`
-- `tauri-action` 读取的是稳定的单行 key，而不是带注释或多行格式的原始 secret 内容
+- workflow 先检测 secret 是否已经是 Tauri CLI 需要的单行 base64 格式
+- 若不是，则把完整 `.key` 文本内容做一次 base64 编码
+- 再将该单行值写入 `GITHUB_ENV`
 
-**上游**：Tauri updater signing 文档允许传 key path / key content，但当前 `tauri-action` 发布链路对 GitHub Secrets 里的完整多行私钥文件内容不稳定。
+**上游**：Tauri CLI 的 updater signing helper 最终会先对 `TAURI_SIGNING_PRIVATE_KEY` 做 base64 decode，再把结果当成 minisign key box 文本解析；因此完整 `.key` 文件内容不能直接原样塞进环境变量。
 
-**删除条件**：若未来 `tauri-action` 能稳定接受 GitHub secret 中的多行私钥全文，或团队统一改为仅存单行兼容格式的私钥内容，可移除。
+**删除条件**：若未来 Tauri CLI 明确支持直接读取多行 `.key` 文件内容作为环境变量，或团队统一改为只存单行 base64 兼容格式的私钥内容，可移除。
 
 ---
 
@@ -171,6 +172,29 @@
 **上游**：不是业务代码问题，而是自托管 runner 的用户环境与 GitHub Actions 非交互 shell PATH 不一致。
 
 **删除条件**：若后续统一在 runner 镜像里预配好 Rust 且 PATH 恒定，或改用稳定的预装 runner 镜像，可移除。
+
+---
+
+## .github/workflows/release-desktop.yml — 自托管 macOS 发布只产出 `app`，避免 CI 上不稳定的 DMG 打包
+
+**问题**：自托管 macOS runner 上 `tauri-bundler` 的 `bundle_dmg.sh` 在 CI 会话里并不稳定，
+即使 `.app` 已经成功产出，后续 DMG 阶段仍可能直接失败，导致整个发布 workflow 失败。
+
+**触发条件**：
+
+- 运行 `Release Desktop` workflow
+- macOS job 使用默认 `targets = "all"` 或包含 `dmg`
+- 自托管 runner 的图形 / Finder / hdiutil 环境不满足 DMG 脚本要求
+
+**修复内容**：
+
+- macOS 发布 job 显式改成 `--bundles app`
+- 保留 updater 所需的 `.app.tar.gz` / 签名产物
+- 不再让不稳定的 DMG 阶段阻塞整个 release
+
+**上游**：Tauri bundler 的 DMG 打包脚本依赖更完整的 macOS 图形会话环境，在自托管 CI 上容易出现环境相关失败。
+
+**删除条件**：若后续 runner 环境稳定支持 DMG 脚本，或改成可靠的单独 DMG 打包链路，可移除。
 
 ---
 

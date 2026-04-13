@@ -104,7 +104,7 @@ For `TAURI_UPDATER_PUBLIC_KEY`, either of these formats works:
 The release script normalizes the full `.pub` file format down to the actual key line before writing `tauri.updater.conf.json`.
 
 For `TAURI_SIGNING_PRIVATE_KEY`, keep the full private key file content from `tauri signer generate`.
-The GitHub release workflow normalizes that multiline secret down to the actual signing key line before invoking Tauri, so GitHub Secrets can safely store the full generated file content.
+The GitHub release workflow base64-encodes that full multiline key file into the single-line format that Tauri CLI actually expects, so GitHub Secrets can safely store the generated file content directly.
 
 ## GitHub Actions
 
