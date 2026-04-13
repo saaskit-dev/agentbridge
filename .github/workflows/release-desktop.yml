@@ -1,4 +1,4 @@
-name: Release Desktop
+name: Desktop Release
 
 on:
   workflow_dispatch:
