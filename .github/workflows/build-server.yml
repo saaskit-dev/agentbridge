@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - '.github/workflows/build-server.yml'
-      - '.github/workflows/lint-and-deps.yml'
       - 'apps/free/server/**'
       - 'packages/**'
       - 'package.json'
@@ -15,7 +14,34 @@ on:
       - 'turbo.json'
 
 jobs:
+  validate:
+    name: Validate Server Changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Check dependency architecture
+        run: pnpm run check:deps
+
+      - name: Typecheck (core + CLI)
+        run: pnpm typecheck
+
   build:
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
