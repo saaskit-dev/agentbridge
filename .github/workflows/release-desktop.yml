@@ -118,7 +118,6 @@ jobs:
 
   release:
     needs: prepare_release
-    if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
     permissions:
       contents: write
 
@@ -137,22 +136,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         with:
           ref: refs/tags/${{ needs.prepare_release.outputs.tag_name }}
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
 
       - uses: actions/setup-node@v4
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         with:
           node-version: 20
           cache: pnpm
 
       - name: Install Rust toolchain
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         run: bash ./scripts/setup-rust-ci.sh
 
       - name: Install Linux system dependencies
-        if: matrix.platform-name == 'ubuntu-24.04'
+        if: ${{ matrix.platform-name == 'ubuntu-24.04' && needs.prepare_release.outputs.include_linux == 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -164,25 +167,30 @@ jobs:
             patchelf
 
       - name: Rust cache
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './apps/free/app/src-tauri -> target'
 
       - name: Install dependencies
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         run: pnpm install --frozen-lockfile
 
       - name: Prepare updater config
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         env:
           TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
           DESKTOP_UPDATER_REPOSITORY: ${{ github.repository }}
         run: node ./scripts/prepare-desktop-updater-config.js --require-key
 
       - name: Materialize updater signing key
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         env:
           TAURI_SIGNING_PRIVATE_KEY_RAW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: node ./scripts/prepare-tauri-signing-key.js
 
       - uses: tauri-apps/tauri-action@v0
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -201,6 +209,7 @@ jobs:
           args: --config src-tauri/tauri.updater.conf.json ${{ matrix.bundle-args }}
 
       - name: Verify release target
+        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -211,7 +220,7 @@ jobs:
             --jq '"tag=\(.tagName) url=\(.url)"'
 
       - name: Create macOS DMG
-        if: matrix.platform-name == 'macos-arm64-self-hosted'
+        if: ${{ matrix.platform-name == 'macos-arm64-self-hosted' }}
         working-directory: apps/free/app
         run: |
           VERSION="${{ needs.prepare_release.outputs.version }}"
@@ -225,7 +234,7 @@ jobs:
             "$DMG_PATH"
 
       - name: Upload macOS DMG
-        if: matrix.platform-name == 'macos-arm64-self-hosted'
+        if: ${{ matrix.platform-name == 'macos-arm64-self-hosted' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: apps/free/app
@@ -237,7 +246,7 @@ jobs:
             --clobber
 
       - name: Summarize published release
-        if: matrix.platform-name == 'macos-arm64-self-hosted'
+        if: ${{ matrix.platform-name == 'macos-arm64-self-hosted' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
