@@ -351,9 +351,14 @@ class Sync {
 
   private isReconnectForegroundActive(): boolean {
     if (isTauriDesktop()) {
-      return (
-        this.appState === 'active' && this.desktopWindowFocused && this.desktopWindowVisible
-      );
+      return this.appState === 'active';
+    }
+    return this.appState === 'active';
+  }
+
+  private isDesktopForegroundVisible(): boolean {
+    if (isTauriDesktop()) {
+      return this.appState === 'active' && this.desktopWindowFocused && this.desktopWindowVisible;
     }
     return this.appState === 'active';
   }
@@ -443,6 +448,16 @@ class Sync {
 
     for (const sessionId of this.pendingOutbox.keys()) {
       this.getSendSync(sessionId).invalidate();
+    }
+
+    if (!this.isDesktopForegroundVisible()) {
+      logger.debug('[sync] skip foreground invalidation: desktop window not visible', {
+        reason,
+        appState: this.appState,
+        desktopWindowFocused: this.desktopWindowFocused,
+        desktopWindowVisible: this.desktopWindowVisible,
+      });
+      return;
     }
 
     const now = Date.now();

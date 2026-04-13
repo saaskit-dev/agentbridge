@@ -51,6 +51,19 @@ const FAB_SIZE = 40;
 const FAB_GAP = 12;
 const logger = new Logger('app/components/ChatList');
 
+function shouldHideHistoricalDaemonError(
+  message: Message,
+  latestUserMessageCreatedAt: number | null
+): boolean {
+  return (
+    latestUserMessageCreatedAt !== null &&
+    message.kind === 'agent-event' &&
+    message.event.type === 'daemon-log' &&
+    message.event.level === 'error' &&
+    message.createdAt < latestUserMessageCreatedAt
+  );
+}
+
 function isSameDay(a: number, b: number): boolean {
   const da = new Date(a);
   const db = new Date(b);
@@ -961,6 +974,16 @@ const ChatListInternal = React.memo(
     jumpToRecentUserSignal: number;
   }) => {
     const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.sessionId);
+    const visibleMessages = useMemo(() => {
+      const latestUserMessageCreatedAt =
+        messages.find(message => message.kind === 'user-text')?.createdAt ?? null;
+      if (latestUserMessageCreatedAt === null) {
+        return messages;
+      }
+      return messages.filter(
+        message => !shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt)
+      );
+    }, [messages]);
     useEffect(() => {
       logger.debug('[chat-list] mounted', { sessionId: props.sessionId });
       return () => {
@@ -1106,11 +1129,11 @@ const ChatListInternal = React.memo(
     }, [props.sessionId, isLoadingOlder, triggerLoad]);
 
     // ----- auto-scroll / unread tracking -----
-    const prevMessageIdsRef = useRef(new Set<string>(messages.map(message => message.id)));
+    const prevMessageIdsRef = useRef(new Set(visibleMessages.map(message => message.id)));
     useEffect(() => {
       const prevIds = prevMessageIdsRef.current;
       const relevantNewMessages: Message[] = [];
-      for (const message of messages) {
+      for (const message of visibleMessages) {
         if (prevIds.has(message.id)) {
           break;
         }
@@ -1132,8 +1155,8 @@ const ChatListInternal = React.memo(
         }
       }
 
-      prevMessageIdsRef.current = new Set(messages.map(message => message.id));
-    }, [messages, updateUnreadCount]);
+      prevMessageIdsRef.current = new Set(visibleMessages.map(message => message.id));
+    }, [updateUnreadCount, visibleMessages]);
 
     useEffect(
       () => () => {
@@ -1235,8 +1258,8 @@ const ChatListInternal = React.memo(
 
     // ----- build list items with separators -----
     const listItems = useMemo(
-      () => buildChatListItems(messages, formatDateLabel, formatTime),
-      [messages]
+      () => buildChatListItems(visibleMessages, formatDateLabel, formatTime),
+      [visibleMessages]
     );
     listItemsRef.current = listItems;
     const previousListStateRef = useRef<{
@@ -1249,33 +1272,33 @@ const ChatListInternal = React.memo(
       const previous = previousListStateRef.current;
       if (
         !previous ||
-        previous.messageCount !== messages.length ||
+        previous.messageCount !== visibleMessages.length ||
         previous.itemCount !== listItems.length ||
         previous.hasOlderMessages !== hasOlderMessages ||
         previous.isLoadingOlder !== isLoadingOlder
       ) {
         logger.debug('[chat-list] data state changed', {
           sessionId: props.sessionId,
-          messageCount: messages.length,
+          messageCount: visibleMessages.length,
           itemCount: listItems.length,
           hasOlderMessages,
           isLoadingOlder,
-          newestMessageId: messages[0]?.id ?? null,
-          newestSeq: messages[0]?.seq ?? null,
+          newestMessageId: visibleMessages[0]?.id ?? null,
+          newestSeq: visibleMessages[0]?.seq ?? null,
         });
         previousListStateRef.current = {
-          messageCount: messages.length,
+          messageCount: visibleMessages.length,
           itemCount: listItems.length,
           hasOlderMessages,
           isLoadingOlder,
         };
       }
-    }, [hasOlderMessages, isLoadingOlder, listItems.length, messages, props.sessionId]);
+    }, [hasOlderMessages, isLoadingOlder, listItems.length, props.sessionId, visibleMessages]);
 
     // ----- user message nav items (chronological: oldest first) -----
     const userNavItems = useMemo(() => {
       const infoById = new Map<string, { text: string; createdAt: number }>();
-      for (const m of messages) {
+      for (const m of visibleMessages) {
         if (m.kind === 'user-text') {
           infoById.set(m.id, { text: m.displayText || m.text, createdAt: m.createdAt });
         }
@@ -1298,7 +1321,7 @@ const ChatListInternal = React.memo(
         }
       }
       return items;
-    }, [messages, listItems]);
+    }, [listItems, visibleMessages]);
 
     useEffect(() => {
       if (!props.jumpToRecentUserSignal) return;

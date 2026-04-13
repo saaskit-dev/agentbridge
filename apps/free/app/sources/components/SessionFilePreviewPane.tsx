@@ -67,6 +67,18 @@ function cacheKey(sessionId: string, filePath: string) {
   return `${sessionId}:${filePath}`;
 }
 
+function getGitRelativePath(filePath: string, rootPath: string): string | null {
+  const normalizedRoot = rootPath.replace(/\/+$/, '');
+  const normalizedFile = filePath.replace(/\/+$/, '');
+  if (!normalizedRoot || normalizedFile === normalizedRoot) {
+    return '.';
+  }
+  if (!normalizedFile.startsWith(`${normalizedRoot}/`)) {
+    return null;
+  }
+  return normalizedFile.slice(normalizedRoot.length + 1);
+}
+
 function getCachedPreview(sessionId: string, filePath: string): PreviewCacheEntry | null {
   const entry = previewCache.get(cacheKey(sessionId, filePath));
   if (!entry) return null;
@@ -380,9 +392,11 @@ export function SessionFilePreviewPane({
 
         if (sessionPath) {
           try {
-            const escaped = filePath.replace(/'/g, "'\\''");
+            const gitRelativePath = getGitRelativePath(filePath, sessionPath);
+            const diffTarget = gitRelativePath ?? filePath;
+            const escaped = diffTarget.replace(/'/g, "'\\''");
             const diffResponse = await sessionBash(sessionId, {
-              command: `git diff --no-ext-diff '${escaped}'`,
+              command: `git diff --no-ext-diff -- '${escaped}'`,
               cwd: sessionPath,
               timeout: 5000,
             });
