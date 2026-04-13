@@ -523,6 +523,30 @@ describe('attach_session', () => {
       expect(result.error).toContain('no-such-session');
     }
   });
+
+  it('waits for recovery and resolves through legacy session ID compatibility', async () => {
+    const getImpl = vi.fn().mockImplementation((id: string) => {
+      if (id === 'new-sess') return { sessionId: 'new-sess' };
+      return undefined;
+    });
+    const mgr = makeMockSessionManager({ get: getImpl });
+    const { server, client } = await setupPair(mgr);
+
+    server.beginRecovery();
+
+    const resultPromise = waitForMessage(client, 'spawn_result', 5000);
+    client.send({ type: 'attach_session', sessionId: 'old-sess' });
+
+    await new Promise(r => setTimeout(r, 100));
+    server.addLegacySessionIdMapping('old-sess', 'new-sess');
+    server.endRecovery();
+
+    const result = await resultPromise;
+    if (result.type === 'spawn_result') {
+      expect(result.success).toBe(true);
+      expect(result.sessionId).toBe('new-sess');
+    }
+  });
 });
 
 describe('getAttachmentCount', () => {
@@ -679,7 +703,7 @@ describe('IPCServer recovery gate', () => {
     expect((msg as any).state).toBe('archived');
   });
 
-  it('attach resolves via sessionIdMap after recovery', async () => {
+  it('attach resolves via legacy session ID compatibility after recovery', async () => {
     const getImpl = vi.fn().mockImplementation((id: string) => {
       // Only respond to the NEW id
       if (id === 'new-sess') return STUB_SESSION;
@@ -691,8 +715,8 @@ describe('IPCServer recovery gate', () => {
     server.beginRecovery();
     client.send({ type: 'attach', sessionId: 'old-sess' });
 
-    // Simulate recovery: old-sess was recovered as new-sess
-    server.addSessionIdMapping('old-sess', 'new-sess');
+    // Simulate legacy dirty state compatibility: an old ID maps to a newer one.
+    server.addLegacySessionIdMapping('old-sess', 'new-sess');
     server.endRecovery();
 
     const msg = await waitForMessage(client, 'history', 3000);

@@ -385,6 +385,40 @@ describe('AgentSession.initialize()', () => {
     expect(mockStartFreeServer).not.toHaveBeenCalled();
   });
 
+  it('uses strict session recovery for daemon-owned sessions even without resumeSessionId', async () => {
+    const session = new TestAgentSession({
+      ...makeOpts(),
+      startedBy: 'daemon',
+      sessionId: 'daemon-recovery-1',
+      resumeSessionId: undefined,
+    });
+    const apiSession = makeMockSession('daemon-recovery-1');
+    const getOrCreateSession = vi.fn().mockResolvedValue({
+      id: 'daemon-recovery-1',
+      seq: 1,
+      metadata: {},
+      metadataVersion: 1,
+      agentState: null,
+      agentStateVersion: 1,
+      capabilities: null,
+      capabilitiesVersion: 0,
+    });
+    const sessionSyncClient = vi.fn().mockReturnValue(apiSession);
+    vi.spyOn(ApiClient, 'create').mockResolvedValue({
+      getOrCreateSession,
+      sessionSyncClient,
+    } as unknown as ApiClient);
+
+    await session.initialize();
+
+    expect(getOrCreateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'daemon-recovery-1',
+        strictSessionId: true,
+      })
+    );
+  });
+
   it('persists advanced lastSeq after initialize for crash recovery', async () => {
     vi.useFakeTimers();
 

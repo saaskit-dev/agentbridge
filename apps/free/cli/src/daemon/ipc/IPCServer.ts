@@ -72,8 +72,8 @@ export class IPCServer {
   private server!: net.Server;
   /** sessionId → sockets currently attached to that session */
   private attachments = new Map<string, Set<net.Socket>>();
-  /** old sessionId → new sessionId (populated when a recovered session gets a new ID from the server) */
-  private sessionIdMap = new Map<string, string>();
+  /** Legacy compatibility only: old sessionId → new sessionId for pre-fix dirty state. */
+  private legacySessionIdMap = new Map<string, string>();
   /** sessionId → ring buffer of recent agent_output messages */
   private history = new Map<string, HistoryRing>();
   private readonly HISTORY_SIZE = 500;
@@ -187,10 +187,14 @@ export class IPCServer {
     return this.attachments.get(sessionId)?.size ?? 0;
   }
 
-  /** Map an old session ID to a new one (used after recovery when server re-assigns IDs). */
-  addSessionIdMapping(oldId: string, newId: string): void {
-    this.sessionIdMap.set(oldId, newId);
-    logger.info('[IPCServer] session ID mapping added', { oldId, newId });
+  /** Legacy compatibility only: map an old session ID to a new one for historical dirty state. */
+  addLegacySessionIdMapping(oldId: string, newId: string): void {
+    this.legacySessionIdMap.set(oldId, newId);
+    logger.info('[IPCServer] legacy session ID mapping added', { oldId, newId });
+  }
+
+  private resolveLegacySessionId(requestedId: string): string | null {
+    return this.legacySessionIdMap.get(requestedId) ?? null;
   }
 
   /** Signal that session recovery is starting. Attach requests for unknown sessions will wait. */
@@ -241,8 +245,8 @@ export class IPCServer {
    * Attach a CLI socket to a session. If the session is not found AND recovery is
    * in progress, waits up to 30s for recovery to complete before responding.
    */
-  private async handleAttach(socket: net.Socket, requestedId: string): Promise<void> {
-    const resolvedId = this.sessionIdMap.get(requestedId) ?? requestedId;
+  private async resolveAttachTarget(requestedId: string): Promise<string | null> {
+    let resolvedId = requestedId;
     let session = this.sessionManager.get(resolvedId);
 
     // If not found and recovery is running, wait for recovery then re-check
@@ -262,17 +266,26 @@ export class IPCServer {
         ),
       ]);
       const waitMs = Date.now() - waitStart;
-      // Re-resolve: recovery may have added a mapping
-      const postRecoveryId = this.sessionIdMap.get(requestedId) ?? requestedId;
-      session = this.sessionManager.get(postRecoveryId);
+      session = this.sessionManager.get(requestedId);
       if (session) {
         logger.info('[IPCServer] attach succeeded after recovery wait', {
           sessionId: requestedId,
-          resolvedId: postRecoveryId,
           waitMs,
         });
-        this.doAttach(socket, postRecoveryId);
-        return;
+        return requestedId;
+      }
+
+      const legacyResolvedId = this.resolveLegacySessionId(requestedId);
+      if (legacyResolvedId) {
+        session = this.sessionManager.get(legacyResolvedId);
+        if (session) {
+          logger.warn('[IPCServer] attach resolved through legacy session ID mapping', {
+            sessionId: requestedId,
+            legacyResolvedId,
+            waitMs,
+          });
+          return legacyResolvedId;
+        }
       }
       if (recoveryTimedOut) {
         logger.error('[IPCServer] recovery wait timed out (30s): session not available', {
@@ -282,7 +295,7 @@ export class IPCServer {
           recoveryGateStillOpen: this.resolveRecovery !== null,
           activeSessions: this.sessionManager.list().map(s => ({ id: s.sessionId, agent: s.agentType })),
           activeSessionCount: this.sessionManager.list().length,
-          knownSessionIdMappings: this.sessionIdMap.size,
+          knownLegacySessionIdMappings: this.legacySessionIdMap.size,
         });
       } else {
         logger.info('[IPCServer] attach failed after recovery wait: session not recovered', {
@@ -293,9 +306,31 @@ export class IPCServer {
     }
 
     if (!session) {
+      const legacyResolvedId = this.resolveLegacySessionId(requestedId);
+      if (legacyResolvedId) {
+        session = this.sessionManager.get(legacyResolvedId);
+        if (session) {
+          logger.warn('[IPCServer] attach resolved through legacy session ID mapping', {
+            sessionId: requestedId,
+            legacyResolvedId,
+          });
+          return legacyResolvedId;
+        }
+      }
+    }
+
+    if (!session) {
+      return null;
+    }
+
+    return resolvedId;
+  }
+
+  private async handleAttach(socket: net.Socket, requestedId: string): Promise<void> {
+    const resolvedId = await this.resolveAttachTarget(requestedId);
+    if (!resolvedId) {
       logger.info('[IPCServer] attach rejected: session not found', {
         sessionId: requestedId,
-        resolvedId,
       });
       this.writeToSocket(socket, {
         type: 'session_state',
@@ -506,15 +541,20 @@ export class IPCServer {
         // CLI requests attaching to an existing daemon session (no new spawn).
         // Replies with spawn_result (reused intentionally — CLIClient awaits the
         // same message type for both spawn and attach, keeping the handshake simple).
-        const existingSession = this.sessionManager.get(msg.sessionId);
-        if (existingSession) {
-          logger.info('[IPCServer] attach_session: session found', { sessionId: msg.sessionId });
-          this.writeToSocket(socket, {
-            type: 'spawn_result',
-            sessionId: msg.sessionId,
-            success: true,
-          });
-        } else {
+        void this.resolveAttachTarget(msg.sessionId).then(resolvedId => {
+          if (resolvedId) {
+            logger.info('[IPCServer] attach_session: session found', {
+              sessionId: msg.sessionId,
+              resolvedId,
+            });
+            this.writeToSocket(socket, {
+              type: 'spawn_result',
+              sessionId: resolvedId,
+              success: true,
+            });
+            return;
+          }
+
           logger.info('[IPCServer] attach_session: session not found', {
             sessionId: msg.sessionId,
           });
@@ -524,7 +564,7 @@ export class IPCServer {
             success: false,
             error: `Session ${msg.sessionId} not found`,
           });
-        }
+        });
         break;
       }
 

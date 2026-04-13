@@ -729,18 +729,25 @@ export abstract class AgentSession<TMode> {
     }
     const { metadata, state } = this.buildSessionMetadata();
 
-    const response = this.opts.restoreSession
-      ? await this.api.restoreSession({
-          id: sid,
-          metadata,
-          machineId: this.opts.machineId,
-        })
-      : await this.api.getOrCreateSession({
-          id: sid,
-          metadata,
-          state,
-          machineId: this.opts.machineId,
-        });
+    const strictRecoveryBySessionId =
+      this.opts.startedBy === 'daemon' && Boolean(this.opts.sessionId);
+
+    const requestSession = () =>
+      this.opts.restoreSession
+        ? this.api.restoreSession({
+            id: sid,
+            metadata,
+            machineId: this.opts.machineId,
+          })
+        : this.api.getOrCreateSession({
+            id: sid,
+            metadata,
+            state,
+            machineId: this.opts.machineId,
+            strictSessionId: strictRecoveryBySessionId,
+          });
+
+    const response = await requestSession();
 
     if (this.opts.restoreSession && !response) {
       throw new Error(`Failed to restore managed session "${sid}": server unavailable`);
@@ -761,7 +768,9 @@ export abstract class AgentSession<TMode> {
       sessionId: sid,
       metadata,
       state,
+      initialLastSeq: this.opts.lastSeq,
       response,
+      reconnect: requestSession,
       onSessionSwap: async (newSession: ApiSessionClient) => {
         // ⚠️ Exception safety: start new server BEFORE stopping the old one.
         // If startFreeServer throws, the old session/freeServer remain intact.
@@ -1696,6 +1705,7 @@ export abstract class AgentSession<TMode> {
       version: packageJson.version,
       os: os.platform(),
       machineId: this.opts.machineId,
+      ...(this.opts.resumeSessionId ? { agentSessionId: this.opts.resumeSessionId } : {}),
       importedAgentSessionId: this.opts.importedAgentSessionId,
       homeDir: os.homedir(),
       freeHomeDir: configuration.freeHomeDir,

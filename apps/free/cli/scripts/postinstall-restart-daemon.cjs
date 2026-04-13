@@ -15,7 +15,7 @@
  * If no daemon is running, this is a no-op.
  */
 
-const { execFileSync } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -148,6 +148,52 @@ function restartViaSystemd(serviceConfig) {
   }
 }
 
+function waitForProcessExit(pid, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return true;
+    }
+
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  }
+
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function startUnmanagedDaemon() {
+  const variant = getVariant();
+  const cliEntrypoint = path.join(__dirname, '..', 'dist', 'cli.mjs');
+  const child = spawn(
+    process.execPath,
+    [
+      '--no-warnings',
+      '--no-deprecation',
+      cliEntrypoint,
+      '--variant',
+      variant,
+      'daemon',
+      'start-sync',
+    ],
+    {
+      detached: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        APP_ENV: variant === 'development' ? 'development' : 'production',
+      },
+    }
+  );
+  child.unref();
+}
+
 function tryRestartDaemon() {
   const freeHomeDir = getFreeHomeDir();
   const stateFile = path.join(freeHomeDir, 'daemon.state.json');
@@ -185,7 +231,13 @@ function tryRestartDaemon() {
   try {
     console.log(`[postinstall] Signaling daemon (pid ${state.pid})...`);
     process.kill(state.pid, 'SIGTERM');
-    console.log('[postinstall] Daemon signaled; restart depends on the active supervisor');
+    const exited = waitForProcessExit(state.pid);
+    if (!exited) {
+      console.log('[postinstall] Daemon did not exit after SIGTERM; skipping unmanaged restart');
+      return;
+    }
+    startUnmanagedDaemon();
+    console.log('[postinstall] Daemon restarted directly (unmanaged fallback)');
   } catch (err) {
     // EPERM or other errors — not critical, daemon heartbeat will catch up
     console.log(`[postinstall] Could not signal daemon: ${err.message}`);

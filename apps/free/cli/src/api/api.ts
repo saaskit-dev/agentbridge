@@ -159,17 +159,111 @@ export class ApiClient {
     return session;
   }
 
+  private async fetchSessionStatus(
+    sessionId: string
+  ): Promise<
+    | { kind: 'status'; status: 'active' | 'offline' | 'archived' | 'deleted' }
+    | { kind: 'missing' }
+    | { kind: 'unavailable' }
+  > {
+    try {
+      const response = await axios.get<{ session: { status: string } }>(
+        `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.credential.token}`,
+          },
+          timeout: 15000,
+        }
+      );
+      const status = response.data?.session?.status;
+      if (
+        status === 'active' ||
+        status === 'offline' ||
+        status === 'archived' ||
+        status === 'deleted'
+      ) {
+        return { kind: 'status', status };
+      }
+      return { kind: 'unavailable' };
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return { kind: 'missing' };
+      }
+      if (error && typeof error === 'object' && 'code' in error) {
+        const errorCode = (error as any).code;
+        if (isNetworkError(errorCode)) {
+          connectionState.fail({
+            operation: 'Session recovery lookup',
+            caller: 'api.fetchSessionStatus',
+            errorCode,
+            url: `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`,
+          });
+          return { kind: 'unavailable' };
+        }
+      }
+      if (axios.isAxiosError(error) && error.response?.status) {
+        const status = error.response.status;
+        if (status >= 500) {
+          connectionState.fail({
+            operation: 'Session recovery lookup',
+            errorCode: String(status),
+            url: `${configuration.serverUrl}/v1/sessions/${encodeURIComponent(sessionId)}`,
+            details: ['Server encountered an error while checking recovery target'],
+          });
+          return { kind: 'unavailable' };
+        }
+      }
+      throw new Error(`Failed to inspect session status: ${safeStringify(error)}`);
+    }
+  }
+
   /**
    * Get or create a session by client-generated ID.
    * If the server returns 409 (ID taken by a deleted session or another user),
    * generates a new UUID and retries (up to 3 attempts).
+   * When strictSessionId is true, never creates a different ID:
+   * - Missing ID => returns null
+   * - Archived ID => attempts restore by same ID
+   * - 409 conflict => returns null
    */
   async getOrCreateSession(opts: {
     id: string;
     metadata: Metadata;
     state: AgentState | null;
     machineId?: string;
+    strictSessionId?: boolean;
   }): Promise<Session | null> {
+    if (opts.strictSessionId) {
+      const lookup = await this.fetchSessionStatus(opts.id);
+      if (lookup.kind === 'missing') {
+        logger.info('[API] strict session recovery: session missing, skip create', {
+          sessionId: opts.id,
+        });
+        return null;
+      }
+      if (lookup.kind === 'unavailable') {
+        logger.info('[API] strict session recovery: status lookup unavailable, staying offline', {
+          sessionId: opts.id,
+        });
+        return null;
+      }
+      if (lookup.status === 'archived') {
+        return this.restoreSession({
+          id: opts.id,
+          metadata: opts.metadata,
+          machineId: opts.machineId,
+        });
+      }
+      if (lookup.status !== 'active' && lookup.status !== 'offline') {
+        logger.info('[API] strict session recovery: unsupported status, skip create', {
+          sessionId: opts.id,
+          status: lookup.status,
+        });
+        return null;
+      }
+    }
+
     const { dataEncryptionKey, encryptionKey, encryptionVariant } =
       await this.createSessionEncryptionContext();
 
@@ -205,6 +299,12 @@ export class ApiClient {
         );
 
         if (response.status === 409) {
+          if (opts.strictSessionId) {
+            logger.info('[API] strict session recovery: 409 conflict, skip fallback create', {
+              sessionId,
+            });
+            return null;
+          }
           const { randomUUID } = await import('node:crypto');
           sessionId = randomUUID().replace(/-/g, '');
           logger.debug(`Session ID conflict, retrying with new ID (attempt ${attempt + 1})`);

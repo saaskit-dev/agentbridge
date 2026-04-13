@@ -31,10 +31,13 @@ import type { ApiSessionClient } from '@/api/apiSession';
  * session = api.sessionSyncClient(response);
  * ```
  */
-export function createOfflineSessionStub(sessionId: string): ApiSessionClient {
+export function createOfflineSessionStub(
+  sessionId: string,
+  lastSeq: number = 0
+): ApiSessionClient {
   return {
-    sessionId: `offline-${sessionId}`,
-    getLastSeq: () => 0,
+    sessionId,
+    getLastSeq: () => lastSeq,
     sendSessionProtocolMessage: async () => {},
     keepAlive: () => {},
     sendSessionEvent: () => {},

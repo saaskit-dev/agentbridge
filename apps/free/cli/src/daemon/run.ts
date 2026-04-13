@@ -755,15 +755,14 @@ export async function startDaemon(): Promise<void> {
 
           await session.initialize();
 
-          // If server assigned a new sessionId (e.g. old session was cleaned up), map the old one
-          // and erase the stale persisted file (initialize() already wrote a new one with the new ID).
+          // Recovery must preserve the sessionId from the local snapshot.
+          // A changed ID means something went wrong server-side or a legacy fallback path escaped strict mode.
           if (session.sessionId !== data.sessionId) {
-            ipcServer!.addSessionIdMapping(data.sessionId, session.sessionId);
-            await erasePersistedSession(data.sessionId);
-            logger.info('[DAEMON] Session ID changed after recovery', {
-              oldId: data.sessionId,
-              newId: session.sessionId,
-            });
+            const recoveredId = session.sessionId;
+            await session.shutdown('recovery_session_id_mismatch');
+            throw new Error(
+              `Recovery returned mismatched sessionId (snapshot=${data.sessionId}, recovered=${recoveredId})`
+            );
           }
 
           sessionManager!.register(session.sessionId, session);

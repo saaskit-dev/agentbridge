@@ -26,6 +26,8 @@ export interface SetupOfflineReconnectionOptions {
   metadata: Metadata;
   /** Agent state */
   state: AgentState;
+  /** Last known server seq watermark for offline placeholders. */
+  initialLastSeq?: number;
   /** Initial API response (null if server unreachable) */
   response: Session | null;
   /**
@@ -33,6 +35,11 @@ export interface SetupOfflineReconnectionOptions {
    * Use this to update the session reference in the calling code.
    */
   onSessionSwap: (newSession: ApiSessionClient) => void;
+  /**
+   * Optional custom reconnect strategy.
+   * When omitted, defaults to api.getOrCreateSession({ id: sessionId, metadata, state }).
+   */
+  reconnect?: () => Promise<Session | null>;
 }
 
 /**
@@ -86,13 +93,15 @@ export function setupOfflineReconnection(
   // Note: connectionState.notifyOffline() was already called by api.ts with error details
   if (!response) {
     // Create a no-op session stub for offline mode using shared utility
-    session = createOfflineSessionStub(sessionId);
+    session = createOfflineSessionStub(sessionId, opts.initialLastSeq ?? 0);
 
     // Start background reconnection
     reconnectionHandle = startOfflineReconnection<ApiSessionClient>({
       serverUrl: configuration.serverUrl,
       onReconnected: async () => {
-        const resp = await api.getOrCreateSession({ id: sessionId, metadata, state });
+        const resp = opts.reconnect
+          ? await opts.reconnect()
+          : await api.getOrCreateSession({ id: sessionId, metadata, state });
         if (!resp) throw new Error('Server unavailable');
         const realSession = api.sessionSyncClient(resp);
         // Notify caller to swap the session reference
