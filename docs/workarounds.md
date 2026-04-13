@@ -151,6 +151,29 @@
 
 ---
 
+## scripts/prepare-desktop-updater-config.js — updater 公钥也按 Tauri CLI 期望转换为完整文本的 base64
+
+**问题**：`TAURI_UPDATER_PUBLIC_KEY` 若直接使用 `.pub` 文件中的第二行 key 内容，
+Tauri CLI 在 updater 签名阶段仍会先做 base64 decode，再把结果当成 minisign 公钥文本解析，
+最终报 `failed to decode pubkey`。
+
+**触发条件**：
+
+- 运行桌面发布 workflow
+- `TAURI_UPDATER_PUBLIC_KEY` 使用的是 `.pub` 文件里的裸 key 行，或 workflow 将完整 `.pub` 文本错误归一化成裸 key 行
+
+**修复内容**：
+
+- updater config 生成脚本先检测输入是否已是 Tauri 兼容的单行 base64
+- 若输入是完整 `.pub` 文本，则将完整文本整体 base64 编码
+- 不再把 `.pub` 文件压扁成第二行 key 内容
+
+**上游**：Tauri CLI 的 `pub_key` helper 与私钥 helper 一样，会先 base64 decode，再把结果当作 minisign key box 文本解析。
+
+**删除条件**：若未来 Tauri CLI 明确支持直接使用 `.pub` 第二行裸 key，或团队统一只保存单行 base64 兼容格式的 updater 公钥，可移除。
+
+---
+
 ## .github/workflows/build-desktop.yml / release-desktop.yml — 自托管 macOS runner 直接补齐 Cargo PATH 并复用本机 Rust
 
 **问题**：自托管 macOS runner 上即使已经安装了 Rust，GitHub Actions step 的默认 PATH 里也可能没有
