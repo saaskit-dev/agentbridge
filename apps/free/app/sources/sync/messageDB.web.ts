@@ -7,6 +7,8 @@
 import { Logger, safeStringify } from '@saaskit-dev/agentbridge/telemetry';
 import type { CachedCapabilitiesRow, CachedMessage, MessageDB } from './messageDBSchema';
 import { MIGRATION_SQL_STATEMENTS, SCHEMA_SQL } from './messageDBSchema';
+import { isTauriDesktop } from '@/utils/tauri';
+import { desktopMessageDB } from './messageDB.desktop';
 
 // wa-sqlite-async.wasm is served as a static asset from the /public directory
 // (copied there by the postinstall script). Metro web serves /public files at
@@ -122,10 +124,16 @@ function escapeStr(s: string): string {
 
 export const messageDB: MessageDB = {
   async init() {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.init();
+    }
     await getDB();
   },
 
   async getMessages(sessionId, opts) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.getMessages(sessionId, opts);
+    }
     const state = await getDB();
     if (!state) return [];
     const sid = escapeStr(sessionId);
@@ -140,6 +148,9 @@ export const messageDB: MessageDB = {
   },
 
   async getLastSeq(sessionId) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.getLastSeq(sessionId);
+    }
     const state = await getDB();
     if (!state) return 0;
     const sid = escapeStr(sessionId);
@@ -150,6 +161,9 @@ export const messageDB: MessageDB = {
   },
 
   async upsertMessages(sessionId, messages) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.upsertMessages(sessionId, messages);
+    }
     if (messages.length === 0) return;
     const state = await getDB();
     if (!state) return;
@@ -163,6 +177,9 @@ export const messageDB: MessageDB = {
   },
 
   async updateLastSeq(sessionId, seq) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.updateLastSeq(sessionId, seq);
+    }
     const state = await getDB();
     if (!state) return;
     const sid = escapeStr(sessionId);
@@ -172,6 +189,9 @@ export const messageDB: MessageDB = {
   },
 
   async upsertMessagesAndSeq(sessionId, messages, seq) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.upsertMessagesAndSeq(sessionId, messages, seq);
+    }
     const state = await getDB();
     if (!state) return;
     const sid = escapeStr(sessionId);
@@ -187,6 +207,9 @@ export const messageDB: MessageDB = {
   },
 
   async deleteSession(sessionId) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.deleteSession(sessionId);
+    }
     const state = await getDB();
     if (!state) return;
     const sid = escapeStr(sessionId);
@@ -196,12 +219,18 @@ export const messageDB: MessageDB = {
   },
 
   async deleteAll() {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.deleteAll();
+    }
     const state = await getDB();
     if (!state) return;
     await exec("DELETE FROM messages; DELETE FROM session_sync; DELETE FROM capabilities_cache; DELETE FROM kv_store WHERE namespace = 'main'");
   },
 
   async getCapabilities(machineId, agentType) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.getCapabilities(machineId, agentType);
+    }
     const state = await getDB();
     if (!state) return null;
     const rows = await query<CachedCapabilitiesRow>(
@@ -211,6 +240,9 @@ export const messageDB: MessageDB = {
   },
 
   async upsertCapabilities(row) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.upsertCapabilities(row);
+    }
     const state = await getDB();
     if (!state) return;
     await exec(
@@ -220,6 +252,9 @@ export const messageDB: MessageDB = {
   },
 
   async kvGetAll(namespace) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.kvGetAll(namespace);
+    }
     const state = await getDB();
     if (!state) return [];
     return query<{ key: string; value: string }>(
@@ -228,6 +263,9 @@ export const messageDB: MessageDB = {
   },
 
   async kvSet(namespace, key, value) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.kvSet(namespace, key, value);
+    }
     const state = await getDB();
     if (!state) return;
     await exec(
@@ -236,6 +274,9 @@ export const messageDB: MessageDB = {
   },
 
   async kvDelete(namespace, key) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.kvDelete(namespace, key);
+    }
     const state = await getDB();
     if (!state) return;
     await exec(
@@ -244,6 +285,9 @@ export const messageDB: MessageDB = {
   },
 
   async kvDeleteAll(namespace) {
+    if (isTauriDesktop()) {
+      return desktopMessageDB.kvDeleteAll(namespace);
+    }
     const state = await getDB();
     if (!state) return;
     await exec(`DELETE FROM kv_store WHERE namespace = '${escapeStr(namespace)}'`);

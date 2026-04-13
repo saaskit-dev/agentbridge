@@ -17,12 +17,13 @@
 const fs = require('fs');
 const path = require('path');
 
-const APP_CONFIG_PATH = path.join(__dirname, '../apps/free/app/app.config.js');
+const APP_DIR = path.join(__dirname, '../apps/free/app');
+const APP_PACKAGE_JSON_PATH = path.join(APP_DIR, 'package.json');
+const TAURI_CONFIG_PATH = path.join(APP_DIR, 'src-tauri/tauri.conf.json');
 
 function getCurrentVersion() {
-  const content = fs.readFileSync(APP_CONFIG_PATH, 'utf8');
-  const match = content.match(/version:\s*['"]([^'"]+)['"]/);
-  return match ? match[1] : null;
+  const content = JSON.parse(fs.readFileSync(APP_PACKAGE_JSON_PATH, 'utf8'));
+  return content.version ?? null;
 }
 
 function bumpVersion(version, type) {
@@ -41,19 +42,26 @@ function bumpVersion(version, type) {
   }
 }
 
-function updateVersion(newVersion) {
-  // 更新 app.config.js
-  let appConfig = fs.readFileSync(APP_CONFIG_PATH, 'utf8');
-  appConfig = appConfig.replace(/version:\s*['"][^'"]+['"]/, `version: '${newVersion}'`);
-  fs.writeFileSync(APP_CONFIG_PATH, appConfig);
+function updateJsonVersion(filePath, newVersion) {
+  const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  content.version = newVersion;
+  fs.writeFileSync(filePath, JSON.stringify(content, null, 2) + '\n');
+}
 
-  console.log(`✅ App 版本已更新: ${newVersion}`);
+function updateVersion(newVersion) {
+  updateJsonVersion(APP_PACKAGE_JSON_PATH, newVersion);
+  updateJsonVersion(TAURI_CONFIG_PATH, newVersion);
+
+  console.log(`✅ App / Desktop 版本已更新: ${newVersion}`);
   console.log('');
   console.log('下一步:');
-  console.log('  1. 运行 prebuild 同步到原生项目:');
+  console.log('  1. 如修改了原生配置，运行 prebuild 同步移动端原生项目:');
   console.log('     cd apps/free/app && npx expo prebuild');
   console.log('');
-  console.log('  2. 或者直接构建 (EAS 会自动运行 prebuild):');
+  console.log('  2. 构建桌面包:');
+  console.log('     ./run desktop release');
+  console.log('');
+  console.log('  3. 或直接构建移动端 (EAS 会自动运行 prebuild):');
   console.log('     cd apps/free/app && eas build');
 }
 

@@ -24,6 +24,9 @@
 # macOS 桌面 (Tauri)
 pnpm tauri:dev
 pnpm tauri:build:production
+
+# 桌面正式产物整理（含 checksum）
+./run desktop ship
 ```
 
 ## 发版

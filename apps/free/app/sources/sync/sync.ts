@@ -69,6 +69,7 @@ import { apiSocket } from '@/sync/apiSocket';
 import { setSessionTrace, clearSessionTrace, sessionLogger } from '@/sync/appTraceStore';
 import { Encryption } from '@/sync/encryption/encryption';
 import { InvalidateSync } from '@/utils/sync';
+import { isTauriDesktop } from '@/utils/tauri';
 import type { PermissionMode } from './sessionCapabilities';
 import { messageDB } from './messageDB';
 
@@ -177,6 +178,8 @@ type OutboxMessage = {
 
 class Sync {
   private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
+  private static readonly DESKTOP_RESUME_COOLDOWN_MS = 4000;
+  private static readonly DESKTOP_REFRESH_INVALIDATION_COOLDOWN_MS = 12_000;
   encryption!: Encryption;
   private shouldPromptBackgroundReconnectOnResume = false;
   private backgroundReconnectPromptInFlight = false;
@@ -218,6 +221,10 @@ class Sync {
   private reconnectAckFlushPromise: Promise<void> | null = null;
   private lastRegisteredPushToken = loadRegisteredPushToken();
   private lastKnownConnectivity: boolean | null = null;
+  private desktopWindowFocused = true;
+  private desktopWindowVisible = true;
+  private lastForegroundRefreshAt = 0;
+  private lastResumeAttemptAt = 0;
   revenueCatInitialized = false;
 
   // Ephemeral update subscribers for streaming text support
@@ -259,68 +266,52 @@ class Sync {
       this.flushActivityUpdates.bind(this),
       2000
     );
-    apiSocket.setReconnectMode(this.appState === 'active' ? 'foreground' : 'background');
+    apiSocket.setReconnectMode(this.isReconnectForegroundActive() ? 'foreground' : 'background');
 
     // Listen for app state changes to refresh purchases
     AppState.addEventListener('change', nextAppState => {
       this.appState = nextAppState;
       if (nextAppState === 'active') {
-        apiSocket.setReconnectMode('foreground');
-        const shouldPromptBackgroundReconnect =
-          this.shouldPromptBackgroundReconnectOnResume &&
-          apiSocket.getStatus() !== 'connected' &&
-          apiSocket.getStatus() !== 'connecting';
-        this.shouldPromptBackgroundReconnectOnResume = false;
-        const shouldFailAfterResume =
-          this.backgroundSendStartedAt !== null &&
-          this.hasPendingOutboxMessages() &&
-          Date.now() - this.backgroundSendStartedAt >= Sync.BACKGROUND_SEND_TIMEOUT_MS;
-        void this.cancelBackgroundSendTimeoutNotification();
-        this.clearBackgroundSendWatchdog();
-        if (shouldFailAfterResume) {
-          void this.notifyMessageSendFailed();
-          // Abort in-flight requests (iOS has already frozen them) but keep
-          // messages in the outbox so they retry automatically now that
-          // the app is back in foreground.
-          for (const controller of this.sendAbortControllers.values()) {
-            controller.abort();
-          }
-          this.sendAbortControllers.clear();
-        }
-        logger.debug('📱 App became active');
-        if (apiSocket.getStatus() !== 'connected' && apiSocket.getStatus() !== 'connecting') {
-          logger.info('[sync] App became active: resuming socket connection', {
-            socketStatus: apiSocket.getStatus(),
-          });
-          apiSocket.resume();
-        } else {
-          apiSocket.refreshReconnectAuth();
-        }
-        void this.maybePromptForBackgroundReconnect(shouldPromptBackgroundReconnect);
-        // Re-trigger send sync for any sessions with pending outbox messages
-        for (const sessionId of this.pendingOutbox.keys()) {
-          this.getSendSync(sessionId).invalidate();
-        }
-        this.purchasesSync.invalidate();
-        this.profileSync.invalidate();
-        this.machinesSync.invalidate();
-        this.pushTokenSync.invalidate();
-        void this.flushReconnectAckQueue();
-        this.sessionsSync.invalidate();
-        this.nativeUpdateSync.invalidate();
-        logger.debug('📱 App became active: Invalidating artifacts sync');
-        this.artifactsSync.invalidate();
-        this.friendsSync.invalidate();
-        this.friendRequestsSync.invalidate();
-        this.feedSync.invalidate();
+        this.handleForegroundActivation('app-state-active');
       } else {
         this.shouldPromptBackgroundReconnectOnResume =
           this.hasPendingOutboxMessages() || storage.getState().getActiveSessions().length > 0;
-        apiSocket.setReconnectMode('background');
+        this.updateReconnectModeFromActivity('app-state-inactive');
         logger.debug(`📱 App state changed to: ${nextAppState}`);
         this.maybeStartBackgroundSendWatchdog();
       }
     });
+
+    if (isTauriDesktop() && typeof window !== 'undefined' && typeof document !== 'undefined') {
+      this.desktopWindowFocused = document.hasFocus();
+      this.desktopWindowVisible = document.visibilityState !== 'hidden';
+
+      window.addEventListener('focus', () => {
+        this.desktopWindowFocused = true;
+        this.handleForegroundActivation('desktop-window-focus');
+      });
+      window.addEventListener('blur', () => {
+        this.desktopWindowFocused = false;
+        this.updateReconnectModeFromActivity('desktop-window-blur');
+      });
+      document.addEventListener('visibilitychange', () => {
+        this.desktopWindowVisible = document.visibilityState !== 'hidden';
+        if (this.desktopWindowVisible) {
+          this.handleForegroundActivation('desktop-visibility-visible');
+        } else {
+          this.updateReconnectModeFromActivity('desktop-visibility-hidden');
+        }
+      });
+      window.addEventListener('online', () => {
+        logger.info('[sync] Browser connectivity restored', {
+          appState: this.appState,
+          socketStatus: apiSocket.getStatus(),
+        });
+        void this.flushReconnectAckQueue();
+        this.pushTokenSync.invalidate();
+        this.maybeResumeSocket('desktop-online');
+      });
+    }
 
     if (Platform.OS !== 'web') {
       Notifications.addNotificationReceivedListener(notification => {
@@ -353,15 +344,129 @@ class Sync {
         });
         void this.flushReconnectAckQueue();
         this.pushTokenSync.invalidate();
-        if (
-          this.appState === 'active' &&
-          apiSocket.getStatus() !== 'connected' &&
-          apiSocket.getStatus() !== 'connecting'
-        ) {
-          apiSocket.resume();
-        }
+        this.maybeResumeSocket('native-network-restored');
       });
     }
+  }
+
+  private isReconnectForegroundActive(): boolean {
+    if (isTauriDesktop()) {
+      return (
+        this.appState === 'active' && this.desktopWindowFocused && this.desktopWindowVisible
+      );
+    }
+    return this.appState === 'active';
+  }
+
+  private updateReconnectModeFromActivity(reason: string) {
+    const mode = this.isReconnectForegroundActive() ? 'foreground' : 'background';
+    logger.debug('[sync] update reconnect mode from activity', {
+      reason,
+      mode,
+      appState: this.appState,
+      desktopWindowFocused: this.desktopWindowFocused,
+      desktopWindowVisible: this.desktopWindowVisible,
+    });
+    apiSocket.setReconnectMode(mode);
+  }
+
+  private maybeResumeSocket(reason: string) {
+    if (!this.isReconnectForegroundActive()) {
+      logger.debug('[sync] skip socket resume: app not effectively active', {
+        reason,
+        appState: this.appState,
+        desktopWindowFocused: this.desktopWindowFocused,
+        desktopWindowVisible: this.desktopWindowVisible,
+      });
+      return;
+    }
+
+    const socketStatus = apiSocket.getStatus();
+    if (socketStatus === 'connected' || socketStatus === 'connecting') {
+      apiSocket.refreshReconnectAuth();
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.lastResumeAttemptAt < Sync.DESKTOP_RESUME_COOLDOWN_MS) {
+      logger.debug('[sync] skip socket resume: cooldown active', {
+        reason,
+        socketStatus,
+        lastResumeAttemptAgo: now - this.lastResumeAttemptAt,
+      });
+      return;
+    }
+
+    this.lastResumeAttemptAt = now;
+    logger.info('[sync] resuming socket connection', {
+      reason,
+      socketStatus,
+      appState: this.appState,
+      desktopWindowFocused: this.desktopWindowFocused,
+      desktopWindowVisible: this.desktopWindowVisible,
+    });
+    apiSocket.resume();
+  }
+
+  private handleForegroundActivation(reason: string) {
+    this.updateReconnectModeFromActivity(reason);
+
+    const shouldPromptBackgroundReconnect =
+      this.shouldPromptBackgroundReconnectOnResume &&
+      apiSocket.getStatus() !== 'connected' &&
+      apiSocket.getStatus() !== 'connecting';
+    this.shouldPromptBackgroundReconnectOnResume = false;
+
+    const shouldFailAfterResume =
+      this.backgroundSendStartedAt !== null &&
+      this.hasPendingOutboxMessages() &&
+      Date.now() - this.backgroundSendStartedAt >= Sync.BACKGROUND_SEND_TIMEOUT_MS;
+    void this.cancelBackgroundSendTimeoutNotification();
+    this.clearBackgroundSendWatchdog();
+    if (shouldFailAfterResume) {
+      void this.notifyMessageSendFailed();
+      for (const controller of this.sendAbortControllers.values()) {
+        controller.abort();
+      }
+      this.sendAbortControllers.clear();
+    }
+
+    logger.debug('📱 App became active', {
+      reason,
+      appState: this.appState,
+      desktopWindowFocused: this.desktopWindowFocused,
+      desktopWindowVisible: this.desktopWindowVisible,
+    });
+
+    this.maybeResumeSocket(reason);
+    void this.maybePromptForBackgroundReconnect(shouldPromptBackgroundReconnect);
+
+    for (const sessionId of this.pendingOutbox.keys()) {
+      this.getSendSync(sessionId).invalidate();
+    }
+
+    const now = Date.now();
+    if (now - this.lastForegroundRefreshAt < Sync.DESKTOP_REFRESH_INVALIDATION_COOLDOWN_MS) {
+      logger.debug('[sync] skip foreground invalidation: cooldown active', {
+        reason,
+        lastForegroundRefreshAgo: now - this.lastForegroundRefreshAt,
+      });
+      return;
+    }
+
+    this.lastForegroundRefreshAt = now;
+    this.purchasesSync.invalidate();
+    this.profileSync.invalidate();
+    this.machinesSync.invalidate();
+    this.pushTokenSync.invalidate();
+    void this.flushReconnectAckQueue();
+    this.sessionsSync.invalidate();
+    this.nativeUpdateSync.invalidate();
+    logger.debug('📱 App became active: Invalidating artifacts sync', { reason });
+    this.artifactsSync.invalidate();
+    this.friendsSync.invalidate();
+    this.friendRequestsSync.invalidate();
+    this.feedSync.invalidate();
   }
 
   async create(credentials: AuthCredentials, encryption: Encryption) {

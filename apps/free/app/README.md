@@ -62,6 +62,9 @@ pnpm android
 
 # 构建桌面安装包
 pnpm tauri:build:production
+
+# 构建并整理桌面发布产物
+./run desktop ship
 ```
 
 ## 📄 许可证

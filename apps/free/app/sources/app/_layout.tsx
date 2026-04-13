@@ -41,6 +41,8 @@ import {
 // import * as SystemUI from 'expo-system-ui';
 import { AsyncLock } from '@/utils/lock';
 import { useWatchConnectivity } from '@/hooks/useWatchConnectivity';
+import { useDisableTauriNativeContextMenu } from '@/hooks/useDisableTauriNativeContextMenu';
+import { useTauriDevtoolsShortcut } from '@/hooks/useTauriDevtoolsShortcut';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/layout');
 
@@ -198,6 +200,8 @@ async function loadFonts() {
 }
 
 export default function RootLayout() {
+  useDisableTauriNativeContextMenu();
+  useTauriDevtoolsShortcut();
   const { theme } = useUnistyles();
   const navigationTheme = React.useMemo(() => {
     if (theme.dark) {

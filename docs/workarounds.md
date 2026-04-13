@@ -57,6 +57,76 @@
 
 ---
 
+## apps/free/app/src-tauri/src/lib.rs — 本地桌面包未配置 updater 时禁用 Tauri updater plugin
+
+**问题**：本地 `tauri build` 默认不会生成 `tauri.updater.conf.json`，因为 updater 公钥只在发布流程里通过
+`TAURI_UPDATER_PUBLIC_KEY` 注入。此时仍初始化 `tauri-plugin-updater`，应用启动会直接 panic：
+`invalid type: null, expected struct Config`，导致 `.app` 双击打不开。
+
+**触发条件**：
+
+- 运行 `./run desktop build` 或 `./run desktop build-dev`
+- 且构建环境未设置 `TAURI_UPDATER_PUBLIC_KEY`
+- 产物启动时初始化 `tauri-plugin-updater`
+
+**修复内容**：
+
+- Rust 侧仅在编译时检测到 `TAURI_UPDATER_PUBLIC_KEY` 非空时，才注册 `tauri-plugin-updater`
+- 本地普通测试包 / 正式包可正常启动
+- 带 updater 签名的发布流程仍通过环境变量启用 updater
+
+**上游**：Tauri updater 配置为必填结构；当配置缺失但 plugin 仍初始化时会在启动阶段失败。这是当前本地无签名构建流程与 updater 插件约束之间的集成兼容处理。
+
+**删除条件**：若未来本地所有桌面构建都统一生成合法 updater 配置，或 Tauri updater 支持无配置安全降级，可移除。
+
+---
+
+## scripts/repair-tauri-macos-app-signature.sh — 本地 Tauri macOS 产物重做 ad-hoc 签名
+
+**问题**：本地 `tauri build` 产出的 `.app` 在当前链路下会出现无效 ad-hoc 签名，`codesign --verify` 报：
+`code has no resources but signature indicates they must be present`。这种情况下 Finder 双击、右键打开都可能失败。
+
+**触发条件**：
+
+- macOS 本地运行 `./run desktop build`
+- 或 `./run desktop build-dev`
+- 或 `./run desktop ship`
+
+**修复内容**：
+
+- 新增 `scripts/repair-tauri-macos-app-signature.sh`
+- 桌面 build 完成后，对 `src-tauri/target/release/bundle/macos/*.app` 执行：
+  `codesign --force --deep --sign -`
+- 仅修复本地 app bundle 的 ad-hoc 签名完整性；不等同于 Apple Developer ID 签名，也不包含 notarization
+
+**上游**：当前 Tauri 本地 macOS 打包链路生成的 ad-hoc 签名不稳定，导致 bundle 在本机验证即失败。属于本地桌面打包兼容 workaround。
+
+**删除条件**：升级到不会再生成无效 ad-hoc 签名的 Tauri/macOS 打包链路后，确认连续多次本地 build 产物都能通过
+`codesign --verify --deep --strict` 且可直接打开时移除。
+
+---
+
+## apps/free/app/src-tauri/Cargo.toml — 桌面正式包启用 Tauri `devtools` feature 以支持 F12
+
+**问题**：默认情况下，Tauri 仅在 debug build 暴露 `open_devtools()` 等 API。当前需要在本地桌面正式包里也能通过
+`F12` / `Cmd+Alt+I` 打开 WebView 开发者工具，便于排查问题。
+
+**触发条件**：
+
+- 运行桌面正式包（`./run desktop build`）
+- 需要在 release 产物里打开 Tauri / WebView DevTools
+
+**修复内容**：
+
+- `tauri` crate 打开 `devtools` feature
+- App 内监听 `F12` / `Cmd+Alt+I`，通过 Tauri command 打开 DevTools
+
+**上游**：Tauri 设计如此。`open_devtools()` 在 release 构建中默认关闭，必须显式启用 `devtools` feature。
+
+**删除条件**：若未来改为仅在测试构建启用 DevTools，或排查链路不再依赖 release 包内置 DevTools，可移除。
+
+---
+
 ## apps/free/app/sources/sync/serverConfig.ts — development 模式忽略生产 `custom-server-url`
 
 **问题**：Web/desktop 开发时，用户之前保存过的 `custom-server-url=https://free-server.saaskit.app`
