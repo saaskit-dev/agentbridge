@@ -35,7 +35,7 @@ jobs:
           cache: pnpm
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        run: bash ./scripts/setup-rust-ci.sh
 
       - name: Install Linux system dependencies
         if: matrix.platform-name == 'ubuntu-24.04'
@@ -66,11 +66,7 @@ jobs:
       - name: Materialize updater signing key
         env:
           TAURI_SIGNING_PRIVATE_KEY_RAW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          KEY_PATH="$RUNNER_TEMP/tauri-updater.key"
-          printf '%s\n' "$TAURI_SIGNING_PRIVATE_KEY_RAW" > "$KEY_PATH"
-          chmod 600 "$KEY_PATH"
-          echo "TAURI_SIGNING_PRIVATE_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+        run: node ./scripts/prepare-tauri-signing-key.js
 
       - uses: tauri-apps/tauri-action@v0
         env:

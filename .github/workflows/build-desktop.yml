@@ -43,7 +43,7 @@ jobs:
           cache: pnpm
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        run: bash ./scripts/setup-rust-ci.sh
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2

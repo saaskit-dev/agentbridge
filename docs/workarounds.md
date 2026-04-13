@@ -127,7 +127,7 @@
 
 ---
 
-## .github/workflows/release-desktop.yml — 桌面发布流程将 Tauri updater 私钥 secret 落盘后再传给 tauri-action
+## .github/workflows/release-desktop.yml — 桌面发布流程先规范化 Tauri updater 私钥 secret 再传给 tauri-action
 
 **问题**：`TAURI_SIGNING_PRIVATE_KEY` 以 GitHub secret 多行内容直接注入环境变量时，
 `tauri-action` 在发布阶段会按 base64 私钥内容解析，遇到带注释或完整文件内容时可能报：
@@ -140,13 +140,37 @@
 
 **修复内容**：
 
-- workflow 先把 `TAURI_SIGNING_PRIVATE_KEY` 写入 runner 临时文件
-- 再将该文件路径写入 `GITHUB_ENV`
-- `tauri-action` 读取的是私钥文件路径，而不是直接读取原始多行 secret 内容
+- workflow 先从完整 secret 内容里提取真实的 minisign/base64 私钥行
+- 再将规范化后的单行 key 写入 `GITHUB_ENV`
+- `tauri-action` 读取的是稳定的单行 key，而不是带注释或多行格式的原始 secret 内容
 
-**上游**：Tauri updater signing 支持 key path / key content，但 GitHub Actions 环境变量透传多行私钥内容在当前发布链路里不稳定。
+**上游**：Tauri updater signing 文档允许传 key path / key content，但当前 `tauri-action` 发布链路对 GitHub Secrets 里的完整多行私钥文件内容不稳定。
 
 **删除条件**：若未来 `tauri-action` 能稳定接受 GitHub secret 中的多行私钥全文，或团队统一改为仅存单行兼容格式的私钥内容，可移除。
+
+---
+
+## .github/workflows/build-desktop.yml / release-desktop.yml — 自托管 macOS runner 直接补齐 Cargo PATH 并复用本机 Rust
+
+**问题**：自托管 macOS runner 上即使已经安装了 Rust，GitHub Actions step 的默认 PATH 里也可能没有
+`$HOME/.cargo/bin`。此时 `dtolnay/rust-toolchain` 会误判 `rustup` 不存在，退回到在线安装流程；
+如果 runner 当时连不上 `https://sh.rustup.rs`，构建会直接以 `curl: (35)` 失败。
+
+**触发条件**：
+
+- 运行 `Build Desktop` 或 `Release Desktop` workflow
+- job 落在自托管 macOS runner
+- Rust 已安装在 `$HOME/.cargo/bin`，但未进入 Actions PATH
+
+**修复内容**：
+
+- workflow 改为先显式把 `${CARGO_HOME:-$HOME/.cargo}/bin` 写入 `GITHUB_PATH`
+- 若 runner 已有 `rustup` / `cargo` / `rustc`，直接复用本机 stable toolchain
+- 仅在 runner 真没有 Rust 时，才回退到在线安装
+
+**上游**：不是业务代码问题，而是自托管 runner 的用户环境与 GitHub Actions 非交互 shell PATH 不一致。
+
+**删除条件**：若后续统一在 runner 镜像里预配好 Rust 且 PATH 恒定，或改用稳定的预装 runner 镜像，可移除。
 
 ---
 
