@@ -173,6 +173,8 @@ jobs:
         run: |
           VERSION="${{ needs.prepare_release.outputs.version }}"
           bash ../../../scripts/repair-tauri-macos-app-signature.sh "src-tauri/target/release/bundle/macos"
+          codesign --verify --deep --strict "src-tauri/target/release/bundle/macos/Free.app"
+          spctl --assess --type execute --verbose=4 "src-tauri/target/release/bundle/macos/Free.app" || true
           DMG_PATH="src-tauri/target/release/bundle/dmg/Free_${VERSION}_aarch64.dmg"
           mkdir -p "$(dirname "$DMG_PATH")"
           bash ../../../scripts/create-macos-dmg.sh \
