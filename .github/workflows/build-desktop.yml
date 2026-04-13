@@ -1,0 +1,63 @@
+name: Build Desktop
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/build-desktop.yml'
+      - '.github/workflows/release-desktop.yml'
+      - 'apps/free/app/**'
+      - 'packages/**'
+      - 'scripts/prepare-desktop-updater-config.js'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-desktop.yml'
+      - '.github/workflows/release-desktop.yml'
+      - 'apps/free/app/**'
+      - 'packages/**'
+      - 'scripts/prepare-desktop-updater-config.js'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    name: Build Desktop (macOS self-hosted)
+    runs-on: [self-hosted, macOS, ARM64, desktop-build]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './apps/free/app/src-tauri -> target'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare updater config
+        env:
+          DESKTOP_UPDATER_REPOSITORY: ${{ github.repository }}
+        run: node ./scripts/prepare-desktop-updater-config.js
+
+      - name: Build desktop app
+        working-directory: apps/free/app
+        run: pnpm tauri:build:production -- --no-bundle
