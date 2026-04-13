@@ -28,6 +28,8 @@ export const ca: TranslationStructure = {
     inbox: 'Safata',
     sessions: 'Sessions',
     settings: 'Configuració',
+    closeOthers: 'Tanca les altres',
+    closeAll: 'Tanca-ho tot',
   },
 
   inbox: {

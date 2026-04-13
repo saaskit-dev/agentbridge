@@ -41,6 +41,8 @@ export const pl: TranslationStructure = {
     inbox: 'Skrzynka',
     sessions: 'Sesje',
     settings: 'Ustawienia',
+    closeOthers: 'Zamknij pozostałe',
+    closeAll: 'Zamknij wszystkie',
   },
 
   inbox: {

@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 build/
+apps/free/app/dist-desktop/
 *.tsbuildinfo
 
 # Cache

@@ -131,6 +131,12 @@ export default function RootLayout() {
         }}
       />
       <Stack.Screen
+        name="settings/keyboard-shortcuts"
+        options={{
+          headerTitle: 'Keyboard Shortcuts',
+        }}
+      />
+      <Stack.Screen
         name="settings/focus-audio"
         options={{
           headerTitle: t('focusAudio.pageTitle'),

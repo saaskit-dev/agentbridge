@@ -137,7 +137,15 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
   }, [commands, commandPaletteEnabled]);
 
   // Set up global keyboard handler only if feature is enabled
-  useGlobalKeyboard(commandPaletteEnabled ? showCommandPalette : () => {});
+  useGlobalKeyboard({
+    onCommandPalette: commandPaletteEnabled ? showCommandPalette : () => {},
+    onNewSession: () => {
+      router.push('/new');
+    },
+    onSettings: () => {
+      router.push('/settings');
+    },
+  });
 
   return <>{children}</>;
 }

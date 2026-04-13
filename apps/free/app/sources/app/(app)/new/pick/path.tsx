@@ -13,6 +13,7 @@ import { machineListDirectory } from '@/sync/ops';
 import type { DirectoryEntry } from '@/sync/ops';
 import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { t } from '@/text';
+import { isDesktopPlatform } from '@/utils/platform';
 
 const stylesheet = StyleSheet.create(theme => ({
   container: {
@@ -69,7 +70,19 @@ const stylesheet = StyleSheet.create(theme => ({
     padding: 16,
     ...Typography.default(),
   },
+  keyboardHint: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    ...Typography.default(),
+  },
 }));
+
+type KeyboardTarget =
+  | { type: 'recent'; path: string }
+  | { type: 'directory'; entry: DirectoryEntry }
+  | { type: 'parent' };
 
 export default function PathPickerScreen() {
   const { theme } = useUnistyles();
@@ -81,6 +94,7 @@ export default function PathPickerScreen() {
   const sessions = useSessions();
   const inputRef = useRef<MultiTextInputHandle>(null);
   const recentMachinePaths = useSetting('recentMachinePaths');
+  const isDesktop = isDesktopPlatform();
 
   const [customPath, setCustomPath] = useState(params.selectedPath || '');
   const [browsePath, setBrowsePath] = useState<string | null>(null);
@@ -89,6 +103,7 @@ export default function PathPickerScreen() {
   const [browseError, setBrowseError] = useState<string | null>(null);
   const isNavigatingRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
 
   // Get the selected machine
   const machine = useMemo(() => {
@@ -249,6 +264,90 @@ export default function PathPickerScreen() {
     () => entries.filter(e => e.type === 'directory'),
     [entries]
   );
+  const suggestedPaths = useMemo(() => {
+    const homeDir = machine?.metadata?.homeDir || '/home';
+    return [homeDir, `${homeDir}/projects`, `${homeDir}/Documents`, `${homeDir}/Desktop`];
+  }, [machine?.metadata?.homeDir]);
+  const quickAccessPaths = recentPaths.length > 0 ? recentPaths : suggestedPaths;
+  const keyboardTargets = useMemo<KeyboardTarget[]>(() => {
+    const targets: KeyboardTarget[] = [];
+    quickAccessPaths.forEach(path => {
+      targets.push({ type: 'recent', path });
+    });
+    if (browsePath !== null) {
+      if (browsePath !== '/') {
+        targets.push({ type: 'parent' });
+      }
+      directoryEntries.forEach(entry => {
+        targets.push({ type: 'directory', entry });
+      });
+    }
+    return targets;
+  }, [browsePath, directoryEntries, quickAccessPaths]);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    inputRef.current?.focus();
+  }, [isDesktop]);
+
+  useEffect(() => {
+    setHighlightedIndex(current => {
+      if (keyboardTargets.length === 0) return 0;
+      return Math.min(current, keyboardTargets.length - 1);
+    });
+  }, [keyboardTargets.length]);
+
+  const activateKeyboardTarget = useCallback(
+    (target: KeyboardTarget | undefined) => {
+      if (!target) {
+        handleSelectPath();
+        return;
+      }
+      if (target.type === 'recent') {
+        handleStartBrowse(target.path);
+        return;
+      }
+      if (target.type === 'parent') {
+        handleGoUp();
+        return;
+      }
+      handleEntryPress(target.entry);
+    },
+    [handleEntryPress, handleGoUp, handleSelectPath, handleStartBrowse]
+  );
+
+  useEffect(() => {
+    if (!isDesktop || Platform.OS !== 'web') return;
+
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      const isModifierPressed = event.metaKey || event.ctrlKey;
+      if (isModifierPressed && event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        inputRef.current?.focus();
+        return;
+      }
+
+      if (isModifierPressed && event.key === 'Enter') {
+        event.preventDefault();
+        handleSelectPath();
+        return;
+      }
+
+      if (event.altKey && event.key === 'ArrowUp' && browsePath && browsePath !== '/') {
+        event.preventDefault();
+        handleGoUp();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        router.back();
+      }
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => window.removeEventListener('keydown', handleWindowKeyDown);
+  }, [browsePath, handleGoUp, handleSelectPath, isDesktop, router]);
 
   if (!machine) {
     return (
@@ -316,6 +415,9 @@ export default function PathPickerScreen() {
               <ItemGroup title={t('pathPicker.recentPaths')}>
                 {recentPaths.map((path, index) => {
                   const isSelected = customPath.trim() === path;
+                  const keyboardSelected =
+                    keyboardTargets[highlightedIndex]?.type === 'recent' &&
+                    keyboardTargets[highlightedIndex]?.path === path;
                   const isLast = index === recentPaths.length - 1;
 
                   return (
@@ -330,10 +432,12 @@ export default function PathPickerScreen() {
                         />
                       }
                       onPress={() => handleStartBrowse(path)}
-                      selected={isSelected}
+                      selected={isSelected || keyboardSelected}
                       showChevron={false}
                       pressableStyle={
-                        isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined
+                        isSelected || keyboardSelected
+                          ? { backgroundColor: theme.colors.surfaceSelected }
+                          : undefined
                       }
                       showDivider={!isLast}
                     />
@@ -345,39 +449,35 @@ export default function PathPickerScreen() {
             {/* Suggested paths — when no recent */}
             {recentPaths.length === 0 && (
               <ItemGroup title={t('pathPicker.suggestedPaths')}>
-                {(() => {
-                  const homeDir = machine.metadata?.homeDir || '/home';
-                  const suggestedPaths = [
-                    homeDir,
-                    `${homeDir}/projects`,
-                    `${homeDir}/Documents`,
-                    `${homeDir}/Desktop`,
-                  ];
-                  return suggestedPaths.map((path, index) => {
-                    const isSelected = customPath.trim() === path;
+                {suggestedPaths.map((path, index) => {
+                  const isSelected = customPath.trim() === path;
+                  const keyboardSelected =
+                    keyboardTargets[highlightedIndex]?.type === 'recent' &&
+                    keyboardTargets[highlightedIndex]?.path === path;
 
-                    return (
-                      <Item
-                        key={path}
-                        title={path}
-                        leftElement={
-                          <Ionicons
-                            name="folder-outline"
-                            size={18}
-                            color={theme.colors.textSecondary}
-                          />
-                        }
-                        onPress={() => handleStartBrowse(path)}
-                        selected={isSelected}
-                        showChevron={false}
-                        pressableStyle={
-                          isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined
-                        }
-                        showDivider={index < 3}
-                      />
-                    );
-                  });
-                })()}
+                  return (
+                    <Item
+                      key={path}
+                      title={path}
+                      leftElement={
+                        <Ionicons
+                          name="folder-outline"
+                          size={18}
+                          color={theme.colors.textSecondary}
+                        />
+                      }
+                      onPress={() => handleStartBrowse(path)}
+                      selected={isSelected || keyboardSelected}
+                      showChevron={false}
+                      pressableStyle={
+                        isSelected || keyboardSelected
+                          ? { backgroundColor: theme.colors.surfaceSelected }
+                          : undefined
+                      }
+                      showDivider={index < suggestedPaths.length - 1}
+                    />
+                  );
+                })}
               </ItemGroup>
             )}
 
@@ -389,6 +489,23 @@ export default function PathPickerScreen() {
                     ref={inputRef}
                     value={customPath}
                     onChangeText={handlePathInput}
+                    onKeyPress={event => {
+                      if (event.key === 'ArrowDown') {
+                        setHighlightedIndex(current =>
+                          Math.min(current + 1, Math.max(0, keyboardTargets.length - 1))
+                        );
+                        return keyboardTargets.length > 0;
+                      }
+                      if (event.key === 'ArrowUp') {
+                        setHighlightedIndex(current => Math.max(current - 1, 0));
+                        return keyboardTargets.length > 0;
+                      }
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        activateKeyboardTarget(keyboardTargets[highlightedIndex]);
+                        return true;
+                      }
+                      return false;
+                    }}
                     placeholder={t('pathPicker.enterPathPlaceholder')}
                     maxHeight={76}
                     paddingTop={8}
@@ -396,6 +513,12 @@ export default function PathPickerScreen() {
                   />
                 </View>
               </View>
+              {isDesktop ? (
+                <Text style={styles.keyboardHint}>
+                  Arrow Up/Down browse, Enter open, Cmd/Ctrl+Enter confirm, Cmd/Ctrl+L focus path,
+                  Alt+↑ parent
+                </Text>
+              ) : null}
             </ItemGroup>
 
             {/* Directory browser */}
@@ -421,7 +544,13 @@ export default function PathPickerScreen() {
                           />
                         }
                         onPress={handleGoUp}
+                        selected={keyboardTargets[highlightedIndex]?.type === 'parent'}
                         showChevron={false}
+                        pressableStyle={
+                          keyboardTargets[highlightedIndex]?.type === 'parent'
+                            ? { backgroundColor: theme.colors.surfaceSelected }
+                            : undefined
+                        }
                         showDivider={directoryEntries.length > 0}
                       />
                     )}
@@ -437,6 +566,16 @@ export default function PathPickerScreen() {
                           />
                         }
                         onPress={() => handleEntryPress(entry)}
+                        selected={
+                          keyboardTargets[highlightedIndex]?.type === 'directory' &&
+                          keyboardTargets[highlightedIndex]?.entry.name === entry.name
+                        }
+                        pressableStyle={
+                          keyboardTargets[highlightedIndex]?.type === 'directory' &&
+                          keyboardTargets[highlightedIndex]?.entry.name === entry.name
+                            ? { backgroundColor: theme.colors.surfaceSelected }
+                            : undefined
+                        }
                         showChevron
                         showDivider={index < directoryEntries.length - 1}
                       />

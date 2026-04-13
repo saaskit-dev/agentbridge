@@ -34,6 +34,7 @@ import {
   useIsDataReady,
   useLocalSetting,
   useRealtimeStatus,
+  useSessionQueuedMessages,
   useSessionMessages,
   useSessionSendError,
   useSessionUsage,
@@ -46,10 +47,10 @@ import {
   getDefaultDiscoveredModelId,
   getDisplayCapabilities,
 } from '@/sync/sessionCapabilities';
-import { Session } from '@/sync/storageTypes';
+import { QueuedAttachment, QueuedMessage, Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
-import { isRunningOnMac } from '@/utils/platform';
+import { isDesktopPlatform, isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import { isTauriDesktop } from '@/utils/tauri';
 import {
@@ -71,6 +72,128 @@ import { runImageSourcePicker } from '@/utils/imageSourcePicker';
 import { subscribePasteImage, type PastedImage } from '@/utils/pasteImageBridge';
 const logger = new Logger('app/session/SessionView');
 
+type ComposerAttachment = { localUri: string; uploading: boolean; error?: string; ref?: AttachmentRef };
+
+const QueuedMessagesPanel = React.memo(function QueuedMessagesPanel(props: {
+  messages: QueuedMessage[];
+  onEdit: (message: QueuedMessage) => void;
+  onRemove: (messageId: string) => void;
+}) {
+  const { theme } = useUnistyles();
+
+  return (
+    <View
+      style={{
+        marginHorizontal: 12,
+        marginBottom: 8,
+        borderRadius: 14,
+        padding: 10,
+        backgroundColor: theme.dark ? 'rgba(37,99,235,0.14)' : '#EFF6FF',
+        borderWidth: 1,
+        borderColor: theme.dark ? 'rgba(96,165,250,0.28)' : '#BFDBFE',
+        gap: 8,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Ionicons name="time-outline" size={16} color={theme.dark ? '#93C5FD' : '#1D4ED8'} />
+          <Text
+            style={{
+              color: theme.dark ? '#DBEAFE' : '#1E3A8A',
+              fontSize: 13,
+              ...Typography.default('semiBold'),
+            }}
+          >
+            {props.messages.length} queued {props.messages.length === 1 ? 'message' : 'messages'}
+          </Text>
+        </View>
+        <Text
+          style={{
+            color: theme.dark ? '#93C5FD' : '#2563EB',
+            fontSize: 12,
+            ...Typography.default(),
+          }}
+        >
+          Will send together when this turn ends
+        </Text>
+      </View>
+
+      {props.messages.map((message, index) => {
+        const attachmentCount = message.attachments?.length ?? 0;
+        return (
+          <View
+            key={message.id}
+            style={{
+              borderRadius: 12,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              backgroundColor: theme.dark ? 'rgba(15,23,42,0.3)' : 'rgba(255,255,255,0.72)',
+              borderWidth: 1,
+              borderColor: theme.dark ? 'rgba(148,163,184,0.16)' : 'rgba(37,99,235,0.08)',
+              gap: 6,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+              <Text
+                style={{
+                  color: theme.colors.textSecondary,
+                  fontSize: 12,
+                  width: 18,
+                  paddingTop: 1,
+                  ...Typography.default('semiBold'),
+                }}
+              >
+                {index + 1}.
+              </Text>
+              <Text
+                numberOfLines={3}
+                style={{
+                  flex: 1,
+                  color: theme.colors.text,
+                  fontSize: 14,
+                  lineHeight: 20,
+                  ...Typography.default(),
+                }}
+              >
+                {message.displayText || message.text || '(attachment only)'}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text
+                style={{
+                  color: theme.colors.textSecondary,
+                  fontSize: 12,
+                  ...Typography.default(),
+                }}
+              >
+                {attachmentCount > 0
+                  ? `${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}`
+                  : 'Text only'}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Pressable onPress={() => props.onEdit(message)} hitSlop={8}>
+                  <Ionicons
+                    name="create-outline"
+                    size={16}
+                    color={theme.dark ? '#BFDBFE' : '#2563EB'}
+                  />
+                </Pressable>
+                <Pressable onPress={() => props.onRemove(message.id)} hitSlop={8}>
+                  <Ionicons
+                    name="close-outline"
+                    size={18}
+                    color={theme.dark ? '#FCA5A5' : '#DC2626'}
+                  />
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+});
+
 export const SessionView = React.memo((props: { id: string }) => {
   const sessionId = props.id;
   const router = useRouter();
@@ -83,9 +206,71 @@ export const SessionView = React.memo((props: { id: string }) => {
   const headerHeight = useHeaderHeight();
   const realtimeStatus = useRealtimeStatus();
   const isTablet = useIsTablet();
+  const isDesktop = isDesktopPlatform();
   const devModeEnabledForHeader = useLocalSetting('devModeEnabled') || __DEV__;
   const showDebugIds = useLocalSetting('showDebugIds');
   const [jumpToRecentUserSignal, setJumpToRecentUserSignal] = React.useState(0);
+  const desktopActions = React.useMemo(() => {
+    if (!isDesktop || !session) return null;
+    return (
+      <>
+        {session.metadata?.path ? (
+          <Pressable
+            onPress={() => router.push(`/session/${sessionId}/files`)}
+            style={({ pressed }) => ({
+              minHeight: 34,
+              paddingHorizontal: 10,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.14)',
+              backgroundColor: 'rgba(255,255,255,0.06)',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              opacity: pressed ? 0.75 : 1,
+            })}
+          >
+            <Ionicons name="folder-open-outline" size={15} color={theme.colors.header.tint} />
+            <Text
+              style={{
+                fontSize: 12,
+                color: theme.colors.header.tint,
+                ...Typography.default('semiBold'),
+              }}
+            >
+              Files
+            </Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          onPress={() => setJumpToRecentUserSignal(value => value + 1)}
+          style={({ pressed }) => ({
+            minHeight: 34,
+            paddingHorizontal: 10,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.14)',
+            backgroundColor: 'rgba(255,255,255,0.06)',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            opacity: pressed ? 0.75 : 1,
+          })}
+        >
+          <Ionicons name="return-up-back-outline" size={15} color={theme.colors.header.tint} />
+          <Text
+            style={{
+              fontSize: 12,
+              color: theme.colors.header.tint,
+              ...Typography.default('semiBold'),
+            }}
+          >
+            Recent
+          </Text>
+        </Pressable>
+      </>
+    );
+  }, [isDesktop, router, session, sessionId, theme.colors.header.tint]);
 
   // Compute header props based on session state
   const headerProps = useMemo(() => {
@@ -169,6 +354,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             onBackPress={() => router.back()}
             onTitleDoublePress={() => setJumpToRecentUserSignal(value => value + 1)}
             devSessionId={devModeEnabledForHeader && showDebugIds ? sessionId : null}
+            desktopActions={desktopActions}
           />
           {/* Voice status bar below header - not on tablet (shown in sidebar) */}
           {!isTablet && realtimeStatus !== 'disconnected' && (
@@ -221,6 +407,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             sessionId={sessionId}
             session={session}
             jumpToRecentUserSignal={jumpToRecentUserSignal}
+            onJumpToRecentUser={() => setJumpToRecentUserSignal(value => value + 1)}
           />
         )}
       </View>
@@ -232,12 +419,13 @@ function SessionViewLoaded(props: {
   sessionId: string;
   session: Session;
   jumpToRecentUserSignal: number;
+  onJumpToRecentUser: () => void;
 }) {
   type SessionContentTab =
     | { id: 'chat'; type: 'chat'; title: string }
     | { id: string; type: 'file'; title: string; path: string };
 
-  const { sessionId, session, jumpToRecentUserSignal } = props;
+  const { sessionId, session, jumpToRecentUserSignal, onJumpToRecentUser } = props;
   const { theme } = useUnistyles();
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -275,6 +463,7 @@ function SessionViewLoaded(props: {
     hasRenderedMessagesRef.current = true;
   }
   const sendError = useSessionSendError(sessionId);
+  const queuedMessages = useSessionQueuedMessages(sessionId);
   const [isSettingsBusy, setIsSettingsBusy] = React.useState(false);
   const [pendingCapabilityChange, setPendingCapabilityChange] = React.useState<{
     kind: 'model' | 'mode';
@@ -390,11 +579,51 @@ function SessionViewLoaded(props: {
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
   const showDesktopFilesSidebar =
     isTauriDesktop() && isTablet && !!session.metadata?.path && deviceType !== 'phone';
-  const { upsertTab: upsertSessionTab } = useDesktopSessionTabs();
+  const { openTab: openSessionTab, updateTabTitle: updateSessionTabTitle } = useDesktopSessionTabs();
   const [contentTabs, setContentTabs] = React.useState<SessionContentTab[]>([
     { id: 'chat', type: 'chat', title: t('tabs.sessions') },
   ]);
   const [activeContentTabId, setActiveContentTabId] = React.useState<string>('chat');
+
+  React.useEffect(() => {
+    if (!isDesktopPlatform() || Platform.OS !== 'web') return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isModifierPressed = event.metaKey || event.ctrlKey;
+      if (!isModifierPressed) return;
+
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTypingTarget =
+        !!target &&
+        (target.isContentEditable || tagName === 'input' || tagName === 'textarea');
+
+      if (event.key.toLowerCase() === 'b' && !event.shiftKey) {
+        if (isTypingTarget) return;
+        event.preventDefault();
+        const current = storage.getState().localSettings.sidebarCollapsed;
+        storage.getState().applyLocalSettings({ sidebarCollapsed: !current });
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'f' && event.shiftKey && showDesktopFilesSidebar) {
+        if (isTypingTarget) return;
+        event.preventDefault();
+        const current = storage.getState().localSettings.sessionFilesSidebarCollapsed;
+        storage.getState().applyLocalSettings({ sessionFilesSidebarCollapsed: !current });
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'r' && event.shiftKey) {
+        if (isTypingTarget) return;
+        event.preventDefault();
+        onJumpToRecentUser();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onJumpToRecentUser, showDesktopFilesSidebar]);
 
   const activeContentTab = React.useMemo(() => {
     return contentTabs.find(tab => tab.id === activeContentTabId) ?? contentTabs[0]!;
@@ -421,8 +650,15 @@ function SessionViewLoaded(props: {
     if (!showDesktopFilesSidebar) {
       return;
     }
-    upsertSessionTab({ id: sessionId, title: getSessionName(session) });
-  }, [session, sessionId, showDesktopFilesSidebar, upsertSessionTab]);
+    openSessionTab({ id: sessionId, title: getSessionName(session) });
+  }, [openSessionTab, sessionId, showDesktopFilesSidebar]);
+
+  React.useEffect(() => {
+    if (!showDesktopFilesSidebar) {
+      return;
+    }
+    updateSessionTabTitle(sessionId, getSessionName(session));
+  }, [session, sessionId, showDesktopFilesSidebar, updateSessionTabTitle]);
 
   React.useEffect(() => {
     const availableModels = session.capabilities?.models?.available ?? [];
@@ -530,9 +766,7 @@ function SessionViewLoaded(props: {
   const { clearDraft } = useDraft(sessionId, message, setMessage);
 
   // --- Image attachment state ---
-  const [pendingAttachments, setPendingAttachments] = React.useState<
-    Array<{ localUri: string; uploading: boolean; error?: string; ref?: AttachmentRef }>
-  >([]);
+  const [pendingAttachments, setPendingAttachments] = React.useState<ComposerAttachment[]>([]);
   const isUploading = pendingAttachments.some(a => a.uploading);
 
   /** True while `sendMessage` is in flight — locks the composer (see AgentInput). */
@@ -658,6 +892,52 @@ function SessionViewLoaded(props: {
   const handleRemoveAttachment = React.useCallback((index: number) => {
     setPendingAttachments(prev => prev.filter((_, i) => i !== index));
   }, []);
+
+  const handleRemoveQueuedMessage = React.useCallback((queuedMessageId: string) => {
+    storage.getState().removeSessionQueuedMessage(sessionId, queuedMessageId);
+  }, [sessionId]);
+
+  const handleEditQueuedMessage = React.useCallback(
+    async (queuedMessage: QueuedMessage) => {
+      const hasComposerDraft =
+        message.trim().length > 0 || pendingAttachments.some(att => att.ref || att.localUri);
+
+      if (hasComposerDraft) {
+        const confirmed = await Modal.confirm(
+          'Replace current draft?',
+          'Load the queued message into the composer for editing and discard the current draft in the editor.',
+          {
+            cancelText: t('common.cancel'),
+            confirmText: 'Load queued message',
+          }
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      storage.getState().removeSessionQueuedMessage(sessionId, queuedMessage.id);
+      setMessage(queuedMessage.text);
+      clearDraft();
+      setPendingAttachments(
+        (queuedMessage.attachments ?? []).map(
+          attachment =>
+            ({
+              localUri: attachment.localUri ?? '',
+              uploading: false,
+              ref: {
+                id: attachment.id,
+                mimeType: attachment.mimeType,
+                ...(attachment.thumbhash ? { thumbhash: attachment.thumbhash } : {}),
+                ...(attachment.filename ? { filename: attachment.filename } : {}),
+              },
+            }) satisfies ComposerAttachment
+        )
+      );
+      setFooterNotice('Editing queued message');
+    },
+    [clearDraft, message, pendingAttachments, sessionId]
+  );
 
   // Clear attachments on session change
   React.useEffect(() => {
@@ -833,6 +1113,13 @@ function SessionViewLoaded(props: {
 
   const input = (
     <>
+      {queuedMessages.length > 0 && (
+        <QueuedMessagesPanel
+          messages={queuedMessages}
+          onEdit={handleEditQueuedMessage}
+          onRemove={handleRemoveQueuedMessage}
+        />
+      )}
       {sendError && (
         <View
           style={[
@@ -879,7 +1166,11 @@ function SessionViewLoaded(props: {
                     ? t('session.sendBlockedServerDisconnected')
                     : t('session.sendBlockedDaemonOffline')
                 );
+                return;
               }
+              setFooterNotice(
+                result.queued ? 'Command queued. It will send when the current turn ends.' : null
+              );
             })
             .finally(() => {
               setIsSendingMessage(false);
@@ -906,7 +1197,22 @@ function SessionViewLoaded(props: {
             setIsSendingMessage(true);
             void sync
               .sendMessage(sessionId, trimmedMessage, undefined, {
-                ...(attachmentRefs.length > 0 && { attachments: attachmentRefs }),
+                ...(attachmentRefs.length > 0
+                  ? {
+                      attachments: pendingAttachments
+                        .filter(
+                          (attachment): attachment is ComposerAttachment & { ref: AttachmentRef } =>
+                            Boolean(attachment.ref && !attachment.error)
+                        )
+                        .map(
+                          attachment =>
+                            ({
+                              ...attachment.ref,
+                              localUri: attachment.localUri,
+                            }) satisfies QueuedAttachment
+                        ),
+                    }
+                  : {}),
               })
               .then(result => {
                 if (!result.ok) {
@@ -918,10 +1224,12 @@ function SessionViewLoaded(props: {
                   );
                   return;
                 }
-                // Only clear input on successful send
+                // Clear the composer for both immediate sends and local queueing.
                 setMessage('');
                 clearDraft();
-                setFooterNotice(null);
+                setFooterNotice(
+                  result.queued ? 'Message queued. It will send when the current turn ends.' : null
+                );
                 setPendingAttachments([]);
               })
               .finally(() => {

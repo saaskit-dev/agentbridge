@@ -43,6 +43,8 @@ export const en: TranslationStructure = {
     inbox: 'Inbox',
     sessions: 'Sessions',
     settings: 'Settings',
+    closeOthers: 'Close Others',
+    closeAll: 'Close All',
   },
 
   inbox: {

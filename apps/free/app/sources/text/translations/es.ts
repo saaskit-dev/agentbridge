@@ -28,6 +28,8 @@ export const es: TranslationStructure = {
     inbox: 'Bandeja',
     sessions: 'Sesiones',
     settings: 'Configuración',
+    closeOthers: 'Cerrar otras',
+    closeAll: 'Cerrar todo',
   },
 
   inbox: {

@@ -28,6 +28,8 @@ export const en = {
     inbox: 'Inbox',
     sessions: 'Sessions',
     settings: 'Settings',
+    closeOthers: 'Close Others',
+    closeAll: 'Close All',
   },
 
   inbox: {

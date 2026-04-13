@@ -26,6 +26,7 @@ import {
   saveSessionDesiredConfigOptions,
   loadSessionModelModes,
   saveSessionModelModes,
+  saveCachedSessions,
 } from './persistence';
 import { Profile } from './profile';
 import { projectManager } from './projectManager';
@@ -33,9 +34,10 @@ import { Purchases, customerInfoToPurchases } from './purchases';
 import { createReducer, reducer, ReducerState } from './reducer/reducer';
 import { compareCreatedDesc, compareUpdatedDesc } from './entitySort';
 import { sortMessagesDesc } from './messageSort';
-import { Session, Machine, GitStatus } from './storageTypes';
+import { Session, Machine, GitStatus, QueuedMessage } from './storageTypes';
 import { Message } from './typesMessage';
 import { NormalizedMessage } from './typesRaw';
+import { removePromotedQueuedMessages } from './syncQueue';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from './settings';
 import type { CustomerInfo } from './revenueCat/types';
@@ -192,6 +194,11 @@ interface StorageState {
   setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
   getActiveSessions: () => Session[];
   updateSessionDraft: (sessionId: string, draft: string | null) => void;
+  setSessionQueuedMessages: (sessionId: string, queuedMessages: QueuedMessage[]) => void;
+  enqueueSessionQueuedMessage: (sessionId: string, queuedMessage: QueuedMessage) => void;
+  updateSessionQueuedMessage: (sessionId: string, queuedMessage: QueuedMessage) => void;
+  removeSessionQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
+  removeSessionQueuedMessages: (sessionId: string, queuedMessageIds: string[]) => void;
   updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) => void;
   updateSessionDesiredAgentMode: (sessionId: string, mode: string | null) => void;
   updateSessionModelMode: (sessionId: string, mode: string | null) => void;
@@ -418,6 +425,7 @@ export const storage = create<StorageState>()((set, get) => {
 
           // Preserve existing draft and permission mode if they exist, or load from saved data
           const existingDraft = state.sessions[session.id]?.draft;
+          const existingQueuedMessages = state.sessions[session.id]?.queuedMessages;
           const savedDraft = savedDrafts[session.id];
           const existingPermissionMode = state.sessions[session.id]?.permissionMode;
           const savedPermissionMode = savedPermissionModes[session.id];
@@ -441,6 +449,7 @@ export const storage = create<StorageState>()((set, get) => {
             ...session,
             presence,
             draft: existingDraft || savedDraft || session.draft || null,
+            queuedMessages: existingQueuedMessages || session.queuedMessages || [],
             permissionMode: resolvedPermissionMode,
             desiredAgentMode: existingDesiredAgentMode || savedDesiredAgentMode || null,
             desiredConfigOptions: existingDesiredConfigOptions || savedDesiredConfigOption || null,
@@ -965,11 +974,118 @@ export const storage = create<StorageState>()((set, get) => {
 
         // Rebuild sessionListViewData to update the UI immediately
         const sessionListViewData = buildSessionListViewData(updatedSessions);
+        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
 
         return {
           ...state,
           sessions: updatedSessions,
           sessionListViewData,
+        };
+      }),
+    setSessionQueuedMessages: (sessionId: string, queuedMessages: QueuedMessage[]) =>
+      set(state => {
+        const session = state.sessions[sessionId];
+        if (!session) return state;
+
+        const updatedSessions = {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            queuedMessages,
+          },
+        };
+
+        const sessionListViewData = buildSessionListViewData(updatedSessions);
+        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+
+        return {
+          ...state,
+          sessions: updatedSessions,
+          sessionListViewData,
+        };
+      }),
+    enqueueSessionQueuedMessage: (sessionId: string, queuedMessage: QueuedMessage) =>
+      set(state => {
+        const session = state.sessions[sessionId];
+        if (!session) return state;
+        const nextQueuedMessages = [...(session.queuedMessages ?? []), queuedMessage];
+        const updatedSessions = {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            queuedMessages: nextQueuedMessages,
+          },
+        };
+        const sessionListViewData = buildSessionListViewData(updatedSessions);
+        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        return {
+          ...state,
+          sessions: updatedSessions,
+          sessionListViewData,
+        };
+      }),
+    updateSessionQueuedMessage: (sessionId: string, queuedMessage: QueuedMessage) =>
+      set(state => {
+        const session = state.sessions[sessionId];
+        if (!session) return state;
+        const nextQueuedMessages = (session.queuedMessages ?? []).map(message =>
+          message.id === queuedMessage.id ? queuedMessage : message
+        );
+        const updatedSessions = {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            queuedMessages: nextQueuedMessages,
+          },
+        };
+        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        return {
+          ...state,
+          sessions: updatedSessions,
+          sessionListViewData: buildSessionListViewData(updatedSessions),
+        };
+      }),
+    removeSessionQueuedMessage: (sessionId: string, queuedMessageId: string) =>
+      set(state => {
+        const session = state.sessions[sessionId];
+        if (!session) return state;
+        const nextQueuedMessages = (session.queuedMessages ?? []).filter(
+          message => message.id !== queuedMessageId
+        );
+        const updatedSessions = {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            queuedMessages: nextQueuedMessages,
+          },
+        };
+        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        return {
+          ...state,
+          sessions: updatedSessions,
+          sessionListViewData: buildSessionListViewData(updatedSessions),
+        };
+      }),
+    removeSessionQueuedMessages: (sessionId: string, queuedMessageIds: string[]) =>
+      set(state => {
+        const session = state.sessions[sessionId];
+        if (!session || queuedMessageIds.length === 0) return state;
+        const nextQueuedMessages = removePromotedQueuedMessages(
+          session.queuedMessages ?? [],
+          queuedMessageIds
+        );
+        const updatedSessions = {
+          ...state.sessions,
+          [sessionId]: {
+            ...session,
+            queuedMessages: nextQueuedMessages,
+          },
+        };
+        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        return {
+          ...state,
+          sessions: updatedSessions,
+          sessionListViewData: buildSessionListViewData(updatedSessions),
         };
       }),
     updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) =>
@@ -1677,4 +1793,10 @@ export function useRequestedFriends() {
 
 export function useSessionSendError(sessionId: string) {
   return storage(state => state.sessionSendErrors[sessionId] ?? null);
+}
+
+export function useSessionQueuedMessages(sessionId: string): QueuedMessage[] {
+  return storage(
+    useShallow(state => (state.sessions[sessionId]?.queuedMessages ?? emptyArray) as QueuedMessage[])
+  );
 }

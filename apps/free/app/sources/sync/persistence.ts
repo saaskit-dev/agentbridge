@@ -7,7 +7,13 @@ import { coerceAgentType, type AppAgentFlavor } from './agentFlavor';
 import { parseWorktreeBranchBinding, type WorktreeBranchBinding } from '@/utils/worktreeBranchBinding';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
 import { SessionCapabilitiesSchema, type PermissionMode } from './sessionCapabilities';
-import { AgentStateSchema, MetadataSchema, type Session } from './storageTypes';
+import {
+  AgentStateSchema,
+  MetadataSchema,
+  type QueuedAttachment,
+  type QueuedMessage,
+  type Session,
+} from './storageTypes';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/persistence');
@@ -120,6 +126,80 @@ function parseCachedSession(raw: unknown): Session | null {
     return null;
   }
 
+  const parseQueuedAttachments = (value: unknown): QueuedAttachment[] | undefined => {
+    if (!Array.isArray(value)) return undefined;
+    const attachments: QueuedAttachment[] = [];
+    for (const item of value) {
+      if (!item || typeof item !== 'object') continue;
+      const attachment = item as Record<string, unknown>;
+      if (typeof attachment.id !== 'string' || typeof attachment.mimeType !== 'string') {
+        continue;
+      }
+      const parsedAttachment: QueuedAttachment = {
+        id: attachment.id,
+        mimeType: attachment.mimeType,
+      };
+      if (typeof attachment.thumbhash === 'string') {
+        parsedAttachment.thumbhash = attachment.thumbhash;
+      }
+      if (typeof attachment.filename === 'string') {
+        parsedAttachment.filename = attachment.filename;
+      }
+      if (typeof attachment.localUri === 'string' || attachment.localUri === null) {
+        parsedAttachment.localUri = attachment.localUri;
+      }
+      attachments.push(parsedAttachment);
+    }
+    return attachments;
+  };
+
+  const parseQueuedMessages = (value: unknown): QueuedMessage[] | undefined => {
+    if (!Array.isArray(value)) return undefined;
+    const messages: QueuedMessage[] = [];
+    for (const item of value) {
+      if (!item || typeof item !== 'object') continue;
+      const message = item as Record<string, unknown>;
+      if (
+        typeof message.id !== 'string' ||
+        typeof message.text !== 'string' ||
+        typeof message.createdAt !== 'number' ||
+        typeof message.updatedAt !== 'number'
+      ) {
+        continue;
+      }
+      const permissionMode =
+        message.permissionMode === 'read-only' ||
+        message.permissionMode === 'accept-edits' ||
+        message.permissionMode === 'yolo'
+          ? message.permissionMode
+          : null;
+      if (!permissionMode) {
+        continue;
+      }
+      const parsedMessage: QueuedMessage = {
+        id: message.id,
+        text: message.text,
+        createdAt: message.createdAt,
+        updatedAt: message.updatedAt,
+        permissionMode,
+        model: typeof message.model === 'string' || message.model === null ? message.model : null,
+        fallbackModel:
+          typeof message.fallbackModel === 'string' || message.fallbackModel === null
+            ? message.fallbackModel
+            : null,
+      };
+      if (typeof message.displayText === 'string') {
+        parsedMessage.displayText = message.displayText;
+      }
+      const attachments = parseQueuedAttachments(message.attachments);
+      if (attachments) {
+        parsedMessage.attachments = attachments;
+      }
+      messages.push(parsedMessage);
+    }
+    return messages;
+  };
+
   const latestUsageRaw = session.latestUsage;
   const latestUsage =
     latestUsageRaw &&
@@ -174,6 +254,7 @@ function parseCachedSession(raw: unknown): Session | null {
       typeof session.draft === 'string' || session.draft === null
         ? (session.draft as string | null)
         : null,
+    queuedMessages: parseQueuedMessages(session.queuedMessages) ?? [],
     permissionMode:
       session.permissionMode === 'read-only' ||
       session.permissionMode === 'accept-edits' ||

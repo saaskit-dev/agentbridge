@@ -62,7 +62,7 @@ import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { registerGetMachineEncryption } from './ops';
 import { persistCachedCapabilities } from './sessionCapabilitiesCache';
 import { storage, registerApplySettingsCallback, registerAssumeUsersCallback } from './storage';
-import { Session, Machine } from './storageTypes';
+import { Session, Machine, QueuedAttachment, QueuedMessage } from './storageTypes';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { apiSocket } from '@/sync/apiSocket';
@@ -72,6 +72,7 @@ import { InvalidateSync } from '@/utils/sync';
 import { isTauriDesktop } from '@/utils/tauri';
 import type { PermissionMode } from './sessionCapabilities';
 import { messageDB } from './messageDB';
+import { mergeQueuedMessagesForPromotion } from './syncQueue';
 
 const logger = new Logger('app/sync');
 
@@ -170,11 +171,28 @@ function makeWireTrace(sessionId: string): WireTrace {
   return { tid: randomUUID(), ses: sessionId };
 }
 
+function resolveSentFrom(): string {
+  if (Platform.OS === 'web') {
+    return 'web';
+  }
+  if (Platform.OS === 'android') {
+    return 'android';
+  }
+  if (Platform.OS === 'ios') {
+    return isRunningOnMac() ? 'mac' : 'ios';
+  }
+  return 'web';
+}
+
 type OutboxMessage = {
   id: string;
   content: string;
   _trace?: WireTrace;
 };
+
+type SendMessageResult =
+  | { ok: true; queued: boolean }
+  | { ok: false; reason: 'server_disconnected' | 'daemon_offline' };
 
 class Sync {
   private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
@@ -668,7 +686,7 @@ class Sync {
   private getSendSync(sessionId: string): InvalidateSync {
     let sync = this.sendSync.get(sessionId);
     if (!sync) {
-      sync = new InvalidateSync(() => this.flushOutbox(sessionId));
+      sync = new InvalidateSync(() => this.flushPendingSessionMessages(sessionId));
       this.sendSync.set(sessionId, sync);
     }
     return sync;
@@ -771,6 +789,155 @@ class Sync {
     return false;
   }
 
+  private isSessionReadyForQueuedFlush(session: Session | null | undefined): session is Session {
+    return !!session && session.presence === 'online' && session.thinking !== true;
+  }
+
+  private createQueuedMessage(
+    session: Session,
+    text: string,
+    displayText?: string,
+    attachments?: QueuedAttachment[]
+  ): QueuedMessage {
+    const flavor = session.metadata?.flavor;
+    const sandboxEnabled = isSandboxEnabled(session.metadata);
+    const permissionMode: PermissionMode =
+      session.permissionMode || (sandboxEnabled ? 'yolo' : 'accept-edits');
+    const isGemini = flavor === 'gemini';
+    const isOpenCode = flavor === 'opencode';
+    const modelMode =
+      session.modelMode || (isGemini ? 'gemini-2.5-pro' : isOpenCode ? 'default' : 'default');
+    const model = isGemini && !session.capabilities && modelMode !== 'default' ? modelMode : null;
+    const now = Date.now();
+
+    return {
+      id: randomUUID(),
+      text,
+      ...(displayText ? { displayText } : {}),
+      createdAt: now,
+      updatedAt: now,
+      permissionMode,
+      model,
+      fallbackModel: null,
+      ...(attachments?.length ? { attachments } : {}),
+    };
+  }
+
+  private async stageQueuedMessagesForSend(
+    sessionId: string,
+    queuedMessages: QueuedMessage[]
+  ): Promise<boolean> {
+    if (queuedMessages.length === 0) {
+      return true;
+    }
+
+    const session = storage.getState().sessions[sessionId];
+    if (!session) {
+      return false;
+    }
+
+    const encryption = this.encryption.getSessionEncryption(sessionId);
+    if (!encryption) {
+      return false;
+    }
+
+    const sentFrom = resolveSentFrom();
+    const mergedMessage = mergeQueuedMessagesForPromotion(queuedMessages);
+    if (!mergedMessage) {
+      return true;
+    }
+
+    const trace = makeWireTrace(sessionId);
+    setSessionTrace(sessionId, trace);
+
+    const content: RawRecord = {
+      role: 'user',
+      content: {
+        type: 'text',
+        text: mergedMessage.text,
+        ...(mergedMessage.attachments?.length
+          ? {
+              attachments: mergedMessage.attachments.map(
+                ({ id, mimeType, thumbhash, filename }) => ({
+                  id,
+                  mimeType,
+                  ...(thumbhash ? { thumbhash } : {}),
+                  ...(filename ? { filename } : {}),
+                })
+              ),
+            }
+          : {}),
+      },
+      traceId: trace.tid,
+      meta: {
+        sentFrom,
+        permissionMode: mergedMessage.permissionMode,
+        model: mergedMessage.model,
+        fallbackModel: mergedMessage.fallbackModel,
+        appendSystemPrompt: systemPrompt,
+      },
+    };
+
+    const encryptedRawRecord = await encryption.encryptRawRecord(content);
+    const normalizedMessage = normalizeRawMessage(mergedMessage.id, mergedMessage.promotedAt, content);
+    if (normalizedMessage) {
+      this.enqueueMessages(sessionId, [normalizedMessage]);
+    }
+
+    const pending = this.pendingOutbox.get(sessionId) ?? [];
+    pending.push({
+      id: mergedMessage.id,
+      content: encryptedRawRecord,
+      _trace: trace,
+    });
+    this.pendingOutbox.set(sessionId, pending);
+    this.persistOutbox();
+
+    const currentSession = storage.getState().sessions[sessionId];
+    if (currentSession) {
+      this.applySessions([
+        {
+          ...currentSession,
+          thinking: true,
+          thinkingAt: Date.now(),
+        },
+      ]);
+    }
+
+    this.maybeStartBackgroundSendWatchdog();
+    return true;
+  }
+
+  private async promoteQueuedMessagesToOutbox(sessionId: string): Promise<void> {
+    const session = storage.getState().sessions[sessionId];
+    const queuedMessagesSnapshot = [...(session?.queuedMessages ?? [])];
+
+    if (queuedMessagesSnapshot.length === 0 || !this.isSessionReadyForQueuedFlush(session)) {
+      return;
+    }
+
+    if (apiSocket.getStatus() !== 'connected') {
+      return;
+    }
+
+    const staged = await this.stageQueuedMessagesForSend(sessionId, queuedMessagesSnapshot);
+    if (!staged) {
+      return;
+    }
+
+    storage
+      .getState()
+      .removeSessionQueuedMessages(
+        sessionId,
+        queuedMessagesSnapshot.map(message => message.id)
+      );
+  }
+
+  private async flushPendingSessionMessages(sessionId: string): Promise<void> {
+    await this.promoteQueuedMessagesToOutbox(sessionId);
+    await this.flushOutbox(sessionId);
+  }
+
   private maybeStartBackgroundSendWatchdog() {
     if (Platform.OS === 'web' || this.appState === 'active') {
       return;
@@ -871,9 +1038,9 @@ class Sync {
     displayText?: string,
     opts?: {
       skipPresenceCheck?: boolean;
-      attachments?: import('./attachmentUpload').AttachmentRef[];
+      attachments?: QueuedAttachment[];
     }
-  ): Promise<{ ok: true } | { ok: false; reason: 'server_disconnected' | 'daemon_offline' }> {
+  ): Promise<SendMessageResult> {
     const log = sessionLogger(logger, sessionId);
     // Pre-check: server socket must be connected
     if (apiSocket.getStatus() !== 'connected') {
@@ -899,121 +1066,38 @@ class Sync {
       return { ok: false, reason: 'daemon_offline' };
     }
 
-    // Get encryption
-    const encryption = this.encryption.getSessionEncryption(sessionId);
-    if (!encryption) {
+    const queuedMessage = this.createQueuedMessage(session, text, displayText, opts?.attachments);
+    const existingQueuedMessages = session.queuedMessages ?? [];
+    const shouldQueueLocally = session.thinking === true || existingQueuedMessages.length > 0;
+
+    if (shouldQueueLocally) {
+      storage.getState().enqueueSessionQueuedMessage(sessionId, queuedMessage);
+      saveCachedSessions(
+        Object.values(storage.getState().sessions).filter(current => current.status !== 'deleted')
+      );
+      log.info('[App] queued local pending message', {
+        userId: this.accountId,
+        id: queuedMessage.id,
+        preview: text.slice(0, 100),
+        queueDepth: (storage.getState().sessions[sessionId]?.queuedMessages ?? []).length,
+      });
+      return { ok: true, queued: true };
+    }
+
+    log.info('[App] sending message', {
+      userId: this.accountId,
+      id: queuedMessage.id,
+      preview: text.slice(0, 100),
+    });
+
+    const staged = await this.stageQueuedMessagesForSend(sessionId, [queuedMessage]);
+    if (!staged) {
       log.error('Session encryption not found');
       return { ok: false, reason: 'server_disconnected' };
     }
 
-    const flavor = session.metadata?.flavor;
-    const sandboxEnabled = isSandboxEnabled(session.metadata);
-    // Read permission mode from session state.
-    // If sandbox is enabled, force yolo. Otherwise fall back to global default.
-    const permissionMode: PermissionMode =
-      session.permissionMode || (sandboxEnabled ? 'yolo' : 'accept-edits');
-
-    // Read model mode - for Gemini, default to gemini-2.5-pro if not set
-    // Read model mode - for Gemini, default to gemini-2.5-pro if not set. OpenCode uses profile config.
-    const isGemini = flavor === 'gemini';
-    const isOpenCode = flavor === 'opencode';
-    const modelMode =
-      session.modelMode || (isGemini ? 'gemini-2.5-pro' : isOpenCode ? 'default' : 'default');
-
-    // Generate message ID and per-message trace context.
-    // The trace travels App → Server → CLI so all layers log with the same traceId.
-    const id = randomUUID();
-    const trace = makeWireTrace(sessionId);
-    // Update session trace store so subsequent RPC calls on this session carry the same trace (RFC §7.1)
-    setSessionTrace(sessionId, trace);
-    log.info('[App] sending message', {
-      userId: this.accountId,
-      id,
-      preview: text.slice(0, 100),
-    });
-
-    // Determine sentFrom based on platform
-    let sentFrom: string;
-    if (Platform.OS === 'web') {
-      sentFrom = 'web';
-    } else if (Platform.OS === 'android') {
-      sentFrom = 'android';
-    } else if (Platform.OS === 'ios') {
-      // Check if running on Mac (Catalyst or Designed for iPad on Mac)
-      if (isRunningOnMac()) {
-        sentFrom = 'mac';
-      } else {
-        sentFrom = 'ios';
-      }
-    } else {
-      sentFrom = 'web'; // fallback
-    }
-
-    // Runtime capability switching is handled over session RPC.
-    // Keep per-message model overrides only as a compatibility fallback for sessions
-    // that still do not have a capability snapshot yet.
-    let model: string | null = null;
-    if (isGemini && !session.capabilities && modelMode !== 'default') {
-      model = modelMode;
-    }
-    const fallbackModel: string | null = null;
-
-    // Create user message content with metadata
-    const attachments = opts?.attachments;
-    const content: RawRecord = {
-      role: 'user',
-      content: {
-        type: 'text',
-        text,
-        ...(attachments?.length && { attachments }),
-      },
-      traceId: trace.tid, // Propagate traceId so DevTraceBadge can display it
-      meta: {
-        sentFrom,
-        permissionMode,
-        model,
-        fallbackModel,
-        appendSystemPrompt: systemPrompt,
-        ...(displayText && { displayText }), // Add displayText if provided
-      },
-    };
-    const encryptedRawRecord = await encryption.encryptRawRecord(content);
-
-    // Add to messages - normalize the raw record
-    const createdAt = Date.now();
-    const normalizedMessage = normalizeRawMessage(id, createdAt, content);
-    if (normalizedMessage) {
-      this.enqueueMessages(sessionId, [normalizedMessage]);
-    }
-
-    // Optimistically set session to thinking state so UI shows "working" immediately
-    // instead of waiting for the server round-trip.
-    const currentSession = storage.getState().sessions[sessionId];
-    if (currentSession) {
-      this.applySessions([
-        {
-          ...currentSession,
-          thinking: true,
-          thinkingAt: createdAt,
-        },
-      ]);
-    }
-
-    let pending = this.pendingOutbox.get(sessionId);
-    if (!pending) {
-      pending = [];
-      this.pendingOutbox.set(sessionId, pending);
-    }
-    pending.push({
-      id,
-      content: encryptedRawRecord,
-      _trace: trace,
-    });
-    this.persistOutbox();
-
     this.getSendSync(sessionId).invalidate();
-    this.maybeStartBackgroundSendWatchdog();
-    return { ok: true as const };
+    return { ok: true, queued: false };
   }
 
   /** Manually retry sending pending messages for a session. */
@@ -3182,8 +3266,11 @@ class Sync {
           }
 
           // Agent event: { role: 'event', content: { type: 'status', state: 'idle' } }
-          const isAgentEventIdle =
-            role === 'event' && contentType === 'status' && rawContent?.content?.state === 'idle';
+          //
+          // IMPORTANT: ACP emits idle after a short inactivity window (500ms by default),
+          // not necessarily when the full turn has authoritatively ended. Treating that
+          // transient idle as task completion causes the app to flash "idle" during long
+          // turns that pause briefly between chunks/tool activity.
           const isAgentEventWorking =
             role === 'event' &&
             contentType === 'status' &&
@@ -3192,8 +3279,7 @@ class Sync {
           const isTaskComplete =
             (contentType === 'acp' &&
               (dataType === 'task_complete' || dataType === 'turn_aborted')) ||
-            (contentType === 'session' && sessionEventType === 'turn-end') ||
-            isAgentEventIdle;
+            (contentType === 'session' && sessionEventType === 'turn-end');
 
           const isTaskStarted =
             (contentType === 'acp' && dataType === 'task_started') ||
@@ -3222,6 +3308,9 @@ class Sync {
                 ...(isTaskStarted ? { thinking: true, thinkingAt: updateData.createdAt } : {}),
               },
             ]);
+            if (isTaskComplete) {
+              this.getSendSync(sessionId).invalidate();
+            }
           } else {
             // Local session list missing this id; wait for list + keys before continuing.
             await this.sessionsSync.invalidateAndAwait();
@@ -3810,14 +3899,18 @@ class Sync {
     if (result.latestStatus) {
       const session = storage.getState().sessions[sessionId];
       if (session) {
-        const thinking = result.latestStatus === 'working';
-        this.applySessions([
-          {
-            ...session,
-            thinking,
-            thinkingAt: Date.now(),
-          },
-        ]);
+        // Keep "working" as a fast-path signal, but do not clear thinking on "idle":
+        // ACP idle is inactivity-based and can briefly fire before the authoritative
+        // turn-end/task_complete lifecycle event arrives.
+        if (result.latestStatus === 'working') {
+          this.applySessions([
+            {
+              ...session,
+              thinking: true,
+              thinkingAt: Date.now(),
+            },
+          ]);
+        }
       }
     }
     const m: Message[] = [];
@@ -3832,6 +3925,7 @@ class Sync {
     }
     if (result.hasReadyEvent) {
       getVoiceHooks().onReady(sessionId);
+      this.getSendSync(sessionId).invalidate();
     }
   };
 
@@ -3880,6 +3974,12 @@ class Sync {
     );
     const newActive = storage.getState().getActiveSessions();
     this.applySessionDiff(active, newActive);
+    for (const session of sessions) {
+      const queued = storage.getState().sessions[session.id]?.queuedMessages ?? [];
+      if (queued.length > 0) {
+        this.getSendSync(session.id).invalidate();
+      }
+    }
   };
 
   private applySessionDiff = (active: Session[], newActive: Session[]) => {

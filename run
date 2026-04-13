@@ -168,8 +168,27 @@ cmd_desktop() {
         build|production|release)
             shift
             info "构建桌面正式包"
-            pnpm tauri:build:production "$@"
-            "$ROOT/scripts/repair-tauri-macos-app-signature.sh"
+            if [ "$(uname -s)" = "Darwin" ]; then
+                pnpm exec tauri build --config src-tauri/tauri.conf.json --bundles app "$@"
+                "$ROOT/scripts/repair-tauri-macos-app-signature.sh"
+                VERSION="$(node -p "require('./package.json').version")"
+                DMG_PATH="src-tauri/target/release/bundle/dmg/Free_${VERSION}_$(uname -m).dmg"
+                ZIP_PATH="src-tauri/target/release/bundle/macos/Free_${VERSION}_$(uname -m).zip"
+                mkdir -p "$(dirname "$DMG_PATH")"
+                if ! bash "$ROOT/scripts/create-macos-dmg.sh" "src-tauri/target/release/bundle/macos/Free.app" "$DMG_PATH"; then
+                    info "DMG 生成失败，回退为 ZIP 包"
+                    rm -f "$ZIP_PATH"
+                    ditto -c -k --sequesterRsrc --keepParent "src-tauri/target/release/bundle/macos/Free.app" "$ZIP_PATH"
+                    info "桌面正式包已生成:"
+                    info "  $APP_DIR/$ZIP_PATH"
+                else
+                    info "桌面正式包已生成:"
+                    info "  $APP_DIR/$DMG_PATH"
+                fi
+            else
+                pnpm tauri:build:production "$@"
+                "$ROOT/scripts/repair-tauri-macos-app-signature.sh"
+            fi
             ;;
         ship|publish)
             shift

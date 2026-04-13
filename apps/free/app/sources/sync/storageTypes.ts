@@ -70,6 +70,26 @@ export const AgentStateSchema = z.object({
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
+export interface QueuedAttachment {
+  id: string;
+  mimeType: string;
+  thumbhash?: string;
+  filename?: string;
+  localUri?: string | null;
+}
+
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  displayText?: string;
+  createdAt: number;
+  updatedAt: number;
+  permissionMode: 'read-only' | 'accept-edits' | 'yolo';
+  model: string | null;
+  fallbackModel: string | null;
+  attachments?: QueuedAttachment[];
+}
+
 export interface Session {
   id: string;
   seq: number;
@@ -93,6 +113,7 @@ export interface Session {
     id: string;
   }>;
   draft?: string | null; // Local draft message, not synced to server
+  queuedMessages?: QueuedMessage[]; // Local app-side pre-send queue, not synced to server
   permissionMode?: 'read-only' | 'accept-edits' | 'yolo' | null; // Local permission mode, not synced to server
   desiredAgentMode?: string | null; // Local desired ACP mode, persisted for replay/display
   modelMode?: string | null; // Local desired model selection, persisted for replay/display

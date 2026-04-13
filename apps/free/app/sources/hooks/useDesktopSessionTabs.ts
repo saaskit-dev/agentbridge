@@ -7,49 +7,98 @@ type DesktopSessionTab = {
 
 type DesktopSessionTabsState = {
   tabs: DesktopSessionTab[];
-  upsertTab: (tab: DesktopSessionTab) => void;
+  openTab: (tab: DesktopSessionTab) => void;
+  updateTabTitle: (id: string, title: string) => void;
   closeTab: (id: string) => void;
+  closeOtherTabs: (id: string) => void;
+  closeAllTabs: () => void;
   suppressUntil: Record<string, number>;
 };
 
-const useDesktopSessionTabsStore = create<DesktopSessionTabsState>(set => ({
+const pruneSuppressedTabs = (suppressUntil: Record<string, number>) =>
+  Object.fromEntries(Object.entries(suppressUntil).filter(([, until]) => until > Date.now()));
+
+const initialState = {
   tabs: [],
   suppressUntil: {},
-  upsertTab: tab =>
+};
+
+const buildSuppressEntries = (ids: string[]) =>
+  Object.fromEntries(ids.map(id => [id, Date.now() + 1500]));
+
+export const desktopSessionTabsStore = create<DesktopSessionTabsState>(set => ({
+  ...initialState,
+  openTab: tab =>
     set(state => {
       const suppressUntil = state.suppressUntil[tab.id] ?? 0;
-      if (suppressUntil > Date.now()) {
-        return state;
+      const nextSuppressUntil = pruneSuppressedTabs(state.suppressUntil);
+      const existing = state.tabs.find(item => item.id === tab.id);
+
+      if (existing) {
+        return {
+          tabs: state.tabs.map(item => (item.id === tab.id ? { ...item, title: tab.title } : item)),
+          suppressUntil: nextSuppressUntil,
+        };
       }
 
-      const existing = state.tabs.find(item => item.id === tab.id);
-      if (!existing) {
+      if (suppressUntil > Date.now()) {
         return {
           tabs: [...state.tabs, tab],
           suppressUntil: Object.fromEntries(
-            Object.entries(state.suppressUntil).filter(([, until]) => until > Date.now())
+            Object.entries(nextSuppressUntil).filter(([id]) => id !== tab.id)
           ),
         };
       }
+
       return {
-        tabs: state.tabs.map(item => (item.id === tab.id ? { ...item, title: tab.title } : item)),
-        suppressUntil: Object.fromEntries(
-          Object.entries(state.suppressUntil).filter(([, until]) => until > Date.now())
-        ),
+        tabs: [...state.tabs, tab],
+        suppressUntil: nextSuppressUntil,
+      };
+    }),
+  updateTabTitle: (id, title) =>
+    set(state => {
+      if (!state.tabs.some(tab => tab.id === id)) {
+        return state;
+      }
+      return {
+        tabs: state.tabs.map(tab => (tab.id === id ? { ...tab, title } : tab)),
+        suppressUntil: pruneSuppressedTabs(state.suppressUntil),
       };
     }),
   closeTab: id =>
     set(state => ({
       tabs: state.tabs.filter(tab => tab.id !== id),
       suppressUntil: {
-        ...Object.fromEntries(
-          Object.entries(state.suppressUntil).filter(([, until]) => until > Date.now())
-        ),
+        ...pruneSuppressedTabs(state.suppressUntil),
         [id]: Date.now() + 1500,
+      },
+    })),
+  closeOtherTabs: id =>
+    set(state => {
+      const nextTabs = state.tabs.filter(tab => tab.id === id);
+      const removedIds = state.tabs.filter(tab => tab.id !== id).map(tab => tab.id);
+      return {
+        tabs: nextTabs,
+        suppressUntil: {
+          ...pruneSuppressedTabs(state.suppressUntil),
+          ...buildSuppressEntries(removedIds),
+        },
+      };
+    }),
+  closeAllTabs: () =>
+    set(state => ({
+      tabs: [],
+      suppressUntil: {
+        ...pruneSuppressedTabs(state.suppressUntil),
+        ...buildSuppressEntries(state.tabs.map(tab => tab.id)),
       },
     })),
 }));
 
 export function useDesktopSessionTabs() {
-  return useDesktopSessionTabsStore();
+  return desktopSessionTabsStore();
+}
+
+export function resetDesktopSessionTabsForTests() {
+  desktopSessionTabsStore.setState(initialState);
 }

@@ -1,20 +1,45 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
-export function useGlobalKeyboard(onCommandPalette: () => void) {
+type GlobalKeyboardHandlers = {
+  onCommandPalette: () => void;
+  onNewSession?: () => void;
+  onSettings?: () => void;
+};
+
+export function useGlobalKeyboard(handlersOrCallback: GlobalKeyboardHandlers | (() => void)) {
   useEffect(() => {
     if (Platform.OS !== 'web') {
       return;
     }
 
+    const handlers: GlobalKeyboardHandlers =
+      typeof handlersOrCallback === 'function'
+        ? { onCommandPalette: handlersOrCallback }
+        : handlersOrCallback;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check for CMD+K (Mac) or Ctrl+K (Windows/Linux)
       const isModifierPressed = e.metaKey || e.ctrlKey;
 
-      if (isModifierPressed && e.key === 'k') {
+      if (isModifierPressed && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         e.stopPropagation();
-        onCommandPalette();
+        handlers.onCommandPalette();
+        return;
+      }
+
+      if (isModifierPressed && e.key.toLowerCase() === 'n' && handlers.onNewSession) {
+        e.preventDefault();
+        e.stopPropagation();
+        handlers.onNewSession();
+        return;
+      }
+
+      if (isModifierPressed && e.key === ',' && handlers.onSettings) {
+        e.preventDefault();
+        e.stopPropagation();
+        handlers.onSettings();
       }
     };
 
@@ -25,5 +50,5 @@ export function useGlobalKeyboard(onCommandPalette: () => void) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onCommandPalette]);
+  }, [handlersOrCallback]);
 }

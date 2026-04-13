@@ -30,6 +30,8 @@ export const zhHans: TranslationStructure = {
     inbox: '收件箱',
     sessions: '会话',
     settings: '设置',
+    closeOthers: '关闭其他',
+    closeAll: '全部关闭',
   },
 
   inbox: {

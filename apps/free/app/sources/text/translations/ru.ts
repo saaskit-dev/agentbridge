@@ -41,6 +41,8 @@ export const ru: TranslationStructure = {
     inbox: 'Входящие',
     sessions: 'Сессии',
     settings: 'Настройки',
+    closeOthers: 'Закрыть остальные',
+    closeAll: 'Закрыть все',
   },
 
   inbox: {

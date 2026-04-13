@@ -15,6 +15,11 @@ PLATFORM="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 RELEASE_DIR="$OUTPUT_ROOT/${VERSION}/${PLATFORM}-${ARCH}"
 TEMP_FILE_LIST="$(mktemp)"
+TAURI_BUILD_CONFIG="src-tauri/tauri.conf.json"
+
+if [ -n "${TAURI_UPDATER_PUBLIC_KEY:-}" ]; then
+  TAURI_BUILD_CONFIG="src-tauri/tauri.updater.conf.json"
+fi
 
 echo ">>> Building desktop production bundle (version: $VERSION)"
 cd "$APP_DIR"
@@ -22,17 +27,35 @@ if [ -n "${TAURI_UPDATER_PUBLIC_KEY:-}" ]; then
   cd "$ROOT"
   node ./scripts/prepare-desktop-updater-config.js --require-key
   cd "$APP_DIR"
-  pnpm tauri build --config src-tauri/tauri.updater.conf.json "$@"
 else
   node "$ROOT/scripts/prepare-desktop-updater-config.js"
-  pnpm tauri:build:production "$@"
+fi
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  pnpm exec tauri build --config "$TAURI_BUILD_CONFIG" --bundles app "$@"
+else
+  pnpm exec tauri build --config "$TAURI_BUILD_CONFIG" "$@"
 fi
 
 "$ROOT/scripts/repair-tauri-macos-app-signature.sh"
 
+if [ "$(uname -s)" = "Darwin" ]; then
+  APP_BUNDLE_PATH="$APP_DIR/src-tauri/target/release/bundle/macos/Free.app"
+  DMG_PATH="$APP_DIR/src-tauri/target/release/bundle/dmg/Free_${VERSION}_${ARCH}.dmg"
+  ZIP_PATH="$APP_DIR/src-tauri/target/release/bundle/macos/Free_${VERSION}_${ARCH}.zip"
+  if [ -d "$APP_BUNDLE_PATH" ]; then
+    mkdir -p "$(dirname "$DMG_PATH")"
+    if ! bash "$ROOT/scripts/create-macos-dmg.sh" "$APP_BUNDLE_PATH" "$DMG_PATH"; then
+      echo ">>> Warning: DMG creation failed, falling back to ZIP archive"
+      rm -f "$ZIP_PATH"
+      ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE_PATH" "$ZIP_PATH"
+    fi
+  fi
+fi
+
 mkdir -p "$RELEASE_DIR"
 find "$APP_DIR/src-tauri/target/release/bundle" \
-  \( -name "*.app" -o -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" \) \
+  \( -name "*.app" -o -name "*.dmg" -o -name "*.zip" -o -name "*.app.tar.gz" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" \) \
   -print0 > "$TEMP_FILE_LIST"
 
 if [ ! -s "$TEMP_FILE_LIST" ]; then

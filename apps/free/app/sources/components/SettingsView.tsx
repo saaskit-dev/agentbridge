@@ -331,6 +331,12 @@ export const SettingsView = React.memo(function SettingsView() {
           onPress={() => router.push('/settings/features')}
         />
         <Item
+          title="Keyboard Shortcuts"
+          subtitle="View desktop and web keyboard controls"
+          icon={<Ionicons name="keypad-outline" size={29} color="#0A84FF" />}
+          onPress={() => router.push('/settings/keyboard-shortcuts' as any)}
+        />
+        <Item
           title={t('settings.focusAudio')}
           subtitle={
             focusAudioEnabled

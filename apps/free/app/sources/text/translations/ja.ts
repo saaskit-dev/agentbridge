@@ -31,6 +31,8 @@ export const ja: TranslationStructure = {
     inbox: '受信トレイ',
     sessions: 'セッション',
     settings: '設定',
+    closeOthers: '他を閉じる',
+    closeAll: 'すべて閉じる',
   },
 
   inbox: {

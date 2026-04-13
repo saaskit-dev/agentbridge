@@ -93,6 +93,25 @@ function formatTime(ts: number): string {
   });
 }
 
+function isFoldableDaemonErrorMessage(message: Message): boolean {
+  if (message.kind !== 'agent-event') return false;
+  return message.event.type === 'daemon-log' && message.event.level === 'error';
+}
+
+function getDaemonErrorSignature(message: Message): string | null {
+  if (message.kind !== 'agent-event') return null;
+  if (message.event.type !== 'daemon-log' || message.event.level !== 'error') return null;
+  const { component, message: text, error } = message.event;
+  return `${component}::${text}::${error ?? ''}`;
+}
+
+function getDaemonErrorSummaryText(message: Message, count: number): string {
+  if (message.kind !== 'agent-event') return '';
+  if (message.event.type !== 'daemon-log' || message.event.level !== 'error') return '';
+  const { component, message: text } = message.event;
+  return count > 1 ? `${component}: ${text} ×${count}` : `${component}: ${text}`;
+}
+
 function renderHighlightedText(
   text: string,
   query: string,
@@ -900,10 +919,82 @@ const MessageRow = React.memo(
   }
 );
 
+const FoldedDaemonErrorRow = React.memo(
+  (props: {
+    sessionId: string;
+    messageIds: string[];
+    messages: Message[];
+    metadata: Metadata | null;
+    collapseToolsSignal?: number;
+  }) => {
+    const { theme } = useUnistyles();
+    const [expanded, setExpanded] = useState(false);
+    const summaryText = useMemo(
+      () => getDaemonErrorSummaryText(props.messages[0], props.messages.length),
+      [props.messages]
+    );
+
+    return (
+      <View>
+        <Pressable
+          onPress={() => setExpanded(value => !value)}
+          style={{
+            marginHorizontal: 8,
+            marginVertical: 2,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 10,
+            alignSelf: 'flex-start',
+            maxWidth: layout.maxWidth,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            opacity: 0.88,
+          }}
+        >
+          <Text
+            style={{
+              color: theme.colors.warningCritical,
+              fontSize: 11,
+              lineHeight: 16,
+              flexShrink: 1,
+              ...Typography.default(),
+            }}
+            numberOfLines={1}
+          >
+            {summaryText}
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.textSecondary,
+              fontSize: 11,
+              ...Typography.default(),
+            }}
+          >
+            {expanded ? '收起' : '展开'}
+          </Text>
+        </Pressable>
+        {expanded
+          ? props.messageIds.map(messageId => (
+              <MessageRow
+                key={messageId}
+                messageId={messageId}
+                metadata={props.metadata}
+                sessionId={props.sessionId}
+                collapseToolsSignal={props.collapseToolsSignal}
+              />
+            ))
+          : null}
+      </View>
+    );
+  }
+);
+
 const TurnGroupRow = React.memo(
   (props: {
     sessionId: string;
     messageIds: string[];
+    messagesById: Map<string, Message>;
     metadata: Metadata | null;
     createdAt: number;
     role: 'user' | 'assistant';
@@ -911,6 +1002,53 @@ const TurnGroupRow = React.memo(
     collapseToolsSignal?: number;
   }) => {
     const { theme } = useUnistyles();
+    const renderableBlocks = useMemo(() => {
+      const blocks: Array<
+        | { type: 'single'; messageId: string }
+        | { type: 'folded-daemon-error'; messageIds: string[]; messages: Message[] }
+      > = [];
+
+      for (let index = 0; index < props.messageIds.length; ) {
+        const messageId = props.messageIds[index];
+        const message = props.messagesById.get(messageId);
+        if (!message) {
+          index += 1;
+          continue;
+        }
+        const signature = getDaemonErrorSignature(message);
+        if (!signature) {
+          blocks.push({ type: 'single', messageId });
+          index += 1;
+          continue;
+        }
+
+        const groupedIds = [messageId];
+        const groupedMessages = [message];
+        let nextIndex = index + 1;
+        while (nextIndex < props.messageIds.length) {
+          const nextId = props.messageIds[nextIndex];
+          const nextMessage = props.messagesById.get(nextId);
+          if (!nextMessage || getDaemonErrorSignature(nextMessage) !== signature) break;
+          groupedIds.push(nextId);
+          groupedMessages.push(nextMessage);
+          nextIndex += 1;
+        }
+
+        if (groupedIds.length > 1) {
+          blocks.push({
+            type: 'folded-daemon-error',
+            messageIds: groupedIds,
+            messages: groupedMessages,
+          });
+        } else {
+          blocks.push({ type: 'single', messageId });
+        }
+        index = nextIndex;
+      }
+
+      return blocks;
+    }, [props.messageIds, props.messagesById]);
+
     return (
       <View
         style={{
@@ -933,15 +1071,26 @@ const TurnGroupRow = React.memo(
         }}
       >
         <View style={{ width: '100%', maxWidth: layout.maxWidth, alignSelf: 'center' }}>
-          {props.messageIds.map(messageId => (
-            <MessageRow
-              key={messageId}
-              messageId={messageId}
-              metadata={props.metadata}
-              sessionId={props.sessionId}
-              collapseToolsSignal={props.collapseToolsSignal}
-            />
-          ))}
+          {renderableBlocks.map((block, index) =>
+            block.type === 'single' ? (
+              <MessageRow
+                key={block.messageId}
+                messageId={block.messageId}
+                metadata={props.metadata}
+                sessionId={props.sessionId}
+                collapseToolsSignal={props.collapseToolsSignal}
+              />
+            ) : (
+              <FoldedDaemonErrorRow
+                key={`daemon-error-${block.messageIds[0]}-${index}`}
+                sessionId={props.sessionId}
+                messageIds={block.messageIds}
+                messages={block.messages}
+                metadata={props.metadata}
+                collapseToolsSignal={props.collapseToolsSignal}
+              />
+            )
+          )}
           <Text
             style={{
               alignSelf: props.role === 'user' ? 'flex-end' : 'flex-start',
@@ -1261,6 +1410,10 @@ const ChatListInternal = React.memo(
       () => buildChatListItems(visibleMessages, formatDateLabel, formatTime),
       [visibleMessages]
     );
+    const messagesById = useMemo(
+      () => new Map(visibleMessages.map(message => [message.id, message])),
+      [visibleMessages]
+    );
     listItemsRef.current = listItems;
     const previousListStateRef = useRef<{
       messageCount: number;
@@ -1362,6 +1515,7 @@ const ChatListInternal = React.memo(
           <TurnGroupRow
             createdAt={item.createdAt}
             messageIds={item.messageIds}
+            messagesById={messagesById}
             metadata={props.metadata}
             role={item.role}
             sessionId={props.sessionId}
@@ -1370,7 +1524,13 @@ const ChatListInternal = React.memo(
           />
         );
       },
-      [highlightedMessageId, props.jumpToRecentUserSignal, props.metadata, props.sessionId]
+      [
+        highlightedMessageId,
+        messagesById,
+        props.jumpToRecentUserSignal,
+        props.metadata,
+        props.sessionId,
+      ]
     );
 
     // onEndReached: load older (fires on both platforms when near visual top)

@@ -8,6 +8,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Avatar } from '@/components/Avatar';
 import { layout } from '@/components/layout';
 import { Typography } from '@/constants/Typography';
+import { isDesktopPlatform } from '@/utils/platform';
 import { useHeaderHeight } from '@/utils/responsive';
 
 interface ChatHeaderViewProps {
@@ -23,6 +24,7 @@ interface ChatHeaderViewProps {
   flavor?: string | null;
   /** Session ID shown in dev mode, centered in header, tap-to-copy */
   devSessionId?: string | null;
+  desktopActions?: React.ReactNode;
 }
 
 /** Small tap-to-copy badge for IDs in dev mode. Dark background pill for visibility on any header. */
@@ -76,12 +78,14 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
   isConnected = true,
   flavor,
   devSessionId,
+  desktopActions,
 }) => {
   const { theme } = useUnistyles();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const lastTitlePressRef = React.useRef(0);
+  const isDesktop = isDesktopPlatform();
 
   const handleBackPress = () => {
     if (onBackPress) {
@@ -111,12 +115,25 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     >
       <View style={styles.contentWrapper}>
         <View style={[styles.content, { height: headerHeight }]}>
-          <Pressable onPress={handleBackPress} style={styles.backButton} hitSlop={15}>
+          <Pressable
+            onPress={handleBackPress}
+            style={({ pressed }) => [
+              styles.backButton,
+              isDesktop && styles.desktopChromeButton,
+              pressed && { opacity: 0.72 },
+            ]}
+            hitSlop={15}
+          >
             <Ionicons
               name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-              size={Platform.select({ ios: 28, default: 24 })}
+              size={Platform.select({ ios: 28, default: 18 })}
               color={theme.colors.header.tint}
             />
+            {isDesktop ? (
+              <Text style={[styles.desktopButtonLabel, { color: theme.colors.header.tint }]}>
+                Sessions
+              </Text>
+            ) : null}
           </Pressable>
 
           <Pressable
@@ -141,31 +158,52 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
               {title}
             </Text>
             {subtitle && !devSessionId && (
-              <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={[
-                  styles.subtitle,
-                  {
-                    color: theme.colors.header.tint,
-                    opacity: 0.7,
-                    ...Typography.default(),
-                  },
-                ]}
-              >
-                {subtitle}
-              </Text>
+              <View style={styles.subtitleRow}>
+                {isDesktop ? (
+                  <Ionicons
+                    name="folder-open-outline"
+                    size={12}
+                    color={theme.colors.header.tint}
+                    style={{ opacity: 0.55 }}
+                  />
+                ) : null}
+                <Text
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={[
+                    styles.subtitle,
+                    {
+                      color: theme.colors.header.tint,
+                      opacity: 0.7,
+                      ...Typography.default(),
+                    },
+                  ]}
+                >
+                  {subtitle}
+                </Text>
+              </View>
             )}
             {!!devSessionId && (
               <CopyableBadge label="sid" value={devSessionId} />
             )}
           </Pressable>
 
-          {avatarId && onAvatarPress && (
-            <Pressable onPress={onAvatarPress} hitSlop={15} style={styles.avatarButton}>
-              <Avatar id={avatarId} size={32} monochrome={!isConnected} flavor={flavor} />
-            </Pressable>
-          )}
+          <View style={styles.rightActions}>
+            {desktopActions}
+            {avatarId && onAvatarPress && (
+              <Pressable
+                onPress={onAvatarPress}
+                hitSlop={15}
+                style={({ pressed }) => [
+                  styles.avatarButton,
+                  isDesktop && styles.desktopAvatarButton,
+                  pressed && { opacity: 0.75 },
+                ]}
+              >
+                <Avatar id={avatarId} size={32} monochrome={!isConnected} flavor={flavor} />
+              </Pressable>
+            )}
+          </View>
         </View>
       </View>
     </View>
@@ -196,6 +234,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    width: '100%',
+  },
   title: {
     fontSize: Platform.select({
       ios: 15,
@@ -217,5 +261,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Platform.select({ ios: -8, default: -8 }),
+  },
+  rightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  desktopChromeButton: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginRight: 12,
+  },
+  desktopButtonLabel: {
+    fontSize: 12,
+    ...Typography.default('semiBold'),
+  },
+  desktopAvatarButton: {
+    marginRight: 0,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
 });

@@ -28,7 +28,7 @@ Equivalent direct commands:
 
 ```bash
 cd apps/free/app
-pnpm tauri:build:production
+pnpm exec tauri build --config src-tauri/tauri.conf.json --bundles app
 
 cd ../..
 ./scripts/free-desktop-release.sh
@@ -48,6 +48,8 @@ That directory contains:
 - `SHA256SUMS.txt`
 
 If `TAURI_UPDATER_PUBLIC_KEY` is set in the environment, the local build also includes updater artifacts and signatures.
+
+On macOS, local packaging intentionally avoids Tauri's built-in DMG bundler and generates the DMG in a follow-up `hdiutil` step after the `.app` bundle is produced. If `hdiutil` still fails in the local environment, the flow falls back to a `.zip` archive so staging can still complete.
 
 ## Version Source
 
