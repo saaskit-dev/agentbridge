@@ -1,53 +1,37 @@
 name: Deploy Web (Cloudflare Pages)
 
 on:
-  workflow_run:
-    workflows: ["Lint & Dependency Guard"]
-    types: [completed]
-    branches: [main]
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/deploy-web.yml'
+      - '.github/workflows/lint-and-deps.yml'
+      - 'apps/free/app/**'
+      - 'packages/core/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
 
 jobs:
   deploy:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 2
-
-      - name: Detect relevant changes
-        id: changes
-        run: |
-          set -e
-          SHOULD_DEPLOY=true
-          if git rev-parse HEAD^ >/dev/null 2>&1; then
-            SHOULD_DEPLOY=false
-            while IFS= read -r file; do
-              case "$file" in
-                apps/free/app/*|packages/core/*)
-                  SHOULD_DEPLOY=true
-                  break
-                  ;;
-              esac
-            done < <(git diff --name-only HEAD^..HEAD)
-          fi
-          echo "should_deploy=$SHOULD_DEPLOY" >> "$GITHUB_OUTPUT"
+          fetch-depth: 1
 
       - uses: actions/setup-node@v4
-        if: steps.changes.outputs.should_deploy == 'true'
         with:
           node-version: 20
 
       - uses: pnpm/action-setup@v4
-        if: steps.changes.outputs.should_deploy == 'true'
 
       - name: Install dependencies
-        if: steps.changes.outputs.should_deploy == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build web
-        if: steps.changes.outputs.should_deploy == 'true'
         working-directory: apps/free/app
         env:
           APP_ENV: production
@@ -62,7 +46,6 @@ jobs:
           echo '/* /index.html 200' > dist/_redirects
 
       - name: Deploy to Cloudflare Pages
-        if: steps.changes.outputs.should_deploy == 'true'
         working-directory: apps/free/app
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
