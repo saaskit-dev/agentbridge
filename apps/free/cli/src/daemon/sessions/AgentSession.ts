@@ -1312,10 +1312,11 @@ export abstract class AgentSession<TMode> {
       await this.capabilitiesPipeFinished;
     }
 
-    // Notify attached CLI clients that the session has ended.
-    // Must happen after output drain (so the client sees all output first)
-    // and before evictHistory (which deletes the attachment set).
-    if (this.session) {
+    // Notify attached CLI clients only when the session is actually ending.
+    // During daemon recovery shutdown, the IPC socket will drop and the local CLI
+    // should reconnect to the recovered session instead of treating it as archived.
+    // Broadcast must still happen before evictHistory (which deletes the attachment set).
+    if (this.session && !this._keepStateForRecovery) {
       logger.info('[AgentSession] broadcasting session_state:archived', {
         sessionId: this.session.sessionId,
       });

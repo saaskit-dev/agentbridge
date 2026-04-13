@@ -340,11 +340,72 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const ACP_LOG_MAX_DEPTH = 6;
+const ACP_LOG_MAX_STRING_LENGTH = 4_000;
+const ACP_LOG_MAX_ARRAY_ITEMS = 20;
+const ACP_LOG_MAX_OBJECT_KEYS = 50;
+
+function truncateLogValue(
+  value: unknown,
+  depth = 0,
+  seen = new WeakSet<object>()
+): unknown {
+  if (value == null) return value;
+
+  if (typeof value === 'string') {
+    return value.length <= ACP_LOG_MAX_STRING_LENGTH
+      ? value
+      : `${value.slice(0, ACP_LOG_MAX_STRING_LENGTH)}...[truncated]`;
+  }
+
+  if (typeof value !== 'object') {
+    return value;
+  }
+
+  if (depth >= ACP_LOG_MAX_DEPTH) {
+    return '[MaxDepth]';
+  }
+
+  if (seen.has(value as object)) {
+    return '[Circular]';
+  }
+  seen.add(value as object);
+
+  if (Array.isArray(value)) {
+    const items = value
+      .slice(0, ACP_LOG_MAX_ARRAY_ITEMS)
+      .map(item => truncateLogValue(item, depth + 1, seen));
+    if (value.length > ACP_LOG_MAX_ARRAY_ITEMS) {
+      items.push(`[...${value.length - ACP_LOG_MAX_ARRAY_ITEMS} more]`);
+    }
+    return items;
+  }
+
+  const result: Record<string, unknown> = {};
+  const entries = Object.entries(value as Record<string, unknown>);
+  for (const [key, nestedValue] of entries.slice(0, ACP_LOG_MAX_OBJECT_KEYS)) {
+    result[key] = truncateLogValue(nestedValue, depth + 1, seen);
+  }
+  if (entries.length > ACP_LOG_MAX_OBJECT_KEYS) {
+    result.__truncatedKeys = entries.length - ACP_LOG_MAX_OBJECT_KEYS;
+  }
+  return result;
+}
+
 function serializeForLog(value: unknown): string {
   try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return inspect(value, { depth: 8, breakLength: 120 });
+    return JSON.stringify(truncateLogValue(value), null, 2);
+  } catch (error) {
+    try {
+      return inspect(truncateLogValue(value), {
+        depth: ACP_LOG_MAX_DEPTH,
+        breakLength: 120,
+        maxArrayLength: ACP_LOG_MAX_ARRAY_ITEMS,
+        maxStringLength: ACP_LOG_MAX_STRING_LENGTH,
+      });
+    } catch {
+      return `[Unserializable payload: ${safeStringify(error)}]`;
+    }
   }
 }
 
@@ -854,8 +915,17 @@ export class AcpBackend implements IAgentBackend {
       // Create Client implementation
       const client: Client = {
         sessionUpdate: async (params: SessionNotification) => {
-          this.logAcpNotification('session/update', params);
-          this.handleSessionUpdate(params);
+          try {
+            this.logAcpNotification('session/update', params);
+            this.handleSessionUpdate(params);
+          } catch (error) {
+            const sessionError = toError(error);
+            logger.error('[AcpBackend] Failed to process session update', sessionError, {
+              acpSessionId: this.acpSessionId,
+              sessionUpdate:
+                (params.update as { sessionUpdate?: string } | undefined)?.sessionUpdate ?? null,
+            });
+          }
         },
         requestPermission: async (
           params: RequestPermissionRequest
@@ -1305,18 +1375,14 @@ export class AcpBackend implements IAgentBackend {
     if (sessionUpdateType !== 'agent_message_chunk') {
       logger.debug(
         `[AcpBackend] Received session update: ${sessionUpdateType}`,
-        JSON.stringify(
-          {
-            sessionUpdate: sessionUpdateType,
-            toolCallId: (update as { toolCallId?: string }).toolCallId,
-            status: (update as { status?: string }).status,
-            kind: (update as { kind?: unknown }).kind,
-            hasContent: !!(update as { content?: unknown }).content,
-            hasLocations: !!(update as { locations?: unknown[] }).locations,
-          },
-          null,
-          2
-        )
+        {
+          sessionUpdate: sessionUpdateType,
+          toolCallId: (update as { toolCallId?: string }).toolCallId,
+          status: (update as { status?: string }).status,
+          kind: (update as { kind?: unknown }).kind,
+          hasContent: !!(update as { content?: unknown }).content,
+          hasLocations: !!(update as { locations?: unknown[] }).locations,
+        }
       );
     }
 
@@ -1388,7 +1454,7 @@ export class AcpBackend implements IAgentBackend {
     if (shouldLogUnhandledSessionUpdate(update as SessionUpdate)) {
       logger.warn(
         `[AcpBackend] Unhandled session update type: ${updateTypeStr}`,
-        JSON.stringify(update, null, 2)
+        serializeForLog(update)
       );
     }
   }

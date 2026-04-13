@@ -168,44 +168,49 @@ export async function startDaemon(): Promise<void> {
   });
 
   process.on('uncaughtException', error => {
-    logger.error('[DAEMON RUN] FATAL: Uncaught exception — will force exit in 5s if cleanup stalls', {
-      errorMessage: error.message,
-      errorName: error.name,
-      stack: error.stack,
+    const fatalError = toError(error);
+    logger.error(
+      '[DAEMON RUN] FATAL: Uncaught exception — will force exit in 5s if cleanup stalls',
+      fatalError,
+      {
       activeSessions: sessionManager
         ? sessionManager.list().map(s => ({ id: s.sessionId, agent: s.agentType }))
         : 'sessionManager not initialized',
       activeSessionCount: sessionManager?.list().length ?? 0,
       uptime: process.uptime(),
-    });
+      }
+    );
     // Set timeout to force exit after cleanup attempt
     setTimeout(() => {
-      logger.error('[DAEMON RUN] Force exit after uncaught exception (cleanup took >5s)', {
-        errorMessage: error.message,
-      });
+      logger.error(
+        '[DAEMON RUN] Force exit after uncaught exception (cleanup took >5s)',
+        fatalError
+      );
       process.exit(1);
     }, 5000);
-    requestShutdown('exception', error.message);
+    requestShutdown('exception', fatalError.message);
   });
   process.on('unhandledRejection', (reason, promise) => {
     const error = toError(reason);
-    logger.error('[DAEMON RUN] FATAL: Unhandled promise rejection — will force exit in 5s if cleanup stalls', {
-      errorMessage: error.message,
-      errorName: error.name,
-      stack: error.stack,
-      // promise.toString() avoids keeping the rejected promise reference alive
-      rejectedPromise: String(promise),
-      activeSessions: sessionManager
-        ? sessionManager.list().map(s => ({ id: s.sessionId, agent: s.agentType }))
-        : 'sessionManager not initialized',
-      activeSessionCount: sessionManager?.list().length ?? 0,
-      uptime: process.uptime(),
-    });
+    logger.error(
+      '[DAEMON RUN] FATAL: Unhandled promise rejection — will force exit in 5s if cleanup stalls',
+      error,
+      {
+        // promise.toString() avoids keeping the rejected promise reference alive
+        rejectedPromise: String(promise),
+        activeSessions: sessionManager
+          ? sessionManager.list().map(s => ({ id: s.sessionId, agent: s.agentType }))
+          : 'sessionManager not initialized',
+        activeSessionCount: sessionManager?.list().length ?? 0,
+        uptime: process.uptime(),
+      }
+    );
     // Set timeout to force exit after cleanup attempt
     setTimeout(() => {
-      logger.error('[DAEMON RUN] Force exit after unhandled rejection (cleanup took >5s)', {
-        errorMessage: error.message,
-      });
+      logger.error(
+        '[DAEMON RUN] Force exit after unhandled rejection (cleanup took >5s)',
+        error
+      );
       process.exit(1);
     }, 5000);
     requestShutdown('exception', error.message);

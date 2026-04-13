@@ -230,7 +230,8 @@ describe('AgentSession.shutdown()', () => {
   });
 
   it('does NOT call sendSessionDeath when _keepStateForRecovery is set (daemon shutdown path)', async () => {
-    const session = new TestAgentSession(makeOpts());
+    const broadcasts: IPCServerMessage[] = [];
+    const session = new TestAgentSession(makeOpts((_, msg) => broadcasts.push(msg)));
     const mockSession = makeMockSession('sess-recovery');
     session.injectSession(mockSession);
 
@@ -238,6 +239,10 @@ describe('AgentSession.shutdown()', () => {
     session.handleSigterm();
     await session.shutdown('daemon_stop');
 
+    const archived = broadcasts.filter(
+      m => m.type === 'session_state' && (m as { state?: string }).state === 'archived'
+    );
+    expect(archived).toHaveLength(0);
     expect(mockSession.sendSessionDeath).not.toHaveBeenCalled();
     // close() is still called to tidy up the WebSocket
     expect(mockSession.close).toHaveBeenCalled();

@@ -188,4 +188,36 @@ describe('AcpBackend idle vs waitForResponseComplete race', () => {
       reportToServer: false,
     });
   });
+
+  it('forwards large session updates to listeners without truncating payloads', () => {
+    const backend = new AcpBackend(makeTestConfig());
+    const internal = asInternal(backend);
+    const seenUpdates: unknown[] = [];
+    const largeContent = 'x'.repeat(200_000);
+
+    backend.onSessionUpdate(update => {
+      seenUpdates.push(update);
+    });
+
+    internal.handleSessionUpdate({
+      update: {
+        sessionUpdate: 'unknown_big_update',
+        toolCallId: 'tool-1',
+        content: largeContent,
+        nested: {
+          echoed: largeContent,
+        },
+      },
+    });
+
+    expect(seenUpdates).toHaveLength(1);
+    expect(seenUpdates[0]).toEqual({
+      sessionUpdate: 'unknown_big_update',
+      toolCallId: 'tool-1',
+      content: largeContent,
+      nested: {
+        echoed: largeContent,
+      },
+    });
+  });
 });
