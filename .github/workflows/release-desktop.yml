@@ -79,7 +79,7 @@ jobs:
           git add apps/free/app/package.json apps/free/app/src-tauri/tauri.conf.json
           git commit -m "Release desktop ${VERSION}"
           git tag "$TAG_NAME"
-          git push origin HEAD:main
+          git push origin HEAD:refs/heads/main
           git push origin "$TAG_NAME"
 
           RELEASE_SHA="$(git rev-parse HEAD)"
