@@ -108,13 +108,6 @@ The GitHub release workflow base64-encodes that full multiline key file into the
 
 ## GitHub Actions
 
-Push a tag matching:
-
-```bash
-git tag desktop-v0.2.0
-git push origin desktop-v0.2.0
-```
-
 The workflow is:
 
 - `.github/workflows/release-desktop.yml`
@@ -124,17 +117,23 @@ It creates / updates a GitHub Release on:
 - `macos-latest`
 - `ubuntu-24.04`
 
+The release workflow is now manual-only. When you trigger it, it will:
+
+1. bump the desktop version automatically
+2. commit the version change to `main`
+3. create and push `desktop-v<version>` tag
+4. build release artifacts from that exact release commit
+
 For macOS, the workflow builds the updater-compatible `.app` bundle first, then packages a plain drag-install `.dmg` in a separate CI step and uploads it to the same release.
 The workflow attaches release assets and `latest.json`, which the desktop app queries for in-app updates.
 
 ## Release Checklist
 
-1. Bump version with `./run version ...`
-2. Run `./run desktop ship`
-3. Install and smoke-test the produced package
-4. Create and push `desktop-v<version>` tag
-5. Verify the GitHub Release contains installers and `latest.json`
-6. Publish checksums together with the binaries
+1. Run `./run desktop ship`
+2. Install and smoke-test the produced package
+3. Trigger `Release Desktop` manually
+4. Verify the GitHub Release contains installers and `latest.json`
+5. Publish checksums together with the binaries
 
 ## Notes
 
