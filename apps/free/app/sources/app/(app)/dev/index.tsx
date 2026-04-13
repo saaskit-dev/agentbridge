@@ -11,6 +11,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Switch } from '@/components/Switch';
+import { useAppVersion } from '@/hooks/useAppVersion';
 import { Modal } from '@/modal';
 import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
 import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
@@ -22,6 +23,7 @@ const logger = new Logger('app/dev/index');
 
 export default function DevScreen() {
   const router = useRouter();
+  const appVersion = useAppVersion();
   const [showDebugIds, setShowDebugIds] = useLocalSettingMutable('showDebugIds');
   const buildTime = Updates.createdAt;
   const runtimeVersion = Updates.runtimeVersion;
@@ -136,7 +138,7 @@ export default function DevScreen() {
     <ItemList>
       {/* App Information */}
       <ItemGroup title={t('dev.appInformation')}>
-        <Item title={t('dev.version')} detail={Constants.expoConfig?.version || '1.0.0'} />
+        <Item title={t('dev.version')} detail={appVersion} />
         <Item title={t('dev.buildNumber')} detail={Application.nativeBuildVersion || 'N/A'} />
         <Item title={t('dev.runtimeVersion')} detail={shortRuntime || t('dev.notAvailable')} />
         <Item title={t('dev.packageSource')} detail={packageSource} />

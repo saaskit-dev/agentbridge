@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
@@ -14,6 +13,7 @@ import { ItemList } from '@/components/ItemList';
 import { layout } from '@/components/layout';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { useAppVersion } from '@/hooks/useAppVersion';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useFreeAction } from '@/hooks/useFreeAction';
 import { useMultiClick } from '@/hooks/useMultiClick';
@@ -26,13 +26,14 @@ import { sync } from '@/sync/sync';
 import { useLocalSetting, useLocalSettingMutable, useSetting, useEntitlement } from '@/sync/storage';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { isTauriDesktop } from '@/utils/tauri';
 import { useProfile } from '@/sync/storage';
 import { t } from '@/text';
 
 export const SettingsView = React.memo(function SettingsView() {
   const { theme } = useUnistyles();
   const router = useRouter();
-  const appVersion = Constants.expoConfig?.version || '1.0.0';
+  const appVersion = useAppVersion();
   const auth = useAuth();
   const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
   const [, setShowDebugIds] = useLocalSettingMutable('showDebugIds');
@@ -44,6 +45,7 @@ export const SettingsView = React.memo(function SettingsView() {
   const isPro = useEntitlement('pro');
   const experiments = useSetting('experiments');
   const isCustomServer = isUsingCustomServer();
+  const isDesktopUpdaterAvailable = isTauriDesktop();
   const allMachines = useAllMachines();
   const profile = useProfile();
   const displayName = getDisplayName(profile);
@@ -134,6 +136,80 @@ export const SettingsView = React.memo(function SettingsView() {
       await disconnectService(auth.credentials!, 'anthropic');
     }
   });
+  const [checkingForUpdates, setCheckingForUpdates] = React.useState(false);
+  const [desktopUpdateStatus, setDesktopUpdateStatus] = React.useState<string | null>(null);
+
+  const handleCheckForDesktopUpdates = React.useCallback(async () => {
+    if (!isDesktopUpdaterAvailable || checkingForUpdates) {
+      return;
+    }
+
+    setCheckingForUpdates(true);
+    setDesktopUpdateStatus('Checking for updates…');
+
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const update = await check();
+
+      if (!update) {
+        const status = `Up to date (${appVersion})`;
+        setDesktopUpdateStatus(status);
+        Modal.alert('Up to date', `Free ${appVersion} is already the latest version.`);
+        return;
+      }
+
+      setDesktopUpdateStatus(`Update ${update.version} available`);
+      const confirmed = await Modal.confirm(
+        'Update available',
+        `Version ${update.version} is available. Current version: ${update.currentVersion}. Download and install it now?`,
+        {
+          cancelText: t('common.cancel'),
+          confirmText: 'Install update',
+        }
+      );
+
+      if (!confirmed) {
+        await update.close();
+        return;
+      }
+
+      let downloadedBytes = 0;
+      let totalBytes: number | null = null;
+
+      await update.downloadAndInstall(event => {
+        if (event.event === 'Started') {
+          totalBytes = event.data.contentLength ?? null;
+          setDesktopUpdateStatus('Downloading update…');
+          return;
+        }
+
+        if (event.event === 'Progress') {
+          downloadedBytes += event.data.chunkLength;
+          if (totalBytes && totalBytes > 0) {
+            const percent = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100));
+            setDesktopUpdateStatus(`Downloading update… ${percent}%`);
+          } else {
+            setDesktopUpdateStatus('Downloading update…');
+          }
+          return;
+        }
+
+        setDesktopUpdateStatus('Installing update…');
+      });
+
+      setDesktopUpdateStatus(`Update ${update.version} installed. Restart required.`);
+      Modal.alert(
+        'Update installed',
+        `Free ${update.version} has been downloaded and installed. Restart the app to finish applying the update.`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown update error';
+      setDesktopUpdateStatus('Update check failed');
+      Modal.alert('Update failed', message);
+    } finally {
+      setCheckingForUpdates(false);
+    }
+  }, [appVersion, checkingForUpdates, isDesktopUpdaterAvailable]);
 
   return (
     <ItemList style={{ paddingTop: 0 }}>
@@ -389,6 +465,20 @@ export const SettingsView = React.memo(function SettingsView() {
           icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
           onPress={handleReportIssue}
         />
+        {isDesktopUpdaterAvailable && (
+          <Item
+            title="Check for Updates"
+            subtitle={
+              desktopUpdateStatus ||
+              `Current version: ${appVersion}. Check GitHub release updates and install the latest desktop build.`
+            }
+            subtitleLines={0}
+            icon={<Ionicons name="cloud-download-outline" size={29} color="#34C759" />}
+            onPress={() => void handleCheckForDesktopUpdates()}
+            loading={checkingForUpdates}
+            showChevron={false}
+          />
+        )}
         {/* Hidden - TODO: update URL to project's privacy policy
         <Item
           title={t('settings.privacyPolicy')}

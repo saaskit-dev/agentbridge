@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
+import { useAppVersion } from '@/hooks/useAppVersion';
 import { layout } from '@/components/layout';
 import { Typography } from '@/constants/Typography';
 import { isRunningOnMac } from '@/utils/platform';
@@ -17,6 +18,7 @@ import {
 } from '@/utils/responsive';
 
 export default function DeviceInfo() {
+  const appVersion = useAppVersion();
   const insets = useSafeAreaInsets();
   const { width, height } = Dimensions.get('window');
   const screenDimensions = Dimensions.get('screen');
@@ -107,7 +109,7 @@ export default function DeviceInfo() {
         </ItemGroup>
 
         <ItemGroup title="App Info">
-          <Item title="App Version" detail={Constants.expoConfig?.version || 'N/A'} />
+          <Item title="App Version" detail={appVersion} />
           <Item title="SDK Version" detail={Constants.expoConfig?.sdkVersion || 'N/A'} />
           <Item
             title="Build Number"
