@@ -11,7 +11,7 @@ import { Typography } from '@/constants/Typography';
 import { useDesktopSessionFilesSidebar } from '@/hooks/useDesktopSessionFilesSidebar';
 import { Modal } from '@/modal';
 import { getGitStatusFiles, type GitFileStatus, type GitStatusFiles } from '@/sync/gitStatusFiles';
-import { sessionBash, sessionListDirectory, type DirectoryEntry } from '@/sync/ops';
+import { sessionAbort, sessionBash, sessionListDirectory, type DirectoryEntry } from '@/sync/ops';
 import { searchFiles, type FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
 import {
@@ -77,6 +77,17 @@ type VisibleGitTreeRow = {
 type InlineNotice = {
   tone: 'success' | 'error' | 'info';
   message: string;
+};
+
+type GitNetworkOperation = 'fetch' | 'pull' | 'push' | 'sync';
+
+type GitNetworkTask = {
+  id: string;
+  type: GitNetworkOperation;
+  label: string;
+  state: 'queued' | 'running';
+  cancelRequested: boolean;
+  enqueuedAt: number;
 };
 
 const GIT_DEFAULT_TIMEOUT_MS = 120_000;
@@ -390,6 +401,37 @@ const styles = StyleSheet.create(theme => ({
     alignItems: 'center',
     gap: 8,
   },
+  gitNetworkTaskBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  gitNetworkTaskText: {
+    flex: 1,
+    fontSize: 11,
+    ...Typography.default('semiBold'),
+  },
+  gitNetworkTaskActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  gitNetworkTaskAction: {
+    minHeight: 22,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gitNetworkTaskActionText: {
+    fontSize: 10,
+    ...Typography.default('semiBold'),
+  },
   gitToolbarCompactAction: {
     minHeight: 24,
     borderRadius: 6,
@@ -412,6 +454,15 @@ const styles = StyleSheet.create(theme => ({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
+  },
+  gitSelectToggle: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
   gitCommitDock: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -893,6 +944,8 @@ const GitTreeRow = React.memo(
     renderGitFileSubtitle,
     renderGitStatusIcon,
     onHandleGitAction,
+    isChecked,
+    onToggleChecked,
   }: {
     node: GitTreeNode;
     depth: number;
@@ -910,6 +963,8 @@ const GitTreeRow = React.memo(
       relativePath?: string,
       options?: { section?: 'staged' | 'unstaged'; status?: GitFileStatus['status'] }
     ) => void;
+    isChecked: boolean;
+    onToggleChecked: (path: string) => void;
   }) => {
     const { theme } = useUnistyles();
     const isStaged = Boolean(node.status?.isStaged);
@@ -950,9 +1005,26 @@ const GitTreeRow = React.memo(
         {node.type === 'directory' ? (
           <Octicons name="file-directory" size={15} color="#007AFF" style={{ marginRight: 8 }} />
         ) : (
-          <View style={{ marginRight: 8 }}>
-            <FileIcon fileName={node.name} size={16} />
-          </View>
+          <>
+            <Pressable
+              onPress={(event: any) => {
+                event?.stopPropagation?.();
+                onToggleChecked(node.path);
+              }}
+              style={[
+                styles.gitSelectToggle,
+                {
+                  borderColor: isChecked ? '#3B82F6' : theme.colors.divider,
+                  backgroundColor: isChecked ? '#3B82F6' : theme.colors.surface,
+                },
+              ]}
+            >
+              {isChecked ? <Ionicons name="checkmark" size={11} color="#FFFFFF" /> : null}
+            </Pressable>
+            <View style={{ marginRight: 8 }}>
+              <FileIcon fileName={node.name} size={16} />
+            </View>
+          </>
         )}
         <View style={{ flex: 1 }}>
           <Text style={styles.rowLabel} numberOfLines={1}>
@@ -1032,8 +1104,10 @@ export function SessionFilesSidebar({
   const [activeTool, setActiveTool] = React.useState<SidebarTool>('files');
   const [contextMenu, setContextMenu] = React.useState<ContextMenuState | null>(null);
   const [gitExpandedPaths, setGitExpandedPaths] = React.useState<Set<string>>(new Set());
+  const [selectedGitPaths, setSelectedGitPaths] = React.useState<Set<string>>(new Set());
   const [gitCommandBusy, setGitCommandBusy] = React.useState(false);
   const [gitNetworkBusy, setGitNetworkBusy] = React.useState(false);
+  const [gitNetworkTasks, setGitNetworkTasks] = React.useState<GitNetworkTask[]>([]);
   const [gitCommitMessage, setGitCommitMessage] = React.useState('');
   const [inlineNotice, setInlineNotice] = React.useState<InlineNotice | null>(null);
   const [isSearching, setIsSearching] = React.useState(false);
@@ -1042,6 +1116,8 @@ export function SessionFilesSidebar({
   const lastFilePressRef = React.useRef<{ path: string; at: number } | null>(null);
   const inlineNoticeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const gitRefreshInFlightRef = React.useRef<Promise<void> | null>(null);
+  const gitNetworkTasksRef = React.useRef<GitNetworkTask[]>([]);
+  const gitNetworkRunningRef = React.useRef(false);
   const [liveWidth, setLiveWidth] = React.useState(persistedWidth);
   const [liveCollapsed, setLiveCollapsed] = React.useState(persistedCollapsed);
 
@@ -1315,6 +1391,16 @@ export function SessionFilesSidebar({
     []
   );
 
+  const mutateGitNetworkTasks = React.useCallback(
+    (updater: (current: GitNetworkTask[]) => GitNetworkTask[]) => {
+      const next = updater(gitNetworkTasksRef.current);
+      gitNetworkTasksRef.current = next;
+      setGitNetworkTasks(next);
+      return next;
+    },
+    []
+  );
+
   const openContextMenu = React.useCallback(
     (event: React.MouseEvent | any, kind: ContextMenuKind, path: string, options?: Partial<ContextMenuState>) => {
       if (typeof document === 'undefined') return;
@@ -1386,12 +1472,14 @@ export function SessionFilesSidebar({
         timeoutMs?: number;
         blockUi?: boolean;
         optimisticUpdate?: (current: GitStatusFiles | null) => GitStatusFiles | null;
+        suppressErrorNotice?: boolean;
       }
     ) => {
       const target = options?.refresh ?? true;
       const timeoutMs = options?.timeoutMs ?? GIT_DEFAULT_TIMEOUT_MS;
       const blockUi = options?.blockUi ?? true;
       const optimisticUpdate = options?.optimisticUpdate;
+      const suppressErrorNotice = options?.suppressErrorNotice ?? false;
       if (blockUi) {
         setGitCommandBusy(true);
       }
@@ -1419,7 +1507,9 @@ export function SessionFilesSidebar({
         if (optimisticUpdate) {
           void refreshGitData({ silent: true });
         }
-        showInlineNotice(String(toError(error)), 'error');
+        if (!suppressErrorNotice) {
+          showInlineNotice(String(toError(error)), 'error');
+        }
         return false;
       } finally {
         if (blockUi) {
@@ -1473,6 +1563,190 @@ export function SessionFilesSidebar({
     [runGitCommand]
   );
 
+  const executeGitNetworkTask = React.useCallback(
+    async (task: GitNetworkTask) => {
+      const isCancelled = () =>
+        Boolean(gitNetworkTasksRef.current.find(candidate => candidate.id === task.id)?.cancelRequested);
+      const failIfNeeded = (message: string) => {
+        if (!isCancelled()) {
+          showInlineNotice(message, 'error');
+        }
+      };
+
+      if (task.type === 'fetch') {
+        const success = await runGitCommand('git fetch --all --prune', {
+          timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+          blockUi: false,
+          suppressErrorNotice: true,
+        });
+        if (!success) failIfNeeded('Fetch failed.');
+        if (success && !isCancelled()) showInlineNotice('Fetch complete.', 'success');
+        return;
+      }
+
+      if (task.type === 'pull') {
+        const success = await runGitCommand('git pull', {
+          timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+          blockUi: false,
+          suppressErrorNotice: true,
+        });
+        if (!success) failIfNeeded('Pull failed.');
+        if (success && !isCancelled()) showInlineNotice('Pull complete.', 'success');
+        return;
+      }
+
+      if (task.type === 'push') {
+        const success = await runGitCommand('git push', {
+          timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+          blockUi: false,
+          suppressErrorNotice: true,
+        });
+        if (!success) failIfNeeded('Push failed.');
+        if (success && !isCancelled()) showInlineNotice('Push complete.', 'success');
+        return;
+      }
+
+      const pullResult = await runGitCommand('git pull --rebase', {
+        refresh: false,
+        timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+        blockUi: false,
+        suppressErrorNotice: true,
+      });
+      if (!pullResult) {
+        failIfNeeded('Sync failed during pull.');
+        return;
+      }
+      if (isCancelled()) return;
+
+      const pushResult = await runGitCommand('git push', {
+        refresh: false,
+        timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+        blockUi: false,
+        suppressErrorNotice: true,
+      });
+      if (!pushResult) {
+        failIfNeeded('Sync failed during push.');
+        return;
+      }
+      if (isCancelled()) return;
+
+      await refreshGitData({ silent: true });
+      if (!isCancelled()) {
+        showInlineNotice('Sync complete.', 'success');
+      }
+    },
+    [refreshGitData, runGitCommand, showInlineNotice]
+  );
+
+  const processGitNetworkQueue = React.useCallback(async () => {
+    if (gitNetworkRunningRef.current) return;
+    const nextTask = gitNetworkTasksRef.current.find(task => task.state === 'queued');
+    if (!nextTask) return;
+
+    gitNetworkRunningRef.current = true;
+    setGitNetworkBusy(true);
+    mutateGitNetworkTasks(current =>
+      current.map(task => (task.id === nextTask.id ? { ...task, state: 'running' } : task))
+    );
+
+    try {
+      await executeGitNetworkTask(nextTask);
+    } finally {
+      mutateGitNetworkTasks(current => current.filter(task => task.id !== nextTask.id));
+      gitNetworkRunningRef.current = false;
+      setGitNetworkBusy(false);
+      void processGitNetworkQueue();
+    }
+  }, [executeGitNetworkTask, mutateGitNetworkTasks]);
+
+  const enqueueGitNetworkTask = React.useCallback(
+    (type: GitNetworkOperation) => {
+      const labelByType: Record<GitNetworkOperation, string> = {
+        fetch: 'Fetch',
+        pull: 'Pull',
+        push: 'Push',
+        sync: 'Sync',
+      };
+      const task: GitNetworkTask = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type,
+        label: labelByType[type],
+        state: 'queued',
+        cancelRequested: false,
+        enqueuedAt: Date.now(),
+      };
+      mutateGitNetworkTasks(current => [...current, task]);
+      showInlineNotice(`${task.label} queued.`, 'info');
+      void processGitNetworkQueue();
+    },
+    [mutateGitNetworkTasks, processGitNetworkQueue, showInlineNotice]
+  );
+
+  const cancelRunningGitNetworkTask = React.useCallback(async () => {
+    const running = gitNetworkTasksRef.current.find(task => task.state === 'running');
+    if (!running) return;
+    mutateGitNetworkTasks(current =>
+      current.map(task => (task.id === running.id ? { ...task, cancelRequested: true } : task))
+    );
+    try {
+      await sessionAbort(sessionId);
+      showInlineNotice(`${running.label} cancel requested.`, 'info');
+    } catch (error) {
+      logger.error('failed to cancel git network task', toError(error), { sessionId });
+      showInlineNotice('Failed to cancel running task.', 'error');
+    }
+  }, [mutateGitNetworkTasks, sessionId, showInlineNotice]);
+
+  const clearQueuedGitNetworkTasks = React.useCallback(() => {
+    const queuedCount = gitNetworkTasksRef.current.filter(task => task.state === 'queued').length;
+    if (queuedCount === 0) return;
+    mutateGitNetworkTasks(current => current.filter(task => task.state !== 'queued'));
+    showInlineNotice(`Cleared ${queuedCount} queued task${queuedCount > 1 ? 's' : ''}.`, 'info');
+  }, [mutateGitNetworkTasks, showInlineNotice]);
+
+  const selectedGitPathList = React.useMemo(
+    () => Array.from(selectedGitPaths).sort((a, b) => a.localeCompare(b)),
+    [selectedGitPaths]
+  );
+
+  const runGitStageSelected = React.useCallback(async () => {
+    if (selectedGitPathList.length === 0) return;
+    const targets = selectedGitPathList
+      .map(path => (path.startsWith('/') ? path : `./${path}`))
+      .map(path => shellQuote(path))
+      .join(' ');
+    const success = await runGitCommand(`git add --all -- ${targets}`, {
+      optimisticUpdate: current =>
+        selectedGitPathList.reduce<GitStatusFiles | null>(
+          (acc, path) => optimisticallyStagePath(acc, path),
+          current
+        ),
+    });
+    if (success) {
+      setSelectedGitPaths(new Set());
+      showInlineNotice('Staged selected files.', 'success');
+    }
+  }, [runGitCommand, selectedGitPathList, showInlineNotice]);
+
+  const runGitUnstageSelected = React.useCallback(async () => {
+    if (selectedGitPathList.length === 0) return;
+    const targets = selectedGitPathList
+      .map(path => (path.startsWith('/') ? path : `./${path}`))
+      .map(path => shellQuote(path))
+      .join(' ');
+    const success = await runGitCommand(`git restore --staged -- ${targets}`, {
+      optimisticUpdate: current =>
+        selectedGitPathList.reduce<GitStatusFiles | null>(
+          (acc, path) => optimisticallyUnstagePath(acc, path),
+          current
+        ),
+    });
+    if (success) {
+      setSelectedGitPaths(new Set());
+      showInlineNotice('Unstaged selected files.', 'success');
+    }
+  }, [runGitCommand, selectedGitPathList, showInlineNotice]);
+
   const handleGitAction = React.useCallback(
     async (
       type: string,
@@ -1496,48 +1770,11 @@ export function SessionFilesSidebar({
       }
       switch (type) {
         case 'fetch': {
-          showInlineNotice('Fetching remote updates...', 'info');
-          setGitNetworkBusy(true);
-          try {
-            const success = await runGitCommand('git fetch --all --prune', {
-              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
-              blockUi: false,
-            });
-            if (success) {
-              showInlineNotice('Fetch complete.', 'success');
-            }
-          } finally {
-            setGitNetworkBusy(false);
-          }
+          enqueueGitNetworkTask('fetch');
           break;
         }
         case 'sync': {
-          showInlineNotice('Sync in progress: pull...', 'info');
-          setGitNetworkBusy(true);
-          try {
-            const pullResult = await runGitCommand('git pull --rebase', {
-              refresh: false,
-              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
-              blockUi: false,
-            });
-            if (!pullResult) {
-              return;
-            }
-
-            showInlineNotice('Sync in progress: push...', 'info');
-            const pushResult = await runGitCommand('git push', {
-              refresh: false,
-              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
-              blockUi: false,
-            });
-            if (!pushResult) {
-              return;
-            }
-            await refreshGitData({ silent: true });
-            showInlineNotice('Sync complete.', 'success');
-          } finally {
-            setGitNetworkBusy(false);
-          }
+          enqueueGitNetworkTask('sync');
           break;
         }
         case 'stash': {
@@ -1645,35 +1882,11 @@ export function SessionFilesSidebar({
           break;
         }
         case 'pull': {
-          showInlineNotice('Pulling from remote...', 'info');
-          setGitNetworkBusy(true);
-          try {
-            const success = await runGitCommand('git pull', {
-              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
-              blockUi: false,
-            });
-            if (success) {
-              showInlineNotice('Pull complete.', 'success');
-            }
-          } finally {
-            setGitNetworkBusy(false);
-          }
+          enqueueGitNetworkTask('pull');
           break;
         }
         case 'push': {
-          showInlineNotice('Pushing to remote...', 'info');
-          setGitNetworkBusy(true);
-          try {
-            const success = await runGitCommand('git push', {
-              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
-              blockUi: false,
-            });
-            if (success) {
-              showInlineNotice('Push complete.', 'success');
-            }
-          } finally {
-            setGitNetworkBusy(false);
-          }
+          enqueueGitNetworkTask('push');
           break;
         }
         case 'stage-all': {
@@ -1682,10 +1895,18 @@ export function SessionFilesSidebar({
           });
           break;
         }
+        case 'stage-selected': {
+          await runGitStageSelected();
+          break;
+        }
         case 'unstage-all': {
           await runGitCommand('git restore --staged -- .', {
             optimisticUpdate: current => optimisticallyUnstageAll(current),
           });
+          break;
+        }
+        case 'unstage-selected': {
+          await runGitUnstageSelected();
           break;
         }
         case 'discard-all': {
@@ -1718,8 +1939,11 @@ export function SessionFilesSidebar({
       runGitDiscard,
       runGitStage,
       runGitUnstage,
+      runGitStageSelected,
+      runGitUnstageSelected,
       showInlineNotice,
       gitNetworkBusy,
+      enqueueGitNetworkTask,
     ]
   );
 
@@ -1779,6 +2003,30 @@ export function SessionFilesSidebar({
 
     return { tracked, untracked };
   }, [gitStatusFiles?.stagedFiles, gitStatusFiles?.unstagedFiles]);
+
+  const selectableGitPaths = React.useMemo(
+    () => new Set([...gitFileBuckets.tracked, ...gitFileBuckets.untracked].map(file => file.fullPath)),
+    [gitFileBuckets.tracked, gitFileBuckets.untracked]
+  );
+
+  React.useEffect(() => {
+    setSelectedGitPaths(current => {
+      const next = new Set(Array.from(current).filter(path => selectableGitPaths.has(path)));
+      return next.size === current.size ? current : next;
+    });
+  }, [selectableGitPaths]);
+
+  const toggleGitPathSelection = React.useCallback((path: string) => {
+    setSelectedGitPaths(current => {
+      const next = new Set(current);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }, []);
 
   const trackedGitTree = React.useMemo(
     () => buildGitTree(gitFileBuckets.tracked, 'staged'),
@@ -2011,7 +2259,32 @@ export function SessionFilesSidebar({
   const hasGitChanges =
     (gitStatusFiles?.totalStaged || 0) > 0 || (gitStatusFiles?.totalUnstaged || 0) > 0;
 
-  const isGitBusy = isLoadingGit || gitCommandBusy;
+  const runningGitNetworkTask = React.useMemo(
+    () => gitNetworkTasks.find(task => task.state === 'running') ?? null,
+    [gitNetworkTasks]
+  );
+  const queuedGitNetworkTaskCount = React.useMemo(
+    () => gitNetworkTasks.filter(task => task.state === 'queued').length,
+    [gitNetworkTasks]
+  );
+  const stagedPathSet = React.useMemo(
+    () => new Set((gitStatusFiles?.stagedFiles ?? []).map(file => file.fullPath)),
+    [gitStatusFiles?.stagedFiles]
+  );
+  const unstagedPathSet = React.useMemo(
+    () => new Set((gitStatusFiles?.unstagedFiles ?? []).map(file => file.fullPath)),
+    [gitStatusFiles?.unstagedFiles]
+  );
+  const selectedGitCount = selectedGitPathList.length;
+  const canStageSelected = React.useMemo(
+    () => selectedGitPathList.some(path => unstagedPathSet.has(path)),
+    [selectedGitPathList, unstagedPathSet]
+  );
+  const canUnstageSelected = React.useMemo(
+    () => selectedGitPathList.some(path => stagedPathSet.has(path)),
+    [selectedGitPathList, stagedPathSet]
+  );
+  const isGitBusy = isLoadingGit || gitCommandBusy || gitNetworkBusy;
   const isGitNetworkActionBusy = isLoadingGit || gitNetworkBusy;
   const filesListHeader = React.useMemo(() => {
     if (searchQuery.trim()) {
@@ -2107,6 +2380,8 @@ export function SessionFilesSidebar({
           onHandleGitAction={(type, relativePath, options) => {
             void handleGitAction(type, relativePath, options);
           }}
+          isChecked={node.type === 'file' ? selectedGitPaths.has(node.path) : false}
+          onToggleChecked={toggleGitPathSelection}
         />
       );
     },
@@ -2120,7 +2395,9 @@ export function SessionFilesSidebar({
       renderGitStatusIcon,
       resolveFileAbsolutePath,
       selectedFilePath,
+      selectedGitPaths,
       theme.colors.warning,
+      toggleGitPathSelection,
       toggleGitNode,
     ]
   );
@@ -2145,54 +2422,176 @@ export function SessionFilesSidebar({
     if (activeTool !== 'git' || !gitStatusFiles) return null;
     const canStageAll = (gitStatusFiles?.totalUnstaged || 0) > 0;
     const totalChanges = (gitStatusFiles?.totalStaged || 0) + (gitStatusFiles?.totalUnstaged || 0);
+    const runningLabel = runningGitNetworkTask?.label ?? null;
+    const taskBarLabel = runningLabel
+      ? `${runningLabel} running`
+      : queuedGitNetworkTaskCount > 0
+        ? `${queuedGitNetworkTaskCount} queued`
+        : null;
 
     return (
-      <View style={[styles.gitToolbarCompact, { borderBottomColor: theme.colors.divider }]}>
-        <Text style={[styles.gitToolbarCompactTitle, { color: theme.colors.textSecondary }]}>
-          {totalChanges} Changes
-        </Text>
-        <View style={styles.gitToolbarCompactActions}>
-          <Pressable
-            onPress={() => void handleGitAction('stage-all')}
-            disabled={isGitBusy || !canStageAll}
-            style={[
-              styles.gitToolbarCompactAction,
-              {
-                borderColor: canStageAll ? '#3B82F6' : theme.colors.divider,
-                backgroundColor: canStageAll ? '#3B82F6' : theme.colors.surface,
-              },
-              (isGitBusy || !canStageAll) && styles.toolbarButtonDisabled,
-            ]}
-          >
-            <Text
+      <>
+        <View style={[styles.gitToolbarCompact, { borderBottomColor: theme.colors.divider }]}>
+          <Text style={[styles.gitToolbarCompactTitle, { color: theme.colors.textSecondary }]}>
+            {totalChanges} Changes
+          </Text>
+          <View style={styles.gitToolbarCompactActions}>
+            <Pressable
+              onPress={() => {
+                setSelectedGitPaths(new Set(selectableGitPaths));
+                showInlineNotice('Selected all files.', 'info');
+              }}
+              disabled={isGitBusy || selectableGitPaths.size === 0}
               style={[
-                styles.gitToolbarCompactActionText,
-                { color: canStageAll ? '#FFFFFF' : theme.colors.text },
+                styles.gitToolbarCompactAction,
+                {
+                  borderColor: theme.colors.divider,
+                  backgroundColor: theme.colors.surface,
+                },
+                (isGitBusy || selectableGitPaths.size === 0) && styles.toolbarButtonDisabled,
               ]}
             >
-              Stage All
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={(event: any) => {
-              openContextMenu(event, 'git-toolbar', '__toolbar__', {
-                fileName: gitStatusFiles?.branch || 'Git actions',
-              });
-            }}
-            disabled={isGitNetworkActionBusy}
+              <Text style={[styles.gitToolbarCompactActionText, { color: theme.colors.textSecondary }]}>All</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSelectedGitPaths(new Set())}
+              disabled={isGitBusy || selectedGitCount === 0}
+              style={[
+                styles.gitToolbarCompactAction,
+                {
+                  borderColor: theme.colors.divider,
+                  backgroundColor: theme.colors.surface,
+                },
+                (isGitBusy || selectedGitCount === 0) && styles.toolbarButtonDisabled,
+              ]}
+            >
+              <Text style={[styles.gitToolbarCompactActionText, { color: theme.colors.textSecondary }]}>Clear</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void handleGitAction('stage-selected')}
+              disabled={isGitBusy || !canStageSelected}
+              style={[
+                styles.gitToolbarCompactAction,
+                {
+                  borderColor: canStageSelected ? '#3B82F6' : theme.colors.divider,
+                  backgroundColor: canStageSelected ? '#3B82F6' : theme.colors.surface,
+                },
+                (isGitBusy || !canStageSelected) && styles.toolbarButtonDisabled,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.gitToolbarCompactActionText,
+                  { color: canStageSelected ? '#FFFFFF' : theme.colors.textSecondary },
+                ]}
+              >
+                Stage Sel
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void handleGitAction('unstage-selected')}
+              disabled={isGitBusy || !canUnstageSelected}
+              style={[
+                styles.gitToolbarCompactAction,
+                {
+                  borderColor: canUnstageSelected ? '#3B82F6' : theme.colors.divider,
+                  backgroundColor: canUnstageSelected ? '#3B82F6' : theme.colors.surface,
+                },
+                (isGitBusy || !canUnstageSelected) && styles.toolbarButtonDisabled,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.gitToolbarCompactActionText,
+                  { color: canUnstageSelected ? '#FFFFFF' : theme.colors.textSecondary },
+                ]}
+              >
+                Unstage Sel
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void handleGitAction('stage-all')}
+              disabled={isGitBusy || !canStageAll}
+              style={[
+                styles.gitToolbarCompactAction,
+                {
+                  borderColor: canStageAll ? '#3B82F6' : theme.colors.divider,
+                  backgroundColor: canStageAll ? '#3B82F6' : theme.colors.surface,
+                },
+                (isGitBusy || !canStageAll) && styles.toolbarButtonDisabled,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.gitToolbarCompactActionText,
+                  { color: canStageAll ? '#FFFFFF' : theme.colors.text },
+                ]}
+              >
+                Stage All
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={(event: any) => {
+                openContextMenu(event, 'git-toolbar', '__toolbar__', {
+                  fileName: gitStatusFiles?.branch || 'Git actions',
+                });
+              }}
+              disabled={isGitNetworkActionBusy}
+              style={[
+                styles.gitToolbarCompactAction,
+                {
+                  borderColor: theme.colors.divider,
+                  backgroundColor: theme.colors.surface,
+                },
+                isGitNetworkActionBusy && styles.toolbarButtonDisabled,
+              ]}
+            >
+              <Ionicons name="ellipsis-horizontal" size={14} color={theme.colors.text} />
+            </Pressable>
+          </View>
+        </View>
+        {taskBarLabel ? (
+          <View
             style={[
-              styles.gitToolbarCompactAction,
+              styles.gitNetworkTaskBar,
               {
-                borderColor: theme.colors.divider,
-                backgroundColor: theme.colors.surface,
+                borderBottomColor: theme.colors.divider,
+                backgroundColor: theme.colors.surfaceHigh,
               },
-              isGitNetworkActionBusy && styles.toolbarButtonDisabled,
             ]}
           >
-            <Ionicons name="ellipsis-horizontal" size={14} color={theme.colors.text} />
-          </Pressable>
-        </View>
-      </View>
+            <Text style={[styles.gitNetworkTaskText, { color: theme.colors.textSecondary }]}>
+              {taskBarLabel}
+            </Text>
+            <View style={styles.gitNetworkTaskActions}>
+              {runningGitNetworkTask ? (
+                <Pressable
+                  onPress={() => void cancelRunningGitNetworkTask()}
+                  style={[
+                    styles.gitNetworkTaskAction,
+                    { borderColor: theme.colors.divider, backgroundColor: theme.colors.surface },
+                  ]}
+                >
+                  <Text style={[styles.gitNetworkTaskActionText, { color: theme.colors.text }]}>Cancel</Text>
+                </Pressable>
+              ) : null}
+              {queuedGitNetworkTaskCount > 0 ? (
+                <Pressable
+                  onPress={clearQueuedGitNetworkTasks}
+                  style={[
+                    styles.gitNetworkTaskAction,
+                    { borderColor: theme.colors.divider, backgroundColor: theme.colors.surface },
+                  ]}
+                >
+                  <Text style={[styles.gitNetworkTaskActionText, { color: theme.colors.textSecondary }]}>
+                    Clear Queue
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+      </>
     );
   }, [
     activeTool,
@@ -2200,11 +2599,21 @@ export function SessionFilesSidebar({
     gitStatusFiles?.totalStaged,
     gitStatusFiles?.totalUnstaged,
     isGitBusy,
+    selectableGitPaths,
+    selectedGitCount,
+    canStageSelected,
+    canUnstageSelected,
     isGitNetworkActionBusy,
+    runningGitNetworkTask,
+    queuedGitNetworkTaskCount,
     handleGitAction,
     openContextMenu,
+    showInlineNotice,
+    cancelRunningGitNetworkTask,
+    clearQueuedGitNetworkTasks,
     theme.colors.divider,
     theme.colors.surface,
+    theme.colors.surfaceHigh,
     theme.colors.text,
     theme.colors.textSecondary,
   ]);
@@ -2374,6 +2783,10 @@ export function SessionFilesSidebar({
       items.push({ key: 'switch-branch', icon: 'git-branch-outline', label: 'Switch Branch', action: 'switch-branch' });
       items.push({ key: 'fetch', icon: 'cloud-download-outline', label: 'Fetch', action: 'fetch' });
       items.push({ key: 'sync', icon: 'refresh-outline', label: 'Sync', action: 'sync' });
+      if (selectedGitCount > 0) {
+        items.push({ key: 'stage-selected', icon: 'checkmark-circle-outline', label: 'Stage Selected', action: 'stage-selected' });
+        items.push({ key: 'unstage-selected', icon: 'remove-circle-outline', label: 'Unstage Selected', action: 'unstage-selected' });
+      }
       items.push({ key: 'stage-all', icon: 'git-branch-outline', label: 'Stage All', action: 'stage-all' });
       items.push({ key: 'unstage-all', icon: 'git-compare-outline', label: 'Unstage All', action: 'unstage-all' });
       items.push({ key: 'stash', icon: 'archive-outline', label: 'Stash', action: 'stash' });
@@ -2477,6 +2890,7 @@ export function SessionFilesSidebar({
     theme.colors.text,
     theme.colors.textDestructive,
     theme.colors.textSecondary,
+    selectedGitCount,
     closeContextMenu,
     styles.contextMenu,
     styles.contextMenuDivider,
