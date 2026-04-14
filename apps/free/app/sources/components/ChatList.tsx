@@ -1527,16 +1527,14 @@ const ChatListInternal = React.memo(
       [props.sessionId, props.footerNotice]
     );
 
-    const contentContainerStyle = useMemo(
-      () =>
-        Platform.OS === 'web' && showScrollFab
-          ? {
-              paddingRight: FAB_SIZE + 24,
-              paddingBottom: FAB_SIZE * 3 + FAB_GAP * 3 + 44,
-            }
-          : undefined,
-      [showScrollFab]
-    );
+    const contentContainerStyle = useMemo(() => {
+      if (Platform.OS !== 'web') return undefined;
+      return {
+        // Keep a stable horizontal gutter on web to avoid content jumping.
+        paddingRight: FAB_SIZE + 24,
+        paddingBottom: showScrollFab ? FAB_SIZE * 3 + FAB_GAP * 3 + 44 : undefined,
+      };
+    }, [showScrollFab]);
 
     return (
       <View style={{ flex: 1, position: 'relative' }}>
