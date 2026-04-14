@@ -24,6 +24,8 @@ import { feedRoutes } from './routes/feedRoutes';
 import { kvRoutes } from './routes/kvRoutes';
 import { capabilitiesRoutes } from './routes/capabilitiesRoutes';
 import { telemetryRoutes } from './routes/telemetryRoutes';
+import { updatesRoutes } from './routes/updatesRoutes';
+import { updatesAdminRoutes } from './routes/updatesAdminRoutes';
 import { register } from '@/app/monitoring/metrics2';
 import { db } from '@/storage/db';
 import { isLocalStorage, getLocalFilesDir } from '@/storage/files';
@@ -130,6 +132,8 @@ export async function startApi() {
   kvRoutes(typed);
   capabilitiesRoutes(typed);
   telemetryRoutes(typed);
+  updatesRoutes(typed);
+  updatesAdminRoutes(typed);
 
   // Metrics endpoint (integrated into main server)
   app.get('/metrics', async (_request, reply) => {

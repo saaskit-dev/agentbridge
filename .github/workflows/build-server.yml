@@ -11,8 +11,14 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
+      - 'scripts/free-server-build.sh'
+      - 'scripts/free-server-deploy.sh'
       - 'turbo.json'
   workflow_dispatch:
+
+concurrency:
+  group: build-server-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -44,6 +50,8 @@ jobs:
   build:
     needs: validate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,11 +106,48 @@ jobs:
 
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
+        env:
+          EXPO_UPDATES_ADMIN_TOKEN: ${{ secrets.OTA_SERVER_TOKEN }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: 27547
+          port: ${{ vars.VPS_SSH_PORT || 27547 }}
+          envs: EXPO_UPDATES_ADMIN_TOKEN
           script: |
-            cd /root/free-server
+            set -euo pipefail
+            cd "${{ vars.SERVER_DEPLOY_DIR || '/root/free-server' }}"
+            touch .env
+
+            upsert_env() {
+              local key="$1"
+              local value="$2"
+              local file=".env"
+              local tmp_file
+              tmp_file="$(mktemp)"
+
+              awk -v key="$key" -v value="$value" '
+                BEGIN { updated = 0 }
+                index($0, key "=") == 1 {
+                  if (updated == 0) {
+                    print key "=" value
+                    updated = 1
+                  }
+                  next
+                }
+                { print }
+                END {
+                  if (updated == 0) {
+                    print key "=" value
+                  }
+                }
+              ' "$file" > "$tmp_file"
+
+              mv "$tmp_file" "$file"
+            }
+
+            upsert_env EXPO_UPDATES_GATEWAY_ENABLED true
+            upsert_env EXPO_UPDATES_GATEWAY_MODE self-hosted
+            upsert_env EXPO_UPDATES_ADMIN_TOKEN "$EXPO_UPDATES_ADMIN_TOKEN"
+
             ./deploy.sh
