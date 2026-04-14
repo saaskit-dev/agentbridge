@@ -516,9 +516,7 @@ fn js_now_ms() -> i64 {
 }
 
 fn updater_enabled() -> bool {
-  option_env!("TAURI_UPDATER_PUBLIC_KEY")
-    .map(|value| !value.trim().is_empty())
-    .unwrap_or(false)
+  option_env!("DESKTOP_UPDATER_ENABLED") == Some("1")
 }
 
 #[tauri::command]
