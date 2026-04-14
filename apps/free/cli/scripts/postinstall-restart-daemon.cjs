@@ -20,25 +20,6 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-function hasExplicitVariantSignal() {
-  return Boolean(process.env.APP_ENV || process.env.FREE_HOME_DIR);
-}
-
-function isWorkspaceCheckout() {
-  let dir = path.resolve(__dirname, '..', '..', '..');
-  for (let i = 0; i < 4; i++) {
-    if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) {
-      return true;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-    dir = parent;
-  }
-  return false;
-}
-
 // Determine FREE_HOME_DIR (same logic as configuration.ts)
 function getFreeHomeDir() {
   if (process.env.FREE_HOME_DIR) {
@@ -214,16 +195,6 @@ function startUnmanagedDaemon() {
 }
 
 function tryRestartDaemon() {
-  // In a source checkout, `pnpm install` often runs without APP_ENV/FREE_HOME_DIR.
-  // Defaulting that case to production is unsafe because it can restart ~/.free
-  // while local development is only trying to hydrate workspace dependencies.
-  if (!hasExplicitVariantSignal() && isWorkspaceCheckout()) {
-    console.log(
-      '[postinstall] Skipping daemon restart because variant/home was not explicitly set in a workspace checkout'
-    );
-    return;
-  }
-
   const freeHomeDir = getFreeHomeDir();
   const stateFile = path.join(freeHomeDir, 'daemon.state.json');
 

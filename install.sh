@@ -24,32 +24,6 @@ ok()    { echo -e "${GREEN}[ok]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[warn]${NC} $*"; }
 err()   { echo -e "${RED}[error]${NC} $*" >&2; }
 
-should_restart_daemon() {
-    local free_home="$1"
-
-    if [ "${FREE_RESTART_DAEMON:-}" = "1" ] || [ "${FREE_RESTART_DAEMON:-}" = "true" ]; then
-        return 0
-    fi
-
-    if [ "$free_home" != "$HOME/.free" ]; then
-        return 0
-    fi
-
-    if [ ! -t 0 ]; then
-        return 1
-    fi
-
-    echo ""
-    warn "Detected production install target: $free_home"
-    warn "Restarting the production daemon will interrupt active free sessions."
-    printf "Restart production daemon now? [y/N] "
-    read -r answer
-    case "$answer" in
-        [yY]|[yY][eE][sS]) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 # ── Prerequisite checks ─────────────────────────────────────────────────────
 
 check_cmd() {
@@ -177,30 +151,25 @@ fi
 
 # Stop any running daemon so the LaunchAgent/systemd starts the new binary
 FREE_HOME="${FREE_HOME_DIR:-$HOME/.free}"
-if should_restart_daemon "$FREE_HOME"; then
-    DAEMON_STATE="$FREE_HOME/daemon.state.json"
-    if [ -f "$DAEMON_STATE" ]; then
-        OLD_PID=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$DAEMON_STATE','utf-8')).pid)}catch{}" 2>/dev/null)
-        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-            info "Stopping old daemon (pid $OLD_PID)..."
-            kill "$OLD_PID" 2>/dev/null || true
-            # Wait briefly for graceful shutdown
-            for i in $(seq 1 20); do
-                kill -0 "$OLD_PID" 2>/dev/null || break
-                sleep 0.25
-            done
-        fi
+DAEMON_STATE="$FREE_HOME/daemon.state.json"
+if [ -f "$DAEMON_STATE" ]; then
+    OLD_PID=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$DAEMON_STATE','utf-8')).pid)}catch{}" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        info "Stopping old daemon (pid $OLD_PID)..."
+        kill "$OLD_PID" 2>/dev/null || true
+        # Wait briefly for graceful shutdown
+        for i in $(seq 1 20); do
+            kill -0 "$OLD_PID" 2>/dev/null || break
+            sleep 0.25
+        done
     fi
+fi
 
-    info "Installing daemon as background service..."
-    if "$BIN_DIR/free" daemon install 2>/dev/null; then
-        ok "Daemon installed and started"
-    else
-        warn "Could not auto-install daemon service. Run 'free daemon install' manually after restarting your shell."
-    fi
+info "Installing daemon as background service..."
+if "$BIN_DIR/free" daemon install 2>/dev/null; then
+    ok "Daemon installed and started"
 else
-    warn "Skipped automatic daemon restart for $FREE_HOME"
-    warn "Run 'free daemon install' manually when you're ready to switch the production daemon."
+    warn "Could not auto-install daemon service. Run 'free daemon install' manually after restarting your shell."
 fi
 
 # ── Done ─────────────────────────────────────────────────────────────────────
