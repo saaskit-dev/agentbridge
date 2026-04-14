@@ -2,7 +2,13 @@ export type PreviewKind = 'text' | 'image' | 'table' | 'binary';
 
 export function getPathExtension(path: string): string | null {
   const cleanPath = path.split('?')[0]?.split('#')[0] ?? path;
-  const ext = cleanPath.split('.').pop()?.toLowerCase();
+  const fileName = cleanPath.split('/').pop() ?? cleanPath;
+  if (!fileName) return null;
+  const dotIndex = fileName.lastIndexOf('.');
+  if (dotIndex < 0 || dotIndex === fileName.length - 1) {
+    return null;
+  }
+  const ext = fileName.slice(dotIndex + 1).toLowerCase();
   return ext || null;
 }
 

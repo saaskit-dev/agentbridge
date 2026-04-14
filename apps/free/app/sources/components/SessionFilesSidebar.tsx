@@ -74,6 +74,14 @@ type VisibleGitTreeRow = {
   depth: number;
 };
 
+type InlineNotice = {
+  tone: 'success' | 'error' | 'info';
+  message: string;
+};
+
+const GIT_DEFAULT_TIMEOUT_MS = 120_000;
+const GIT_NETWORK_TIMEOUT_MS = 600_000;
+
 type GitListRow =
   | {
       type: 'section';
@@ -461,6 +469,25 @@ const styles = StyleSheet.create(theme => ({
     fontSize: 11,
     ...Typography.default('semiBold'),
   },
+  inlineNoticeWrap: {
+    position: 'absolute',
+    top: 10,
+    left: 12,
+    right: 12,
+    zIndex: 1200,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  inlineNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    ...Typography.default('semiBold'),
+  },
 }));
 
 function setResizeCursor(active: boolean) {
@@ -632,6 +659,341 @@ function parentPath(path: string): string | null {
   return normalized.slice(0, idx);
 }
 
+function matchesGitPath(candidate: string, targetPath: string): boolean {
+  return candidate === targetPath || candidate.startsWith(`${targetPath}/`);
+}
+
+function cloneGitFile(file: GitFileStatus, overrides?: Partial<GitFileStatus>): GitFileStatus {
+  return {
+    ...file,
+    ...overrides,
+  };
+}
+
+function dedupeGitFiles(files: GitFileStatus[]): GitFileStatus[] {
+  const map = new Map<string, GitFileStatus>();
+  for (const file of files) {
+    map.set(file.fullPath, file);
+  }
+  return Array.from(map.values()).sort((a, b) => a.fullPath.localeCompare(b.fullPath));
+}
+
+function recalcGitTotals(status: GitStatusFiles): GitStatusFiles {
+  const stagedFiles = dedupeGitFiles(status.stagedFiles);
+  const unstagedFiles = dedupeGitFiles(status.unstagedFiles);
+  return {
+    ...status,
+    stagedFiles,
+    unstagedFiles,
+    totalStaged: stagedFiles.length,
+    totalUnstaged: unstagedFiles.length,
+  };
+}
+
+function optimisticallyStagePath(
+  status: GitStatusFiles | null,
+  targetPath: string
+): GitStatusFiles | null {
+  if (!status) return status;
+  const moved = status.unstagedFiles.filter(file => matchesGitPath(file.fullPath, targetPath));
+  if (moved.length === 0) return status;
+
+  const movedToStaged = moved.map(file =>
+    cloneGitFile(file, {
+      isStaged: true,
+      status: file.status === 'untracked' ? 'added' : file.status,
+    })
+  );
+
+  return recalcGitTotals({
+    ...status,
+    stagedFiles: [...status.stagedFiles, ...movedToStaged],
+    unstagedFiles: status.unstagedFiles.filter(file => !matchesGitPath(file.fullPath, targetPath)),
+  });
+}
+
+function optimisticallyUnstagePath(
+  status: GitStatusFiles | null,
+  targetPath: string
+): GitStatusFiles | null {
+  if (!status) return status;
+  const moved = status.stagedFiles.filter(file => matchesGitPath(file.fullPath, targetPath));
+  if (moved.length === 0) return status;
+
+  const existingUnstaged = new Set(
+    status.unstagedFiles
+      .filter(file => matchesGitPath(file.fullPath, targetPath))
+      .map(file => file.fullPath)
+  );
+  const movedToUnstaged = moved
+    .filter(file => !existingUnstaged.has(file.fullPath))
+    .map(file =>
+      cloneGitFile(file, {
+        isStaged: false,
+        status: file.status === 'added' ? 'untracked' : file.status,
+      })
+    );
+
+  return recalcGitTotals({
+    ...status,
+    stagedFiles: status.stagedFiles.filter(file => !matchesGitPath(file.fullPath, targetPath)),
+    unstagedFiles: [...status.unstagedFiles, ...movedToUnstaged],
+  });
+}
+
+function optimisticallyDiscardPath(
+  status: GitStatusFiles | null,
+  targetPath: string,
+  section: 'staged' | 'unstaged'
+): GitStatusFiles | null {
+  if (!status) return status;
+  if (section === 'staged') {
+    return recalcGitTotals({
+      ...status,
+      stagedFiles: status.stagedFiles.filter(file => !matchesGitPath(file.fullPath, targetPath)),
+      unstagedFiles: status.unstagedFiles.filter(file => !matchesGitPath(file.fullPath, targetPath)),
+    });
+  }
+  return recalcGitTotals({
+    ...status,
+    unstagedFiles: status.unstagedFiles.filter(file => !matchesGitPath(file.fullPath, targetPath)),
+  });
+}
+
+function optimisticallyStageAll(status: GitStatusFiles | null): GitStatusFiles | null {
+  if (!status) return status;
+  const movedToStaged = status.unstagedFiles.map(file =>
+    cloneGitFile(file, {
+      isStaged: true,
+      status: file.status === 'untracked' ? 'added' : file.status,
+    })
+  );
+  return recalcGitTotals({
+    ...status,
+    stagedFiles: [...status.stagedFiles, ...movedToStaged],
+    unstagedFiles: [],
+  });
+}
+
+function optimisticallyUnstageAll(status: GitStatusFiles | null): GitStatusFiles | null {
+  if (!status) return status;
+  const movedToUnstaged = status.stagedFiles.map(file =>
+    cloneGitFile(file, {
+      isStaged: false,
+      status: file.status === 'added' ? 'untracked' : file.status,
+    })
+  );
+  return recalcGitTotals({
+    ...status,
+    stagedFiles: [],
+    unstagedFiles: [...status.unstagedFiles, ...movedToUnstaged],
+  });
+}
+
+function optimisticallyDiscardAll(status: GitStatusFiles | null): GitStatusFiles | null {
+  if (!status) return status;
+  return {
+    ...status,
+    stagedFiles: [],
+    unstagedFiles: [],
+    totalStaged: 0,
+    totalUnstaged: 0,
+  };
+}
+
+function optimisticallyCommit(status: GitStatusFiles | null): GitStatusFiles | null {
+  if (!status) return status;
+  return {
+    ...status,
+    stagedFiles: [],
+    totalStaged: 0,
+  };
+}
+
+const FileTreeRow = React.memo(
+  ({
+    node,
+    depth,
+    selected,
+    expanded,
+    absolutePath,
+    onToggleDirectory,
+    onFilePress,
+    onOpenContextMenu,
+  }: {
+    node: FileTreeNode;
+    depth: number;
+    selected: boolean;
+    expanded: boolean;
+    absolutePath: string;
+    onToggleDirectory: (node: FileTreeNode) => void;
+    onFilePress: (path: string) => void;
+    onOpenContextMenu: (event: any, kind: ContextMenuKind, path: string, options?: Partial<ContextMenuState>) => void;
+  }) => {
+    const { theme } = useUnistyles();
+
+    return (
+      <Pressable
+        onPress={() => {
+          if (node.type === 'directory') {
+            onToggleDirectory(node);
+          } else {
+            onFilePress(node.path);
+          }
+        }}
+        // @ts-ignore web
+        onContextMenu={(event: any) => {
+          onOpenContextMenu(event, 'file', node.path, {
+            absolutePath,
+            fileName: node.name,
+            isDirectory: node.type === 'directory',
+          });
+        }}
+        style={[styles.row, selected && styles.rowSelected, { paddingLeft: 10 + depth * 14 }]}
+      >
+        {node.type === 'directory' ? (
+          <Ionicons
+            name={expanded ? 'chevron-down' : 'chevron-forward'}
+            size={14}
+            color={theme.colors.textSecondary}
+            style={{ marginRight: 4 }}
+          />
+        ) : (
+          <View style={{ width: 18 }} />
+        )}
+        {node.type === 'directory' ? (
+          <Octicons name="file-directory" size={15} color="#007AFF" style={{ marginRight: 8 }} />
+        ) : (
+          <View style={{ marginRight: 8 }}>
+            <FileIcon fileName={node.name} size={16} />
+          </View>
+        )}
+        <Text style={styles.rowLabel} numberOfLines={1}>
+          {node.name}
+        </Text>
+        {node.loading ? (
+          <Ionicons name="sync-outline" size={14} color={theme.colors.textSecondary} />
+        ) : null}
+      </Pressable>
+    );
+  }
+);
+
+const GitTreeRow = React.memo(
+  ({
+    node,
+    depth,
+    selected,
+    absolutePath,
+    expanded,
+    onToggleNode,
+    onOpenFile,
+    onSelectFile,
+    onOpenContextMenu,
+    renderGitFileSubtitle,
+    renderGitStatusIcon,
+    onHandleGitAction,
+  }: {
+    node: GitTreeNode;
+    depth: number;
+    selected: boolean;
+    absolutePath: string;
+    expanded: boolean;
+    onToggleNode: (node: GitTreeNode) => void;
+    onOpenFile: (path: string) => void;
+    onSelectFile: (path: string) => void;
+    onOpenContextMenu: (event: any, kind: ContextMenuKind, path: string, options?: Partial<ContextMenuState>) => void;
+    renderGitFileSubtitle: (file: GitFileStatus) => string;
+    renderGitStatusIcon: (file: GitFileStatus) => React.ReactNode;
+    onHandleGitAction: (
+      type: string,
+      relativePath?: string,
+      options?: { section?: 'staged' | 'unstaged'; status?: GitFileStatus['status'] }
+    ) => void;
+  }) => {
+    const { theme } = useUnistyles();
+    const isStaged = Boolean(node.status?.isStaged);
+
+    return (
+      <Pressable
+        onPress={() => {
+          if (node.type === 'directory') {
+            onToggleNode(node);
+          } else if (node.status) {
+            onSelectFile(absolutePath);
+            onOpenFile(absolutePath);
+          }
+        }}
+        // @ts-ignore web
+        onContextMenu={(event: any) => {
+          onOpenContextMenu(event, 'git', node.path, {
+            absolutePath,
+            fileName: node.name,
+            isDirectory: node.type === 'directory',
+            isStaged,
+            status: node.status?.status,
+            section: isStaged ? 'staged' : 'unstaged',
+          });
+        }}
+        style={[styles.row, selected && styles.rowSelected, { paddingLeft: 10 + depth * 14 }]}
+      >
+        {node.type === 'directory' ? (
+          <Ionicons
+            name={expanded ? 'chevron-down' : 'chevron-forward'}
+            size={14}
+            color={theme.colors.textSecondary}
+            style={{ marginRight: 4 }}
+          />
+        ) : (
+          <View style={{ width: 18 }} />
+        )}
+        {node.type === 'directory' ? (
+          <Octicons name="file-directory" size={15} color="#007AFF" style={{ marginRight: 8 }} />
+        ) : (
+          <View style={{ marginRight: 8 }}>
+            <FileIcon fileName={node.name} size={16} />
+          </View>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.rowLabel} numberOfLines={1}>
+            {node.name}
+          </Text>
+          {node.status ? (
+            <Text style={styles.rowMeta} numberOfLines={1}>
+              {renderGitFileSubtitle(node.status)}
+            </Text>
+          ) : null}
+        </View>
+        {node.status ? (
+          <>
+            {renderGitStatusIcon(node.status)}
+            {node.type === 'file' ? (
+              <Pressable
+                onPress={(event: any) => {
+                  event?.stopPropagation?.();
+                  onHandleGitAction(isStaged ? 'unstage' : 'stage', node.path, {
+                    section: isStaged ? 'staged' : 'unstaged',
+                    status: node.status?.status,
+                  });
+                }}
+                style={[
+                  styles.gitStageToggle,
+                  {
+                    borderColor: isStaged ? '#3B82F6' : theme.colors.divider,
+                    backgroundColor: isStaged ? '#3B82F6' : theme.colors.surface,
+                  },
+                ]}
+              >
+                {isStaged ? <Ionicons name="checkmark" size={12} color="#FFFFFF" /> : null}
+              </Pressable>
+            ) : null}
+          </>
+        ) : null}
+      </Pressable>
+    );
+  }
+);
+
 export function SessionFilesSidebar({
   sessionId,
   rootPath,
@@ -671,11 +1033,15 @@ export function SessionFilesSidebar({
   const [contextMenu, setContextMenu] = React.useState<ContextMenuState | null>(null);
   const [gitExpandedPaths, setGitExpandedPaths] = React.useState<Set<string>>(new Set());
   const [gitCommandBusy, setGitCommandBusy] = React.useState(false);
+  const [gitNetworkBusy, setGitNetworkBusy] = React.useState(false);
   const [gitCommitMessage, setGitCommitMessage] = React.useState('');
+  const [inlineNotice, setInlineNotice] = React.useState<InlineNotice | null>(null);
   const [isSearching, setIsSearching] = React.useState(false);
   const [isDragging, setIsDragging] = React.useState(false);
   const [isHovering, setIsHovering] = React.useState(false);
   const lastFilePressRef = React.useRef<{ path: string; at: number } | null>(null);
+  const inlineNoticeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gitRefreshInFlightRef = React.useRef<Promise<void> | null>(null);
   const [liveWidth, setLiveWidth] = React.useState(persistedWidth);
   const [liveCollapsed, setLiveCollapsed] = React.useState(persistedCollapsed);
 
@@ -929,6 +1295,26 @@ export function SessionFilesSidebar({
     setContextMenu(null);
   }, []);
 
+  const showInlineNotice = React.useCallback((message: string, tone: InlineNotice['tone'] = 'info') => {
+    if (inlineNoticeTimerRef.current) {
+      clearTimeout(inlineNoticeTimerRef.current);
+    }
+    setInlineNotice({ tone, message });
+    inlineNoticeTimerRef.current = setTimeout(() => {
+      setInlineNotice(null);
+      inlineNoticeTimerRef.current = null;
+    }, 2000);
+  }, []);
+
+  React.useEffect(
+    () => () => {
+      if (inlineNoticeTimerRef.current) {
+        clearTimeout(inlineNoticeTimerRef.current);
+      }
+    },
+    []
+  );
+
   const openContextMenu = React.useCallback(
     (event: React.MouseEvent | any, kind: ContextMenuKind, path: string, options?: Partial<ContextMenuState>) => {
       if (typeof document === 'undefined') return;
@@ -958,28 +1344,65 @@ export function SessionFilesSidebar({
       ? targetPath
       : resolveFileAbsolutePath(targetPath);
     await Clipboard.setStringAsync(absoluteTargetPath);
-    Modal.alert(t('common.copied'), t('files.pathCopied'));
-  }, [activeFilePath, resolveFileAbsolutePath, selectedFilePath]);
+    showInlineNotice(t('files.pathCopied'), 'success');
+  }, [activeFilePath, resolveFileAbsolutePath, selectedFilePath, showInlineNotice]);
 
-  const refreshGitData = React.useCallback(async () => {
-    setIsLoadingGit(true);
-    try {
+  const refreshGitData = React.useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setIsLoadingGit(true);
+    }
+    if (gitRefreshInFlightRef.current) {
+      try {
+        await gitRefreshInFlightRef.current;
+      } finally {
+        if (!silent) {
+          setIsLoadingGit(false);
+        }
+      }
+      return;
+    }
+
+    const refreshPromise = (async () => {
       const result = await getGitStatusFiles(sessionId);
       setGitStatusFiles(result);
+    })();
+    gitRefreshInFlightRef.current = refreshPromise;
+    try {
+      await refreshPromise;
     } finally {
-      setIsLoadingGit(false);
+      gitRefreshInFlightRef.current = null;
+      if (!silent) {
+        setIsLoadingGit(false);
+      }
     }
   }, [sessionId]);
 
   const runGitCommand = React.useCallback(
-    async (command: string, options?: { refresh?: boolean }) => {
+    async (
+      command: string,
+      options?: {
+        refresh?: boolean;
+        timeoutMs?: number;
+        blockUi?: boolean;
+        optimisticUpdate?: (current: GitStatusFiles | null) => GitStatusFiles | null;
+      }
+    ) => {
       const target = options?.refresh ?? true;
-      setGitCommandBusy(true);
+      const timeoutMs = options?.timeoutMs ?? GIT_DEFAULT_TIMEOUT_MS;
+      const blockUi = options?.blockUi ?? true;
+      const optimisticUpdate = options?.optimisticUpdate;
+      if (blockUi) {
+        setGitCommandBusy(true);
+      }
+      if (optimisticUpdate) {
+        setGitStatusFiles(current => optimisticUpdate(current));
+      }
       try {
         const result = await sessionBash(sessionId, {
           command,
           cwd: rootPath,
-          timeout: 120000,
+          timeout: timeoutMs,
         });
 
         if (!result.success || result.exitCode !== 0) {
@@ -988,24 +1411,31 @@ export function SessionFilesSidebar({
         }
 
         if (target) {
-          await refreshGitData();
+          await refreshGitData({ silent: true });
         }
         return true;
       } catch (error) {
         logger.error('git command failed', toError(error), { sessionId, command });
-        Modal.alert('Git command failed', String(toError(error)));
+        if (optimisticUpdate) {
+          void refreshGitData({ silent: true });
+        }
+        showInlineNotice(String(toError(error)), 'error');
         return false;
       } finally {
-        setGitCommandBusy(false);
+        if (blockUi) {
+          setGitCommandBusy(false);
+        }
       }
     },
-    [refreshGitData, rootPath, sessionId]
+    [refreshGitData, rootPath, sessionId, showInlineNotice]
   );
 
   const runGitStage = React.useCallback(
     async (path: string) => {
       const targetPath = path.startsWith('/') ? path : `./${path}`;
-      return runGitCommand(`git add --all -- ${shellQuote(targetPath)}`);
+      return runGitCommand(`git add --all -- ${shellQuote(targetPath)}`, {
+        optimisticUpdate: current => optimisticallyStagePath(current, path),
+      });
     },
     [runGitCommand]
   );
@@ -1013,7 +1443,9 @@ export function SessionFilesSidebar({
   const runGitUnstage = React.useCallback(
     async (path: string) => {
       const targetPath = path.startsWith('/') ? path : `./${path}`;
-      return runGitCommand(`git restore --staged -- ${shellQuote(targetPath)}`);
+      return runGitCommand(`git restore --staged -- ${shellQuote(targetPath)}`, {
+        optimisticUpdate: current => optimisticallyUnstagePath(current, path),
+      });
     },
     [runGitCommand]
   );
@@ -1034,7 +1466,9 @@ export function SessionFilesSidebar({
           : options?.status === 'untracked'
             ? `git clean -fd -- ${shellQuote(targetPath)}`
             : `git restore --worktree -- ${shellQuote(targetPath)}; git clean -fd -- ${shellQuote(targetPath)}`;
-      return runGitCommand(command);
+      return runGitCommand(command, {
+        optimisticUpdate: current => optimisticallyDiscardPath(current, path, section),
+      });
     },
     [runGitCommand]
   );
@@ -1049,20 +1483,60 @@ export function SessionFilesSidebar({
       }
     ) => {
       const filePath = relativePath ?? '';
+      const isWriteAction =
+        type !== 'open' &&
+        type !== 'copy' &&
+        type !== 'fetch' &&
+        type !== 'pull' &&
+        type !== 'push' &&
+        type !== 'sync';
+      if (gitNetworkBusy && isWriteAction) {
+        showInlineNotice('Git network operation in progress. Please wait.', 'info');
+        return;
+      }
       switch (type) {
         case 'fetch': {
-          await runGitCommand('git fetch --all --prune');
+          showInlineNotice('Fetching remote updates...', 'info');
+          setGitNetworkBusy(true);
+          try {
+            const success = await runGitCommand('git fetch --all --prune', {
+              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+              blockUi: false,
+            });
+            if (success) {
+              showInlineNotice('Fetch complete.', 'success');
+            }
+          } finally {
+            setGitNetworkBusy(false);
+          }
           break;
         }
         case 'sync': {
-          const pullResult = await runGitCommand('git pull --rebase', { refresh: false });
-          if (!pullResult) {
-            return;
-          }
+          showInlineNotice('Sync in progress: pull...', 'info');
+          setGitNetworkBusy(true);
+          try {
+            const pullResult = await runGitCommand('git pull --rebase', {
+              refresh: false,
+              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+              blockUi: false,
+            });
+            if (!pullResult) {
+              return;
+            }
 
-          const pushResult = await runGitCommand('git push', { refresh: false });
-          if (!pushResult) {
-            return;
+            showInlineNotice('Sync in progress: push...', 'info');
+            const pushResult = await runGitCommand('git push', {
+              refresh: false,
+              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+              blockUi: false,
+            });
+            if (!pushResult) {
+              return;
+            }
+            await refreshGitData({ silent: true });
+            showInlineNotice('Sync complete.', 'success');
+          } finally {
+            setGitNetworkBusy(false);
           }
           break;
         }
@@ -1090,12 +1564,12 @@ export function SessionFilesSidebar({
           if (!stashList.success || stashList.exitCode !== 0) {
             const output = stashList.stderr || stashList.stdout || 'Failed to read stash list';
             logger.error('check git stash list failed', { sessionId, error: output });
-            Modal.alert('Git command failed', output);
+            showInlineNotice(output, 'error');
             return;
           }
 
           if (!(stashList.stdout || '').trim()) {
-            Modal.alert('No stash', 'There are no stashed changes.');
+            showInlineNotice('There are no stashed changes.', 'info');
             return;
           }
 
@@ -1112,7 +1586,7 @@ export function SessionFilesSidebar({
           }
           const branchName = raw.trim();
           if (!branchName) {
-            Modal.alert('Invalid branch', 'Branch name is required.');
+            showInlineNotice('Branch name is required.', 'error');
             return;
           }
           const escaped = shellQuote(branchName);
@@ -1165,23 +1639,53 @@ export function SessionFilesSidebar({
             confirmText: 'Commit',
           });
           if (!message || !message.trim()) return;
-          await runGitCommand(`git commit -m ${shellQuote(message.trim())}`);
+          await runGitCommand(`git commit -m ${shellQuote(message.trim())}`, {
+            optimisticUpdate: current => optimisticallyCommit(current),
+          });
           break;
         }
         case 'pull': {
-          await runGitCommand('git pull');
+          showInlineNotice('Pulling from remote...', 'info');
+          setGitNetworkBusy(true);
+          try {
+            const success = await runGitCommand('git pull', {
+              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+              blockUi: false,
+            });
+            if (success) {
+              showInlineNotice('Pull complete.', 'success');
+            }
+          } finally {
+            setGitNetworkBusy(false);
+          }
           break;
         }
         case 'push': {
-          await runGitCommand('git push');
+          showInlineNotice('Pushing to remote...', 'info');
+          setGitNetworkBusy(true);
+          try {
+            const success = await runGitCommand('git push', {
+              timeoutMs: GIT_NETWORK_TIMEOUT_MS,
+              blockUi: false,
+            });
+            if (success) {
+              showInlineNotice('Push complete.', 'success');
+            }
+          } finally {
+            setGitNetworkBusy(false);
+          }
           break;
         }
         case 'stage-all': {
-          await runGitCommand('git add --all');
+          await runGitCommand('git add --all', {
+            optimisticUpdate: current => optimisticallyStageAll(current),
+          });
           break;
         }
         case 'unstage-all': {
-          await runGitCommand('git restore --staged -- .');
+          await runGitCommand('git restore --staged -- .', {
+            optimisticUpdate: current => optimisticallyUnstageAll(current),
+          });
           break;
         }
         case 'discard-all': {
@@ -1193,15 +1697,16 @@ export function SessionFilesSidebar({
           if (!confirm) {
             return;
           }
-          await runGitCommand('git reset --hard');
-          await runGitCommand('git clean -fd');
+          setGitStatusFiles(current => optimisticallyDiscardAll(current));
+          await runGitCommand('git reset --hard', { refresh: false });
+          await runGitCommand('git clean -fd', { refresh: false });
+          await refreshGitData({ silent: true });
           break;
         }
         default:
           break;
       }
       closeContextMenu();
-      await refreshGitData();
     },
     [
       closeContextMenu,
@@ -1213,6 +1718,8 @@ export function SessionFilesSidebar({
       runGitDiscard,
       runGitStage,
       runGitUnstage,
+      showInlineNotice,
+      gitNetworkBusy,
     ]
   );
 
@@ -1376,53 +1883,16 @@ export function SessionFilesSidebar({
       const selected = selectedFilePath === absolutePath || absoluteActiveFilePath === absolutePath;
 
       return (
-        <Pressable
-          onPress={() => {
-            if (node.type === 'directory') {
-              void handleToggleDirectory(node);
-            } else {
-              handleFilePress(node.path);
-            }
-          }}
-          // @ts-ignore web
-          onContextMenu={(event: any) => {
-            openContextMenu(event, 'file', node.path, {
-              absolutePath,
-              fileName: node.name,
-              isDirectory: node.type === 'directory',
-            });
-          }}
-          style={[styles.row, selected && styles.rowSelected, { paddingLeft: 10 + depth * 14 }]}
-        >
-          {node.type === 'directory' ? (
-            <Ionicons
-              name={expanded ? 'chevron-down' : 'chevron-forward'}
-              size={14}
-              color={theme.colors.textSecondary}
-              style={{ marginRight: 4 }}
-            />
-          ) : (
-            <View style={{ width: 18 }} />
-          )}
-          {node.type === 'directory' ? (
-            <Octicons
-              name="file-directory"
-              size={15}
-              color="#007AFF"
-              style={{ marginRight: 8 }}
-            />
-          ) : (
-            <View style={{ marginRight: 8 }}>
-              <FileIcon fileName={node.name} size={16} />
-            </View>
-          )}
-          <Text style={styles.rowLabel} numberOfLines={1}>
-            {node.name}
-          </Text>
-          {node.loading ? (
-            <Ionicons name="sync-outline" size={14} color={theme.colors.textSecondary} />
-          ) : null}
-        </Pressable>
+        <FileTreeRow
+          node={node}
+          depth={depth}
+          selected={selected}
+          expanded={expanded}
+          absolutePath={absolutePath}
+          onToggleDirectory={handleToggleDirectory}
+          onFilePress={handleFilePress}
+          onOpenContextMenu={openContextMenu}
+        />
       );
     },
     [
@@ -1433,7 +1903,6 @@ export function SessionFilesSidebar({
       openContextMenu,
       resolveFileAbsolutePath,
       selectedFilePath,
-      theme.colors.textSecondary,
     ]
   );
 
@@ -1543,6 +2012,7 @@ export function SessionFilesSidebar({
     (gitStatusFiles?.totalStaged || 0) > 0 || (gitStatusFiles?.totalUnstaged || 0) > 0;
 
   const isGitBusy = isLoadingGit || gitCommandBusy;
+  const isGitNetworkActionBusy = isLoadingGit || gitNetworkBusy;
   const filesListHeader = React.useMemo(() => {
     if (searchQuery.trim()) {
       return <Text style={styles.sectionLabel}>Search</Text>;
@@ -1622,86 +2092,22 @@ export function SessionFilesSidebar({
       const isStaged = Boolean(node.status?.isStaged);
 
       return (
-        <Pressable
-          onPress={() => {
-            if (node.type === 'directory') {
-              toggleGitNode(node);
-            } else if (node.status) {
-              setSelectedFilePath(absolutePath);
-              onOpenFile(absolutePath);
-            }
+        <GitTreeRow
+          node={node}
+          depth={depth}
+          selected={selected}
+          absolutePath={absolutePath}
+          expanded={expanded}
+          onToggleNode={toggleGitNode}
+          onOpenFile={onOpenFile}
+          onSelectFile={setSelectedFilePath}
+          onOpenContextMenu={openContextMenu}
+          renderGitFileSubtitle={renderGitFileSubtitle}
+          renderGitStatusIcon={renderGitStatusIcon}
+          onHandleGitAction={(type, relativePath, options) => {
+            void handleGitAction(type, relativePath, options);
           }}
-          // @ts-ignore web
-          onContextMenu={(event: any) => {
-            openContextMenu(event, 'git', node.path, {
-              absolutePath,
-              fileName: node.name,
-              isDirectory: node.type === 'directory',
-              isStaged,
-              status: node.status?.status,
-              section: isStaged ? 'staged' : 'unstaged',
-            });
-          }}
-          style={[styles.row, selected && styles.rowSelected, { paddingLeft: 10 + depth * 14 }]}
-        >
-          {node.type === 'directory' ? (
-            <Ionicons
-              name={expanded ? 'chevron-down' : 'chevron-forward'}
-              size={14}
-              color={theme.colors.textSecondary}
-              style={{ marginRight: 4 }}
-            />
-          ) : (
-            <View style={{ width: 18 }} />
-          )}
-          {node.type === 'directory' ? (
-            <Octicons
-              name="file-directory"
-              size={15}
-              color="#007AFF"
-              style={{ marginRight: 8 }}
-            />
-          ) : (
-            <View style={{ marginRight: 8 }}>
-              <FileIcon fileName={node.name} size={16} />
-            </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rowLabel} numberOfLines={1}>
-              {node.name}
-            </Text>
-            {node.status ? (
-              <Text style={styles.rowMeta} numberOfLines={1}>
-                {renderGitFileSubtitle(node.status)}
-              </Text>
-            ) : null}
-          </View>
-          {node.status ? (
-            <>
-              {renderGitStatusIcon(node.status)}
-              {node.type === 'file' ? (
-                <Pressable
-                  onPress={(event: any) => {
-                    event?.stopPropagation?.();
-                    void handleGitAction(isStaged ? 'unstage' : 'stage', node.path, {
-                      section: isStaged ? 'staged' : 'unstaged',
-                      status: node.status?.status,
-                    });
-                  }}
-                  style={[
-                    styles.gitStageToggle,
-                    {
-                      borderColor: isStaged ? '#3B82F6' : theme.colors.divider,
-                      backgroundColor: isStaged ? '#3B82F6' : theme.colors.surface,
-                    },
-                  ]}
-                >
-                  {isStaged ? <Ionicons name="checkmark" size={12} color="#FFFFFF" /> : null}
-                </Pressable>
-              ) : null}
-            </>
-          ) : null}
-        </Pressable>
+        />
       );
     },
     [
@@ -1714,9 +2120,6 @@ export function SessionFilesSidebar({
       renderGitStatusIcon,
       resolveFileAbsolutePath,
       selectedFilePath,
-      theme.colors.divider,
-      theme.colors.surface,
-      theme.colors.textSecondary,
       theme.colors.warning,
       toggleGitNode,
     ]
@@ -1776,14 +2179,14 @@ export function SessionFilesSidebar({
                 fileName: gitStatusFiles?.branch || 'Git actions',
               });
             }}
-            disabled={isGitBusy}
+            disabled={isGitNetworkActionBusy}
             style={[
               styles.gitToolbarCompactAction,
               {
                 borderColor: theme.colors.divider,
                 backgroundColor: theme.colors.surface,
               },
-              isGitBusy && styles.toolbarButtonDisabled,
+              isGitNetworkActionBusy && styles.toolbarButtonDisabled,
             ]}
           >
             <Ionicons name="ellipsis-horizontal" size={14} color={theme.colors.text} />
@@ -1797,6 +2200,7 @@ export function SessionFilesSidebar({
     gitStatusFiles?.totalStaged,
     gitStatusFiles?.totalUnstaged,
     isGitBusy,
+    isGitNetworkActionBusy,
     handleGitAction,
     openContextMenu,
     theme.colors.divider,
@@ -1817,14 +2221,17 @@ export function SessionFilesSidebar({
   const commitWithMessage = React.useCallback(async () => {
     const message = gitCommitMessage.trim();
     if (!message) {
-      Modal.alert('Commit message required', 'Please enter a commit message.');
+      showInlineNotice('Please enter a commit message.', 'error');
       return;
     }
-    const success = await runGitCommand(`git commit -m ${shellQuote(message)}`);
+    const success = await runGitCommand(`git commit -m ${shellQuote(message)}`, {
+      optimisticUpdate: current => optimisticallyCommit(current),
+    });
     if (success) {
       setGitCommitMessage('');
+      showInlineNotice('Commit created.', 'success');
     }
-  }, [gitCommitMessage, runGitCommand]);
+  }, [gitCommitMessage, runGitCommand, showInlineNotice]);
 
   const renderGitCommitDock = React.useCallback(() => {
     if (activeTool !== 'git' || !gitStatusFiles) return null;
@@ -1844,8 +2251,8 @@ export function SessionFilesSidebar({
         <View style={styles.gitBranchBar}>
           <Pressable
             onPress={() => void handleGitAction('switch-branch')}
-            disabled={isGitBusy}
-            style={isGitBusy ? styles.toolbarButtonDisabled : undefined}
+            disabled={isGitNetworkActionBusy}
+            style={isGitNetworkActionBusy ? styles.toolbarButtonDisabled : undefined}
           >
             <Text style={[styles.gitBranchBarText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
               {branchText}
@@ -1853,14 +2260,14 @@ export function SessionFilesSidebar({
           </Pressable>
           <Pressable
             onPress={() => void handleGitAction('fetch')}
-            disabled={isGitBusy}
+            disabled={isGitNetworkActionBusy}
             style={[
               styles.gitFetchButton,
               {
                 borderColor: theme.colors.divider,
                 backgroundColor: theme.colors.surface,
               },
-              isGitBusy && styles.toolbarButtonDisabled,
+              isGitNetworkActionBusy && styles.toolbarButtonDisabled,
             ]}
           >
             <Text style={[styles.gitFetchButtonText, { color: theme.colors.text }]}>Fetch</Text>
@@ -1904,6 +2311,7 @@ export function SessionFilesSidebar({
     gitStatusFiles,
     handleGitAction,
     isGitBusy,
+    isGitNetworkActionBusy,
     rootPath,
     theme.colors.divider,
     theme.colors.input.background,
@@ -1935,14 +2343,24 @@ export function SessionFilesSidebar({
         items.push({ key: 'open', icon: 'open-outline', label: 'Open', action: 'open' });
       }
       if (contextMenu.isStaged) {
-        items.push({ key: 'unstage', icon: 'arrow-undo', label: 'Unstage', action: 'unstage' });
+        items.push({
+          key: 'unstage',
+          icon: 'arrow-undo',
+          label: contextMenu.isDirectory ? 'Unstage Folder' : 'Unstage',
+          action: 'unstage',
+        });
       } else {
-        items.push({ key: 'stage', icon: 'arrow-up', label: 'Stage', action: 'stage' });
+        items.push({
+          key: 'stage',
+          icon: 'arrow-up',
+          label: contextMenu.isDirectory ? 'Stage Folder' : 'Stage',
+          action: 'stage',
+        });
       }
       items.push({
         key: 'discard',
         icon: 'trash-outline',
-        label: 'Discard',
+        label: contextMenu.isDirectory ? 'Discard Folder' : 'Discard',
         danger: true,
         action: 'discard',
       });
@@ -2085,6 +2503,61 @@ export function SessionFilesSidebar({
     <View style={[styles.container, { width: panelWidth, position: 'relative', overflow: 'hidden' }]}>
       {!liveCollapsed ? (
         <>
+          {inlineNotice ? (
+            <View
+              style={[
+                styles.inlineNoticeWrap,
+                {
+                  borderColor:
+                    inlineNotice.tone === 'error'
+                      ? theme.colors.textDestructive
+                      : inlineNotice.tone === 'success'
+                        ? theme.colors.success
+                        : theme.colors.divider,
+                  backgroundColor:
+                    inlineNotice.tone === 'error'
+                      ? `${theme.colors.textDestructive}1A`
+                      : inlineNotice.tone === 'success'
+                        ? `${theme.colors.success}1A`
+                        : theme.colors.surfaceHigh,
+                },
+              ]}
+            >
+              <Ionicons
+                name={
+                  inlineNotice.tone === 'error'
+                    ? 'alert-circle-outline'
+                    : inlineNotice.tone === 'success'
+                      ? 'checkmark-circle-outline'
+                      : 'information-circle-outline'
+                }
+                size={14}
+                color={
+                  inlineNotice.tone === 'error'
+                    ? theme.colors.textDestructive
+                    : inlineNotice.tone === 'success'
+                      ? theme.colors.success
+                      : theme.colors.textSecondary
+                }
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.inlineNoticeText,
+                  {
+                    color:
+                      inlineNotice.tone === 'error'
+                        ? theme.colors.textDestructive
+                        : inlineNotice.tone === 'success'
+                          ? theme.colors.success
+                          : theme.colors.textSecondary,
+                  },
+                ]}
+              >
+                {inlineNotice.message}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.header}>
             <View style={styles.headerTop}>
               <Octicons name="repo" size={16} color={theme.colors.textSecondary} />
@@ -2242,7 +2715,7 @@ export function SessionFilesSidebar({
                 keyboardShouldPersistTaps="handled"
               />
             )
-          ) : isLoadingGit ? (
+          ) : isLoadingGit && !gitStatusFiles ? (
             <View style={styles.treeScroll}>
               {gitListHeader}
               <View style={styles.emptyWrap}>

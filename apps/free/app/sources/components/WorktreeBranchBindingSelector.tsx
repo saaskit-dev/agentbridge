@@ -131,7 +131,7 @@ const stylesheet = StyleSheet.create(theme => ({
   },
 }));
 
-function ExistingBranchSelect(props: {
+const ExistingBranchSelect = React.memo(function ExistingBranchSelect(props: {
   existingBranch: string;
   branches: string[];
   placeholder: string;
@@ -238,7 +238,7 @@ function ExistingBranchSelect(props: {
       </Modal>
     </>
   );
-}
+});
 
 function formatWorktreeRootPreview(homeDir?: string): string | null {
   if (!homeDir?.trim()) {
@@ -277,6 +277,7 @@ export const WorktreeBranchBindingSelector: React.FC<WorktreeBranchBindingSelect
   const [branchLoadError, setBranchLoadError] = React.useState<string | null>(null);
 
   const storagePreview = React.useMemo(() => formatWorktreeRootPreview(homeDir), [homeDir]);
+  const branchTheme = React.useMemo(() => ({ colors: theme.colors }), [theme.colors]);
 
   const handleRefreshBranches = React.useCallback(async () => {
     if (!machineId || !basePath.trim()) {
@@ -318,6 +319,18 @@ export const WorktreeBranchBindingSelector: React.FC<WorktreeBranchBindingSelect
     value.startPoint,
   ]);
 
+  const handleSelectExistingBranch = React.useCallback(
+    (branch: string) => {
+      onChange({
+        mode: value.newBranchName.trim() ? 'new' : 'auto',
+        existingBranch: branch,
+        newBranchName: value.newBranchName,
+        startPoint: value.newBranchName.trim() ? branch || value.startPoint : '',
+      });
+    },
+    [onChange, value.newBranchName, value.startPoint]
+  );
+
   React.useEffect(() => {
     if (!machineId || !basePath.trim()) {
       return;
@@ -337,15 +350,8 @@ export const WorktreeBranchBindingSelector: React.FC<WorktreeBranchBindingSelect
             existingBranch={value.existingBranch}
             branches={branches}
             placeholder={t('newSession.worktree.branchPickerPlaceholder')}
-            theme={theme}
-            onSelect={branch =>
-              onChange({
-                mode: value.newBranchName.trim() ? 'new' : 'auto',
-                existingBranch: branch,
-                newBranchName: value.newBranchName,
-                startPoint: value.newBranchName.trim() ? branch || value.startPoint : '',
-              })
-            }
+            theme={branchTheme}
+            onSelect={handleSelectExistingBranch}
           />
           <View style={styles.refreshRow}>
             <Pressable onPress={() => void handleRefreshBranches()}>

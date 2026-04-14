@@ -10,7 +10,7 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
-export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
+function CommandPaletteInner({ commands, onClose }: CommandPaletteProps) {
   const {
     searchQuery,
     selectedIndex,
@@ -39,6 +39,8 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
     </View>
   );
 }
+
+export const CommandPalette = React.memo(CommandPaletteInner);
 
 const styles = StyleSheet.create({
   container: {

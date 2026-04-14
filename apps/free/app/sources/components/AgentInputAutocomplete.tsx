@@ -10,9 +10,40 @@ interface AgentInputAutocompleteProps {
   itemHeight: number;
 }
 
+const AgentInputAutocompleteRow = React.memo(function AgentInputAutocompleteRow({
+  suggestion,
+  index,
+  selected,
+  onSelect,
+  itemHeight,
+}: {
+  suggestion: React.ReactElement;
+  index: number;
+  selected: boolean;
+  onSelect: (index: number) => void;
+  itemHeight: number;
+}) {
+  const { theme } = useUnistyles();
+
+  return (
+    <Pressable
+      onPress={() => onSelect(index)}
+      style={({ pressed }) => ({
+        height: itemHeight,
+        backgroundColor: pressed
+          ? theme.colors.surfacePressed
+          : selected
+            ? theme.colors.surfaceSelected
+            : 'transparent',
+      })}
+    >
+      {suggestion}
+    </Pressable>
+  );
+});
+
 export const AgentInputAutocomplete = React.memo((props: AgentInputAutocompleteProps) => {
   const { suggestions, selectedIndex = -1, onSelect, itemHeight } = props;
-  const { theme } = useUnistyles();
 
   if (suggestions.length === 0) {
     return null;
@@ -21,20 +52,14 @@ export const AgentInputAutocomplete = React.memo((props: AgentInputAutocompleteP
   return (
     <FloatingOverlay maxHeight={240} keyboardShouldPersistTaps="handled">
       {suggestions.map((suggestion, index) => (
-        <Pressable
+        <AgentInputAutocompleteRow
           key={index}
-          onPress={() => onSelect(index)}
-          style={({ pressed }) => ({
-            height: itemHeight,
-            backgroundColor: pressed
-              ? theme.colors.surfacePressed
-              : selectedIndex === index
-                ? theme.colors.surfaceSelected
-                : 'transparent',
-          })}
-        >
-          {suggestion}
-        </Pressable>
+          suggestion={suggestion}
+          index={index}
+          selected={selectedIndex === index}
+          onSelect={onSelect}
+          itemHeight={itemHeight}
+        />
       ))}
     </FloatingOverlay>
   );

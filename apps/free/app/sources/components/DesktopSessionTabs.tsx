@@ -174,18 +174,110 @@ const TabContextMenu = React.memo(
   }
 );
 
+const DesktopSessionTabItem = React.memo(
+  ({
+    tabId,
+    title,
+    active,
+    fallbackTabId,
+    onActivateTab,
+    onCloseTab,
+    onOpenContextMenu,
+  }: {
+    tabId: string;
+    title: string;
+    active: boolean;
+    fallbackTabId: string | null;
+    onActivateTab: (tabId: string) => void;
+    onCloseTab: (tabId: string, options: { active: boolean; fallbackTabId: string | null }) => void;
+    onOpenContextMenu: (tabId: string, event: any) => void;
+  }) => {
+    const { theme } = useUnistyles();
+
+    return (
+      <Pressable
+        onPress={() => onActivateTab(tabId)}
+        // @ts-ignore web
+        onContextMenu={Platform.OS === 'web' ? (event: any) => onOpenContextMenu(tabId, event) : undefined}
+        style={[styles.tab, active ? styles.tabActive : styles.tabInactive]}
+      >
+        <Ionicons
+          name="chatbubble-ellipses-outline"
+          size={14}
+          color={active ? theme.colors.text : theme.colors.textSecondary}
+          style={{ marginRight: 8 }}
+        />
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.title,
+            {
+              color: active ? theme.colors.text : theme.colors.textSecondary,
+              ...(active ? Typography.default('semiBold') : Typography.default()),
+            },
+          ]}
+        >
+          {title}
+        </Text>
+        <Pressable
+          hitSlop={8}
+          onPress={(event: any) => {
+            event?.stopPropagation?.();
+            onCloseTab(tabId, { active, fallbackTabId });
+          }}
+          style={styles.closeButton}
+        >
+          <Ionicons name="close" size={12} color={theme.colors.textSecondary} />
+        </Pressable>
+      </Pressable>
+    );
+  }
+);
+
 export function DesktopSessionTabs({
   activeSessionId,
 }: {
   activeSessionId: string;
 }) {
   const router = useRouter();
-  const { theme } = useUnistyles();
   const tabs = useDesktopSessionTabsState(state => state.tabs);
   const closeTab = useDesktopSessionTabsState(state => state.closeTab);
   const closeOtherTabs = useDesktopSessionTabsState(state => state.closeOtherTabs);
   const closeAllTabs = useDesktopSessionTabsState(state => state.closeAllTabs);
   const [contextMenu, setContextMenu] = React.useState<TabContextMenuState | null>(null);
+
+  const handleActivateTab = React.useCallback(
+    (tabId: string) => {
+      router.navigate(`/session/${tabId}`);
+    },
+    [router]
+  );
+
+  const handleOpenContextMenu = React.useCallback((tabId: string, event: any) => {
+    event.preventDefault();
+    setContextMenu({
+      x: event.clientX ?? event.nativeEvent?.clientX ?? 0,
+      y: event.clientY ?? event.nativeEvent?.clientY ?? 0,
+      tabId,
+    });
+  }, []);
+
+  const handleCloseTab = React.useCallback(
+    (tabId: string, options: { active: boolean; fallbackTabId: string | null }) => {
+      if (options.active) {
+        if (options.fallbackTabId) {
+          router.navigate(`/session/${options.fallbackTabId}`);
+        } else {
+          router.navigate('/');
+        }
+        setTimeout(() => closeTab(tabId), 0);
+        return;
+      }
+
+      closeTab(tabId);
+    },
+    [closeTab, router]
+  );
 
   if (tabs.length <= 1) {
     return null;
@@ -196,67 +288,18 @@ export function DesktopSessionTabs({
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
         {tabs.map((tab, index) => {
           const active = tab.id === activeSessionId;
+          const fallbackTabId = tabs[index + 1]?.id ?? tabs[index - 1]?.id ?? null;
           return (
-            <Pressable
+            <DesktopSessionTabItem
               key={tab.id}
-              onPress={() => router.navigate(`/session/${tab.id}`)}
-              // @ts-ignore web
-              onContextMenu={
-                Platform.OS === 'web'
-                  ? (event: any) => {
-                      event.preventDefault();
-                      setContextMenu({
-                        x: event.clientX ?? event.nativeEvent?.clientX ?? 0,
-                        y: event.clientY ?? event.nativeEvent?.clientY ?? 0,
-                        tabId: tab.id,
-                      });
-                    }
-                  : undefined
-              }
-              style={[styles.tab, active ? styles.tabActive : styles.tabInactive]}
-            >
-              <Ionicons
-                name="chatbubble-ellipses-outline"
-                size={14}
-                color={active ? theme.colors.text : theme.colors.textSecondary}
-                style={{ marginRight: 8 }}
-              />
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.title,
-                  {
-                    color: active ? theme.colors.text : theme.colors.textSecondary,
-                    ...(active ? Typography.default('semiBold') : Typography.default()),
-                  },
-                ]}
-              >
-                {tab.title}
-              </Text>
-              <Pressable
-                hitSlop={8}
-                onPress={(event: any) => {
-                  event?.stopPropagation?.();
-                  if (active) {
-                    const fallback = tabs[index + 1]?.id ?? tabs[index - 1]?.id ?? null;
-                    if (fallback) {
-                      router.navigate(`/session/${fallback}`);
-                    } else {
-                      router.navigate('/');
-                    }
-                    // Defer removal until after navigation so the current SessionView
-                    // can't immediately upsert the tab again before it unmounts.
-                    setTimeout(() => closeTab(tab.id), 0);
-                    return;
-                  }
-
-                  closeTab(tab.id);
-                }}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={12} color={theme.colors.textSecondary} />
-              </Pressable>
-            </Pressable>
+              tabId={tab.id}
+              title={tab.title}
+              active={active}
+              fallbackTabId={fallbackTabId}
+              onActivateTab={handleActivateTab}
+              onCloseTab={handleCloseTab}
+              onOpenContextMenu={handleOpenContextMenu}
+            />
           );
         })}
       </ScrollView>

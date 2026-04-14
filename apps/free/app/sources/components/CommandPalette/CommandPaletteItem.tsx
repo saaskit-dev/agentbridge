@@ -11,7 +11,7 @@ interface CommandPaletteItemProps {
   onHover?: () => void;
 }
 
-export function CommandPaletteItem({
+function CommandPaletteItemInner({
   command,
   isSelected,
   onPress,
@@ -79,6 +79,8 @@ export function CommandPaletteItem({
     </Pressable>
   );
 }
+
+export const CommandPaletteItem = React.memo(CommandPaletteItemInner);
 
 const styles = StyleSheet.create({
   container: {

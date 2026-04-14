@@ -11,7 +11,38 @@ interface CommandPaletteResultsProps {
   onSelectionChange: (index: number) => void;
 }
 
-export function CommandPaletteResults({
+const CommandPaletteResultRow = React.memo(function CommandPaletteResultRow({
+  command,
+  commandIndex,
+  isSelected,
+  onSelectCommand,
+  onSelectionChange,
+  itemRefs,
+}: {
+  command: Command;
+  commandIndex: number;
+  isSelected: boolean;
+  onSelectCommand: (command: Command) => void;
+  onSelectionChange: (index: number) => void;
+  itemRefs: React.MutableRefObject<{ [key: number]: View | null }>;
+}) {
+  return (
+    <View
+      ref={ref => {
+        itemRefs.current[commandIndex] = ref;
+      }}
+    >
+      <CommandPaletteItem
+        command={command}
+        isSelected={isSelected}
+        onPress={() => onSelectCommand(command)}
+        onHover={() => onSelectionChange(commandIndex)}
+      />
+    </View>
+  );
+});
+
+function CommandPaletteResultsInner({
   categories,
   selectedIndex,
   onSelectCommand,
@@ -73,19 +104,15 @@ export function CommandPaletteResults({
           currentIndex++;
 
           return (
-            <View
+            <CommandPaletteResultRow
               key={command.id}
-              ref={ref => {
-                itemRefs.current[commandIndex] = ref;
-              }}
-            >
-              <CommandPaletteItem
-                command={command}
-                isSelected={isSelected}
-                onPress={() => onSelectCommand(command)}
-                onHover={() => onSelectionChange(commandIndex)}
-              />
-            </View>
+              command={command}
+              commandIndex={commandIndex}
+              isSelected={isSelected}
+              onSelectCommand={onSelectCommand}
+              onSelectionChange={onSelectionChange}
+              itemRefs={itemRefs}
+            />
           );
         });
 
@@ -101,6 +128,8 @@ export function CommandPaletteResults({
     </ScrollView>
   );
 }
+
+export const CommandPaletteResults = React.memo(CommandPaletteResultsInner);
 
 const styles = StyleSheet.create({
   container: {

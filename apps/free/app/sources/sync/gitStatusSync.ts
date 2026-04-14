@@ -4,8 +4,6 @@
  */
 
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
-import { parseCurrentBranch } from './git-parsers/parseBranch';
-import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';
 import {
   parseStatusSummaryV2,
@@ -154,26 +152,8 @@ export class GitStatusSync {
         return;
       }
 
-      // Get git diff statistics for unstaged changes
-      const diffStatResult = await sessionBash(sessionId, {
-        command: 'git diff --numstat',
-        cwd: session.metadata.path,
-        timeout: 10000,
-      });
-
-      // Get git diff statistics for staged changes
-      const stagedDiffStatResult = await sessionBash(sessionId, {
-        command: 'git diff --cached --numstat',
-        cwd: session.metadata.path,
-        timeout: 10000,
-      });
-
-      // Parse the git status output with diff statistics
-      const gitStatus = this.parseGitStatusV2(
-        statusResult.stdout,
-        diffStatResult.success ? diffStatResult.stdout : '',
-        stagedDiffStatResult.success ? stagedDiffStatResult.stdout : ''
-      );
+      // Keep background sync lightweight; file-level views fetch heavier details on demand.
+      const gitStatus = this.parseGitStatusV2(statusResult.stdout);
 
       // Apply to storage (this also updates the project git status via the modified applyGitStatus)
       storage.getState().applyGitStatus(sessionId, gitStatus);
@@ -192,11 +172,7 @@ export class GitStatusSync {
   /**
    * Parse git status porcelain v2 output into structured data
    */
-  private parseGitStatusV2(
-    porcelainV2Output: string,
-    diffStatOutput: string = '',
-    stagedDiffStatOutput: string = ''
-  ): GitStatus {
+  private parseGitStatusV2(porcelainV2Output: string): GitStatus {
     // Parse status using v2 parser
     const statusSummary = parseStatusSummaryV2(porcelainV2Output);
     const counts = getStatusCountsV2(statusSummary);
@@ -204,32 +180,19 @@ export class GitStatusSync {
     const branchName = getCurrentBranchV2(statusSummary);
     const trackingInfo = getTrackingInfoV2(statusSummary);
 
-    // Parse diff statistics
-    const unstagedDiff = parseNumStat(diffStatOutput);
-    const stagedDiff = parseNumStat(stagedDiffStatOutput);
-    const { stagedAdded, stagedRemoved, unstagedAdded, unstagedRemoved } = mergeDiffSummaries(
-      stagedDiff,
-      unstagedDiff
-    );
-
-    // Calculate totals
-    const linesAdded = stagedAdded + unstagedAdded;
-    const linesRemoved = stagedRemoved + unstagedRemoved;
-    const linesChanged = linesAdded + linesRemoved;
-
     return {
       branch: branchName,
       isDirty: repoIsDirty,
       modifiedCount: counts.modified,
       untrackedCount: counts.untracked,
       stagedCount: counts.staged,
-      stagedLinesAdded: stagedAdded,
-      stagedLinesRemoved: stagedRemoved,
-      unstagedLinesAdded: unstagedAdded,
-      unstagedLinesRemoved: unstagedRemoved,
-      linesAdded,
-      linesRemoved,
-      linesChanged,
+      stagedLinesAdded: 0,
+      stagedLinesRemoved: 0,
+      unstagedLinesAdded: 0,
+      unstagedLinesRemoved: 0,
+      linesAdded: 0,
+      linesRemoved: 0,
+      linesChanged: 0,
       lastUpdatedAt: Date.now(),
       // V2-specific fields
       upstreamBranch: statusSummary.branch.upstream || null,
@@ -243,29 +206,11 @@ export class GitStatusSync {
    * Parse git status porcelain output into structured data using simple-git parsers
    * (Legacy v1 fallback method - kept for compatibility)
    */
-  private parseGitStatus(
-    branchName: string | null,
-    porcelainOutput: string,
-    diffStatOutput: string = '',
-    stagedDiffStatOutput: string = ''
-  ): GitStatus {
+  private parseGitStatus(branchName: string | null, porcelainOutput: string): GitStatus {
     // Parse status using simple-git parser
     const statusSummary = parseStatusSummary(porcelainOutput);
     const counts = getStatusCounts(statusSummary);
     const repoIsDirty = isDirty(statusSummary);
-
-    // Parse diff statistics
-    const unstagedDiff = parseNumStat(diffStatOutput);
-    const stagedDiff = parseNumStat(stagedDiffStatOutput);
-    const { stagedAdded, stagedRemoved, unstagedAdded, unstagedRemoved } = mergeDiffSummaries(
-      stagedDiff,
-      unstagedDiff
-    );
-
-    // Calculate totals
-    const linesAdded = stagedAdded + unstagedAdded;
-    const linesRemoved = stagedRemoved + unstagedRemoved;
-    const linesChanged = linesAdded + linesRemoved;
 
     return {
       branch: branchName || null,
@@ -273,13 +218,13 @@ export class GitStatusSync {
       modifiedCount: counts.modified,
       untrackedCount: counts.untracked,
       stagedCount: counts.staged,
-      stagedLinesAdded: stagedAdded,
-      stagedLinesRemoved: stagedRemoved,
-      unstagedLinesAdded: unstagedAdded,
-      unstagedLinesRemoved: unstagedRemoved,
-      linesAdded,
-      linesRemoved,
-      linesChanged,
+      stagedLinesAdded: 0,
+      stagedLinesRemoved: 0,
+      unstagedLinesAdded: 0,
+      unstagedLinesRemoved: 0,
+      linesAdded: 0,
+      linesRemoved: 0,
+      linesChanged: 0,
       lastUpdatedAt: Date.now(),
     };
   }

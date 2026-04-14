@@ -110,6 +110,13 @@ export const MarkdownView = React.memo(
     markdownFilePath?: string;
   }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
+    const assetContext = React.useMemo<MarkdownAssetContext>(
+      () => ({
+        sessionId: props.sessionId,
+        markdownFilePath: props.markdownFilePath,
+      }),
+      [props.markdownFilePath, props.sessionId]
+    );
 
     // Prefer inline text selection across platforms when markdownCopyV2 is enabled.
     // The legacy fallback keeps the old native long-press selection screen only when the
@@ -139,7 +146,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
-                  assetContext={props}
+                  assetContext={assetContext}
                 />
               );
             } else if (block.type === 'header') {
@@ -151,7 +158,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
-                  assetContext={props}
+                  assetContext={assetContext}
                 />
               );
             } else if (block.type === 'horizontal-rule') {
@@ -164,7 +171,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
-                  assetContext={props}
+                  assetContext={assetContext}
                 />
               );
             } else if (block.type === 'numbered-list') {
@@ -175,7 +182,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
-                  assetContext={props}
+                  assetContext={assetContext}
                 />
               );
             } else if (block.type === 'code-block') {
@@ -220,7 +227,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
-                  assetContext={props}
+                  assetContext={assetContext}
                 />
               );
             } else if (block.type === 'checklist') {
@@ -231,7 +238,7 @@ export const MarkdownView = React.memo(
                   first={index === 0}
                   last={index === blocks.length - 1}
                   selectable={selectable}
-                  assetContext={props}
+                  assetContext={assetContext}
                 />
               );
             } else if (block.type === 'image') {
@@ -242,8 +249,8 @@ export const MarkdownView = React.memo(
                   alt={block.alt}
                   first={index === 0}
                   last={index === blocks.length - 1}
-                  sessionId={props.sessionId}
-                  markdownFilePath={props.markdownFilePath}
+                  sessionId={assetContext.sessionId}
+                  markdownFilePath={assetContext.markdownFilePath}
                 />
               );
             } else {
@@ -344,7 +351,7 @@ function useResolvedMarkdownImage(source: string, assetContext?: MarkdownAssetCo
   return { resolvedUri, loadFailed, localSourcePath };
 }
 
-function RenderTextBlock(props: {
+const RenderTextBlock = React.memo(function RenderTextBlock(props: {
   spans: MarkdownSpan[];
   first: boolean;
   last: boolean;
@@ -361,7 +368,7 @@ function RenderTextBlock(props: {
     />
   );
   return content;
-}
+});
 
 function RenderImageBlock(props: {
   source: string;
@@ -405,7 +412,7 @@ function RenderImageBlock(props: {
   );
 }
 
-function RenderHeaderBlock(props: {
+const RenderHeaderBlock = React.memo(function RenderHeaderBlock(props: {
   level: 1 | 2 | 3 | 4 | 5 | 6;
   spans: MarkdownSpan[];
   first: boolean;
@@ -425,9 +432,9 @@ function RenderHeaderBlock(props: {
     />
   );
   return content;
-}
+});
 
-function RenderListBlock(props: {
+const RenderListBlock = React.memo(function RenderListBlock(props: {
   items: MarkdownSpan[][];
   first: boolean;
   last: boolean;
@@ -453,9 +460,9 @@ function RenderListBlock(props: {
     </View>
   );
   return content;
-}
+});
 
-function RenderNumberedListBlock(props: {
+const RenderNumberedListBlock = React.memo(function RenderNumberedListBlock(props: {
   items: { number: number; spans: MarkdownSpan[] }[];
   first: boolean;
   last: boolean;
@@ -481,9 +488,9 @@ function RenderNumberedListBlock(props: {
     </View>
   );
   return content;
-}
+});
 
-function RenderCodeBlock(props: {
+const RenderCodeBlock = React.memo(function RenderCodeBlock(props: {
   content: string;
   language: string | null;
   first: boolean;
@@ -541,7 +548,7 @@ function RenderCodeBlock(props: {
       </View>
     </View>
   );
-}
+});
 
 function RenderOptionsBlock(props: {
   items: string[];
@@ -580,7 +587,7 @@ function RenderOptionsBlock(props: {
 }
 
 /** Renders a blockquote with a left accent border and inner spans. */
-function RenderBlockquoteBlock(props: {
+const RenderBlockquoteBlock = React.memo(function RenderBlockquoteBlock(props: {
   spans: MarkdownSpan[];
   first: boolean;
   last: boolean;
@@ -599,10 +606,10 @@ function RenderBlockquoteBlock(props: {
     </View>
   );
   return content;
-}
+});
 
 /** Renders a checklist with checkbox indicators before each item. */
-function RenderChecklistBlock(props: {
+const RenderChecklistBlock = React.memo(function RenderChecklistBlock(props: {
   items: { checked: boolean; spans: MarkdownSpan[] }[];
   first: boolean;
   last: boolean;
@@ -628,7 +635,7 @@ function RenderChecklistBlock(props: {
     </View>
   );
   return content;
-}
+});
 
 function RenderInlineBlock(props: {
   spans: MarkdownSpan[];
@@ -763,7 +770,7 @@ function InlineMarkdownImage(props: {
 // Table rendering uses column-first layout to ensure consistent column widths.
 // Each column is rendered as a vertical container with all its cells (header + data).
 // This ensures that cells in the same column have the same width, determined by the widest content.
-function RenderTableBlock(props: {
+const RenderTableBlock = React.memo(function RenderTableBlock(props: {
   headers: string[];
   rows: string[][];
   first: boolean;
@@ -807,7 +814,7 @@ function RenderTableBlock(props: {
       </ScrollView>
     </View>
   );
-}
+});
 
 const style = StyleSheet.create(theme => ({
   // Plain text

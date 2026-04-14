@@ -176,6 +176,99 @@ const stylesheet = StyleSheet.create(theme => ({
   },
 }));
 
+const SelectorSectionHeader = React.memo(function SelectorSectionHeader({
+  title,
+  expanded,
+  onPress,
+}: {
+  title: string;
+  expanded: boolean;
+  onPress: () => void;
+}) {
+  const { theme } = useUnistyles();
+  const styles = stylesheet;
+  return (
+    <Pressable style={styles.sectionHeader} onPress={onPress}>
+      <Text style={styles.sectionHeaderText}>{title}</Text>
+      <Ionicons
+        name={expanded ? 'chevron-up' : 'chevron-down'}
+        size={16}
+        color={theme.colors.groupped.sectionTitle}
+      />
+    </Pressable>
+  );
+});
+
+const SelectorListItem = React.memo(function SelectorListItem({
+  itemId,
+  title,
+  subtitle,
+  icon,
+  status,
+  isSelected,
+  isLast,
+  compact,
+  onPress,
+  showDividerOverride,
+  rightAccessory,
+}: {
+  itemId: string;
+  title: string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  status?:
+    | { text: string; color: string; dotColor: string; isPulsing?: boolean }
+    | null;
+  isSelected: boolean;
+  isLast: boolean;
+  compact: boolean;
+  onPress: () => void;
+  showDividerOverride?: boolean;
+  rightAccessory?: React.ReactNode;
+}) {
+  const { theme } = useUnistyles();
+  const styles = stylesheet;
+  return (
+    <Item
+      key={itemId}
+      title={title}
+      subtitle={subtitle}
+      subtitleLines={0}
+      leftElement={icon}
+      rightElement={
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
+          {status ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_DOT_TEXT_GAP }}>
+              <StatusDot color={status.dotColor} isPulsing={status.isPulsing} size={6} />
+              <Text
+                style={[
+                  Typography.default('regular'),
+                  {
+                    fontSize: Platform.select({ ios: 17, default: 16 }),
+                    letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+                    color: status.color,
+                  },
+                ]}
+              >
+                {status.text}
+              </Text>
+            </View>
+          ) : null}
+          {isSelected ? (
+            <Ionicons name="checkmark-circle" size={20} color={theme.colors.button.primary.tint} />
+          ) : null}
+          {rightAccessory}
+        </View>
+      }
+      onPress={onPress}
+      showChevron={false}
+      selected={isSelected}
+      showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
+      style={compact ? styles.compactItemStyle : undefined}
+    />
+  );
+});
+
 /**
  * Generic searchable list selector component with recent items, favorites, and filtering.
  *
@@ -397,33 +490,6 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
     );
   };
 
-  // Render status with StatusDot (DRY helper - matches Item.tsx detail style)
-  const renderStatus = (
-    status:
-      | { text: string; color: string; dotColor: string; isPulsing?: boolean }
-      | null
-      | undefined
-  ) => {
-    if (!status) return null;
-    return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_DOT_TEXT_GAP }}>
-        <StatusDot color={status.dotColor} isPulsing={status.isPulsing} size={6} />
-        <Text
-          style={[
-            Typography.default('regular'),
-            {
-              fontSize: Platform.select({ ios: 17, default: 16 }),
-              letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
-              color: status.color,
-            },
-          ]}
-        >
-          {status.text}
-        </Text>
-      </View>
-    );
-  };
-
   // Render individual item (for recent items)
   const renderItem = (
     item: T,
@@ -445,29 +511,17 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
     const status = config.getItemStatus?.(item, theme);
 
     return (
-      <Item
-        key={itemId}
+      <SelectorListItem
+        itemId={itemId}
         title={title}
         subtitle={subtitle}
-        subtitleLines={0}
-        leftElement={icon}
-        rightElement={
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
-            {renderStatus(status)}
-            {isSelected && (
-              <Ionicons
-                name="checkmark-circle"
-                size={20}
-                color={theme.colors.button.primary.tint}
-              />
-            )}
-          </View>
-        }
+        icon={icon}
+        status={status}
+        isSelected={isSelected}
+        isLast={isLast}
+        compact={Boolean(config.compactItems)}
         onPress={() => handleSelectItem(item)}
-        showChevron={false}
-        selected={isSelected}
-        showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
-        style={config.compactItems ? styles.compactItemStyle : undefined}
+        showDividerOverride={showDividerOverride}
       />
     );
   };
@@ -548,14 +602,11 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
       {/* Recent Items Section */}
       {showRecent && filteredRecentItems.length > 0 && (
         <>
-          <Pressable style={styles.sectionHeader} onPress={toggleRecentSection}>
-            <Text style={styles.sectionHeaderText}>{config.recentSectionTitle}</Text>
-            <Ionicons
-              name={showRecentSection ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={theme.colors.groupped.sectionTitle}
-            />
-          </Pressable>
+          <SelectorSectionHeader
+            title={config.recentSectionTitle}
+            expanded={showRecentSection}
+            onPress={toggleRecentSection}
+          />
 
           {showRecentSection && (
             <ItemGroup {...noHeaderProps}>
@@ -598,14 +649,11 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
       {/* Favorites Section */}
       {showFavorites && filteredFavoriteItems.length > 0 && (
         <>
-          <Pressable style={styles.sectionHeader} onPress={toggleFavoritesSection}>
-            <Text style={styles.sectionHeaderText}>{config.favoritesSectionTitle}</Text>
-            <Ionicons
-              name={showFavoritesSection ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={theme.colors.groupped.sectionTitle}
-            />
-          </Pressable>
+          <SelectorSectionHeader
+            title={config.favoritesSectionTitle}
+            expanded={showFavoritesSection}
+            onPress={toggleFavoritesSection}
+          />
 
           {showFavoritesSection && (
             <ItemGroup {...noHeaderProps}>
@@ -622,46 +670,29 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 const canRemove = config.canRemoveFavorite?.(item) ?? true;
 
                 return (
-                  <Item
-                    key={itemId}
+                  <SelectorListItem
+                    itemId={itemId}
                     title={title}
                     subtitle={subtitle}
-                    subtitleLines={0}
-                    leftElement={icon}
-                    rightElement={
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: ITEM_SPACING_GAP,
-                        }}
-                      >
-                        {renderStatus(status)}
-                        {isSelected && (
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={20}
-                            color={theme.colors.button.primary.tint}
-                          />
-                        )}
-                        {onToggleFavorite && canRemove && (
-                          <Pressable
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            onPress={e => {
-                              e.stopPropagation();
-                              handleRemoveFavorite(item);
-                            }}
-                          >
-                            <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-                          </Pressable>
-                        )}
-                      </View>
-                    }
+                    icon={icon}
+                    status={status}
+                    isSelected={isSelected}
+                    isLast={isLast}
+                    compact={Boolean(config.compactItems)}
                     onPress={() => handleSelectItem(item)}
-                    showChevron={false}
-                    selected={isSelected}
-                    showDivider={!isLast}
-                    style={config.compactItems ? styles.compactItemStyle : undefined}
+                    rightAccessory={
+                      onToggleFavorite && canRemove ? (
+                        <Pressable
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          onPress={e => {
+                            e.stopPropagation();
+                            handleRemoveFavorite(item);
+                          }}
+                        >
+                          <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                        </Pressable>
+                      ) : undefined
+                    }
                   />
                 );
               })}
@@ -673,14 +704,11 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
       {/* All Items Section - hidden when all items are already in recent */}
       {items.length > 0 && !(showRecent && recentItems.length >= items.length && items.every(item => recentItems.some(r => config.getItemId(r) === config.getItemId(item)))) && (
         <>
-          <Pressable style={styles.sectionHeader} onPress={toggleAllItemsSection}>
-            <Text style={styles.sectionHeaderText}>{config.allSectionTitle}</Text>
-            <Ionicons
-              name={showAllItemsSection ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={theme.colors.groupped.sectionTitle}
-            />
-          </Pressable>
+          <SelectorSectionHeader
+            title={config.allSectionTitle}
+            expanded={showAllItemsSection}
+            onPress={toggleAllItemsSection}
+          />
 
           {showAllItemsSection && (
             <ItemGroup {...noHeaderProps}>

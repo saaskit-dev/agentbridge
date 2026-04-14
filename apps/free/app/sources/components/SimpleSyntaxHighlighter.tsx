@@ -337,15 +337,15 @@ const tokenizeCode = (code: string, language: string | null) => {
  * When `showLineNumbers` is true, tokens are grouped per line and rendered
  * beside a right-aligned gutter; otherwise the flat token list is rendered directly.
  */
-export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = ({
+const SimpleSyntaxHighlighterInner: React.FC<SimpleSyntaxHighlighterProps> = ({
   code,
   language,
   selectable,
   showLineNumbers,
 }) => {
   const { theme } = useUnistyles();
-  const colors = getColors(theme);
-  const tokens = tokenizeCode(code, language);
+  const colors = React.useMemo(() => getColors(theme), [theme]);
+  const tokens = React.useMemo(() => tokenizeCode(code, language), [code, language]);
 
   const getColorForType = (type: string, nestLevel?: number): string => {
     switch (type) {
@@ -413,20 +413,23 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
     }
   };
 
-  const renderToken = (token: { text: string; type: string; nestLevel?: number }, key: number) => (
-    <Text
-      key={key}
-      selectable={selectable}
-      style={{
-        color: getColorForType(token.type, token.nestLevel),
-        fontFamily: Typography.mono().fontFamily,
-        fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type)
-          ? '600'
-          : '400',
-      }}
-    >
-      {token.text}
-    </Text>
+  const renderToken = React.useCallback(
+    (token: { text: string; type: string; nestLevel?: number }, key: number) => (
+      <Text
+        key={key}
+        selectable={selectable}
+        style={{
+          color: getColorForType(token.type, token.nestLevel),
+          fontFamily: Typography.mono().fontFamily,
+          fontWeight: ['keyword', 'controlFlow', 'type', 'function'].includes(token.type)
+            ? '600'
+            : '400',
+        }}
+      >
+        {token.text}
+      </Text>
+    ),
+    [selectable]
   );
 
   if (!showLineNumbers) {
@@ -447,14 +450,17 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
   }
 
   // Group tokens into lines by splitting on '\n' tokens
-  const lines: Array<Array<{ text: string; type: string; nestLevel?: number }>> = [[]];
-  for (const token of tokens) {
-    if (token.text === '\n') {
-      lines.push([]);
-    } else {
-      lines[lines.length - 1].push(token);
+  const lines = React.useMemo(() => {
+    const grouped: Array<Array<{ text: string; type: string; nestLevel?: number }>> = [[]];
+    for (const token of tokens) {
+      if (token.text === '\n') {
+        grouped.push([]);
+      } else {
+        grouped[grouped.length - 1].push(token);
+      }
     }
-  }
+    return grouped;
+  }, [tokens]);
 
   const totalLines = lines.length;
   const gutterWidth = (totalLines.toString().length + 1) * 9;
@@ -494,3 +500,5 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
     </View>
   );
 };
+
+export const SimpleSyntaxHighlighter = React.memo(SimpleSyntaxHighlighterInner);

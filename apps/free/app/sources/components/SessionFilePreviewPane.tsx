@@ -55,6 +55,7 @@ type PreviewCacheEntry = {
   loadedAt: number;
   fileContent: FileContent | null;
   diffContent: string | null;
+  diffTruncated: boolean;
   fileSizeBytes: number | null;
   error: FileErrorState | null;
 };
@@ -62,6 +63,12 @@ type PreviewCacheEntry = {
 const previewCache = new Map<string, PreviewCacheEntry>();
 const MAX_TEXT_PREVIEW_BYTES = 256 * 1024;
 const MAX_IMAGE_PREVIEW_BYTES = 12 * 1024 * 1024;
+const MAX_DIFF_PREVIEW_LINES = 800;
+const MAX_DIFF_PREVIEW_BYTES = 128 * 1024;
+const MAX_TABLE_PREVIEW_CHARS = 64 * 1024;
+const MAX_TABLE_PREVIEW_ROWS = 100;
+const MAX_TABLE_PREVIEW_COLUMNS = 12;
+const MAX_TABLE_CELL_CHARS = 240;
 
 function cacheKey(sessionId: string, filePath: string) {
   return `${sessionId}:${filePath}`;
@@ -96,6 +103,32 @@ function setCachedPreview(sessionId: string, filePath: string, entry: Omit<Previ
   });
 }
 
+function truncateDiffPreview(diffContent: string): { content: string; truncated: boolean } {
+  if (!diffContent) {
+    return { content: diffContent, truncated: false };
+  }
+
+  let content = diffContent;
+  let truncated = false;
+
+  if (content.length > MAX_DIFF_PREVIEW_BYTES) {
+    content = content.slice(0, MAX_DIFF_PREVIEW_BYTES);
+    truncated = true;
+  }
+
+  const lines = content.split('\n');
+  if (lines.length > MAX_DIFF_PREVIEW_LINES) {
+    content = lines.slice(0, MAX_DIFF_PREVIEW_LINES).join('\n');
+    truncated = true;
+  }
+
+  if (truncated) {
+    content = `${content}\n\n... diff preview truncated for performance ...`;
+  }
+
+  return { content, truncated };
+}
+
 function mapFileError(
   errorCode: string | undefined,
   fallback: string | undefined,
@@ -117,19 +150,35 @@ function mapFileError(
   return { kind: 'generic', message: fallback || t('files.failedToReadFile') };
 }
 
-function parseDelimitedTable(input: string, delimiter: ',' | '\t'): string[][] {
+function truncateTableCell(value: string): string {
+  if (value.length <= MAX_TABLE_CELL_CHARS) {
+    return value;
+  }
+  return `${value.slice(0, MAX_TABLE_CELL_CHARS)}...`;
+}
+
+function parseDelimitedTable(
+  input: string,
+  delimiter: ',' | '\t'
+): { rows: string[][]; truncated: boolean } {
+  const source = input.length > MAX_TABLE_PREVIEW_CHARS ? input.slice(0, MAX_TABLE_PREVIEW_CHARS) : input;
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = '';
   let inQuotes = false;
+  let truncated = source.length !== input.length;
 
-  for (let i = 0; i < input.length; i += 1) {
-    const char = input[i];
-    const next = input[i + 1];
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1];
 
     if (char === '"') {
       if (inQuotes && next === '"') {
-        cell += '"';
+        if (cell.length < MAX_TABLE_CELL_CHARS) {
+          cell += '"';
+        } else {
+          truncated = true;
+        }
         i += 1;
       } else {
         inQuotes = !inQuotes;
@@ -138,36 +187,67 @@ function parseDelimitedTable(input: string, delimiter: ',' | '\t'): string[][] {
     }
 
     if (char === delimiter && !inQuotes) {
-      row.push(cell);
+      if (row.length < MAX_TABLE_PREVIEW_COLUMNS) {
+        row.push(truncateTableCell(cell));
+      } else {
+        truncated = true;
+      }
       cell = '';
       continue;
     }
 
     if ((char === '\n' || char === '\r') && !inQuotes) {
       if (char === '\r' && next === '\n') i += 1;
-      row.push(cell);
+      if (row.length < MAX_TABLE_PREVIEW_COLUMNS) {
+        row.push(truncateTableCell(cell));
+      } else {
+        truncated = true;
+      }
       rows.push(row);
+      if (rows.length >= MAX_TABLE_PREVIEW_ROWS) {
+        truncated = true;
+        row = [];
+        cell = '';
+        break;
+      }
       row = [];
       cell = '';
       continue;
     }
 
-    cell += char;
+    if (cell.length < MAX_TABLE_CELL_CHARS) {
+      cell += char;
+    } else {
+      truncated = true;
+    }
   }
 
   if (cell.length > 0 || row.length > 0) {
-    row.push(cell);
-    rows.push(row);
+    if (row.length < MAX_TABLE_PREVIEW_COLUMNS) {
+      row.push(truncateTableCell(cell));
+    } else {
+      truncated = true;
+    }
+    if (rows.length < MAX_TABLE_PREVIEW_ROWS) {
+      rows.push(row);
+    } else {
+      truncated = true;
+    }
   }
 
-  return rows.filter(cells => !(cells.length === 1 && cells[0] === ''));
+  return {
+    rows: rows.filter(cells => !(cells.length === 1 && cells[0] === '')),
+    truncated,
+  };
 }
 
 function TablePreview({ path, content }: { path: string; content: string }) {
   const { theme } = useUnistyles();
   const delimiter: ',' | '\t' = getPathExtension(path) === 'tsv' ? '\t' : ',';
-  const rows = React.useMemo(() => parseDelimitedTable(content, delimiter), [content, delimiter]);
-  const previewRows = rows.slice(0, 100);
+  const { rows: previewRows, truncated } = React.useMemo(
+    () => parseDelimitedTable(content, delimiter),
+    [content, delimiter]
+  );
   const columnCount = previewRows.reduce((max, row) => Math.max(max, row.length), 0);
 
   if (previewRows.length === 0 || columnCount === 0) {
@@ -179,61 +259,81 @@ function TablePreview({ path, content }: { path: string; content: string }) {
   }
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator>
-      <View
-        style={{
-          borderWidth: 1,
-          borderColor: theme.colors.divider,
-          borderRadius: 12,
-          overflow: 'hidden',
-          minWidth: '100%',
-        }}
-      >
-        {previewRows.map((row, rowIndex) => {
-          const isHeader = rowIndex === 0;
-          return (
-            <View
-              key={rowIndex}
-              style={{
-                flexDirection: 'row',
-                backgroundColor: isHeader
-                  ? theme.colors.surfaceHigh
-                  : rowIndex % 2 === 0
-                    ? theme.colors.surface
-                    : theme.colors.input.background,
-                borderTopWidth: rowIndex === 0 ? 0 : StyleSheet.hairlineWidth,
-                borderTopColor: theme.colors.divider,
-              }}
-            >
-              {Array.from({ length: columnCount }).map((_, columnIndex) => (
-                <View
-                  key={columnIndex}
-                  style={{
-                    width: 180,
-                    minHeight: 44,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    borderLeftWidth: columnIndex === 0 ? 0 : StyleSheet.hairlineWidth,
-                    borderLeftColor: theme.colors.divider,
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text
+    <View>
+      {truncated ? (
+        <View
+          style={{
+            marginBottom: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderRadius: 10,
+            backgroundColor: theme.colors.warning + '20',
+            borderWidth: 1,
+            borderColor: theme.colors.warning + '55',
+          }}
+        >
+          <Text style={{ fontSize: 13, color: theme.colors.text, ...Typography.default() }}>
+            Table preview truncated to keep the UI responsive.
+          </Text>
+        </View>
+      ) : null}
+      <ScrollView horizontal showsHorizontalScrollIndicator>
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: theme.colors.divider,
+            borderRadius: 12,
+            overflow: 'hidden',
+            minWidth: '100%',
+          }}
+        >
+          {previewRows.map((row, rowIndex) => {
+            const isHeader = rowIndex === 0;
+            return (
+              <View
+                key={rowIndex}
+                style={{
+                  flexDirection: 'row',
+                  backgroundColor: isHeader
+                    ? theme.colors.surfaceHigh
+                    : rowIndex % 2 === 0
+                      ? theme.colors.surface
+                      : theme.colors.input.background,
+                  borderTopWidth: rowIndex === 0 ? 0 : StyleSheet.hairlineWidth,
+                  borderTopColor: theme.colors.divider,
+                }}
+              >
+                {Array.from({ length: columnCount }).map((_, columnIndex) => (
+                  <View
+                    key={columnIndex}
                     style={{
-                      fontSize: 13,
-                      color: theme.colors.text,
-                      ...(isHeader ? Typography.default('semiBold') : Typography.default()),
+                      width: 180,
+                      minHeight: 44,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      borderLeftWidth: columnIndex === 0 ? 0 : StyleSheet.hairlineWidth,
+                      borderLeftColor: theme.colors.divider,
+                      justifyContent: 'center',
                     }}
                   >
-                    {row[columnIndex] || ''}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          );
-        })}
-      </View>
-    </ScrollView>
+                    <Text
+                      numberOfLines={4}
+                      style={{
+                        fontSize: 13,
+                        color: theme.colors.text,
+                        ...(isHeader ? Typography.default('semiBold') : Typography.default()),
+                      }}
+                    >
+                      {row[columnIndex] || ''}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -291,7 +391,14 @@ const DiffDisplay = ({ diffContent }: { diffContent: string }) => {
 };
 
 function getFileLanguage(path: string): string | null {
-  const ext = path.split('.').pop()?.toLowerCase();
+  const fileName = path.split('/').pop()?.toLowerCase() ?? '';
+  const ext = getPathExtension(path);
+  if (fileName === '.easignore' || fileName === '.gitignore' || fileName === '.dockerignore') {
+    return 'gitignore';
+  }
+  if (fileName === '.env' || fileName.startsWith('.env.')) {
+    return 'bash';
+  }
   switch (ext) {
     case 'js':
     case 'jsx':
@@ -361,6 +468,7 @@ export function SessionFilePreviewPane({
   const [error, setError] = React.useState<FileErrorState | null>(null);
   const [fileSizeBytes, setFileSizeBytes] = React.useState<number | null>(null);
   const [imagePreviewUri, setImagePreviewUri] = React.useState<string | null>(null);
+  const [isDiffTruncated, setIsDiffTruncated] = React.useState(false);
 
   React.useEffect(() => {
     let isCancelled = false;
@@ -369,6 +477,7 @@ export function SessionFilePreviewPane({
     if (cached) {
       setFileContent(cached.fileContent);
       setDiffContent(cached.diffContent);
+      setIsDiffTruncated(cached.diffTruncated);
       setFileSizeBytes(cached.fileSizeBytes);
       setError(cached.error);
       setIsLoading(false);
@@ -381,6 +490,7 @@ export function SessionFilePreviewPane({
         setError(null);
         setFileContent(null);
         setDiffContent(null);
+        setIsDiffTruncated(false);
         setFileSizeBytes(null);
 
         const session = storage.getState().sessions[sessionId];
@@ -389,6 +499,7 @@ export function SessionFilePreviewPane({
         const readLimit =
           previewKind === 'image' ? MAX_IMAGE_PREVIEW_BYTES : MAX_TEXT_PREVIEW_BYTES;
         let nextDiffContent: string | null = null;
+        let nextDiffTruncated = false;
 
         if (sessionPath) {
           try {
@@ -396,14 +507,17 @@ export function SessionFilePreviewPane({
             const diffTarget = gitRelativePath ?? filePath;
             const escaped = diffTarget.replace(/'/g, "'\\''");
             const diffResponse = await sessionBash(sessionId, {
-              command: `git diff --no-ext-diff -- '${escaped}'`,
+              command: `git diff --no-ext-diff -- '${escaped}' | head -n ${MAX_DIFF_PREVIEW_LINES + 1}`,
               cwd: sessionPath,
               timeout: 5000,
             });
 
             if (!isCancelled && diffResponse.success && diffResponse.stdout.trim()) {
-              nextDiffContent = diffResponse.stdout;
-              setDiffContent(diffResponse.stdout);
+              const truncatedDiff = truncateDiffPreview(diffResponse.stdout);
+              nextDiffContent = truncatedDiff.content;
+              nextDiffTruncated = truncatedDiff.truncated;
+              setDiffContent(truncatedDiff.content);
+              setIsDiffTruncated(truncatedDiff.truncated);
             }
           } catch (diffError) {
             logger.debug('Could not fetch git diff', { error: String(diffError) });
@@ -429,6 +543,7 @@ export function SessionFilePreviewPane({
             setCachedPreview(sessionId, filePath, {
               fileContent: null,
               diffContent: nextDiffContent,
+              diffTruncated: nextDiffTruncated,
               fileSizeBytes: nextSize,
               error: nextError,
             });
@@ -445,6 +560,7 @@ export function SessionFilePreviewPane({
               setCachedPreview(sessionId, filePath, {
                 fileContent: null,
                 diffContent: nextDiffContent,
+                diffTruncated: nextDiffTruncated,
                 fileSizeBytes: nextSize,
                 error: nextError,
               });
@@ -480,6 +596,7 @@ export function SessionFilePreviewPane({
           setCachedPreview(sessionId, filePath, {
             fileContent: nextFileContent,
             diffContent: nextDiffContent,
+            diffTruncated: nextDiffTruncated,
             fileSizeBytes: nextSize,
             error: null,
           });
@@ -489,6 +606,7 @@ export function SessionFilePreviewPane({
           setCachedPreview(sessionId, filePath, {
             fileContent: null,
             diffContent: nextDiffContent,
+            diffTruncated: nextDiffTruncated,
             fileSizeBytes: null,
             error: nextError,
           });
@@ -694,6 +812,23 @@ export function SessionFilePreviewPane({
       ) : null}
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+        {displayMode === 'diff' && isDiffTruncated ? (
+          <View
+            style={{
+              marginBottom: 12,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderRadius: 10,
+              backgroundColor: theme.colors.warning + '20',
+              borderWidth: 1,
+              borderColor: theme.colors.warning + '55',
+            }}
+          >
+            <Text style={{ fontSize: 13, color: theme.colors.text, ...Typography.default() }}>
+              Diff preview truncated to keep the UI responsive.
+            </Text>
+          </View>
+        ) : null}
         {displayMode === 'file' && fileContent?.truncated ? (
           <View
             style={{

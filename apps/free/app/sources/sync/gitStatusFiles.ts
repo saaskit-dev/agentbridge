@@ -1,11 +1,10 @@
 /**
- * Git status file-level functionality
- * Provides detailed git status with file-level changes and line statistics
+ * Git status file-level functionality.
+ * Keep this path lightweight because it drives interactive UI refreshes.
  */
 
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 import { sessionLogger } from '@/sync/appTraceStore';
-import { parseNumStat, createDiffStatsMap } from './git-parsers/parseDiff';
 import { parseStatusSummaryV2, getCurrentBranchV2 } from './git-parsers/parseStatusV2';
 import { sessionBash } from './ops';
 import { storage } from './storage';
@@ -32,7 +31,7 @@ export interface GitStatusFiles {
 }
 
 /**
- * Fetch detailed git status with file-level information
+ * Fetch lightweight git status with file-level information.
  */
 export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFiles | null> {
   try {
@@ -55,18 +54,8 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
       return null;
     }
 
-    // Get combined diff statistics for both staged and unstaged changes
-    const diffStatResult = await sessionBash(sessionId, {
-      command: 'git diff --numstat HEAD && echo "---STAGED---" && git diff --cached --numstat',
-      cwd: session.metadata.path,
-      timeout: 10000,
-    });
-
-    // Parse the results using v2 parser
     const statusOutput = statusResult.stdout;
-    const diffOutput = diffStatResult.success ? diffStatResult.stdout : '';
-
-    return parseGitStatusFilesV2(statusOutput, diffOutput);
+    return parseGitStatusFilesV2(statusOutput);
   } catch (error) {
     sessionLogger(logger, sessionId).error('Error fetching git status files', toError(error));
     return null;
@@ -74,19 +63,11 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
 }
 
 /**
- * Parse git status v2 and diff outputs into structured file data
+ * Parse git status v2 output into structured file data.
  */
-function parseGitStatusFilesV2(statusOutput: string, combinedDiffOutput: string): GitStatusFiles {
-  // Parse status using v2 parser
+function parseGitStatusFilesV2(statusOutput: string): GitStatusFiles {
   const statusSummary = parseStatusSummaryV2(statusOutput);
   const branchName = getCurrentBranchV2(statusSummary);
-
-  // Parse combined diff statistics
-  const [unstagedOutput = '', stagedOutput = ''] = combinedDiffOutput.split('---STAGED---');
-  const unstagedDiff = parseNumStat(unstagedOutput.trim());
-  const stagedDiff = parseNumStat(stagedOutput.trim());
-  const unstagedStats = createDiffStatsMap(unstagedDiff);
-  const stagedStats = createDiffStatsMap(stagedDiff);
 
   const stagedFiles: GitFileStatus[] = [];
   const unstagedFiles: GitFileStatus[] = [];
@@ -99,7 +80,6 @@ function parseGitStatusFilesV2(statusOutput: string, combinedDiffOutput: string)
     // Create file status for staged changes
     if (file.index !== ' ' && file.index !== '.' && file.index !== '?') {
       const status = getFileStatusV2(file.index);
-      const stats = stagedStats[file.path] || { added: 0, removed: 0, binary: false };
 
       stagedFiles.push({
         fileName: fileNameOnly,
@@ -107,8 +87,8 @@ function parseGitStatusFilesV2(statusOutput: string, combinedDiffOutput: string)
         fullPath: file.path,
         status,
         isStaged: true,
-        linesAdded: stats.added,
-        linesRemoved: stats.removed,
+        linesAdded: 0,
+        linesRemoved: 0,
         oldPath: file.from,
       });
     }
@@ -116,7 +96,6 @@ function parseGitStatusFilesV2(statusOutput: string, combinedDiffOutput: string)
     // Create file status for unstaged changes
     if (file.working_dir !== ' ' && file.working_dir !== '.') {
       const status = getFileStatusV2(file.working_dir);
-      const stats = unstagedStats[file.path] || { added: 0, removed: 0, binary: false };
 
       unstagedFiles.push({
         fileName: fileNameOnly,
@@ -124,8 +103,8 @@ function parseGitStatusFilesV2(statusOutput: string, combinedDiffOutput: string)
         fullPath: file.path,
         status,
         isStaged: false,
-        linesAdded: stats.added,
-        linesRemoved: stats.removed,
+        linesAdded: 0,
+        linesRemoved: 0,
         oldPath: file.from,
       });
     }

@@ -158,6 +158,71 @@ type UsagePanelProps = {
   lockSession?: boolean;
 };
 
+const UsageSummaryStats = React.memo(function UsageSummaryStats({
+  totalTokens,
+  totalCost,
+  formatTokens,
+  formatCost,
+}: {
+  totalTokens: number;
+  totalCost: number;
+  formatTokens: (tokens: number) => string;
+  formatCost: (cost: number) => string;
+}) {
+  return (
+    <View style={styles.statsContainer}>
+      <View style={styles.statRow}>
+        <Text style={styles.statLabel}>{t('usage.totalTokens')}</Text>
+        <Text style={styles.statValue}>{formatTokens(totalTokens)}</Text>
+      </View>
+      <View style={styles.statRow}>
+        <Text style={styles.statLabel}>{t('usage.totalCost')}</Text>
+        <Text style={styles.statValue}>{formatCost(totalCost)}</Text>
+      </View>
+    </View>
+  );
+});
+
+const UsageBreakdownBars = React.memo(function UsageBreakdownBars({
+  topBreakdown,
+  chartMetric,
+  maxBreakdownValue,
+  selectedBreakdownValue,
+  onToggleBreakdown,
+  formatTokens,
+  formatCost,
+}: {
+  topBreakdown: [string, { tokens: number; cost: number; reportCount: number }][];
+  chartMetric: 'tokens' | 'cost';
+  maxBreakdownValue: number;
+  selectedBreakdownValue: string | null;
+  onToggleBreakdown: (label: string) => void;
+  formatTokens: (tokens: number) => string;
+  formatCost: (cost: number) => string;
+}) {
+  return (
+    <View style={{ padding: 16 }}>
+      {topBreakdown.map(([label, values]) => (
+        <Pressable key={label} onPress={() => onToggleBreakdown(label)}>
+          <UsageBar
+            label={label}
+            value={chartMetric === 'tokens' ? values.tokens : values.cost}
+            maxValue={maxBreakdownValue}
+            color={
+              selectedBreakdownValue === label
+                ? '#34C759'
+                : chartMetric === 'tokens'
+                  ? '#007AFF'
+                  : '#FF9500'
+            }
+            formatValue={chartMetric === 'tokens' ? formatTokens : formatCost}
+          />
+        </Pressable>
+      ))}
+    </View>
+  );
+});
+
 export const UsagePanel: React.FC<UsagePanelProps> = ({
   sessionId,
   initialBreakdownDimension = 'agent',
@@ -231,6 +296,9 @@ export const UsagePanel: React.FC<UsagePanelProps> = ({
   const formatCost = (cost: number): string => {
     return `$${cost.toFixed(4)}`;
   };
+  const handleToggleBreakdown = React.useCallback((label: string) => {
+    setSelectedBreakdownValue(current => (current === label ? null : label));
+  }, []);
 
   const periodLabels: Record<TimePeriod, string> = {
     today: t('usage.today'),
@@ -289,16 +357,12 @@ export const UsagePanel: React.FC<UsagePanelProps> = ({
       </View>
 
       {/* Summary Stats */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>{t('usage.totalTokens')}</Text>
-          <Text style={styles.statValue}>{formatTokens(totals.totalTokens)}</Text>
-        </View>
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>{t('usage.totalCost')}</Text>
-          <Text style={styles.statValue}>{formatCost(totals.totalCost)}</Text>
-        </View>
-      </View>
+      <UsageSummaryStats
+        totalTokens={totals.totalTokens}
+        totalCost={totals.totalCost}
+        formatTokens={formatTokens}
+        formatCost={formatCost}
+      />
 
       {/* Usage Chart */}
       {usageData.length > 0 && (
@@ -393,30 +457,15 @@ export const UsagePanel: React.FC<UsagePanelProps> = ({
               </Pressable>
             </View>
           )}
-          <View style={{ padding: 16 }}>
-            {topBreakdown.map(([label, values]) => (
-              <Pressable
-                key={label}
-                onPress={() =>
-                  setSelectedBreakdownValue(current => (current === label ? null : label))
-                }
-              >
-                <UsageBar
-                  label={label}
-                  value={chartMetric === 'tokens' ? values.tokens : values.cost}
-                  maxValue={maxBreakdownValue}
-                  color={
-                    selectedBreakdownValue === label
-                      ? '#34C759'
-                      : chartMetric === 'tokens'
-                        ? '#007AFF'
-                        : '#FF9500'
-                  }
-                  formatValue={chartMetric === 'tokens' ? formatTokens : formatCost}
-                />
-              </Pressable>
-            ))}
-          </View>
+          <UsageBreakdownBars
+            topBreakdown={topBreakdown}
+            chartMetric={chartMetric}
+            maxBreakdownValue={maxBreakdownValue}
+            selectedBreakdownValue={selectedBreakdownValue}
+            onToggleBreakdown={handleToggleBreakdown}
+            formatTokens={formatTokens}
+            formatCost={formatCost}
+          />
         </ItemGroup>
       )}
     </ScrollView>
