@@ -548,11 +548,10 @@ CI 进程里没有稳定命中正确的用户 keychain/私钥访问路径。
 
 **修复内容**：
 
-- 发布脚本先通过 `security default-keychain -d user` 解析当前用户默认 keychain
-- 反查 distribution 证书时改为显式读取该 keychain，而不是依赖隐式 `HOME` 路径
-- 在真正归档前执行一次 `codesign --keychain <path>` 预热，提前验证私钥可访问
+- 发布脚本不再依赖当前 shell 的 `HOME` 或默认 keychain 解析结果
+- 改为通过用户目录元数据显式定位真实 home，再固定使用 `<real-home>/Library/Keychains/login.keychain-db`
 - 给 `xcodebuild archive/export` 额外注入 `OTHER_CODE_SIGN_FLAGS=--keychain <path>`，强制 Xcode 内部的
-  `codesign` 也使用同一把 keychain
+  `codesign` 使用同一把用户 keychain
 
 **上游**：属于 self-hosted macOS runner 环境下 Xcode/Keychain 集成稳定性问题，不是业务代码问题。
 

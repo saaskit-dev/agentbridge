@@ -19,7 +19,6 @@ IOS_WIDGET_PROFILE_NAME=""
 IOS_WIDGET_PROFILE_UUID=""
 XCODEBUILD_LOG_PATH=""
 KEYCHAIN_PATH=""
-LOCAL_DISTRIBUTION_CERT_SHA=""
 
 IOS_MAIN_BUNDLE_ID="app.saaskit.freecode"
 IOS_MAIN_BUNDLE_RESOURCE_ID="6G58X7AWS8"
@@ -143,7 +142,7 @@ detect_ios_scheme() {
 }
 
 detect_distribution_certificate_id() {
-  local cert_pem serial certs_json cert_id cert_sha
+  local cert_pem serial certs_json cert_id
 
   cert_pem="$(security find-certificate -a -p -c 'iPhone Distribution' "$KEYCHAIN_PATH" | awk '
     BEGIN { capture = 0 }
@@ -156,13 +155,6 @@ detect_distribution_certificate_id() {
     echo "Failed to find local iPhone Distribution certificate in login keychain" >&2
     exit 1
   fi
-
-  cert_sha="$(printf '%s\n' "$cert_pem" | openssl x509 -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
-  if [ -z "$cert_sha" ]; then
-    echo "Failed to derive local distribution certificate SHA-1 fingerprint" >&2
-    exit 1
-  fi
-  LOCAL_DISTRIBUTION_CERT_SHA="$cert_sha"
 
   serial="$(printf '%s\n' "$cert_pem" | openssl x509 -noout -serial | cut -d= -f2 | tr '[:upper:]' '[:lower:]')"
   certs_json="$(asc certificates list --certificate-type IOS_DISTRIBUTION --paginate --pretty)"
@@ -180,23 +172,6 @@ detect_distribution_certificate_id() {
   fi
 
   printf '%s\n' "$cert_id"
-}
-
-warm_codesign_identity() {
-  local certificate_sha="$1"
-  local smoke_dir
-
-  smoke_dir="$(mktemp -d "${TMPDIR:-/tmp}/agentbridge-codesign-smoke.XXXXXX")"
-  mkdir -p "$smoke_dir/Smoke.appex"
-  printf 'ok\n' > "$smoke_dir/Smoke.appex/smoke.txt"
-
-  if ! codesign --force --sign "$certificate_sha" --keychain "$KEYCHAIN_PATH" "$smoke_dir/Smoke.appex" >/dev/null 2>&1; then
-    echo "Failed to access iPhone Distribution identity via codesign preflight" >&2
-    rm -rf "$smoke_dir"
-    exit 1
-  fi
-
-  rm -rf "$smoke_dir"
 }
 
 create_app_store_profile() {
@@ -242,11 +217,17 @@ require_env ASC_ISSUER_ID
 require_env ASC_PRIVATE_KEY
 
 detect_default_keychain() {
-  local keychain
+  local real_home keychain
 
-  keychain="$(security default-keychain -d user | tr -d '[:space:]"')"
+  real_home="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+  if [ -z "$real_home" ]; then
+    echo "Failed to resolve real home directory for $(id -un)" >&2
+    exit 1
+  fi
+
+  keychain="$real_home/Library/Keychains/login.keychain-db"
   if [ -z "$keychain" ] || [ ! -f "$keychain" ]; then
-    echo "Failed to detect default user keychain" >&2
+    echo "Failed to detect user login keychain at $keychain" >&2
     exit 1
   fi
 
@@ -319,7 +300,6 @@ detect_ios_scheme
 
 echo "==> Prepare App Store signing profiles"
 DISTRIBUTION_CERTIFICATE_ID="$(detect_distribution_certificate_id)"
-warm_codesign_identity "$LOCAL_DISTRIBUTION_CERT_SHA"
 IOS_MAIN_PROFILE_INFO="$(create_app_store_profile "$IOS_MAIN_BUNDLE_RESOURCE_ID" "$IOS_MAIN_BUNDLE_ID" "$DISTRIBUTION_CERTIFICATE_ID")"
 IOS_MAIN_PROFILE_NAME="$(printf '%s\n' "$IOS_MAIN_PROFILE_INFO" | sed -n '1p')"
 IOS_MAIN_PROFILE_UUID="$(printf '%s\n' "$IOS_MAIN_PROFILE_INFO" | sed -n '2p')"
