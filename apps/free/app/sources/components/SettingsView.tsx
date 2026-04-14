@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import { Logger, safeStringify } from '@saaskit-dev/agentbridge/telemetry';
 import { useAuth } from '@/auth/AuthContext';
 import { getFocusAudioSound } from '@/audio/focusAudioCatalog';
 import { Avatar } from '@/components/Avatar';
@@ -26,9 +27,11 @@ import { sync } from '@/sync/sync';
 import { useLocalSetting, useLocalSettingMutable, useSetting, useEntitlement } from '@/sync/storage';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { isTauriDesktop } from '@/utils/tauri';
+import { getTauriErrorMessage, isTauriDesktop, isTauriUpdaterEnabled } from '@/utils/tauri';
 import { useProfile } from '@/sync/storage';
 import { t } from '@/text';
+
+const logger = new Logger('app/components/SettingsView');
 
 export const SettingsView = React.memo(function SettingsView() {
   const { theme } = useUnistyles();
@@ -45,7 +48,7 @@ export const SettingsView = React.memo(function SettingsView() {
   const isPro = useEntitlement('pro');
   const experiments = useSetting('experiments');
   const isCustomServer = isUsingCustomServer();
-  const isDesktopUpdaterAvailable = isTauriDesktop();
+  const isDesktopApp = isTauriDesktop();
   const allMachines = useAllMachines();
   const profile = useProfile();
   const displayName = getDisplayName(profile);
@@ -138,6 +141,34 @@ export const SettingsView = React.memo(function SettingsView() {
   });
   const [checkingForUpdates, setCheckingForUpdates] = React.useState(false);
   const [desktopUpdateStatus, setDesktopUpdateStatus] = React.useState<string | null>(null);
+  const [isDesktopUpdaterAvailable, setIsDesktopUpdaterAvailable] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (!isDesktopApp) {
+      setIsDesktopUpdaterAvailable(false);
+      return;
+    }
+
+    void (async () => {
+      const enabled = await isTauriUpdaterEnabled();
+      if (cancelled) {
+        return;
+      }
+
+      setIsDesktopUpdaterAvailable(enabled);
+      if (!enabled) {
+        setDesktopUpdateStatus(
+          `Current version: ${appVersion}. Auto-update is unavailable in this desktop build. Install a release bundle built with updater support to enable in-app updates.`
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appVersion, isDesktopApp]);
 
   const handleCheckForDesktopUpdates = React.useCallback(async () => {
     if (!isDesktopUpdaterAvailable || checkingForUpdates) {
@@ -203,7 +234,8 @@ export const SettingsView = React.memo(function SettingsView() {
         `Free ${update.version} has been downloaded and installed. Restart the app to finish applying the update.`
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown update error';
+      const message = getTauriErrorMessage(error);
+      logger.warn('Desktop update failed', { error: safeStringify(error) });
       setDesktopUpdateStatus('Update check failed');
       Modal.alert('Update failed', message);
     } finally {
@@ -465,7 +497,7 @@ export const SettingsView = React.memo(function SettingsView() {
           icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
           onPress={handleReportIssue}
         />
-        {isDesktopUpdaterAvailable && (
+        {isDesktopApp && (
           <Item
             title="Check for Updates"
             subtitle={
@@ -474,8 +506,9 @@ export const SettingsView = React.memo(function SettingsView() {
             }
             subtitleLines={0}
             icon={<Ionicons name="cloud-download-outline" size={29} color="#34C759" />}
-            onPress={() => void handleCheckForDesktopUpdates()}
-            loading={checkingForUpdates}
+            onPress={isDesktopUpdaterAvailable ? () => void handleCheckForDesktopUpdates() : undefined}
+            loading={isDesktopUpdaterAvailable ? checkingForUpdates : false}
+            disabled={!isDesktopUpdaterAvailable}
             showChevron={false}
           />
         )}

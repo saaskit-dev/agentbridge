@@ -55,9 +55,37 @@ jobs:
 
       - name: Prepare updater config
         env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
           DESKTOP_UPDATER_REPOSITORY: ${{ github.repository }}
         run: node ./scripts/prepare-desktop-updater-config.js
 
+      - name: Select Tauri config
+        id: tauri_config
+        run: |
+          set -euo pipefail
+          CONFIG="src-tauri/tauri.conf.json"
+          UPDATER_ENABLED="false"
+          if [ -f "apps/free/app/src-tauri/tauri.updater.conf.json" ]; then
+            CONFIG="src-tauri/tauri.updater.conf.json"
+            UPDATER_ENABLED="true"
+          fi
+          echo "path=$CONFIG" >> "$GITHUB_OUTPUT"
+          echo "updater_enabled=$UPDATER_ENABLED" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize desktop build mode
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Desktop Build Mode
+          - GitHub event: \`${{ github.event_name }}\`
+          - Tauri config: \`${{ steps.tauri_config.outputs.path }}\`
+          - Updater enabled: \`${{ steps.tauri_config.outputs.updater_enabled }}\`
+          EOF
+          if [ "${{ steps.tauri_config.outputs.updater_enabled }}" != "true" ]; then
+            cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          - Note: updater secret unavailable, so this workflow built the non-updater desktop target.
+          EOF
+          fi
+
       - name: Build desktop app
         working-directory: apps/free/app
-        run: pnpm exec tauri build --config src-tauri/tauri.conf.json --no-bundle
+        run: pnpm exec tauri build --config ${{ steps.tauri_config.outputs.path }} --no-bundle

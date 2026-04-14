@@ -521,6 +521,11 @@ fn updater_enabled() -> bool {
     .unwrap_or(false)
 }
 
+#[tauri::command]
+fn desktop_is_updater_enabled() -> bool {
+  updater_enabled()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let mut builder = tauri::Builder::default()
@@ -561,7 +566,8 @@ pub fn run() {
       desktop_message_db_kv_set,
       desktop_message_db_kv_delete,
       desktop_message_db_kv_delete_all,
-      desktop_open_devtools
+      desktop_open_devtools,
+      desktop_is_updater_enabled
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

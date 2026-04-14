@@ -2,7 +2,7 @@ import * as Updates from 'expo-updates';
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { Logger, safeStringify } from '@saaskit-dev/agentbridge/telemetry';
-import { isTauriDesktop } from '@/utils/tauri';
+import { isTauriDesktop, isTauriUpdaterEnabled } from '@/utils/tauri';
 const logger = new Logger('app/hooks/useUpdates');
 
 export function useUpdates() {
@@ -42,6 +42,13 @@ export function useUpdates() {
 
     try {
       if (isTauriDesktop()) {
+        const updaterEnabled = await isTauriUpdaterEnabled();
+        if (!updaterEnabled) {
+          setDesktopUpdate(null);
+          setUpdateAvailable(false);
+          return;
+        }
+
         const { check } = await import('@tauri-apps/plugin-updater');
         const update = await check();
         setDesktopUpdate(update);

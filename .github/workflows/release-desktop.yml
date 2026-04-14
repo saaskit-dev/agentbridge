@@ -219,6 +219,22 @@ jobs:
             --json tagName,url \
             --jq '"tag=\(.tagName) url=\(.url)"'
 
+      - name: Verify updater assets
+        if: ${{ matrix.platform-name == 'macos-arm64-self-hosted' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ASSETS="$(gh release view "${{ needs.prepare_release.outputs.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            --json assets \
+            --jq '.assets[].name')"
+          echo "$ASSETS"
+          if ! echo "$ASSETS" | grep -qx 'latest.json'; then
+            echo "Release is missing latest.json updater manifest" >&2
+            exit 1
+          fi
+
       - name: Create macOS DMG
         if: ${{ matrix.platform-name == 'macos-arm64-self-hosted' }}
         working-directory: apps/free/app
