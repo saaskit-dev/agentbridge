@@ -52,17 +52,23 @@ detect_ios_workspace() {
 }
 
 detect_ios_scheme() {
-  local list_output
-  list_output="$(cd "$APP_DIR" && xcodebuild -list -workspace "$IOS_WORKSPACE_PATH" 2>/dev/null || true)"
-  IOS_SCHEME="$(printf '%s\n' "$list_output" | awk '
-    $0 ~ /^Schemes:$/ { in_schemes = 1; next }
-    in_schemes && $0 ~ /^[[:space:]]+[[:graph:]].*$/ {
-      gsub(/^[[:space:]]+/, "", $0)
-      print
-      exit
-    }
-    in_schemes && $0 !~ /^[[:space:]]+/ { exit }
-  ')"
+  IOS_SCHEME="$(find "$APP_DIR/ios" \
+    -path '*/Pods/*' -prune -o \
+    -path '*/xcshareddata/xcschemes/*.xcscheme' -print | sort | head -n 1 | xargs -I{} basename "{}" .xcscheme)"
+
+  if [ -z "$IOS_SCHEME" ]; then
+    local list_output
+    list_output="$(cd "$APP_DIR" && xcodebuild -list -workspace "$IOS_WORKSPACE_PATH" 2>/dev/null || true)"
+    IOS_SCHEME="$(printf '%s\n' "$list_output" | awk '
+      $0 ~ /^Schemes:$/ { in_schemes = 1; next }
+      in_schemes && $0 ~ /^[[:space:]]+[[:graph:]].*$/ {
+        gsub(/^[[:space:]]+/, "", $0)
+        print
+        exit
+      }
+      in_schemes && $0 !~ /^[[:space:]]+/ { exit }
+    ')"
+  fi
 
   if [ -z "$IOS_SCHEME" ]; then
     echo "Failed to detect iOS scheme for workspace $IOS_WORKSPACE_PATH" >&2
