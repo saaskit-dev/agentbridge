@@ -60,6 +60,12 @@ AUTH_KEY_PATH="$AUTH_KEY_DIR/AuthKey_${ASC_KEY_ID}.p8"
 printf '%s\n' "$ASC_PRIVATE_KEY" > "$AUTH_KEY_PATH"
 chmod 600 "$AUTH_KEY_PATH"
 
+# Force asc CLI to use CI-provided API key material instead of any runner-local
+# keychain profile. Self-hosted runners may not have the expected stored profile.
+export ASC_BYPASS_KEYCHAIN=1
+export ASC_STRICT_AUTH=1
+export ASC_PRIVATE_KEY_PATH="$AUTH_KEY_PATH"
+
 BUILD_NUMBER="$(node "$ROOT_DIR/scripts/next-ios-build-number.js")"
 VERSION="$(node -p "require('$APP_DIR/package.json').version")"
 ARCHIVE_PATH="$APP_DIR/.artifacts/ios/Free.xcarchive"
