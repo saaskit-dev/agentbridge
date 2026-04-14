@@ -103,6 +103,9 @@ export function setupOfflineReconnection(
           ? await opts.reconnect()
           : await api.getOrCreateSession({ id: sessionId, metadata, state });
         if (!resp) throw new Error('Server unavailable');
+        if (opts.initialLastSeq != null && opts.initialLastSeq > 0) {
+          resp.lastSeq = Math.max(resp.lastSeq ?? 0, opts.initialLastSeq);
+        }
         const realSession = api.sessionSyncClient(resp);
         // Notify caller to swap the session reference
         onSessionSwap(realSession);

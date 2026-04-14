@@ -24,6 +24,7 @@ const {
   mockRegisterKillSessionHandler,
   mockPersistSession,
   mockEraseSession,
+  mockStartOfflineReconnection,
 } = vi.hoisted(() => ({
   mockStartFreeServer: vi.fn(async () => ({
     stop: vi.fn(),
@@ -33,6 +34,7 @@ const {
   mockRegisterKillSessionHandler: vi.fn(),
   mockPersistSession: vi.fn().mockResolvedValue(undefined),
   mockEraseSession: vi.fn().mockResolvedValue(undefined),
+  mockStartOfflineReconnection: vi.fn(),
 }));
 
 vi.mock('@/claude/utils/startFreeServer', () => ({
@@ -48,8 +50,17 @@ vi.mock('./sessionPersistence', () => ({
   eraseSession: mockEraseSession,
 }));
 
+vi.mock('@/utils/serverConnectionErrors', () => ({
+  startOfflineReconnection: (...args: unknown[]) => mockStartOfflineReconnection(...args),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  mockStartOfflineReconnection.mockReturnValue({
+    cancel: vi.fn(),
+    isReconnected: vi.fn(() => false),
+    getSession: vi.fn(() => null),
+  });
 });
 
 afterEach(() => {
@@ -453,6 +464,59 @@ describe('AgentSession.initialize()', () => {
         lastSeq: 42,
       })
     );
+  });
+
+  it('preserves persisted lastSeq across offline recovery and session swap', async () => {
+    mockStartOfflineReconnection.mockImplementation(
+      ({ onReconnected }: { onReconnected: () => Promise<unknown> }) => {
+        void onReconnected();
+        return {
+          cancel: vi.fn(),
+          isReconnected: vi.fn(() => true),
+          getSession: vi.fn(() => null),
+        };
+      }
+    );
+
+    const session = new TestAgentSession({
+      ...makeOpts(),
+      startedBy: 'daemon',
+      sessionId: 'daemon-recovery-offline',
+      lastSeq: 2062,
+    });
+    const swappedSession = makeMockSession('daemon-recovery-offline');
+    const getOrCreateSession = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'daemon-recovery-offline',
+        seq: 2062,
+        metadata: {},
+        metadataVersion: 1,
+        agentState: null,
+        agentStateVersion: 1,
+        capabilities: null,
+        capabilitiesVersion: 0,
+        lastSeq: 0,
+      });
+    const sessionSyncClient = vi.fn().mockReturnValue(swappedSession);
+    vi.spyOn(ApiClient, 'create').mockResolvedValue({
+      getOrCreateSession,
+      sessionSyncClient,
+    } as unknown as ApiClient);
+
+    await session.initialize();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getOrCreateSession).toHaveBeenCalledTimes(2);
+    expect(sessionSyncClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'daemon-recovery-offline',
+        lastSeq: 2062,
+      })
+    );
+    expect(mockStartFreeServer).toHaveBeenCalledWith(swappedSession);
   });
 });
 

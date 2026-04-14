@@ -326,10 +326,10 @@ export class ApiSessionClient extends EventEmitter {
           lastSeqBefore: replayLastSeqBefore,
         });
 
-        if (mode === 'recovery' && this.lastSeq > 0) {
-          // Crash recovery (first connect, agent already has history via --resume):
-          // only update lastSeq — routing would cause duplicate responses since the
-          // agent has already seen these messages.
+        if (mode === 'recovery') {
+          // First-connect replay is always historical data from the server.
+          // Route suppression avoids re-executing user messages after daemon recovery
+          // even if the recovered client temporarily starts with lastSeq === 0.
           let advancedCount = 0;
           for (const message of data.messages) {
             const previousLastSeq = this.lastSeq;
