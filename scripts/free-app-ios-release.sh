@@ -11,6 +11,17 @@ GOOGLE_SERVICES_PLIST_PATH=""
 IOS_WORKSPACE_PATH=""
 IOS_SCHEME=""
 IOS_APP_DIR=""
+IOS_PROJECT_PATH=""
+IOS_PROFILE_DIR=""
+IOS_MAIN_PROFILE_NAME=""
+IOS_MAIN_PROFILE_UUID=""
+IOS_WIDGET_PROFILE_NAME=""
+IOS_WIDGET_PROFILE_UUID=""
+
+IOS_MAIN_BUNDLE_ID="app.saaskit.freecode"
+IOS_MAIN_BUNDLE_RESOURCE_ID="6G58X7AWS8"
+IOS_WIDGET_BUNDLE_ID="app.saaskit.freecode.focusaudio"
+IOS_WIDGET_BUNDLE_RESOURCE_ID="855RUR6L94"
 
 cleanup() {
   if [ -n "$AUTH_KEY_PATH" ] && [ -f "$AUTH_KEY_PATH" ]; then
@@ -51,6 +62,16 @@ detect_ios_workspace() {
   IOS_WORKSPACE_PATH="$workspace"
 }
 
+detect_ios_project() {
+  local project
+  project="$(find "$APP_DIR/ios" -maxdepth 1 -name '*.xcodeproj' -print | sort | head -n 1)"
+  if [ -z "$project" ]; then
+    echo "Failed to detect iOS project under $APP_DIR/ios" >&2
+    exit 1
+  fi
+  IOS_PROJECT_PATH="$project"
+}
+
 detect_ios_scheme() {
   IOS_SCHEME="$(find "$APP_DIR/ios" \
     -path '*/Pods/*' -prune -o \
@@ -76,11 +97,74 @@ detect_ios_scheme() {
   fi
 }
 
+detect_distribution_certificate_id() {
+  local cert_pem serial certs_json cert_id
+
+  cert_pem="$(security find-certificate -a -p -c 'iPhone Distribution' "$HOME/Library/Keychains/login.keychain-db" | awk '
+    BEGIN { capture = 0 }
+    /BEGIN CERTIFICATE/ { capture = 1 }
+    capture { print }
+    /END CERTIFICATE/ { exit }
+  ')"
+
+  if [ -z "$cert_pem" ]; then
+    echo "Failed to find local iPhone Distribution certificate in login keychain" >&2
+    exit 1
+  fi
+
+  serial="$(printf '%s\n' "$cert_pem" | openssl x509 -noout -serial | cut -d= -f2 | tr '[:upper:]' '[:lower:]')"
+  certs_json="$(asc certificates list --certificate-type IOS_DISTRIBUTION --paginate --pretty)"
+  cert_id="$(printf '%s\n' "$certs_json" | node -e '
+    const fs = require("fs");
+    const serial = (process.argv[1] || "").toLowerCase();
+    const payload = JSON.parse(fs.readFileSync(0, "utf8"));
+    const match = (payload.data || []).find(item => (item.attributes?.serialNumber || "").toLowerCase() === serial);
+    if (match) process.stdout.write(match.id);
+  ' "$serial")"
+
+  if [ -z "$cert_id" ]; then
+    echo "Failed to match local distribution certificate serial $serial to App Store Connect certificate id" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$cert_id"
+}
+
+create_app_store_profile() {
+  local bundle_resource_id="$1"
+  local bundle_id="$2"
+  local certificate_id="$3"
+  local profile_json profile_id profile_name profile_uuid output_path
+
+  profile_json="$(asc profiles create \
+    --name "AgentBridge ${bundle_id} AppStore CI $(date +%Y%m%d%H%M%S)" \
+    --profile-type IOS_APP_STORE \
+    --bundle "$bundle_resource_id" \
+    --certificate "$certificate_id" \
+    --pretty)"
+
+  profile_id="$(printf '%s\n' "$profile_json" | node -e 'const fs = require("fs"); const payload = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(payload.data.id);')"
+  profile_name="$(printf '%s\n' "$profile_json" | node -e 'const fs = require("fs"); const payload = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(payload.data.attributes.name);')"
+  profile_uuid="$(printf '%s\n' "$profile_json" | node -e 'const fs = require("fs"); const payload = JSON.parse(fs.readFileSync(0, "utf8")); process.stdout.write(payload.data.attributes.uuid);')"
+
+  output_path="$IOS_PROFILE_DIR/${profile_uuid}.mobileprovision"
+  asc profiles download --id "$profile_id" --output "$output_path" >/dev/null
+
+  mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+  mkdir -p "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+  cp "$output_path" "$HOME/Library/MobileDevice/Provisioning Profiles/${profile_uuid}.mobileprovision"
+  cp "$output_path" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/${profile_uuid}.mobileprovision"
+
+  printf '%s\n%s\n' "$profile_name" "$profile_uuid"
+}
+
 require_cmd node
 require_cmd xcodebuild
 require_cmd xcrun
 require_cmd pnpm
 require_cmd asc
+require_cmd openssl
+require_cmd ruby
 
 require_env APPLE_TEAM_ID
 require_env ASC_APP_ID
@@ -118,35 +202,15 @@ BUILD_NUMBER="$(node "$ROOT_DIR/scripts/next-ios-build-number.js")"
 VERSION="$(node -p "require('$APP_DIR/package.json').version")"
 ARCHIVE_PATH="$APP_DIR/.artifacts/ios/Free.xcarchive"
 EXPORT_PATH="$APP_DIR/.artifacts/ios/export"
+IOS_PROFILE_DIR="$APP_DIR/.artifacts/ios/profiles"
 
 rm -rf "$APP_DIR/.artifacts/ios"
 mkdir -p "$EXPORT_PATH"
+mkdir -p "$IOS_PROFILE_DIR"
 
 cat > "$APP_DIR/.artifacts/ios/build.env" <<EOF
 APP_ENV=production
 IOS_BUILD_NUMBER=$BUILD_NUMBER
-EOF
-
-EXPORT_OPTIONS_PLIST="$(mktemp "${TMPDIR:-/tmp}/free-ios-export-options.XXXXXX.plist")"
-cat > "$EXPORT_OPTIONS_PLIST" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>method</key>
-  <string>app-store-connect</string>
-  <key>signingStyle</key>
-  <string>automatic</string>
-  <key>teamID</key>
-  <string>${APPLE_TEAM_ID}</string>
-  <key>destination</key>
-  <string>export</string>
-  <key>manageAppVersionAndBuildNumber</key>
-  <false/>
-  <key>uploadSymbols</key>
-  <true/>
-</dict>
-</plist>
 EOF
 
 echo "==> Sync Expo config into native iOS project"
@@ -166,8 +230,58 @@ if [ -n "${GOOGLE_SERVICES_PLIST:-}" ]; then
   fi
 fi
 
+detect_ios_project
 detect_ios_workspace
 detect_ios_scheme
+
+echo "==> Prepare App Store signing profiles"
+DISTRIBUTION_CERTIFICATE_ID="$(detect_distribution_certificate_id)"
+mapfile -t IOS_MAIN_PROFILE_INFO < <(create_app_store_profile "$IOS_MAIN_BUNDLE_RESOURCE_ID" "$IOS_MAIN_BUNDLE_ID" "$DISTRIBUTION_CERTIFICATE_ID")
+IOS_MAIN_PROFILE_NAME="${IOS_MAIN_PROFILE_INFO[0]}"
+IOS_MAIN_PROFILE_UUID="${IOS_MAIN_PROFILE_INFO[1]}"
+mapfile -t IOS_WIDGET_PROFILE_INFO < <(create_app_store_profile "$IOS_WIDGET_BUNDLE_RESOURCE_ID" "$IOS_WIDGET_BUNDLE_ID" "$DISTRIBUTION_CERTIFICATE_ID")
+IOS_WIDGET_PROFILE_NAME="${IOS_WIDGET_PROFILE_INFO[0]}"
+IOS_WIDGET_PROFILE_UUID="${IOS_WIDGET_PROFILE_INFO[1]}"
+
+echo "==> Configure manual signing for Release archive"
+XCODE_PROJECT_PATH="$IOS_PROJECT_PATH" \
+APPLE_TEAM_ID="$APPLE_TEAM_ID" \
+IOS_MAIN_BUNDLE_ID="$IOS_MAIN_BUNDLE_ID" \
+IOS_MAIN_PROFILE_NAME="$IOS_MAIN_PROFILE_NAME" \
+IOS_MAIN_PROFILE_UUID="$IOS_MAIN_PROFILE_UUID" \
+IOS_WIDGET_BUNDLE_ID="$IOS_WIDGET_BUNDLE_ID" \
+IOS_WIDGET_PROFILE_NAME="$IOS_WIDGET_PROFILE_NAME" \
+IOS_WIDGET_PROFILE_UUID="$IOS_WIDGET_PROFILE_UUID" \
+ruby "$ROOT_DIR/scripts/configure-ios-manual-signing.rb"
+
+EXPORT_OPTIONS_PLIST="$(mktemp "${TMPDIR:-/tmp}/free-ios-export-options.XXXXXX.plist")"
+cat > "$EXPORT_OPTIONS_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>app-store-connect</string>
+  <key>signingStyle</key>
+  <string>manual</string>
+  <key>teamID</key>
+  <string>${APPLE_TEAM_ID}</string>
+  <key>destination</key>
+  <string>export</string>
+  <key>manageAppVersionAndBuildNumber</key>
+  <false/>
+  <key>uploadSymbols</key>
+  <true/>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>${IOS_MAIN_BUNDLE_ID}</key>
+    <string>${IOS_MAIN_PROFILE_NAME}</string>
+    <key>${IOS_WIDGET_BUNDLE_ID}</key>
+    <string>${IOS_WIDGET_PROFILE_NAME}</string>
+  </dict>
+</dict>
+</plist>
+EOF
 
 echo "==> Archive iOS app"
 (
