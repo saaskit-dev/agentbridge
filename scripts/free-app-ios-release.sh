@@ -18,6 +18,7 @@ IOS_MAIN_PROFILE_UUID=""
 IOS_WIDGET_PROFILE_NAME=""
 IOS_WIDGET_PROFILE_UUID=""
 XCODEBUILD_LOG_PATH=""
+KEYCHAIN_PATH=""
 
 IOS_MAIN_BUNDLE_ID="app.saaskit.freecode"
 IOS_MAIN_BUNDLE_RESOURCE_ID="6G58X7AWS8"
@@ -143,7 +144,7 @@ detect_ios_scheme() {
 detect_distribution_certificate_id() {
   local cert_pem serial certs_json cert_id
 
-  cert_pem="$(security find-certificate -a -p -c 'iPhone Distribution' "$HOME/Library/Keychains/login.keychain-db" | awk '
+  cert_pem="$(security find-certificate -a -p -c 'iPhone Distribution' "$KEYCHAIN_PATH" | awk '
     BEGIN { capture = 0 }
     /BEGIN CERTIFICATE/ { capture = 1 }
     capture { print }
@@ -171,6 +172,23 @@ detect_distribution_certificate_id() {
   fi
 
   printf '%s\n' "$cert_id"
+}
+
+warm_codesign_identity() {
+  local certificate_sha="$1"
+  local smoke_dir
+
+  smoke_dir="$(mktemp -d "${TMPDIR:-/tmp}/agentbridge-codesign-smoke.XXXXXX")"
+  mkdir -p "$smoke_dir/Smoke.appex"
+  printf 'ok\n' > "$smoke_dir/Smoke.appex/smoke.txt"
+
+  if ! codesign --force --sign "$certificate_sha" --keychain "$KEYCHAIN_PATH" "$smoke_dir/Smoke.appex" >/dev/null 2>&1; then
+    echo "Failed to access iPhone Distribution identity via codesign preflight" >&2
+    rm -rf "$smoke_dir"
+    exit 1
+  fi
+
+  rm -rf "$smoke_dir"
 }
 
 create_app_store_profile() {
@@ -215,6 +233,18 @@ require_env ASC_KEY_ID
 require_env ASC_ISSUER_ID
 require_env ASC_PRIVATE_KEY
 
+detect_default_keychain() {
+  local keychain
+
+  keychain="$(security default-keychain -d user | tr -d '[:space:]"')"
+  if [ -z "$keychain" ] || [ ! -f "$keychain" ]; then
+    echo "Failed to detect default user keychain" >&2
+    exit 1
+  fi
+
+  KEYCHAIN_PATH="$keychain"
+}
+
 RELEASE_LANE="${RELEASE_LANE:-beta}"
 DISTRIBUTE_EXTERNAL="${DISTRIBUTE_EXTERNAL:-true}"
 TESTFLIGHT_GROUP="${TESTFLIGHT_GROUP:-public}"
@@ -240,6 +270,8 @@ if [ -n "${GOOGLE_SERVICES_PLIST:-}" ]; then
   printf '%s\n' "$GOOGLE_SERVICES_PLIST" > "$GOOGLE_SERVICES_PLIST_PATH"
   chmod 600 "$GOOGLE_SERVICES_PLIST_PATH"
 fi
+
+detect_default_keychain
 
 BUILD_NUMBER="$(node "$ROOT_DIR/scripts/next-ios-build-number.js")"
 VERSION="$(node -p "require('$APP_DIR/package.json').version")"
@@ -279,6 +311,7 @@ detect_ios_scheme
 
 echo "==> Prepare App Store signing profiles"
 DISTRIBUTION_CERTIFICATE_ID="$(detect_distribution_certificate_id)"
+warm_codesign_identity "$DISTRIBUTION_CERTIFICATE_ID"
 IOS_MAIN_PROFILE_INFO="$(create_app_store_profile "$IOS_MAIN_BUNDLE_RESOURCE_ID" "$IOS_MAIN_BUNDLE_ID" "$DISTRIBUTION_CERTIFICATE_ID")"
 IOS_MAIN_PROFILE_NAME="$(printf '%s\n' "$IOS_MAIN_PROFILE_INFO" | sed -n '1p')"
 IOS_MAIN_PROFILE_UUID="$(printf '%s\n' "$IOS_MAIN_PROFILE_INFO" | sed -n '2p')"
@@ -333,6 +366,7 @@ run_xcodebuild archive \
   -configuration Release \
   -destination generic/platform=iOS \
   -archivePath "$ARCHIVE_PATH" \
+  "OTHER_CODE_SIGN_FLAGS=--keychain $KEYCHAIN_PATH" \
   MARKETING_VERSION="$VERSION" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   archive
@@ -342,7 +376,8 @@ run_xcodebuild export \
   -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \
-  -exportOptionsPlist "$EXPORT_OPTIONS_PLIST"
+  -exportOptionsPlist "$EXPORT_OPTIONS_PLIST" \
+  "OTHER_CODE_SIGN_FLAGS=--keychain $KEYCHAIN_PATH"
 
 IPA_PATH="$(find "$EXPORT_PATH" -maxdepth 1 -name '*.ipa' | head -n 1)"
 if [ -z "$IPA_PATH" ]; then

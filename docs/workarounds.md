@@ -530,3 +530,31 @@ development provisioning profile，导致 TestFlight archive 混入 dev profile 
 **上游**：属于 Expo prebuild + self-hosted runner + 多 target 签名资产共存时的 Xcode 自动签名选择问题，不是业务代码问题。
 
 **删除条件**：若未来 prebuild 插件能够对发布态和开发态分离签名策略，或确认 Xcode automatic signing 在该 runner 上稳定选择 App Store profile，不再把 widget 签成 development profile，可移除。
+
+---
+
+## scripts/free-app-ios-release.sh — self-hosted iOS 发布显式绑定用户 keychain 并预热 codesign
+
+**问题**：`Release iOS` 在 self-hosted macOS runner 上执行 `xcodebuild archive` 时，`FocusAudioWidget` 的
+`codesign` 会间歇性返回 `errSecInternalComponent`。同一张 distribution 证书、同一份 profile、同一份
+entitlements 在终端里手工执行 `codesign` 可以成功，说明不是 profile 或 capability 配错，而是 Xcode 在
+CI 进程里没有稳定命中正确的用户 keychain/私钥访问路径。
+
+**触发条件**：
+
+- 使用 self-hosted macOS runner 发布 iOS
+- 分发证书和私钥存放在用户默认 keychain
+- `xcodebuild archive` 在签 `FocusAudioWidget.appex` 时由 Xcode 内部调用 `codesign`
+
+**修复内容**：
+
+- 发布脚本先通过 `security default-keychain -d user` 解析当前用户默认 keychain
+- 反查 distribution 证书时改为显式读取该 keychain，而不是依赖隐式 `HOME` 路径
+- 在真正归档前执行一次 `codesign --keychain <path>` 预热，提前验证私钥可访问
+- 给 `xcodebuild archive/export` 额外注入 `OTHER_CODE_SIGN_FLAGS=--keychain <path>`，强制 Xcode 内部的
+  `codesign` 也使用同一把 keychain
+
+**上游**：属于 self-hosted macOS runner 环境下 Xcode/Keychain 集成稳定性问题，不是业务代码问题。
+
+**删除条件**：若后续 runner 的证书改为放在独立 CI keychain，或确认在当前 runner 配置下 Xcode 可稳定访问
+默认 keychain 中的分发私钥，不再出现 `errSecInternalComponent`，可删除。
