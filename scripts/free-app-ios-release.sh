@@ -126,12 +126,6 @@ if [ -n "${GOOGLE_SERVICES_PLIST:-}" ]; then
   printf '%s\n' "$GOOGLE_SERVICES_PLIST" > "$APP_DIR/ios/Freedev/GoogleService-Info.plist"
 fi
 
-echo "==> Install CocoaPods"
-(
-  cd "$APP_DIR"
-  pnpm exec pod-install ios
-)
-
 echo "==> Archive iOS app"
 (
   cd "$APP_DIR"
