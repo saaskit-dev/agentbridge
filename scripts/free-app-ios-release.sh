@@ -7,6 +7,7 @@ APP_DIR="$ROOT_DIR/apps/free/app"
 AUTH_KEY_DIR="$HOME/.appstoreconnect/private_keys"
 AUTH_KEY_PATH=""
 EXPORT_OPTIONS_PLIST=""
+GOOGLE_SERVICES_PLIST_PATH=""
 
 cleanup() {
   if [ -n "$AUTH_KEY_PATH" ] && [ -f "$AUTH_KEY_PATH" ]; then
@@ -14,6 +15,9 @@ cleanup() {
   fi
   if [ -n "$EXPORT_OPTIONS_PLIST" ] && [ -f "$EXPORT_OPTIONS_PLIST" ]; then
     rm -f "$EXPORT_OPTIONS_PLIST"
+  fi
+  if [ -n "$GOOGLE_SERVICES_PLIST_PATH" ] && [ -f "$GOOGLE_SERVICES_PLIST_PATH" ]; then
+    rm -f "$GOOGLE_SERVICES_PLIST_PATH"
   fi
 }
 trap cleanup EXIT
@@ -66,6 +70,12 @@ export ASC_BYPASS_KEYCHAIN=1
 export ASC_STRICT_AUTH=1
 export ASC_PRIVATE_KEY_PATH="$AUTH_KEY_PATH"
 
+if [ -n "${GOOGLE_SERVICES_PLIST:-}" ]; then
+  GOOGLE_SERVICES_PLIST_PATH="$(mktemp "${TMPDIR:-/tmp}/free-google-services-ios.XXXXXX.plist")"
+  printf '%s\n' "$GOOGLE_SERVICES_PLIST" > "$GOOGLE_SERVICES_PLIST_PATH"
+  chmod 600 "$GOOGLE_SERVICES_PLIST_PATH"
+fi
+
 BUILD_NUMBER="$(node "$ROOT_DIR/scripts/next-ios-build-number.js")"
 VERSION="$(node -p "require('$APP_DIR/package.json').version")"
 ARCHIVE_PATH="$APP_DIR/.artifacts/ios/Free.xcarchive"
@@ -104,7 +114,11 @@ EOF
 echo "==> Sync Expo config into native iOS project"
 (
   cd "$APP_DIR"
-  APP_ENV=production IOS_BUILD_NUMBER="$BUILD_NUMBER" npx expo prebuild --platform ios --non-interactive
+  APP_ENV=production \
+  IOS_BUILD_NUMBER="$BUILD_NUMBER" \
+  GOOGLE_SERVICES_PLIST="${GOOGLE_SERVICES_PLIST_PATH:-}" \
+  CI=1 \
+  npx expo prebuild --platform ios
 )
 
 if [ -n "${GOOGLE_SERVICES_PLIST:-}" ]; then
