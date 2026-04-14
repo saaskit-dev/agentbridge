@@ -17,6 +17,8 @@ const os = require('os');
 
 // GitHub Release URL for tool archives
 const GITHUB_RELEASE_URL = 'https://github.com/saaskit-dev/agentbridge/releases/download/tools';
+const DOWNLOAD_MAX_ATTEMPTS = 4;
+const DOWNLOAD_RETRY_BASE_DELAY_MS = 1500;
 
 // List of required archives for each platform
 const ARCHIVES = {
@@ -85,9 +87,32 @@ function areToolsUnpacked(toolsDir) {
 /**
  * Download a file from URL to destination path
  */
-function downloadFile(url, destPath) {
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function cleanupPartialDownload(destPath) {
+    if (fs.existsSync(destPath)) {
+        try {
+            fs.unlinkSync(destPath);
+        } catch {
+            // Ignore cleanup failures; the next write attempt will surface any real issue.
+        }
+    }
+}
+
+function isRetryableStatus(statusCode) {
+    return statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
+}
+
+function formatAttempt(attempt, maxAttempts) {
+    return `(attempt ${attempt}/${maxAttempts})`;
+}
+
+function downloadFile(url, destPath, redirectCount = 0) {
     return new Promise((resolve, reject) => {
         const protocol = url.startsWith('https') ? https : http;
+        const MAX_REDIRECTS = 5;
 
         // Ensure directory exists
         const dir = path.dirname(destPath);
@@ -101,15 +126,23 @@ function downloadFile(url, destPath) {
             if (response.statusCode === 302 || response.statusCode === 301) {
                 // Follow redirect
                 file.close();
-                fs.unlinkSync(destPath);
-                downloadFile(response.headers.location, destPath).then(resolve).catch(reject);
+                cleanupPartialDownload(destPath);
+                if (redirectCount >= MAX_REDIRECTS) {
+                    reject(new Error(`Failed to download ${url}: too many redirects`));
+                    return;
+                }
+                downloadFile(response.headers.location, destPath, redirectCount + 1)
+                    .then(resolve)
+                    .catch(reject);
                 return;
             }
 
             if (response.statusCode !== 200) {
                 file.close();
-                fs.unlinkSync(destPath);
-                reject(new Error(`Failed to download ${url}: HTTP ${response.statusCode}`));
+                cleanupPartialDownload(destPath);
+                const error = new Error(`Failed to download ${url}: HTTP ${response.statusCode}`);
+                error.retryable = isRetryableStatus(response.statusCode);
+                reject(error);
                 return;
             }
 
@@ -118,14 +151,46 @@ function downloadFile(url, destPath) {
                 file.close();
                 resolve();
             });
+
+            file.on('error', (err) => {
+                file.close();
+                cleanupPartialDownload(destPath);
+                reject(err);
+            });
         }).on('error', (err) => {
             file.close();
-            if (fs.existsSync(destPath)) {
-                fs.unlinkSync(destPath);
-            }
+            cleanupPartialDownload(destPath);
             reject(err);
         });
     });
+}
+
+async function downloadFileWithRetry(url, destPath) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt += 1) {
+        try {
+            await downloadFile(url, destPath);
+            return;
+        } catch (err) {
+            lastError = err;
+            const retryable = err?.retryable === true;
+            const shouldRetry = retryable && attempt < DOWNLOAD_MAX_ATTEMPTS;
+
+            if (!shouldRetry) {
+                throw err;
+            }
+
+            const delayMs = DOWNLOAD_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+            console.warn(
+                `  Retryable download failure ${formatAttempt(attempt, DOWNLOAD_MAX_ATTEMPTS)}: ${err.message}`
+            );
+            console.warn(`  Waiting ${delayMs}ms before retrying...`);
+            await sleep(delayMs);
+        }
+    }
+
+    throw lastError;
 }
 
 /**
@@ -191,7 +256,7 @@ async function ensureArchives(platformDir, archivesDir) {
         const url = `${GITHUB_RELEASE_URL}/${archive}`;
 
         try {
-            await downloadFile(url, archivePath);
+            await downloadFileWithRetry(url, archivePath);
             console.log(`  ✓ Downloaded ${archive}`);
         } catch (err) {
             throw new Error(`Failed to download ${archive}: ${err.message}`);
