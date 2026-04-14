@@ -8,6 +8,9 @@ AUTH_KEY_DIR="$HOME/.appstoreconnect/private_keys"
 AUTH_KEY_PATH=""
 EXPORT_OPTIONS_PLIST=""
 GOOGLE_SERVICES_PLIST_PATH=""
+IOS_WORKSPACE_PATH=""
+IOS_SCHEME=""
+IOS_APP_DIR=""
 
 cleanup() {
   if [ -n "$AUTH_KEY_PATH" ] && [ -f "$AUTH_KEY_PATH" ]; then
@@ -34,6 +37,35 @@ require_cmd() {
   local name="$1"
   if ! command -v "$name" >/dev/null 2>&1; then
     echo "Missing required command: $name" >&2
+    exit 1
+  fi
+}
+
+detect_ios_workspace() {
+  local workspace
+  workspace="$(find "$APP_DIR/ios" -maxdepth 1 -name '*.xcworkspace' -print | sort | head -n 1)"
+  if [ -z "$workspace" ]; then
+    echo "Failed to detect iOS workspace under $APP_DIR/ios" >&2
+    exit 1
+  fi
+  IOS_WORKSPACE_PATH="$workspace"
+}
+
+detect_ios_scheme() {
+  local list_output
+  list_output="$(cd "$APP_DIR" && xcodebuild -list -workspace "$IOS_WORKSPACE_PATH" 2>/dev/null || true)"
+  IOS_SCHEME="$(printf '%s\n' "$list_output" | awk '
+    $0 ~ /^Schemes:$/ { in_schemes = 1; next }
+    in_schemes && $0 ~ /^[[:space:]]+[[:graph:]].*$/ {
+      gsub(/^[[:space:]]+/, "", $0)
+      print
+      exit
+    }
+    in_schemes && $0 !~ /^[[:space:]]+/ { exit }
+  ')"
+
+  if [ -z "$IOS_SCHEME" ]; then
+    echo "Failed to detect iOS scheme for workspace $IOS_WORKSPACE_PATH" >&2
     exit 1
   fi
 }
@@ -122,16 +154,21 @@ echo "==> Sync Expo config into native iOS project"
 )
 
 if [ -n "${GOOGLE_SERVICES_PLIST:-}" ]; then
-  mkdir -p "$APP_DIR/ios/Freedev"
-  printf '%s\n' "$GOOGLE_SERVICES_PLIST" > "$APP_DIR/ios/Freedev/GoogleService-Info.plist"
+  IOS_APP_DIR="$(find "$APP_DIR/ios" -mindepth 1 -maxdepth 1 -type d ! -name Pods ! -name build ! -name '.symlinks' | sort | head -n 1)"
+  if [ -n "$IOS_APP_DIR" ]; then
+    printf '%s\n' "$GOOGLE_SERVICES_PLIST" > "$IOS_APP_DIR/GoogleService-Info.plist"
+  fi
 fi
+
+detect_ios_workspace
+detect_ios_scheme
 
 echo "==> Archive iOS app"
 (
   cd "$APP_DIR"
   xcodebuild \
-    -workspace ios/Freedev.xcworkspace \
-    -scheme Freedev \
+    -workspace "$IOS_WORKSPACE_PATH" \
+    -scheme "$IOS_SCHEME" \
     -configuration Release \
     -destination generic/platform=iOS \
     -archivePath "$ARCHIVE_PATH" \
