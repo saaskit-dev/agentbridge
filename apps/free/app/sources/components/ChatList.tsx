@@ -1495,14 +1495,14 @@ const ChatListInternal = React.memo(
     const contentContainerStyle = useMemo(() => {
       if (Platform.OS !== 'web') return undefined;
       return {
-        // Keep a stable horizontal gutter on web to avoid content jumping.
+        // Keep stable gutters so floating controls never change the list layout.
         paddingRight: FAB_SIZE + 24,
-        paddingBottom: showScrollFab ? FAB_SIZE * 3 + FAB_GAP * 3 + 44 : undefined,
+        paddingBottom: FAB_SIZE * 3 + FAB_GAP * 3 + 44,
       };
-    }, [showScrollFab]);
+    }, []);
 
     return (
-      <View style={{ flex: 1, position: 'relative' }}>
+      <View style={{ flex: 1, position: 'relative', width: '100%', alignSelf: 'stretch' }}>
         <FlatList
           ref={flatListRef}
           data={listItems}

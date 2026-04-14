@@ -2,7 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import { AgentContentView } from '@/components/AgentContentView';
@@ -80,121 +88,125 @@ const QueuedMessagesPanel = React.memo(function QueuedMessagesPanel(props: {
   messages: QueuedMessage[];
   onEdit: (message: QueuedMessage) => void;
   onRemove: (messageId: string) => void;
+  horizontalPadding: number;
 }) {
   const { theme } = useUnistyles();
 
   return (
-    <View
-      style={{
-        width: '100%',
-        maxWidth: layout.maxWidth,
-        alignSelf: 'center',
-        paddingHorizontal: 12,
-        marginBottom: 8,
-        borderRadius: 14,
-        padding: 10,
-        backgroundColor: theme.dark ? 'rgba(37,99,235,0.14)' : '#EFF6FF',
-        borderWidth: 1,
-        borderColor: theme.dark ? 'rgba(96,165,250,0.28)' : '#BFDBFE',
-        gap: 8,
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Ionicons name="time-outline" size={16} color={theme.dark ? '#93C5FD' : '#1D4ED8'} />
+    <View style={{ width: '100%', alignItems: 'center', paddingHorizontal: props.horizontalPadding }}>
+      <View
+        style={{
+          width: '100%',
+          maxWidth: layout.maxWidth,
+          marginBottom: 8,
+          borderRadius: 14,
+          padding: 10,
+          backgroundColor: theme.dark ? 'rgba(37,99,235,0.14)' : '#EFF6FF',
+          borderWidth: 1,
+          borderColor: theme.dark ? 'rgba(96,165,250,0.28)' : '#BFDBFE',
+          gap: 8,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
+            <Ionicons name="time-outline" size={16} color={theme.dark ? '#93C5FD' : '#1D4ED8'} />
+            <Text
+              style={{
+                color: theme.dark ? '#DBEAFE' : '#1E3A8A',
+                fontSize: 13,
+                ...Typography.default('semiBold'),
+              }}
+            >
+              {props.messages.length} queued {props.messages.length === 1 ? 'message' : 'messages'}
+            </Text>
+          </View>
           <Text
             style={{
-              color: theme.dark ? '#DBEAFE' : '#1E3A8A',
-              fontSize: 13,
-              ...Typography.default('semiBold'),
+              color: theme.dark ? '#93C5FD' : '#2563EB',
+              fontSize: 12,
+              marginLeft: 12,
+              ...Typography.default(),
             }}
           >
-            {props.messages.length} queued {props.messages.length === 1 ? 'message' : 'messages'}
+            Will send together when this turn ends
           </Text>
         </View>
-        <Text
-          style={{
-            color: theme.dark ? '#93C5FD' : '#2563EB',
-            fontSize: 12,
-            ...Typography.default(),
-          }}
-        >
-          Will send together when this turn ends
-        </Text>
-      </View>
 
-      {props.messages.map((message, index) => {
-        const attachmentCount = message.attachments?.length ?? 0;
-        return (
-          <View
-            key={message.id}
-            style={{
-              borderRadius: 12,
-              paddingHorizontal: 10,
-              paddingVertical: 8,
-              backgroundColor: theme.dark ? 'rgba(15,23,42,0.3)' : 'rgba(255,255,255,0.72)',
-              borderWidth: 1,
-              borderColor: theme.dark ? 'rgba(148,163,184,0.16)' : 'rgba(37,99,235,0.08)',
-              gap: 6,
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-              <Text
-                style={{
-                  color: theme.colors.textSecondary,
-                  fontSize: 12,
-                  width: 18,
-                  paddingTop: 1,
-                  ...Typography.default('semiBold'),
-                }}
+        {props.messages.map((message, index) => {
+          const attachmentCount = message.attachments?.length ?? 0;
+          return (
+            <View
+              key={message.id}
+              style={{
+                borderRadius: 12,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                backgroundColor: theme.dark ? 'rgba(15,23,42,0.3)' : 'rgba(255,255,255,0.72)',
+                borderWidth: 1,
+                borderColor: theme.dark ? 'rgba(148,163,184,0.16)' : 'rgba(37,99,235,0.08)',
+                gap: 6,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                <Text
+                  style={{
+                    color: theme.colors.textSecondary,
+                    fontSize: 12,
+                    width: 18,
+                    paddingTop: 1,
+                    ...Typography.default('semiBold'),
+                  }}
+                >
+                  {index + 1}.
+                </Text>
+                <Text
+                  numberOfLines={3}
+                  style={{
+                    flex: 1,
+                    color: theme.colors.text,
+                    fontSize: 14,
+                    lineHeight: 20,
+                    ...Typography.default(),
+                  }}
+                >
+                  {message.displayText || message.text || '(attachment only)'}
+                </Text>
+              </View>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
               >
-                {index + 1}.
-              </Text>
-              <Text
-                numberOfLines={3}
-                style={{
-                  flex: 1,
-                  color: theme.colors.text,
-                  fontSize: 14,
-                  lineHeight: 20,
-                  ...Typography.default(),
-                }}
-              >
-                {message.displayText || message.text || '(attachment only)'}
-              </Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text
-                style={{
-                  color: theme.colors.textSecondary,
-                  fontSize: 12,
-                  ...Typography.default(),
-                }}
-              >
-                {attachmentCount > 0
-                  ? `${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}`
-                  : 'Text only'}
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                <Pressable onPress={() => props.onEdit(message)} hitSlop={8}>
-                  <Ionicons
-                    name="create-outline"
-                    size={16}
-                    color={theme.dark ? '#BFDBFE' : '#2563EB'}
-                  />
-                </Pressable>
-                <Pressable onPress={() => props.onRemove(message.id)} hitSlop={8}>
-                  <Ionicons
-                    name="close-outline"
-                    size={18}
-                    color={theme.dark ? '#FCA5A5' : '#DC2626'}
-                  />
-                </Pressable>
+                <Text
+                  style={{
+                    color: theme.colors.textSecondary,
+                    fontSize: 12,
+                    ...Typography.default(),
+                  }}
+                >
+                  {attachmentCount > 0
+                    ? `${attachmentCount} attachment${attachmentCount === 1 ? '' : 's'}`
+                    : 'Text only'}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                  <Pressable onPress={() => props.onEdit(message)} hitSlop={8}>
+                    <Ionicons
+                      name="create-outline"
+                      size={16}
+                      color={theme.dark ? '#BFDBFE' : '#2563EB'}
+                    />
+                  </Pressable>
+                  <Pressable onPress={() => props.onRemove(message.id)} hitSlop={8}>
+                    <Ionicons
+                      name="close-outline"
+                      size={18}
+                      color={theme.dark ? '#FCA5A5' : '#DC2626'}
+                    />
+                  </Pressable>
+                </View>
               </View>
             </View>
-          </View>
-        );
-      })}
+          );
+        })}
+      </View>
     </View>
   );
 });
@@ -389,6 +401,8 @@ function SessionViewLoaded(props: {
   const isLandscape = useIsLandscape();
   const deviceType = useDeviceType();
   const isTablet = useIsTablet();
+  const { width: screenWidth } = useWindowDimensions();
+  const composerHorizontalPadding = screenWidth > 700 ? 16 : 8;
   const sessionDisplayInfo = React.useMemo(() => {
     const isConnected = session.presence === 'online';
     return {
@@ -1086,6 +1100,7 @@ function SessionViewLoaded(props: {
           messages={queuedMessages}
           onEdit={handleEditQueuedMessage}
           onRemove={handleRemoveQueuedMessage}
+          horizontalPadding={composerHorizontalPadding}
         />
       )}
       {sendError && (
