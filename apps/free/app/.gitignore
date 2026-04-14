@@ -9,6 +9,10 @@ expo-env.d.ts
 # 本地开发请先运行: ./run build app
 ios/
 android/
+!modules/**/ios/
+!modules/**/ios/**
+!modules/**/android/
+!modules/**/android/**
 
 # Firebase config files — real configs injected at build time via EAS secrets
 # ios/Freedev/GoogleService-Info.plist is committed as a placeholder (dummy values);
