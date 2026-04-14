@@ -206,71 +206,9 @@ export const SessionView = React.memo((props: { id: string }) => {
   const headerHeight = useHeaderHeight();
   const realtimeStatus = useRealtimeStatus();
   const isTablet = useIsTablet();
-  const isDesktop = isDesktopPlatform();
   const devModeEnabledForHeader = useLocalSetting('devModeEnabled') || __DEV__;
   const showDebugIds = useLocalSetting('showDebugIds');
   const [jumpToRecentUserSignal, setJumpToRecentUserSignal] = React.useState(0);
-  const desktopActions = React.useMemo(() => {
-    if (!isDesktop || !session) return null;
-    return (
-      <>
-        {session.metadata?.path ? (
-          <Pressable
-            onPress={() => router.push(`/session/${sessionId}/files`)}
-            style={({ pressed }) => ({
-              minHeight: 34,
-              paddingHorizontal: 10,
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.14)',
-              backgroundColor: 'rgba(255,255,255,0.06)',
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              opacity: pressed ? 0.75 : 1,
-            })}
-          >
-            <Ionicons name="folder-open-outline" size={15} color={theme.colors.header.tint} />
-            <Text
-              style={{
-                fontSize: 12,
-                color: theme.colors.header.tint,
-                ...Typography.default('semiBold'),
-              }}
-            >
-              Files
-            </Text>
-          </Pressable>
-        ) : null}
-        <Pressable
-          onPress={() => setJumpToRecentUserSignal(value => value + 1)}
-          style={({ pressed }) => ({
-            minHeight: 34,
-            paddingHorizontal: 10,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.14)',
-            backgroundColor: 'rgba(255,255,255,0.06)',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            opacity: pressed ? 0.75 : 1,
-          })}
-        >
-          <Ionicons name="return-up-back-outline" size={15} color={theme.colors.header.tint} />
-          <Text
-            style={{
-              fontSize: 12,
-              color: theme.colors.header.tint,
-              ...Typography.default('semiBold'),
-            }}
-          >
-            Recent
-          </Text>
-        </Pressable>
-      </>
-    );
-  }, [isDesktop, router, session, sessionId, theme.colors.header.tint]);
 
   // Compute header props based on session state
   const headerProps = useMemo(() => {
@@ -354,7 +292,6 @@ export const SessionView = React.memo((props: { id: string }) => {
             onBackPress={() => router.back()}
             onTitleDoublePress={() => setJumpToRecentUserSignal(value => value + 1)}
             devSessionId={devModeEnabledForHeader && showDebugIds ? sessionId : null}
-            desktopActions={desktopActions}
           />
           {/* Voice status bar below header - not on tablet (shown in sidebar) */}
           {!isTablet && realtimeStatus !== 'disconnected' && (

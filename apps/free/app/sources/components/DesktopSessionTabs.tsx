@@ -1,12 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { useDesktopSessionTabs } from '@/hooks/useDesktopSessionTabs';
 import { t } from '@/text';
+import { WebPortal } from './web/WebPortal';
+
+type TabContextMenuState = {
+  x: number;
+  y: number;
+  tabId: string;
+};
 
 const styles = StyleSheet.create(theme => ({
   strip: {
@@ -20,13 +27,6 @@ const styles = StyleSheet.create(theme => ({
     paddingHorizontal: 10,
     alignItems: 'flex-end',
     gap: 6,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingBottom: 8,
   },
   tab: {
     flexDirection: 'row',
@@ -63,20 +63,116 @@ const styles = StyleSheet.create(theme => ({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionButton: {
-    height: 28,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
-  actionText: {
-    fontSize: 11,
-    ...Typography.default('semiBold'),
+  menuItemDanger: {
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
 }));
+
+const TabContextMenu = React.memo(
+  ({
+    menu,
+    onClose,
+    onCloseOthers,
+    onCloseAll,
+  }: {
+    menu: TabContextMenuState;
+    onClose: () => void;
+    onCloseOthers: () => void;
+    onCloseAll: () => void;
+  }) => {
+    const { theme } = useUnistyles();
+    const menuWidth = 176;
+    const fallbackMenuHeight = 88;
+    const [menuHeight, setMenuHeight] = React.useState(fallbackMenuHeight);
+    const viewportWidth =
+      typeof window !== 'undefined' ? window.innerWidth : menu.x + menuWidth + 16;
+    const viewportHeight =
+      typeof window !== 'undefined' ? window.innerHeight : menu.y + menuHeight + 16;
+    const cursorOffset = 10;
+    const preferredLeft = menu.x + cursorOffset;
+    const preferredTop = menu.y + cursorOffset;
+    const left =
+      preferredLeft + menuWidth <= viewportWidth - 8
+        ? preferredLeft
+        : Math.max(8, menu.x - menuWidth - cursorOffset);
+    const top =
+      preferredTop + menuHeight <= viewportHeight - 8
+        ? preferredTop
+        : Math.max(8, menu.y - menuHeight - cursorOffset);
+    return (
+      <WebPortal>
+        <Pressable
+          onPress={onClose}
+          // @ts-ignore web
+          onContextMenu={(event: any) => {
+            event.preventDefault();
+            onClose();
+          }}
+          style={{
+            position: 'fixed' as any,
+            inset: 0,
+            zIndex: 999,
+          }}
+        />
+        <View
+          onLayout={event => {
+            const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+            if (nextHeight > 0 && nextHeight !== menuHeight) {
+              setMenuHeight(nextHeight);
+            }
+          }}
+          style={{
+            position: 'fixed' as any,
+            left,
+            top,
+            zIndex: 1000,
+            width: menuWidth,
+            maxHeight: viewportHeight - 16,
+            backgroundColor: theme.colors.surface,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: theme.colors.divider,
+            shadowColor: '#000',
+            shadowOpacity: 0.08,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 6,
+            overflow: 'hidden',
+          }}
+        >
+          <Pressable onPress={onCloseOthers} style={styles.menuItem}>
+            <Ionicons name="remove-circle-outline" size={16} color={theme.colors.text} />
+            <Text style={{ color: theme.colors.text, ...Typography.default() }}>
+              {t('tabs.closeOthers')}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={onCloseAll}
+            style={[
+              styles.menuItem,
+              styles.menuItemDanger,
+              {
+                borderTopColor: theme.colors.divider,
+              },
+            ]}
+          >
+            <Ionicons name="close-circle-outline" size={16} color={theme.colors.status.error} />
+            <Text style={{ color: theme.colors.status.error, ...Typography.default() }}>
+              {t('tabs.closeAll')}
+            </Text>
+          </Pressable>
+        </View>
+      </WebPortal>
+    );
+  }
+);
 
 export function DesktopSessionTabs({
   activeSessionId,
@@ -86,6 +182,7 @@ export function DesktopSessionTabs({
   const router = useRouter();
   const { theme } = useUnistyles();
   const { tabs, closeTab, closeOtherTabs, closeAllTabs } = useDesktopSessionTabs();
+  const [contextMenu, setContextMenu] = React.useState<TabContextMenuState | null>(null);
 
   if (tabs.length <= 1) {
     return null;
@@ -93,41 +190,6 @@ export function DesktopSessionTabs({
 
   return (
     <View style={styles.strip}>
-      <View style={styles.actions}>
-        <Pressable
-          onPress={() => closeOtherTabs(activeSessionId)}
-          style={[
-            styles.actionButton,
-            {
-              borderColor: theme.colors.divider,
-              backgroundColor: theme.colors.surfaceHigh,
-            },
-          ]}
-        >
-          <Ionicons name="remove-circle-outline" size={12} color={theme.colors.textSecondary} />
-          <Text style={[styles.actionText, { color: theme.colors.textSecondary }]}>
-            {t('tabs.closeOthers')}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            router.navigate('/');
-            setTimeout(() => closeAllTabs(), 0);
-          }}
-          style={[
-            styles.actionButton,
-            {
-              borderColor: theme.colors.divider,
-              backgroundColor: theme.colors.surfaceHigh,
-            },
-          ]}
-        >
-          <Ionicons name="close-circle-outline" size={12} color={theme.colors.textSecondary} />
-          <Text style={[styles.actionText, { color: theme.colors.textSecondary }]}>
-            {t('tabs.closeAll')}
-          </Text>
-        </Pressable>
-      </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
         {tabs.map((tab, index) => {
           const active = tab.id === activeSessionId;
@@ -135,6 +197,19 @@ export function DesktopSessionTabs({
             <Pressable
               key={tab.id}
               onPress={() => router.navigate(`/session/${tab.id}`)}
+              // @ts-ignore web
+              onContextMenu={
+                Platform.OS === 'web'
+                  ? (event: any) => {
+                      event.preventDefault();
+                      setContextMenu({
+                        x: event.clientX ?? event.nativeEvent?.clientX ?? 0,
+                        y: event.clientY ?? event.nativeEvent?.clientY ?? 0,
+                        tabId: tab.id,
+                      });
+                    }
+                  : undefined
+              }
               style={[styles.tab, active ? styles.tabActive : styles.tabInactive]}
             >
               <Ionicons
@@ -182,6 +257,21 @@ export function DesktopSessionTabs({
           );
         })}
       </ScrollView>
+      {contextMenu ? (
+        <TabContextMenu
+          menu={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onCloseOthers={() => {
+            closeOtherTabs(contextMenu.tabId);
+            setContextMenu(null);
+          }}
+          onCloseAll={() => {
+            router.navigate('/');
+            setContextMenu(null);
+            setTimeout(() => closeAllTabs(), 0);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
