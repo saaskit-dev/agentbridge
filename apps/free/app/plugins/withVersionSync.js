@@ -6,7 +6,7 @@ const { withInfoPlist, withGradleProperties } = require('expo/config-plugins');
  *
  * 使用方法:
  * 1. 修改 app.config.js 中的 version
- * 2. 运行 expo prebuild 或 eas build
+ * 2. 运行 expo prebuild 或 self-hosted iOS release 脚本
  * 3. 版本自动同步到 iOS/Android 原生项目
  */
 const withVersionSync = config => {

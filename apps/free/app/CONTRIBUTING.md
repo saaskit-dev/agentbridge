@@ -9,7 +9,7 @@
 | **Development** | `app.saaskit.freecode.dev` | Free (dev) | 本地开发，连局域网 dev server |
 | **Production**  | `app.saaskit.freecode`     | Free       | App Store / TestFlight        |
 
-公测通过 **TestFlight**（iOS）/ **内测轨道**（Android）分发，与生产版共用同一个 bundle ID。
+公测当前通过 **TestFlight**（iOS）分发；Android 生产链路走 signed AAB + Google Play。
 
 ## Quick Start
 
@@ -32,14 +32,14 @@ pnpm tauri:build:production
 ## 发版
 
 ```bash
-# Beta → TestFlight / 内测
+# Beta iOS → TestFlight
 ./run release beta
 
-# 生产版 → App Store + Google Play
-./run release
+# 生产版 iOS → App Store
+./run release ios
 
-# 提交 App Store 审核
-./run release submit
+# 生产版 Android → signed AAB
+./run release android
 
 # OTA 热更新（无需审核）
 ./run ota

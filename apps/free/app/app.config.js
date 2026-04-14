@@ -6,6 +6,8 @@ const os = require('os');
 //   development   本地开发   .dev bundleId   debug 签名   连局域网 dev server
 //   production    线上+公测  app.saaskit.freecode          App Store / TestFlight
 const variant = process.env.APP_ENV || 'development';
+const iosBuildNumber = process.env.IOS_BUILD_NUMBER || '1';
+const androidVersionCode = Number.parseInt(process.env.ANDROID_VERSION_CODE || iosBuildNumber, 10) || 1;
 
 const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
 
@@ -41,6 +43,8 @@ const configs = {
 const config = configs[variant] || configs.development;
 const { name, bundleId, serverUrl, googleServicesFile } = config;
 const appGroup = `group.${bundleId}`;
+const updatesUrl = process.env.EXPO_UPDATES_URL || `${serverUrl.replace(/\/$/, '')}/updates`;
+const expoProjectId = process.env.EXPO_PROJECT_ID || '79f0465e-eaa6-47f9-91e0-09e5a5661790';
 
 export default {
   expo: {
@@ -60,6 +64,7 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: bundleId,
+      buildNumber: iosBuildNumber,
       appleTeamId: process.env.APPLE_TEAM_ID || 'SD58V5WA54',
       entitlements: {
         'com.apple.security.application-groups': [appGroup],
@@ -105,6 +110,7 @@ export default {
       blockedPermissions: ['android.permission.ACTIVITY_RECOGNITION'],
       edgeToEdgeEnabled: true,
       package: bundleId,
+      versionCode: androidVersionCode,
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './firebase/google-services.json',
       intentFilters:
         variant !== 'development'
@@ -231,7 +237,7 @@ export default {
       ],
     ],
     updates: {
-      url: 'https://u.expo.dev/79f0465e-eaa6-47f9-91e0-09e5a5661790',
+      url: updatesUrl,
     },
     experiments: {
       typedRoutes: true,
@@ -241,7 +247,7 @@ export default {
         root: './sources/app',
       },
       eas: {
-        projectId: '79f0465e-eaa6-47f9-91e0-09e5a5661790',
+        projectId: expoProjectId,
       },
       app: {
         isDev: variant === 'development',
@@ -250,6 +256,5 @@ export default {
         elevenLabsAgentIdProd: 'agent_1601kmtfet07fdxvxdrt15jxn7xe',
       },
     },
-    owner: 'saaskit-dev',
   },
 };

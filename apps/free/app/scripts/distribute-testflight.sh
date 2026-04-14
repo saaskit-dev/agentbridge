@@ -2,12 +2,13 @@
 # Distribute the latest build to the "public" TestFlight group without notifications.
 # Waits for ASC processing to complete before distributing.
 #
-# Usage: ./scripts/distribute-testflight.sh [build-number]
+# Usage: ./scripts/distribute-testflight.sh [build-number] [group]
 #   build-number  optional; defaults to the latest build
+#   group         optional; defaults to TESTFLIGHT_GROUP or "public"
 set -euo pipefail
 
-APP_ID="6760917195"
-GROUP="public"
+APP_ID="${ASC_APP_ID:-6760917195}"
+GROUP="${2:-${TESTFLIGHT_GROUP:-public}}"
 
 if [ -n "${1:-}" ]; then
   BUILD_ARG="--build-number $1"

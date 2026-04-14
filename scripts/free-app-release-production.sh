@@ -2,10 +2,12 @@
 
 # Free App - 生产版发布
 # 用法:
-#   ./scripts/free-app-release-production.sh [ios|android]  构建 (默认全平台)
-#   ./scripts/free-app-release-production.sh submit          提交 App Store 审核
+#   ./scripts/free-app-release-production.sh ios
+#   ./scripts/free-app-release-production.sh android
 #
-# 注意: buildNumber 由 EAS 自动递增 (eas.json: autoIncrement + appVersionSource: remote)
+# 说明:
+#   iOS 走本机 / self-hosted GitHub runner + App Store Connect。
+#   Android 走本机 / self-hosted GitHub runner 构建 signed AAB，CI 再上传 Google Play。
 
 set -e
 
@@ -20,25 +22,20 @@ echo ""
 cd "$APP_DIR"
 
 case "${1:-}" in
-    submit)
-        echo "📋 提交 App Store 审核..."
-        APP_ENV=production eas submit --profile production --platform ios --latest
-        ;;
     ios)
-        echo "🍎 构建 iOS → TestFlight..."
-        eas build --profile production --platform ios --auto-submit-with-profile=production --no-wait --non-interactive
+        echo "🍎 本机构建 iOS → App Store Connect / TestFlight..."
+        APP_ENV=production "$ROOT_DIR/scripts/free-app-ios-release.sh"
         ;;
     android)
-        echo "🤖 构建 Android → Google Play..."
-        eas build --profile production-android --platform android --no-wait --non-interactive
+        echo "🤖 本机构建 Android AAB..."
+        APP_ENV=production "$ROOT_DIR/scripts/free-app-android-release.sh"
         ;;
     "")
-        echo "🍎🤖 构建全平台 → TestFlight + Google Play..."
-        eas build --profile production --platform ios --auto-submit-with-profile=production --no-wait --non-interactive
-        eas build --profile production-android --platform android --no-wait --non-interactive
+        echo "用法: $0 ios|android" >&2
+        exit 1
         ;;
     *)
-        echo "用法: $0 [ios|android|submit]" >&2
+        echo "用法: $0 ios|android" >&2
         exit 1
         ;;
 esac

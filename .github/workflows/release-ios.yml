@@ -1,7 +1,25 @@
-name: Release iOS (App Store)
+name: Release iOS
 
 on:
   workflow_dispatch:
+    inputs:
+      lane:
+        description: Release lane
+        required: true
+        default: beta
+        type: choice
+        options:
+          - beta
+          - production
+      distribute_external:
+        description: Distribute to external TestFlight group after upload
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: release-ios
+  cancel-in-progress: false
 
 jobs:
   quality_gate:
@@ -29,27 +47,46 @@ jobs:
 
   release:
     needs: quality_gate
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","ios-build"]') }}
+    permissions:
+      contents: read
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: pnpm
 
-      - uses: pnpm/action-setup@v4
+      - name: Select Xcode
+        env:
+          XCODE_APP_PATH: ${{ vars.XCODE_APP_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -n "${XCODE_APP_PATH:-}" ]; then
+            sudo xcode-select -s "$XCODE_APP_PATH"
+          fi
+          xcodebuild -version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build iOS beta → TestFlight
-        working-directory: apps/free/app
+      - name: Release iOS from self-hosted runner
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          npx eas-cli@latest build \
-            --profile beta \
-            --platform ios \
-            --auto-submit-with-profile=production \
-            --no-wait \
-            --non-interactive
+          APP_ENV: production
+          RELEASE_LANE: ${{ inputs.lane }}
+          DISTRIBUTE_EXTERNAL: ${{ inputs.distribute_external }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          GOOGLE_SERVICES_PLIST: ${{ secrets.GOOGLE_SERVICES_PLIST }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          TESTFLIGHT_GROUP: ${{ vars.TESTFLIGHT_GROUP }}
+        run: ./scripts/free-app-ios-release.sh

@@ -1,161 +1,114 @@
 # Free App 配置清单
 
----
+## 1. 自托管 OTA
 
-## 1. Expo / EAS
-
-### 配置文件
+配置文件：
 
 - `apps/free/app/app.config.js`
-- `apps/free/app/eas.json`
+- `apps/free/server/.env`
 
-### 需要配置
+需要配置：
 
-| 字段            | 位置          | 获取方式                                                       |
-| --------------- | ------------- | -------------------------------------------------------------- |
-| `eas.projectId` | app.config.js | [Expo Dashboard](https://expo.dev) → Create project → Settings |
-| `updates.url`   | app.config.js | 同上，格式：`https://u.expo.dev/[PROJECT_ID]`                  |
-| `owner`         | app.config.js | 你的 Expo 用户名                                               |
+| 字段 | 位置 | 获取方式 |
+| --- | --- | --- |
+| `updates.url` | `app.config.js` | 你们自己的 server，格式：`https://your-server.example.com/updates` |
+| `EXPO_UPDATES_ADMIN_TOKEN` | server 环境变量 | 自行生成长随机 token |
+| `OTA_SERVER_URL` | OTA 发布环境变量 | 指向你们 server 根地址 |
+| `OTA_SERVER_TOKEN` | OTA 发布环境变量 | 与 `EXPO_UPDATES_ADMIN_TOKEN` 一致 |
+| `GITHUB_TOKEN` | OTA 发布环境变量 | GitHub token，用于上传 OTA 静态资产到 Releases |
+| `OTA_GITHUB_REPOSITORY` | OTA 发布环境变量 | 可选，格式：`owner/repo` |
 
-### 操作步骤
+操作步骤：
 
-```bash
-# 1. 登录/注册 Expo
-npx expo login
-
-# 2. 创建项目
-cd apps/free/app
-npx eas init --id
-
-# 3. 项目 ID 会自动写入 app.config.js
-```
-
----
+1. 部署你们自己的 server
+2. 打开 `/updates` 和 `/updates/admin/*` 路由
+3. 在 app 构建环境里确认 `updates.url` 指向你们 server
+4. 用 `pnpm run ota` 发布 OTA，并把静态资产传到 GitHub Releases
 
 ## 2. Apple Developer / App Store
 
-### 配置文件
+配置文件：
 
-- `apps/free/app/eas.json`
 - `apps/free/app/apple-app-site-association`
 
-### 需要配置
+需要配置：
 
-| 字段          | 位置                       | 获取方式                                                                                              |
-| ------------- | -------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `appleId`     | eas.json                   | 你的 Apple ID 邮箱                                                                                    |
-| `appleTeamId` | eas.json                   | [Apple Developer](https://developer.apple.com/account) → Membership → Team ID                         |
-| `ascAppId`    | eas.json                   | [App Store Connect](https://appstoreconnect.apple.com) → My Apps → [App] → App Information → Apple ID |
-| `appIDs`      | apple-app-site-association | `TEAM_ID.app.saaskit.free`                                                                            |
+| 字段 | 位置 | 获取方式 |
+| --- | --- | --- |
+| `APPLE_TEAM_ID` | GitHub Actions Secret | Apple Developer → Membership → Team ID |
+| `ASC_APP_ID` | GitHub Actions Secret | App Store Connect → App Information → Apple ID |
+| `ASC_KEY_ID` / `ASC_ISSUER_ID` / `ASC_PRIVATE_KEY` | GitHub Actions Secret | App Store Connect API Key |
+| `appIDs` | `apple-app-site-association` | `TEAM_ID.app.saaskit.freecode` |
 
-### 操作步骤
+## 3. Firebase
 
-1. 注册 [Apple Developer Program](https://developer.apple.com/programs/) ($99/年)
-2. 在 [App Store Connect](https://appstoreconnect.apple.com) 创建新 App
-3. 记录 Team ID 和 App ID
-
----
-
-## 3. Firebase (Android Push Notifications)
-
-### 配置文件
+配置文件：
 
 - `apps/free/app/google-services.json`
 - `apps/free/app/android/app/google-services.json`
 
-### 需要配置
+需要配置：
 
-| 字段               | 获取方式                                                                 |
-| ------------------ | ------------------------------------------------------------------------ |
-| `project_id`       | [Firebase Console](https://console.firebase.google.com) → Create project |
-| `mobilesdk_app_id` | Firebase Console → Project Settings → Your apps                          |
-| `api_key`          | 同上                                                                     |
+| 字段 | 获取方式 |
+| --- | --- |
+| `project_id` | Firebase Console |
+| `mobilesdk_app_id` | Firebase Console |
+| `api_key` | Firebase Console |
+| `ANDROID_UPLOAD_KEYSTORE_BASE64` | 把 Android release keystore 做 base64 后存到 CI secret |
+| `ANDROID_UPLOAD_STORE_PASSWORD` | Android release keystore password |
+| `ANDROID_UPLOAD_KEY_ALIAS` | Android release key alias |
+| `ANDROID_UPLOAD_KEY_PASSWORD` | Android release key password |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Google Play Console service account JSON |
 
-### 操作步骤
+## 4. Android App Links
 
-1. 访问 [Firebase Console](https://console.firebase.google.com)
-2. 创建新项目（或使用现有项目）
-3. 添加 Android 应用：
-   - Package name: `app.saaskit.free` (production) 或 `app.saaskit.free.dev` (dev)
-4. 下载 `google-services.json` 替换上述两个文件
-
----
-
-## 4. Android App Links (assetlinks.json)
-
-### 配置文件
+配置文件：
 
 - `apps/free/app/assetlinks.json`
 
-### 需要配置
+需要配置：
 
-| 字段                       | 获取方式           |
-| -------------------------- | ------------------ |
-| `sha256_cert_fingerprints` | 从你的签名密钥获取 |
+| 字段 | 获取方式 |
+| --- | --- |
+| `sha256_cert_fingerprints` | 从 Android 签名密钥读取 |
 
-### 操作步骤
+## 5. iOS Universal Links
 
-```bash
-# 获取 SHA-256 指纹（debug keystore）
-keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
-
-# 或者从你的 release keystore
-keytool -list -v -keystore your-release-key.jks -alias your-alias
-```
-
-然后将指纹上传到你的服务器：
-`https://your-domain.com/.well-known/assetlinks.json`
-
----
-
-## 5. iOS Universal Links (apple-app-site-association)
-
-### 配置文件
+配置文件：
 
 - `apps/free/app/apple-app-site-association`
 
-### 需要配置
+需要配置：
 
-- 你的 Apple Team ID
-- 你的 Bundle ID
+- Apple Team ID
+- Production bundle ID
 
-### 操作步骤
+## 6. 可选第三方服务
 
-1. 获取 Team ID（见 Apple Developer 部分）
-2. 上传到你的服务器：
-   `https://your-domain.com/.well-known/apple-app-site-association`
-3. 在 Apple Developer 后台启用 Associated Domains
+### PostHog
 
----
+| 环境变量 | 获取方式 |
+| --- | --- |
+| `EXPO_PUBLIC_POSTHOG_API_KEY` | PostHog Project Settings |
 
-## 6. 第三方服务（可选）
+### RevenueCat
 
-### PostHog (Analytics)
+| 环境变量 | 获取方式 |
+| --- | --- |
+| `EXPO_PUBLIC_REVENUE_CAT_APPLE` | RevenueCat API keys |
+| `EXPO_PUBLIC_REVENUE_CAT_GOOGLE` | RevenueCat API keys |
+| `EXPO_PUBLIC_REVENUE_CAT_STRIPE` | RevenueCat API keys |
 
-| 环境变量                      | 获取方式                                          |
-| ----------------------------- | ------------------------------------------------- |
-| `EXPO_PUBLIC_POSTHOG_API_KEY` | [PostHog](https://posthog.com) → Project Settings |
-
-### RevenueCat (In-App Purchases)
-
-| 环境变量                         | 获取方式                                                                   |
-| -------------------------------- | -------------------------------------------------------------------------- |
-| `EXPO_PUBLIC_REVENUE_CAT_APPLE`  | [RevenueCat](https://www.revenuecat.com) → Projects → [Project] → API keys |
-| `EXPO_PUBLIC_REVENUE_CAT_GOOGLE` | 同上                                                                       |
-| `EXPO_PUBLIC_REVENUE_CAT_STRIPE` | 同上                                                                       |
-
----
-
-## 快速检查清单
+## 快速检查
 
 ```bash
-# 检查所有 TODO 标记
 grep -r "TODO" apps/free/app/ --include="*.json" --include="*.js"
 ```
 
-- [ ] Expo EAS project ID
+- [ ] 自托管 OTA URL
+- [ ] OTA admin token
 - [ ] Apple Team ID
 - [ ] Apple App Store App ID
-- [ ] Firebase google-services.json (Android)
-- [ ] Android App Links SHA-256 指纹
-- [ ] iOS Universal Links Team ID
+- [ ] Firebase 配置
+- [ ] Android App Links 指纹
+- [ ] iOS Universal Links 配置

@@ -1,0 +1,89 @@
+name: Release OTA
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Target platform
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+      channel:
+        description: OTA channel
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - beta
+      message:
+        description: Release message
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: release-ota-${{ inputs.channel }}-${{ inputs.platform }}
+  cancel-in-progress: false
+
+jobs:
+  quality_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Check dependency architecture
+        run: pnpm run check:deps
+
+      - name: Typecheck (core + CLI)
+        run: pnpm typecheck
+
+  release:
+    needs: quality_gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Publish OTA to self-hosted server
+        working-directory: apps/free/app
+        env:
+          APP_ENV: production
+          OTA_PLATFORM: ${{ inputs.platform }}
+          OTA_CHANNEL: ${{ inputs.channel }}
+          OTA_MESSAGE: ${{ inputs.message }}
+          OTA_SERVER_URL: ${{ secrets.OTA_SERVER_URL }}
+          OTA_SERVER_TOKEN: ${{ secrets.OTA_SERVER_TOKEN }}
+          OTA_GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_SERVICES_PLIST: ${{ secrets.GOOGLE_SERVICES_PLIST }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: pnpm run ota

@@ -1,3 +1,0 @@
-# EAS Build ignore file
-# firebase/ contains local dev secrets — never upload to EAS
-firebase/
