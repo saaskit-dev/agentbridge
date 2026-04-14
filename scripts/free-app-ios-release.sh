@@ -17,6 +17,7 @@ IOS_MAIN_PROFILE_NAME=""
 IOS_MAIN_PROFILE_UUID=""
 IOS_WIDGET_PROFILE_NAME=""
 IOS_WIDGET_PROFILE_UUID=""
+XCODEBUILD_LOG_PATH=""
 
 IOS_MAIN_BUNDLE_ID="app.saaskit.freecode"
 IOS_MAIN_BUNDLE_RESOURCE_ID="6G58X7AWS8"
@@ -35,6 +36,48 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+run_xcodebuild() {
+  local phase="$1"
+  shift
+
+  XCODEBUILD_LOG_PATH="$APP_DIR/.artifacts/ios/xcodebuild-${phase}.log"
+  mkdir -p "$(dirname "$XCODEBUILD_LOG_PATH")"
+
+  set +e
+  (
+    cd "$APP_DIR"
+    xcodebuild "$@"
+  ) 2>&1 | tee "$XCODEBUILD_LOG_PATH"
+  local status="${PIPESTATUS[0]}"
+  set -e
+
+  if [ "$status" -ne 0 ]; then
+    echo "xcodebuild ${phase} failed. Full log: $XCODEBUILD_LOG_PATH" >&2
+    python3 - "$XCODEBUILD_LOG_PATH" <<'PY' >&2
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(errors="ignore").splitlines()
+patterns = [
+    re.compile(r" error: "),
+    re.compile(r"fatal error:"),
+    re.compile(r"The following build commands failed"),
+    re.compile(r"\*\* (?:BUILD|ARCHIVE) FAILED \*\*"),
+    re.compile(r"Command .* failed"),
+]
+matches = [f"{idx + 1}:{line}" for idx, line in enumerate(lines) if any(p.search(line) for p in patterns)]
+summary = matches[-80:] if matches else [f"{idx + 1}:{line}" for idx, line in enumerate(lines[-120:], max(len(lines) - 119, 1))]
+print("---- xcodebuild failure summary ----")
+for line in summary:
+    print(line)
+print("---- end summary ----")
+PY
+    exit "$status"
+  fi
+}
 
 require_env() {
   local name="$1"
@@ -284,28 +327,22 @@ cat > "$EXPORT_OPTIONS_PLIST" <<EOF
 EOF
 
 echo "==> Archive iOS app"
-(
-  cd "$APP_DIR"
-  xcodebuild \
-    -workspace "$IOS_WORKSPACE_PATH" \
-    -scheme "$IOS_SCHEME" \
-    -configuration Release \
-    -destination generic/platform=iOS \
-    -archivePath "$ARCHIVE_PATH" \
-    MARKETING_VERSION="$VERSION" \
-    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-    archive
-)
+run_xcodebuild archive \
+  -workspace "$IOS_WORKSPACE_PATH" \
+  -scheme "$IOS_SCHEME" \
+  -configuration Release \
+  -destination generic/platform=iOS \
+  -archivePath "$ARCHIVE_PATH" \
+  MARKETING_VERSION="$VERSION" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+  archive
 
 echo "==> Export IPA"
-(
-  cd "$APP_DIR"
-  xcodebuild \
-    -exportArchive \
-    -archivePath "$ARCHIVE_PATH" \
-    -exportPath "$EXPORT_PATH" \
-    -exportOptionsPlist "$EXPORT_OPTIONS_PLIST"
-)
+run_xcodebuild export \
+  -exportArchive \
+  -archivePath "$ARCHIVE_PATH" \
+  -exportPath "$EXPORT_PATH" \
+  -exportOptionsPlist "$EXPORT_OPTIONS_PLIST"
 
 IPA_PATH="$(find "$EXPORT_PATH" -maxdepth 1 -name '*.ipa' | head -n 1)"
 if [ -z "$IPA_PATH" ]; then
