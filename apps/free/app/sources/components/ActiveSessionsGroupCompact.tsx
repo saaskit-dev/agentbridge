@@ -500,45 +500,22 @@ const CompactSessionRow = React.memo(
           {/* Title line with status */}
           <View style={styles.sessionTitleRow}>
             {/* Status dot or draft icon on the left */}
-            {(() => {
-              // Show draft icon when online with draft
-              if (sessionStatus.state === 'waiting' && session.draft) {
-                return (
-                  <Ionicons
-                    name="create-outline"
-                    size={14}
-                    color={theme.colors.textSecondary}
-                    style={{ marginRight: 8 }}
-                  />
-                );
-              }
-
-              // Show status dot only for permission_required/thinking states
-              if (
-                sessionStatus.state === 'permission_required' ||
-                sessionStatus.state === 'thinking'
-              ) {
-                return (
-                  <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
-                    <StatusDot
-                      color={sessionStatus.statusDotColor}
-                      isPulsing={sessionStatus.isPulsing}
-                    />
-                  </View>
-                );
-              }
-
-              // Show grey dot for online without draft
-              if (sessionStatus.state === 'waiting') {
-                return (
-                  <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
-                    <StatusDot color={theme.colors.textSecondary} isPulsing={false} />
-                  </View>
-                );
-              }
-
-              return null;
-            })()}
+            <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
+              {sessionStatus.state === 'waiting' && session.draft ? (
+                <Ionicons name="create-outline" size={14} color={theme.colors.textSecondary} />
+              ) : (
+                <StatusDot
+                  color={
+                    sessionStatus.state === 'waiting'
+                      ? theme.colors.textSecondary
+                      : sessionStatus.statusDotColor
+                  }
+                  isPulsing={
+                    sessionStatus.state === 'waiting' ? false : sessionStatus.isPulsing
+                  }
+                />
+              )}
+            </View>
 
             <Text
               style={[

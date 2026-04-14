@@ -1496,6 +1496,8 @@ const ChatListInternal = React.memo(
       if (Platform.OS !== 'web') return undefined;
       return {
         // Keep stable gutters so floating controls never change the list layout.
+        // Match both sides so the message column stays visually centered.
+        paddingLeft: FAB_SIZE + 24,
         paddingRight: FAB_SIZE + 24,
         paddingBottom: FAB_SIZE * 3 + FAB_GAP * 3 + 44,
       };
