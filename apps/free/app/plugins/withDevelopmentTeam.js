@@ -2,7 +2,7 @@ const { withXcodeProject } = require('expo/config-plugins');
 
 /**
  * 在 prebuild 后自动写入 DEVELOPMENT_TEAM + CODE_SIGN_STYLE = Automatic，
- * 避免每次 expo prebuild 后丢失签名设置。
+ * 并启用 REGISTER_APP_GROUPS，避免每次 expo prebuild 后丢失签名设置。
  *
  * Team ID 通过 APPLE_TEAM_ID 环境变量注入，fallback 到 hardcode 默认值。
  */
@@ -53,6 +53,9 @@ const withDevelopmentTeam = config => {
 
         entry.buildSettings.DEVELOPMENT_TEAM = teamId;
         entry.buildSettings.CODE_SIGN_STYLE = 'Automatic';
+        // Self-hosted CI relies on xcodebuild automatic signing. REGISTER_APP_GROUPS
+        // lets Xcode reconcile app-group-capable targets and refresh matching profiles.
+        entry.buildSettings.REGISTER_APP_GROUPS = 'YES';
       }
     }
 
