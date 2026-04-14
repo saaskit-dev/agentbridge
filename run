@@ -159,6 +159,9 @@ cmd_android() {
 
 cmd_desktop() {
     cd "$APP_DIR"
+    if DESKTOP_UPDATER_ENV="$(node "$ROOT/scripts/resolve-desktop-updater-env.js")" && [ -n "$DESKTOP_UPDATER_ENV" ]; then
+        eval "$DESKTOP_UPDATER_ENV"
+    fi
     case "${1:-}" in
         ""|dev)
             [ "${1:-}" = "dev" ] && shift
@@ -168,8 +171,17 @@ cmd_desktop() {
         build|production|release)
             shift
             info "构建桌面正式包"
+            TAURI_BUILD_CONFIG="src-tauri/tauri.conf.json"
+            if [ -n "${TAURI_UPDATER_PUBLIC_KEY:-}" ]; then
+                cd "$ROOT"
+                node ./scripts/prepare-desktop-updater-config.js --require-key
+                cd "$APP_DIR"
+                TAURI_BUILD_CONFIG="src-tauri/tauri.updater.conf.json"
+            else
+                node "$ROOT/scripts/prepare-desktop-updater-config.js"
+            fi
             if [ "$(uname -s)" = "Darwin" ]; then
-                pnpm exec tauri build --config src-tauri/tauri.conf.json --bundles app "$@"
+                pnpm exec tauri build --config "$TAURI_BUILD_CONFIG" --bundles app "$@"
                 "$ROOT/scripts/repair-tauri-macos-app-signature.sh"
                 VERSION="$(node -p "require('./package.json').version")"
                 DMG_PATH="src-tauri/target/release/bundle/dmg/Free_${VERSION}_$(uname -m).dmg"
@@ -186,7 +198,7 @@ cmd_desktop() {
                     info "  $APP_DIR/$DMG_PATH"
                 fi
             else
-                pnpm tauri:build:production "$@"
+                pnpm exec tauri build --config "$TAURI_BUILD_CONFIG" "$@"
                 "$ROOT/scripts/repair-tauri-macos-app-signature.sh"
             fi
             ;;

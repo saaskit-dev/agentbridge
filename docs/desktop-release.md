@@ -47,9 +47,13 @@ That directory contains:
 - Desktop installers / app bundles copied from `apps/free/app/src-tauri/target/release/bundle/`
 - `SHA256SUMS.txt`
 
-If `TAURI_UPDATER_PUBLIC_KEY` is set in the environment, the local build also includes updater artifacts and signatures.
+If updater signing material is available, the local build also includes updater artifacts and signatures. Local desktop builds now auto-discover keys from these sources, in order:
 
-On macOS, local packaging intentionally avoids Tauri's built-in DMG bundler and generates the DMG in a follow-up `hdiutil` step after the `.app` bundle is produced. If `hdiutil` still fails in the local environment, the flow falls back to a `.zip` archive so staging can still complete.
+- existing process env: `TAURI_UPDATER_PUBLIC_KEY`, `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_RAW`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- explicit file envs: `TAURI_UPDATER_PUBLIC_KEY_FILE`, `TAURI_SIGNING_PRIVATE_KEY_FILE`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD_FILE`
+- latest matching local keyset under `~/.tauri/free-desktop*.key`, `.key.pub`, `.password`
+
+On macOS, local packaging intentionally avoids Tauri's built-in DMG bundler and generates the DMG in a follow-up `hdiutil makehybrid -hfs` step after the `.app` bundle is produced. If `hdiutil` still fails in the local environment, the flow falls back to a `.zip` archive so staging can still complete.
 
 ## Version Source
 
@@ -92,11 +96,11 @@ cd apps/free/app
 pnpm tauri signer generate -w ~/.tauri/free-desktop.key
 ```
 
-Then:
+Then either:
 
-- put the public key in `TAURI_UPDATER_PUBLIC_KEY`
-- put the private key content in `TAURI_SIGNING_PRIVATE_KEY`
-- put the password in `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- export `TAURI_UPDATER_PUBLIC_KEY`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- or point to files with `TAURI_UPDATER_PUBLIC_KEY_FILE`, `TAURI_SIGNING_PRIVATE_KEY_FILE`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD_FILE`
+- or keep the generated trio in `~/.tauri/` using a `free-desktop*.key` basename and let local desktop builds auto-discover them
 
 For `TAURI_UPDATER_PUBLIC_KEY`, either of these formats works:
 

@@ -8,6 +8,10 @@ TAURI_CONFIG="$APP_DIR/src-tauri/tauri.conf.json"
 OUTPUT_ROOT="$APP_DIR/dist-desktop"
 TAURI_UPDATER_CONFIG="$APP_DIR/src-tauri/tauri.updater.conf.json"
 
+if DESKTOP_UPDATER_ENV="$(node "$ROOT/scripts/resolve-desktop-updater-env.js")" && [ -n "$DESKTOP_UPDATER_ENV" ]; then
+  eval "$DESKTOP_UPDATER_ENV"
+fi
+
 cd "$ROOT"
 
 VERSION="$(node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));process.stdout.write(p.version)" "$TAURI_CONFIG")"
@@ -43,6 +47,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
   APP_BUNDLE_PATH="$APP_DIR/src-tauri/target/release/bundle/macos/Free.app"
   DMG_PATH="$APP_DIR/src-tauri/target/release/bundle/dmg/Free_${VERSION}_${ARCH}.dmg"
   ZIP_PATH="$APP_DIR/src-tauri/target/release/bundle/macos/Free_${VERSION}_${ARCH}.zip"
+  find "$APP_DIR/src-tauri/target/release/bundle/dmg" -maxdepth 1 -type f -name 'Free_*.dmg' -delete 2>/dev/null || true
+  find "$APP_DIR/src-tauri/target/release/bundle/macos" -maxdepth 1 -type f -name 'Free_*_*.zip' -delete 2>/dev/null || true
   if [ -d "$APP_BUNDLE_PATH" ]; then
     mkdir -p "$(dirname "$DMG_PATH")"
     if ! bash "$ROOT/scripts/create-macos-dmg.sh" "$APP_BUNDLE_PATH" "$DMG_PATH"; then
@@ -53,9 +59,10 @@ if [ "$(uname -s)" = "Darwin" ]; then
   fi
 fi
 
+rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
 find "$APP_DIR/src-tauri/target/release/bundle" \
-  \( -name "*.app" -o -name "*.dmg" -o -name "*.zip" -o -name "*.app.tar.gz" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" \) \
+  \( -name "*.app" -o -name "*.dmg" -o -name "*.zip" -o -name "*.app.tar.gz" -o -name "*.sig" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" \) \
   -print0 > "$TEMP_FILE_LIST"
 
 if [ ! -s "$TEMP_FILE_LIST" ]; then

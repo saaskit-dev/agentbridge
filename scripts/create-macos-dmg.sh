@@ -31,11 +31,15 @@ ln -s /Applications "$STAGING_DIR/Applications"
 
 rm -f "$OUTPUT_DMG_PATH"
 
-hdiutil create \
-  -volname "$VOLUME_NAME" \
-  -srcfolder "$STAGING_DIR" \
+# `hdiutil create -srcfolder` is flaky in some headless / constrained macOS
+# environments and can fail with "Device not configured" even for trivial inputs.
+# `makehybrid -hfs` has proven reliable on the same hosts while still producing
+# a mountable disk image for local distribution.
+hdiutil makehybrid \
+  -hfs \
+  -hfs-volume-name "$VOLUME_NAME" \
   -ov \
-  -format UDZO \
-  "$OUTPUT_DMG_PATH"
+  -o "$OUTPUT_DMG_PATH" \
+  "$STAGING_DIR"
 
 echo "Created DMG at $OUTPUT_DMG_PATH"
