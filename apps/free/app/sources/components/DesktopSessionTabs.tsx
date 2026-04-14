@@ -5,7 +5,7 @@ import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
-import { useDesktopSessionTabs } from '@/hooks/useDesktopSessionTabs';
+import { useDesktopSessionTabsState } from '@/hooks/useDesktopSessionTabs';
 import { t } from '@/text';
 import { WebPortal } from './web/WebPortal';
 
@@ -181,7 +181,10 @@ export function DesktopSessionTabs({
 }) {
   const router = useRouter();
   const { theme } = useUnistyles();
-  const { tabs, closeTab, closeOtherTabs, closeAllTabs } = useDesktopSessionTabs();
+  const tabs = useDesktopSessionTabsState(state => state.tabs);
+  const closeTab = useDesktopSessionTabsState(state => state.closeTab);
+  const closeOtherTabs = useDesktopSessionTabsState(state => state.closeOtherTabs);
+  const closeAllTabs = useDesktopSessionTabsState(state => state.closeAllTabs);
   const [contextMenu, setContextMenu] = React.useState<TabContextMenuState | null>(null);
 
   if (tabs.length <= 1) {

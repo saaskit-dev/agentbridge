@@ -17,7 +17,7 @@ import { SessionFilesSidebar } from '@/components/SessionFilesSidebar';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { Typography } from '@/constants/Typography';
 import { useDraft } from '@/hooks/useDraft';
-import { useDesktopSessionTabs } from '@/hooks/useDesktopSessionTabs';
+import { useDesktopSessionTabsState } from '@/hooks/useDesktopSessionTabs';
 import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
@@ -31,6 +31,7 @@ import {
 } from '@/sync/ops';
 import {
   storage,
+  useAcknowledgedCliVersion,
   useIsDataReady,
   useLocalSetting,
   useRealtimeStatus,
@@ -214,6 +215,24 @@ export const SessionView = React.memo((props: { id: string }) => {
   const showDebugIds = useLocalSetting('showDebugIds');
   const [jumpToRecentUserSignal, setJumpToRecentUserSignal] = React.useState(0);
 
+  const sessionDisplayInfo = useMemo(() => {
+    if (!session) {
+      return null;
+    }
+
+    const isConnected = session.presence === 'online';
+    return {
+      title: getSessionName(session),
+      subtitle: session.metadata?.path
+        ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir)
+        : undefined,
+      avatarId: getSessionAvatarId(session),
+      flavor: session.metadata?.flavor || null,
+      isConnected,
+      tintColor: isConnected ? '#000' : '#8E8E93',
+    };
+  }, [session]);
+
   // Compute header props based on session state
   const headerProps = useMemo(() => {
     if (!isDataReady) {
@@ -241,19 +260,16 @@ export const SessionView = React.memo((props: { id: string }) => {
     }
 
     // Normal state - show session info
-    const isConnected = session.presence === 'online';
     return {
-      title: getSessionName(session),
-      subtitle: session.metadata?.path
-        ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir)
-        : undefined,
-      avatarId: getSessionAvatarId(session),
+      title: sessionDisplayInfo?.title ?? '',
+      subtitle: sessionDisplayInfo?.subtitle,
+      avatarId: sessionDisplayInfo?.avatarId,
       onAvatarPress: () => router.push(`/session/${sessionId}/info`),
-      isConnected: isConnected,
-      flavor: session.metadata?.flavor || null,
-      tintColor: isConnected ? '#000' : '#8E8E93',
+      isConnected: sessionDisplayInfo?.isConnected ?? false,
+      flavor: sessionDisplayInfo?.flavor ?? null,
+      tintColor: sessionDisplayInfo?.tintColor ?? '#8E8E93',
     };
-  }, [session, isDataReady, sessionId, router]);
+  }, [isDataReady, router, session, sessionDisplayInfo, sessionId]);
 
   return (
     <>
@@ -373,6 +389,14 @@ function SessionViewLoaded(props: {
   const isLandscape = useIsLandscape();
   const deviceType = useDeviceType();
   const isTablet = useIsTablet();
+  const sessionDisplayInfo = React.useMemo(() => {
+    const isConnected = session.presence === 'online';
+    return {
+      title: getSessionName(session),
+      avatarId: getSessionAvatarId(session),
+      isConnected,
+    };
+  }, [session]);
   const [message, setMessage] = React.useState('');
   const { isListening: isSpeechActive, start: startSpeech, stop: stopSpeech, cancel: cancelSpeech } = useSpeechInput(setMessage);
   const handleSpeechInputPress = React.useCallback(() => {
@@ -410,13 +434,12 @@ function SessionViewLoaded(props: {
     kind: 'model' | 'mode';
     target: string;
   } | null>(null);
-  const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
-
   // Check if CLI version is outdated and not already acknowledged
   const cliVersion = session.metadata?.version;
   const machineId = session.metadata?.machineId;
+  const acknowledgedCliVersion = useAcknowledgedCliVersion(machineId);
   const isCliOutdated = cliVersion && !isVersionSupported(cliVersion, MINIMUM_CLI_VERSION);
-  const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
+  const isAcknowledged = machineId && acknowledgedCliVersion === cliVersion;
   const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
   // Get permission mode from session object
   const permissionMode = session.permissionMode || 'accept-edits';
@@ -520,7 +543,8 @@ function SessionViewLoaded(props: {
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
   const showDesktopFilesSidebar =
     isTauriDesktop() && isTablet && !!session.metadata?.path && deviceType !== 'phone';
-  const { openTab: openSessionTab, updateTabTitle: updateSessionTabTitle } = useDesktopSessionTabs();
+  const openSessionTab = useDesktopSessionTabsState(state => state.openTab);
+  const updateSessionTabTitle = useDesktopSessionTabsState(state => state.updateTabTitle);
   const [contentTabs, setContentTabs] = React.useState<SessionContentTab[]>([
     { id: 'chat', type: 'chat', title: t('tabs.sessions') },
   ]);
@@ -591,15 +615,17 @@ function SessionViewLoaded(props: {
     if (!showDesktopFilesSidebar) {
       return;
     }
-    openSessionTab({ id: sessionId, title: getSessionName(session) });
-  }, [openSessionTab, sessionId, showDesktopFilesSidebar]);
+    openSessionTab({ id: sessionId, title: sessionDisplayInfo?.title ?? '' });
+  }, [openSessionTab, sessionDisplayInfo, sessionId, showDesktopFilesSidebar]);
+
+  const sessionTabTitle = sessionDisplayInfo?.title ?? '';
 
   React.useEffect(() => {
     if (!showDesktopFilesSidebar) {
       return;
     }
-    updateSessionTabTitle(sessionId, getSessionName(session));
-  }, [session, sessionId, showDesktopFilesSidebar, updateSessionTabTitle]);
+    updateSessionTabTitle(sessionId, sessionTabTitle);
+  }, [sessionId, sessionTabTitle, showDesktopFilesSidebar, updateSessionTabTitle]);
 
   React.useEffect(() => {
     const availableModels = session.capabilities?.models?.available ?? [];
@@ -888,6 +914,7 @@ function SessionViewLoaded(props: {
   // Handle dismissing CLI version warning
   const handleDismissCliWarning = React.useCallback(() => {
     if (machineId && cliVersion) {
+      const acknowledgedCliVersions = storage.getState().localSettings.acknowledgedCliVersions;
       storage.getState().applyLocalSettings({
         acknowledgedCliVersions: {
           ...acknowledgedCliVersions,
@@ -895,7 +922,7 @@ function SessionViewLoaded(props: {
         },
       });
     }
-  }, [machineId, cliVersion, acknowledgedCliVersions]);
+  }, [machineId, cliVersion]);
 
   // Function to update permission mode
   const updatePermissionMode = React.useCallback(

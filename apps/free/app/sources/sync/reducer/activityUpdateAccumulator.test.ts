@@ -253,6 +253,82 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
     });
   });
 
+  describe('batched updates', () => {
+    it('flushes a batch with significant changes only once', () => {
+      const first: ApiEphemeralActivityUpdate = {
+        type: 'activity',
+        id: 'session1',
+        active: true,
+        activeAt: 1000,
+        thinking: false,
+      };
+      const second: ApiEphemeralActivityUpdate = {
+        type: 'activity',
+        id: 'session2',
+        active: true,
+        activeAt: 1000,
+        thinking: true,
+      };
+
+      accumulator.addUpdates([first, second]);
+
+      expect(mockFlushHandler).toHaveBeenCalledTimes(1);
+      expect(mockFlushHandler).toHaveBeenCalledWith(
+        new Map([
+          ['session1', first],
+          ['session2', second],
+        ])
+      );
+    });
+
+    it('debounces a batch when all changes are timestamp-only', () => {
+      const initialSession1: ApiEphemeralActivityUpdate = {
+        type: 'activity',
+        id: 'session1',
+        active: true,
+        activeAt: 1000,
+        thinking: false,
+      };
+      const initialSession2: ApiEphemeralActivityUpdate = {
+        type: 'activity',
+        id: 'session2',
+        active: true,
+        activeAt: 1000,
+        thinking: false,
+      };
+      const nextSession1: ApiEphemeralActivityUpdate = {
+        type: 'activity',
+        id: 'session1',
+        active: true,
+        activeAt: 1100,
+        thinking: false,
+      };
+      const nextSession2: ApiEphemeralActivityUpdate = {
+        type: 'activity',
+        id: 'session2',
+        active: true,
+        activeAt: 1100,
+        thinking: false,
+      };
+
+      accumulator.addUpdates([initialSession1, initialSession2]);
+      expect(mockFlushHandler).toHaveBeenCalledTimes(1);
+
+      accumulator.addUpdates([nextSession1, nextSession2]);
+      expect(mockFlushHandler).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(500);
+      expect(mockFlushHandler).toHaveBeenCalledTimes(2);
+      expect(mockFlushHandler).toHaveBeenNthCalledWith(
+        2,
+        new Map([
+          ['session1', nextSession1],
+          ['session2', nextSession2],
+        ])
+      );
+    });
+  });
+
   describe('mixed scenarios', () => {
     it('should flush pending updates when significant change occurs', () => {
       const update1: ApiEphemeralActivityUpdate = {

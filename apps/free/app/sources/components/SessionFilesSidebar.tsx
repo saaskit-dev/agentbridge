@@ -2,7 +2,7 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
-import { Pressable, ScrollView, TextInput, View, type ViewStyle } from 'react-native';
+import { FlatList, Pressable, TextInput, View, type ViewStyle } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { FileIcon } from '@/components/FileIcon';
 import { Text } from '@/components/StyledText';
@@ -61,6 +61,32 @@ type GitTreeNode = {
   loaded?: boolean;
   children?: GitTreeNode[];
 };
+
+type VisibleFileTreeRow = {
+  key: string;
+  node: FileTreeNode;
+  depth: number;
+};
+
+type VisibleGitTreeRow = {
+  key: string;
+  node: GitTreeNode;
+  depth: number;
+};
+
+type GitListRow =
+  | {
+      type: 'section';
+      key: string;
+      title: string;
+      tone: 'success' | 'warning';
+    }
+  | {
+      type: 'node';
+      key: string;
+      node: GitTreeNode;
+      depth: number;
+    };
 
 const directoryCache = new Map<string, { loadedAt: number; nodes: FileTreeNode[] }>();
 
@@ -434,6 +460,44 @@ function buildGitTree(
   return root;
 }
 
+function flattenVisibleFileTree(
+  nodes: FileTreeNode[],
+  expandedPaths: Set<string>,
+  depth: number = 0
+): VisibleFileTreeRow[] {
+  const rows: VisibleFileTreeRow[] = [];
+
+  for (const node of nodes) {
+    rows.push({ key: node.id, node, depth });
+    if (node.type === 'directory' && expandedPaths.has(node.path) && node.children?.length) {
+      rows.push(...flattenVisibleFileTree(node.children, expandedPaths, depth + 1));
+    }
+  }
+
+  return rows;
+}
+
+function flattenVisibleGitTree(
+  nodes: GitTreeNode[],
+  expandedPaths: Set<string>,
+  depth: number = 0
+): VisibleGitTreeRow[] {
+  const rows: VisibleGitTreeRow[] = [];
+
+  for (const node of nodes) {
+    rows.push({ key: node.id, node, depth });
+    if (
+      node.type === 'directory' &&
+      expandedPaths.has(gitFileNodePathKey(node.section, node.path)) &&
+      node.children?.length
+    ) {
+      rows.push(...flattenVisibleGitTree(node.children, expandedPaths, depth + 1));
+    }
+  }
+
+  return rows;
+}
+
 function updateNodeTree(
   nodes: FileTreeNode[],
   targetPath: string,
@@ -473,7 +537,13 @@ export function SessionFilesSidebar({
 }) {
   const router = useRouter();
   const { theme } = useUnistyles();
-  const { width, setWidth, collapsed, setCollapsed, defaultWidth } =
+  const {
+    width: persistedWidth,
+    setWidth: persistWidth,
+    collapsed: persistedCollapsed,
+    setCollapsed: persistCollapsed,
+    defaultWidth,
+  } =
     useDesktopSessionFilesSidebar();
   const normalizedActiveFilePath =
     activeFilePath && activeFilePath.startsWith('/')
@@ -497,8 +567,37 @@ export function SessionFilesSidebar({
   const [isDragging, setIsDragging] = React.useState(false);
   const [isHovering, setIsHovering] = React.useState(false);
   const lastFilePressRef = React.useRef<{ path: string; at: number } | null>(null);
+  const [liveWidth, setLiveWidth] = React.useState(persistedWidth);
+  const [liveCollapsed, setLiveCollapsed] = React.useState(persistedCollapsed);
 
-  const panelWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : width;
+  React.useEffect(() => {
+    if (!isDragging) {
+      setLiveWidth(persistedWidth);
+    }
+  }, [isDragging, persistedWidth]);
+
+  React.useEffect(() => {
+    if (!isDragging) {
+      setLiveCollapsed(persistedCollapsed);
+    }
+  }, [isDragging, persistedCollapsed]);
+
+  const commitSidebarLayout = React.useCallback(
+    (nextWidth: number, nextCollapsed: boolean) => {
+      setLiveWidth(nextWidth);
+      setLiveCollapsed(nextCollapsed);
+
+      if (nextCollapsed !== persistedCollapsed) {
+        persistCollapsed(nextCollapsed);
+      }
+      if (!nextCollapsed && nextWidth !== persistedWidth) {
+        persistWidth(nextWidth);
+      }
+    },
+    [persistCollapsed, persistWidth, persistedCollapsed, persistedWidth]
+  );
+
+  const panelWidth = liveCollapsed ? SIDEBAR_COLLAPSED_WIDTH : liveWidth;
 
   const loadDirectory = React.useCallback(
     async (path: string, targetPath?: string): Promise<FileTreeNode[]> => {
@@ -1016,21 +1115,39 @@ export function SessionFilesSidebar({
     () => buildGitTree(gitStatusFiles?.unstagedFiles ?? [], 'unstaged'),
     [gitStatusFiles?.unstagedFiles]
   );
+  const visibleFileRows = React.useMemo(
+    () => flattenVisibleFileTree(tree, expandedPaths),
+    [expandedPaths, tree]
+  );
+  const visibleStagedGitRows = React.useMemo(
+    () => flattenVisibleGitTree(stagedGitTree, gitExpandedPaths),
+    [gitExpandedPaths, stagedGitTree]
+  );
+  const visibleUnstagedGitRows = React.useMemo(
+    () => flattenVisibleGitTree(unstagedGitTree, gitExpandedPaths),
+    [gitExpandedPaths, unstagedGitTree]
+  );
 
   const startResize = React.useCallback(
     (startClientX: number) => {
       if (typeof window === 'undefined') return;
 
+      let finalWidth = liveWidth;
+      let finalCollapsed = liveCollapsed;
+
       const handleMove = (event: MouseEvent) => {
         const nextWidth = window.innerWidth - event.clientX;
         if (nextWidth < SIDEBAR_HIDE_THRESHOLD) {
-          setCollapsed(true);
+          finalCollapsed = true;
+          setLiveCollapsed(true);
           return;
         }
 
         const maxVisibleWidth = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, window.innerWidth - 360));
-        setCollapsed(false);
-        setWidth(Math.max(SIDEBAR_MIN_WIDTH, Math.min(nextWidth, maxVisibleWidth)));
+        finalCollapsed = false;
+        finalWidth = Math.max(SIDEBAR_MIN_WIDTH, Math.min(nextWidth, maxVisibleWidth));
+        setLiveCollapsed(false);
+        setLiveWidth(finalWidth);
       };
 
       const handleUp = (event: MouseEvent) => {
@@ -1039,6 +1156,7 @@ export function SessionFilesSidebar({
         setResizeCursor(false);
         window.removeEventListener('mousemove', handleMove);
         window.removeEventListener('mouseup', handleUp);
+        commitSidebarLayout(finalWidth, finalCollapsed);
       };
 
       setIsDragging(true);
@@ -1047,7 +1165,7 @@ export function SessionFilesSidebar({
       window.addEventListener('mouseup', handleUp);
       handleMove({ clientX: startClientX } as MouseEvent);
     },
-    [setCollapsed, setWidth]
+    [commitSidebarLayout, liveCollapsed, liveWidth]
   );
 
   const handleFilePress = React.useCallback(
@@ -1084,63 +1202,61 @@ export function SessionFilesSidebar({
     [loadDirectory, revealPath]
   );
 
-  const renderNode = React.useCallback(
-    (node: FileTreeNode, depth: number): React.ReactNode => {
+  const renderFileTreeRow = React.useCallback(
+    ({ item }: { item: VisibleFileTreeRow }) => {
+      const { node, depth } = item;
       const expanded = expandedPaths.has(node.path);
       const absolutePath = resolveFileAbsolutePath(node.path);
       const selected = selectedFilePath === absolutePath || absoluteActiveFilePath === absolutePath;
 
       return (
-        <View key={node.id}>
-          <Pressable
-            onPress={() => {
-              if (node.type === 'directory') {
-                void handleToggleDirectory(node);
-              } else {
-                handleFilePress(node.path);
-              }
-            }}
-            // @ts-ignore web
-            onContextMenu={(event: any) => {
-              openContextMenu(event, 'file', node.path, {
-                absolutePath,
-                fileName: node.name,
-                isDirectory: node.type === 'directory',
-              });
-            }}
-            style={[styles.row, selected && styles.rowSelected, { paddingLeft: 10 + depth * 14 }]}
-          >
-            {node.type === 'directory' ? (
-              <Ionicons
-                name={expanded ? 'chevron-down' : 'chevron-forward'}
-                size={14}
-                color={theme.colors.textSecondary}
-                style={{ marginRight: 4 }}
-              />
-            ) : (
-              <View style={{ width: 18 }} />
-            )}
-            {node.type === 'directory' ? (
-              <Octicons
-                name="file-directory"
-                size={15}
-                color="#007AFF"
-                style={{ marginRight: 8 }}
-              />
-            ) : (
-              <View style={{ marginRight: 8 }}>
-                <FileIcon fileName={node.name} size={16} />
-              </View>
-            )}
-            <Text style={styles.rowLabel} numberOfLines={1}>
-              {node.name}
-            </Text>
-            {node.loading ? (
-              <Ionicons name="sync-outline" size={14} color={theme.colors.textSecondary} />
-            ) : null}
-          </Pressable>
-          {node.type === 'directory' && expanded && node.children?.map(child => renderNode(child, depth + 1))}
-        </View>
+        <Pressable
+          onPress={() => {
+            if (node.type === 'directory') {
+              void handleToggleDirectory(node);
+            } else {
+              handleFilePress(node.path);
+            }
+          }}
+          // @ts-ignore web
+          onContextMenu={(event: any) => {
+            openContextMenu(event, 'file', node.path, {
+              absolutePath,
+              fileName: node.name,
+              isDirectory: node.type === 'directory',
+            });
+          }}
+          style={[styles.row, selected && styles.rowSelected, { paddingLeft: 10 + depth * 14 }]}
+        >
+          {node.type === 'directory' ? (
+            <Ionicons
+              name={expanded ? 'chevron-down' : 'chevron-forward'}
+              size={14}
+              color={theme.colors.textSecondary}
+              style={{ marginRight: 4 }}
+            />
+          ) : (
+            <View style={{ width: 18 }} />
+          )}
+          {node.type === 'directory' ? (
+            <Octicons
+              name="file-directory"
+              size={15}
+              color="#007AFF"
+              style={{ marginRight: 8 }}
+            />
+          ) : (
+            <View style={{ marginRight: 8 }}>
+              <FileIcon fileName={node.name} size={16} />
+            </View>
+          )}
+          <Text style={styles.rowLabel} numberOfLines={1}>
+            {node.name}
+          </Text>
+          {node.loading ? (
+            <Ionicons name="sync-outline" size={14} color={theme.colors.textSecondary} />
+          ) : null}
+        </Pressable>
       );
     },
     [
@@ -1148,20 +1264,19 @@ export function SessionFilesSidebar({
       expandedPaths,
       handleFilePress,
       handleToggleDirectory,
-      resolveFileAbsolutePath,
       openContextMenu,
+      resolveFileAbsolutePath,
       selectedFilePath,
       theme.colors.textSecondary,
     ]
   );
 
-  const renderSearchResult = React.useCallback(
-    (item: FileItem) => {
+  const renderSearchResultRow = React.useCallback(
+    ({ item }: { item: FileItem }) => {
       const absolutePath = resolveSearchResultPath(item);
       const selected = absoluteActiveFilePath === absolutePath || selectedFilePath === absolutePath;
       return (
         <Pressable
-          key={item.fullPath}
           onPress={() => {
             if (item.fileType === 'folder') {
               void handleDirectorySearchResultPress(absolutePath);
@@ -1262,9 +1377,77 @@ export function SessionFilesSidebar({
     (gitStatusFiles?.totalStaged || 0) > 0 || (gitStatusFiles?.totalUnstaged || 0) > 0;
 
   const isGitBusy = isLoadingGit || gitCommandBusy;
+  const filesListHeader = React.useMemo(() => {
+    if (searchQuery.trim()) {
+      return <Text style={styles.sectionLabel}>Search</Text>;
+    }
+    if (tree.length > 0) {
+      return <Text style={styles.sectionLabel}>Project</Text>;
+    }
+    return null;
+  }, [searchQuery, tree.length]);
+  const gitListRows = React.useMemo(() => {
+    const rows: GitListRow[] = [];
 
-  const renderGitNode = React.useCallback(
-    (node: GitTreeNode, depth: number): React.ReactNode => {
+    if (visibleStagedGitRows.length > 0) {
+      rows.push({
+        type: 'section',
+        key: 'section-staged',
+        title: t('files.stagedChanges', { count: gitStatusFiles?.stagedFiles.length ?? 0 }),
+        tone: 'success',
+      });
+      rows.push(
+        ...visibleStagedGitRows.map(row => ({
+          type: 'node' as const,
+          key: row.key,
+          node: row.node,
+          depth: row.depth,
+        }))
+      );
+    }
+
+    if (visibleUnstagedGitRows.length > 0) {
+      rows.push({
+        type: 'section',
+        key: 'section-unstaged',
+        title: t('files.unstagedChanges', { count: gitStatusFiles?.unstagedFiles.length ?? 0 }),
+        tone: 'warning',
+      });
+      rows.push(
+        ...visibleUnstagedGitRows.map(row => ({
+          type: 'node' as const,
+          key: row.key,
+          node: row.node,
+          depth: row.depth,
+        }))
+      );
+    }
+
+    return rows;
+  }, [
+    gitStatusFiles?.stagedFiles.length,
+    gitStatusFiles?.unstagedFiles.length,
+    visibleStagedGitRows,
+    visibleUnstagedGitRows,
+  ]);
+  const renderGitRow = React.useCallback(
+    ({ item }: { item: GitListRow }) => {
+      if (item.type === 'section') {
+        const sectionColor =
+          item.tone === 'success' ? theme.colors.success : theme.colors.warning;
+        return (
+          <View
+            style={[
+              styles.gitSectionHeader,
+              { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.divider },
+            ]}
+          >
+            <Text style={[styles.gitSectionTitle, { color: sectionColor }]}>{item.title}</Text>
+          </View>
+        );
+      }
+
+      const { node, depth } = item;
       const expanded = isGitNodeExpanded(node);
       const absolutePath = resolveFileAbsolutePath(node.path);
       const selected =
@@ -1272,101 +1455,80 @@ export function SessionFilesSidebar({
         (selectedFilePath === absolutePath || absoluteActiveFilePath === absolutePath);
 
       return (
-        <View key={node.id}>
-          <Pressable
-            onPress={() => {
-              if (node.type === 'directory') {
-                toggleGitNode(node);
-              } else if (node.status) {
-                setSelectedFilePath(absolutePath);
-                onOpenFile(absolutePath);
-              }
-            }}
-            // @ts-ignore web
-            onContextMenu={(event: any) => {
-              openContextMenu(event, 'git', node.path, {
-                absolutePath,
-                fileName: node.name,
-                isDirectory: node.type === 'directory',
-                isStaged: node.section === 'staged',
-                status: node.status?.status,
-                section: node.section,
-              });
-            }}
-            style={[styles.row, selected && styles.rowSelected, { paddingLeft: 10 + depth * 14 }]}
-          >
-            {node.type === 'directory' ? (
-              <Ionicons
-                name={expanded ? 'chevron-down' : 'chevron-forward'}
-                size={14}
-                color={theme.colors.textSecondary}
-                style={{ marginRight: 4 }}
-              />
-            ) : (
-              <View style={{ width: 18 }} />
-            )}
-            {node.type === 'directory' ? (
-              <Octicons
-                name="file-directory"
-                size={15}
-                color="#007AFF"
-                style={{ marginRight: 8 }}
-              />
-            ) : (
-              <View style={{ marginRight: 8 }}>
-                <FileIcon fileName={node.name} size={16} />
-              </View>
-            )}
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowLabel} numberOfLines={1}>
-                {node.name}
-              </Text>
-              {node.status ? (
-                <Text style={styles.rowMeta} numberOfLines={1}>
-                  {renderGitFileSubtitle(node.status)}
-                </Text>
-              ) : null}
+        <Pressable
+          onPress={() => {
+            if (node.type === 'directory') {
+              toggleGitNode(node);
+            } else if (node.status) {
+              setSelectedFilePath(absolutePath);
+              onOpenFile(absolutePath);
+            }
+          }}
+          // @ts-ignore web
+          onContextMenu={(event: any) => {
+            openContextMenu(event, 'git', node.path, {
+              absolutePath,
+              fileName: node.name,
+              isDirectory: node.type === 'directory',
+              isStaged: node.section === 'staged',
+              status: node.status?.status,
+              section: node.section,
+            });
+          }}
+          style={[styles.row, selected && styles.rowSelected, { paddingLeft: 10 + depth * 14 }]}
+        >
+          {node.type === 'directory' ? (
+            <Ionicons
+              name={expanded ? 'chevron-down' : 'chevron-forward'}
+              size={14}
+              color={theme.colors.textSecondary}
+              style={{ marginRight: 4 }}
+            />
+          ) : (
+            <View style={{ width: 18 }} />
+          )}
+          {node.type === 'directory' ? (
+            <Octicons
+              name="file-directory"
+              size={15}
+              color="#007AFF"
+              style={{ marginRight: 8 }}
+            />
+          ) : (
+            <View style={{ marginRight: 8 }}>
+              <FileIcon fileName={node.name} size={16} />
             </View>
-            {node.status ? renderGitStatusIcon(node.status) : null}
-          </Pressable>
-          {node.type === 'directory' && expanded && node.children?.map(child => renderGitNode(child, depth + 1))}
-        </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowLabel} numberOfLines={1}>
+              {node.name}
+            </Text>
+            {node.status ? (
+              <Text style={styles.rowMeta} numberOfLines={1}>
+                {renderGitFileSubtitle(node.status)}
+              </Text>
+            ) : null}
+          </View>
+          {node.status ? renderGitStatusIcon(node.status) : null}
+        </Pressable>
       );
     },
     [
+      absoluteActiveFilePath,
       isGitNodeExpanded,
       onOpenFile,
       openContextMenu,
-      absoluteActiveFilePath,
       renderGitFileSubtitle,
       renderGitStatusIcon,
+      resolveFileAbsolutePath,
       selectedFilePath,
+      theme.colors.divider,
+      theme.colors.success,
+      theme.colors.surface,
       theme.colors.textSecondary,
+      theme.colors.warning,
       toggleGitNode,
     ]
-  );
-
-  const renderGitSection = React.useCallback(
-    (title: string, nodes: GitTreeNode[], sectionColor: string) => (
-      <>
-        <View
-          style={[
-            styles.gitSectionHeader,
-            { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.divider },
-          ]}
-        >
-          <Text style={[styles.gitSectionTitle, { color: sectionColor }]}>{title}</Text>
-        </View>
-        {nodes.length === 0 ? (
-          <View style={styles.gitEmptyWrap}>
-            <Text style={[styles.gitEmptySubtitle, { color: theme.colors.textSecondary }]}>{t('files.noChanges')}</Text>
-          </View>
-        ) : (
-          nodes.map(node => renderGitNode(node, 0))
-        )}
-      </>
-    ),
-    [renderGitNode, theme.colors.divider, theme.colors.surface, theme.colors.textSecondary]
   );
 
   const renderFooter = React.useCallback(() => {
@@ -1496,6 +1658,56 @@ export function SessionFilesSidebar({
     refreshGitData,
     theme.colors.text,
   ]);
+
+  const gitListHeader = React.useMemo(
+    () => (
+      <>
+        <View
+          style={[
+            styles.gitCard,
+            {
+              backgroundColor: theme.colors.surfaceHigh,
+              borderColor: theme.colors.divider,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.gitCardHeader,
+              { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider },
+            ]}
+          >
+            <View style={styles.gitBranchRow}>
+              <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
+              <Text style={[styles.gitBranchText, { color: theme.colors.text }]}>
+                {gitStatusFiles?.branch || t('files.detachedHead')}
+              </Text>
+            </View>
+            <Text style={[styles.gitSummaryText, { color: theme.colors.textSecondary }]}>
+              {gitStatusFiles
+                ? t('files.summary', {
+                    staged: gitStatusFiles.totalStaged,
+                    unstaged: gitStatusFiles.totalUnstaged,
+                  })
+                : isLoadingGit
+                  ? t('common.loading')
+                  : t('files.notRepo')}
+            </Text>
+          </View>
+        </View>
+        {renderGitToolbar()}
+      </>
+    ),
+    [
+      gitStatusFiles,
+      isLoadingGit,
+      renderGitToolbar,
+      theme.colors.divider,
+      theme.colors.surfaceHigh,
+      theme.colors.text,
+      theme.colors.textSecondary,
+    ]
+  );
 
   const renderContextMenu = React.useCallback(() => {
     if (!contextMenu) return null;
@@ -1645,19 +1857,19 @@ export function SessionFilesSidebar({
     position: 'absolute',
     top: 0,
     left: 0,
-    width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : 12,
+    width: liveCollapsed ? SIDEBAR_COLLAPSED_WIDTH : 12,
     height: '100%',
     backgroundColor:
-      collapsed || isDragging || isHovering ? 'rgba(0, 0, 0, 0.08)' : 'transparent',
-    borderRightWidth: !collapsed && (isDragging || isHovering) ? 1 : 0,
+      liveCollapsed || isDragging || isHovering ? 'rgba(0, 0, 0, 0.08)' : 'transparent',
+    borderRightWidth: !liveCollapsed && (isDragging || isHovering) ? 1 : 0,
     borderRightColor: 'rgba(0, 0, 0, 0.12)',
-    borderLeftWidth: collapsed ? 1 : 0,
+    borderLeftWidth: liveCollapsed ? 1 : 0,
     borderLeftColor: 'rgba(0, 0, 0, 0.08)',
   };
 
   return (
     <View style={[styles.container, { width: panelWidth, position: 'relative', overflow: 'hidden' }]}>
-      {!collapsed ? (
+      {!liveCollapsed ? (
         <>
           <View style={styles.header}>
             <View style={styles.headerTop}>
@@ -1760,116 +1972,101 @@ export function SessionFilesSidebar({
             ) : null}
           </View>
 
-          <ScrollView style={styles.treeScroll} contentContainerStyle={styles.treeContent}>
-            {activeTool === 'files' ? (
-              <>
-                {searchQuery.trim() ? (
-                  <>
-                    <Text style={styles.sectionLabel}>Search</Text>
-                    {isSearching ? (
-                      <View style={styles.emptyWrap}>
-                        <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} />
-                        <Text style={styles.emptyText}>{t('files.searching')}</Text>
-                      </View>
-                    ) : searchResults.length === 0 ? (
-                      <View style={styles.emptyWrap}>
-                        <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} />
-                        <Text style={styles.emptyText}>{t('files.noFilesFound')}</Text>
-                      </View>
-                    ) : (
-                      searchResults.map(renderSearchResult)
-                    )}
-                  </>
-                ) : isLoadingRoot ? (
+          {activeTool === 'files' ? (
+            searchQuery.trim() ? (
+              isSearching ? (
+                <View style={styles.treeScroll}>
+                  {filesListHeader}
                   <View style={styles.emptyWrap}>
-                    <Ionicons name="sync-outline" size={20} color={theme.colors.textSecondary} />
-                    <Text style={styles.emptyText}>{t('common.loading')}</Text>
-                  </View>
-                ) : tree.length === 0 ? (
-                  <View style={styles.emptyWrap}>
-                    <Octicons name="file-directory" size={20} color={theme.colors.textSecondary} />
-                    <Text style={styles.emptyText}>{t('files.noFilesInProject')}</Text>
-                  </View>
-                ) : (
-                  <>
-                    <Text style={styles.sectionLabel}>Project</Text>
-                    {tree.map(node => renderNode(node, 0))}
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                <View
-                  style={[
-                    styles.gitCard,
-                    {
-                      backgroundColor: theme.colors.surfaceHigh,
-                      borderColor: theme.colors.divider,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.gitCardHeader,
-                      { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider },
-                    ]}
-                  >
-                    <View style={styles.gitBranchRow}>
-                      <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
-                      <Text style={[styles.gitBranchText, { color: theme.colors.text }]}>
-                        {gitStatusFiles?.branch || t('files.detachedHead')}
-                      </Text>
-                    </View>
-                    <Text style={[styles.gitSummaryText, { color: theme.colors.textSecondary }]}>
-                      {gitStatusFiles
-                          ? t('files.summary', {
-                            staged: gitStatusFiles.totalStaged,
-                            unstaged: gitStatusFiles.totalUnstaged,
-                          })
-                          : isLoadingGit
-                            ? t('common.loading')
-                            : t('files.notRepo')}
-                    </Text>
+                    <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} />
+                    <Text style={styles.emptyText}>{t('files.searching')}</Text>
                   </View>
                 </View>
-                {renderGitToolbar()}
-                {isLoadingGit ? (
+              ) : searchResults.length === 0 ? (
+                <View style={styles.treeScroll}>
+                  {filesListHeader}
                   <View style={styles.emptyWrap}>
-                    <Ionicons name="sync-outline" size={20} color={theme.colors.textSecondary} />
-                    <Text style={styles.emptyText}>{t('common.loading')}</Text>
+                    <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} />
+                    <Text style={styles.emptyText}>{t('files.noFilesFound')}</Text>
                   </View>
-                ) : !gitStatusFiles ? (
-                  <View style={styles.emptyWrap}>
-                    <Octicons name="git-branch" size={20} color={theme.colors.textSecondary} />
-                    <Text style={styles.emptyText}>{t('files.notRepo')}</Text>
-                    <Text style={[styles.emptyText, { marginTop: 0 }]}>{t('files.notUnderGit')}</Text>
-                  </View>
-                ) : !hasGitChanges ? (
-                  <View style={styles.emptyWrap}>
-                    <Octicons name="check-circle" size={20} color={theme.colors.success} />
-                    <Text style={styles.emptyText}>{t('files.noChanges')}</Text>
-                  </View>
-                ) : (
-                  <>
-                    {stagedGitTree.length > 0
-                          ? renderGitSection(
-                              t('files.stagedChanges', { count: gitStatusFiles.stagedFiles.length }),
-                              stagedGitTree,
-                              theme.colors.success
-                            )
-                          : null}
-                    {unstagedGitTree.length > 0
-                      ? renderGitSection(
-                          t('files.unstagedChanges', { count: gitStatusFiles.unstagedFiles.length }),
-                          unstagedGitTree,
-                          theme.colors.warning
-                        )
-                      : null}
-                  </>
-                )}
-              </>
-            )}
-          </ScrollView>
+                </View>
+              ) : (
+                <FlatList
+                  style={styles.treeScroll}
+                  contentContainerStyle={styles.treeContent}
+                  data={searchResults}
+                  keyExtractor={item => item.fullPath}
+                  renderItem={renderSearchResultRow}
+                  ListHeaderComponent={filesListHeader}
+                  initialNumToRender={40}
+                  maxToRenderPerBatch={24}
+                  windowSize={10}
+                  keyboardShouldPersistTaps="handled"
+                />
+              )
+            ) : isLoadingRoot ? (
+              <View style={[styles.treeScroll, styles.emptyWrap]}>
+                <Ionicons name="sync-outline" size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.emptyText}>{t('common.loading')}</Text>
+              </View>
+            ) : tree.length === 0 ? (
+              <View style={[styles.treeScroll, styles.emptyWrap]}>
+                <Octicons name="file-directory" size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.emptyText}>{t('files.noFilesInProject')}</Text>
+              </View>
+            ) : (
+              <FlatList
+                style={styles.treeScroll}
+                contentContainerStyle={styles.treeContent}
+                data={visibleFileRows}
+                keyExtractor={item => item.key}
+                renderItem={renderFileTreeRow}
+                ListHeaderComponent={filesListHeader}
+                initialNumToRender={60}
+                maxToRenderPerBatch={32}
+                windowSize={12}
+                keyboardShouldPersistTaps="handled"
+              />
+            )
+          ) : isLoadingGit ? (
+            <View style={styles.treeScroll}>
+              {gitListHeader}
+              <View style={styles.emptyWrap}>
+                <Ionicons name="sync-outline" size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.emptyText}>{t('common.loading')}</Text>
+              </View>
+            </View>
+          ) : !gitStatusFiles ? (
+            <View style={styles.treeScroll}>
+              {gitListHeader}
+              <View style={styles.emptyWrap}>
+                <Octicons name="git-branch" size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.emptyText}>{t('files.notRepo')}</Text>
+                <Text style={[styles.emptyText, { marginTop: 0 }]}>{t('files.notUnderGit')}</Text>
+              </View>
+            </View>
+          ) : !hasGitChanges ? (
+            <View style={styles.treeScroll}>
+              {gitListHeader}
+              <View style={styles.emptyWrap}>
+                <Octicons name="check-circle" size={20} color={theme.colors.success} />
+                <Text style={styles.emptyText}>{t('files.noChanges')}</Text>
+              </View>
+            </View>
+          ) : (
+            <FlatList
+              style={styles.treeScroll}
+              contentContainerStyle={styles.treeContent}
+              data={gitListRows}
+              keyExtractor={item => item.key}
+              renderItem={renderGitRow}
+              ListHeaderComponent={gitListHeader}
+              initialNumToRender={60}
+              maxToRenderPerBatch={32}
+              windowSize={12}
+              keyboardShouldPersistTaps="handled"
+            />
+          )}
 
           {renderFooter()}
         </>
@@ -1879,18 +2076,14 @@ export function SessionFilesSidebar({
 
       <Pressable
         onPress={() => {
-          if (collapsed) {
-            setCollapsed(false);
-            setWidth(defaultWidth);
+          if (liveCollapsed) {
+            commitSidebarLayout(defaultWidth, false);
           }
         }}
         // @ts-ignore web
         onDoubleClick={() => {
-          const nextCollapsed = !collapsed;
-          setCollapsed(nextCollapsed);
-          if (!nextCollapsed) {
-            setWidth(defaultWidth);
-          }
+          const nextCollapsed = !liveCollapsed;
+          commitSidebarLayout(nextCollapsed ? liveWidth : defaultWidth, nextCollapsed);
         }}
         // @ts-ignore web
         onMouseDown={(event: any) => {

@@ -201,6 +201,7 @@ class ApiSocket {
     const waitStart = Date.now();
     const socketWasConnected = this.socket?.connected ?? false;
     return new Promise((resolve, reject) => {
+      const currentSocket = this.socket;
       const listeners = this.daemonReadyListeners.get(sessionId) ?? new Set();
       const onReady = () => {
         cleanup();
@@ -247,7 +248,7 @@ class ApiSocket {
         // Don't reject here — the status subscription will reject when session goes offline.
         // This log exists purely to add the socket disconnect reason to the trace.
       };
-      this.socket?.on('disconnect', onSocketDisconnect);
+      currentSocket?.on('disconnect', onSocketDisconnect);
 
       // Safety timeout: daemon-rpc-ready may never arrive if the daemon is stuck in a
       // flash-reconnect loop. Reject after 15s so the caller can decide to fallback.
@@ -266,8 +267,7 @@ class ApiSocket {
         clearTimeout(timeoutHandle);
         listeners.delete(onReady);
         unsubStatus();
-        // onSocketDisconnect is intentionally not removed — it's informational only
-        // and socket.io cleans up listeners when the socket is destroyed.
+        currentSocket?.off('disconnect', onSocketDisconnect);
       }
     });
   }

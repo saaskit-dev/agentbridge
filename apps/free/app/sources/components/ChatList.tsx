@@ -15,16 +15,15 @@ import {
 } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { ChatFooter } from './ChatFooter';
-import { buildChatListItems, type ChatListItem } from './chatListItems';
+import { buildChatListData, type ChatListItem, type ChatUserNavItem } from './chatListItems';
 import { layout } from './layout';
 import { MessageView } from './MessageView';
-import { useSession, useSessionMessages, useMessage } from '@/sync/storage';
+import { useSessionControlledByUser, useSessionMessages, useMessage } from '@/sync/storage';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { Message } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -39,17 +38,8 @@ const MESSAGE_HIGHLIGHT_MS = 1200;
 /** Scroll offset threshold to consider user "at bottom" (inverted: y ≈ 0). */
 const AT_BOTTOM_THRESHOLD = 80;
 
-type UserNavItem = {
-  listIndex: number;
-  messageId: string;
-  seq: number;
-  preview: string;
-  time: string;
-  createdAt: number;
-};
 const FAB_SIZE = 40;
 const FAB_GAP = 12;
-const logger = new Logger('app/components/ChatList');
 
 function shouldHideHistoricalDaemonError(
   message: Message,
@@ -62,6 +52,41 @@ function shouldHideHistoricalDaemonError(
     message.event.level === 'error' &&
     message.createdAt < latestUserMessageCreatedAt
   );
+}
+
+function buildVisibleMessages(messages: Message[]): Message[] {
+  let latestUserMessageCreatedAt: number | null = null;
+  for (const message of messages) {
+    if (message.kind === 'user-text') {
+      latestUserMessageCreatedAt = message.createdAt;
+      break;
+    }
+  }
+
+  if (latestUserMessageCreatedAt === null) {
+    return messages;
+  }
+
+  let filteredMessages: Message[] | null = null;
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message) {
+      continue;
+    }
+
+    if (!shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt)) {
+      if (filteredMessages) {
+        filteredMessages.push(message);
+      }
+      continue;
+    }
+
+    if (!filteredMessages) {
+      filteredMessages = messages.slice(0, index);
+    }
+  }
+
+  return filteredMessages ?? messages;
 }
 
 function isSameDay(a: number, b: number): boolean {
@@ -357,7 +382,7 @@ const NewMessagesPill = React.memo((props: { count: number; onPress: () => void 
 /** Centered overlay card listing user messages — styled after CommandPalette. */
 const UserMessageNavPanel = React.memo(
   (props: {
-    items: UserNavItem[];
+    items: ChatUserNavItem[];
     onJumpTo: (messageId: string) => void;
     onClose: () => void;
     hasMoreMessages: boolean;
@@ -885,10 +910,10 @@ const OlderMessagesLoader = React.memo((props: { isLoading: boolean }) => {
 });
 
 const ListFooter = React.memo((props: { sessionId: string; notice?: string | null }) => {
-  const session = useSession(props.sessionId)!;
+  const controlledByUser = useSessionControlledByUser(props.sessionId);
   return (
     <ChatFooter
-      controlledByUser={session.agentState?.controlledByUser || false}
+      controlledByUser={controlledByUser}
       notice={props.notice}
     />
   );
@@ -965,6 +990,17 @@ const FoldedDaemonErrorRow = React.memo(
     );
   }
 );
+
+function areMessageIdsEqual(a: string[], b: string[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 const TurnGroupRow = React.memo(
   (props: {
@@ -1084,7 +1120,15 @@ const TurnGroupRow = React.memo(
         </View>
       </View>
     );
-  }
+  },
+  (prev, next) =>
+    prev.sessionId === next.sessionId &&
+    prev.metadata === next.metadata &&
+    prev.createdAt === next.createdAt &&
+    prev.role === next.role &&
+    prev.isHighlighted === next.isHighlighted &&
+    prev.collapseToolsSignal === next.collapseToolsSignal &&
+    areMessageIdsEqual(prev.messageIds, next.messageIds)
 );
 
 // ---------------------------------------------------------------------------
@@ -1099,22 +1143,7 @@ const ChatListInternal = React.memo(
     jumpToRecentUserSignal: number;
   }) => {
     const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.sessionId);
-    const visibleMessages = useMemo(() => {
-      const latestUserMessageCreatedAt =
-        messages.find(message => message.kind === 'user-text')?.createdAt ?? null;
-      if (latestUserMessageCreatedAt === null) {
-        return messages;
-      }
-      return messages.filter(
-        message => !shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt)
-      );
-    }, [messages]);
-    useEffect(() => {
-      logger.debug('[chat-list] mounted', { sessionId: props.sessionId });
-      return () => {
-        logger.debug('[chat-list] unmounted', { sessionId: props.sessionId });
-      };
-    }, [props.sessionId]);
+    const visibleMessages = useMemo(() => buildVisibleMessages(messages), [messages]);
 
     // ----- pull states -----
     const [refreshPull, setRefreshPull] = useState<PullState>('idle');
@@ -1382,76 +1411,12 @@ const ChatListInternal = React.memo(
     );
 
     // ----- build list items with separators -----
-    const listItems = useMemo(
-      () => buildChatListItems(visibleMessages, formatDateLabel, formatTime),
-      [visibleMessages]
-    );
-    const messagesById = useMemo(
-      () => new Map(visibleMessages.map(message => [message.id, message])),
+    const { listItems, messagesById, userNavItems } = useMemo(
+      () => buildChatListData(visibleMessages, formatDateLabel, formatTime),
       [visibleMessages]
     );
     listItemsRef.current = listItems;
-    const previousListStateRef = useRef<{
-      messageCount: number;
-      itemCount: number;
-      hasOlderMessages: boolean;
-      isLoadingOlder: boolean;
-    } | null>(null);
-    useEffect(() => {
-      const previous = previousListStateRef.current;
-      if (
-        !previous ||
-        previous.messageCount !== visibleMessages.length ||
-        previous.itemCount !== listItems.length ||
-        previous.hasOlderMessages !== hasOlderMessages ||
-        previous.isLoadingOlder !== isLoadingOlder
-      ) {
-        logger.debug('[chat-list] data state changed', {
-          sessionId: props.sessionId,
-          messageCount: visibleMessages.length,
-          itemCount: listItems.length,
-          hasOlderMessages,
-          isLoadingOlder,
-          newestMessageId: visibleMessages[0]?.id ?? null,
-          newestSeq: visibleMessages[0]?.seq ?? null,
-        });
-        previousListStateRef.current = {
-          messageCount: visibleMessages.length,
-          itemCount: listItems.length,
-          hasOlderMessages,
-          isLoadingOlder,
-        };
-      }
-    }, [hasOlderMessages, isLoadingOlder, listItems.length, props.sessionId, visibleMessages]);
-
     // ----- user message nav items (chronological: oldest first) -----
-    const userNavItems = useMemo(() => {
-      const infoById = new Map<string, { text: string; createdAt: number }>();
-      for (const m of visibleMessages) {
-        if (m.kind === 'user-text') {
-          infoById.set(m.id, { text: m.displayText || m.text, createdAt: m.createdAt });
-        }
-      }
-      const items: UserNavItem[] = [];
-      let seq = 1;
-      for (let i = listItems.length - 1; i >= 0; i--) {
-        const item = listItems[i];
-        if (item.type === 'message-group' && item.role === 'user' && infoById.has(item.primaryMessageId)) {
-          const { text, createdAt } = infoById.get(item.primaryMessageId)!;
-          const preview = text.split('\n').slice(0, 2).join(' ').trim() || '…';
-          items.push({
-            listIndex: i,
-            messageId: item.primaryMessageId,
-            seq: seq++,
-            preview,
-            time: formatTime(createdAt),
-            createdAt,
-          });
-        }
-      }
-      return items;
-    }, [listItems, visibleMessages]);
-
     useEffect(() => {
       if (!props.jumpToRecentUserSignal) return;
       if (props.jumpToRecentUserSignal === lastHandledJumpSignalRef.current) return;

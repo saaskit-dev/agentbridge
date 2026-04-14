@@ -1,21 +1,17 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useMemo } from 'react';
-import { useShallow } from 'zustand/react/shallow';
 import { CommandPalette } from './CommandPalette';
 import { Command } from './types';
 import { useAuth } from '@/auth/AuthContext';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { compareUpdatedDesc } from '@/sync/entitySort';
-import { storage } from '@/sync/storage';
+import { useLocalSetting, useRecentSessions } from '@/sync/storage';
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { logout } = useAuth();
-  const sessions = storage(useShallow(state => state.sessions));
-  const commandPaletteEnabled = storage(
-    useShallow(state => state.localSettings.commandPaletteEnabled)
-  );
+  const recentSessions = useRecentSessions(5);
+  const commandPaletteEnabled = useLocalSetting('commandPaletteEnabled');
   const navigateToSession = useNavigateToSession();
 
   // Define available commands
@@ -77,10 +73,6 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
     ];
 
     // Add session-specific commands
-    const recentSessions = Object.values(sessions)
-      .sort(compareUpdatedDesc)
-      .slice(0, 5);
-
     recentSessions.forEach(session => {
       const sessionName = session.metadata?.name || `Session ${session.id.slice(0, 6)}`;
       cmds.push({
@@ -122,7 +114,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
     }
 
     return cmds;
-  }, [router, logout, sessions]);
+  }, [router, logout, navigateToSession, recentSessions]);
 
   const showCommandPalette = useCallback(() => {
     if (!commandPaletteEnabled) return;

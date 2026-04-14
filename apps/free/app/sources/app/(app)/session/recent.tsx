@@ -5,20 +5,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native-unistyles';
 import { Avatar } from '@/components/Avatar';
 import { layout } from '@/components/layout';
+import { buildSessionHistoryItems, type SessionHistoryItem } from '@/components/sessionHistoryItems';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { compareUpdatedDesc } from '@/sync/entitySort';
 import { useAllSessions } from '@/sync/storage';
-import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
-import { getSessionName, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
-
-interface SessionHistoryItem {
-  type: 'session' | 'date-header';
-  session?: Session;
-  date?: string;
-}
 
 const styles = StyleSheet.create(theme => ({
   container: {
@@ -97,79 +89,17 @@ const styles = StyleSheet.create(theme => ({
   },
 }));
 
-function formatDateHeader(date: Date): string {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-  const sessionDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-  if (sessionDate.getTime() === today.getTime()) {
-    return t('sessionHistory.today');
-  } else if (sessionDate.getTime() === yesterday.getTime()) {
-    return t('sessionHistory.yesterday');
-  } else {
-    const diffTime = today.getTime() - sessionDate.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    return t('sessionHistory.daysAgo', { count: diffDays });
-  }
-}
-
-function groupSessionsByDate(sessions: Session[]): SessionHistoryItem[] {
-  const sortedSessions = sessions.slice().sort(compareUpdatedDesc);
-
-  const items: SessionHistoryItem[] = [];
-  let currentDateGroup: Session[] = [];
-  let currentDateString: string | null = null;
-
-  for (const session of sortedSessions) {
-    const sessionDate = new Date(session.updatedAt);
-    const dateString = sessionDate.toDateString();
-
-    if (currentDateString !== dateString) {
-      // Process previous group
-      if (currentDateGroup.length > 0) {
-        items.push({
-          type: 'date-header',
-          date: formatDateHeader(new Date(currentDateString!)),
-        });
-        currentDateGroup.forEach(sess => {
-          items.push({ type: 'session', session: sess });
-        });
-      }
-
-      // Start new group
-      currentDateString = dateString;
-      currentDateGroup = [session];
-    } else {
-      currentDateGroup.push(session);
-    }
-  }
-
-  // Process final group
-  if (currentDateGroup.length > 0) {
-    items.push({
-      type: 'date-header',
-      date: formatDateHeader(new Date(currentDateString!)),
-    });
-    currentDateGroup.forEach(sess => {
-      items.push({ type: 'session', session: sess });
-    });
-  }
-
-  return items;
-}
-
 export default function SessionHistory() {
   const safeArea = useSafeAreaInsets();
   const allSessions = useAllSessions();
   const navigateToSession = useNavigateToSession();
 
   const groupedItems = React.useMemo(() => {
-    return groupSessionsByDate(allSessions);
+    return buildSessionHistoryItems(allSessions);
   }, [allSessions]);
 
   const renderItem = React.useCallback(
-    ({ item, index }: { item: SessionHistoryItem; index: number }) => {
+    ({ item }: { item: SessionHistoryItem }) => {
       if (item.type === 'date-header') {
         return (
           <View style={styles.dateHeader}>
@@ -178,41 +108,30 @@ export default function SessionHistory() {
         );
       }
 
-      if (item.type === 'session' && item.session) {
+      if (item.type === 'session') {
         const session = item.session;
-        const sessionName = getSessionName(session);
-        const sessionSubtitle = getSessionSubtitle(session);
-        const avatarId = getSessionAvatarId(session);
-
-        // Determine card styling based on position within date group
-        const prevItem = index > 0 ? groupedItems[index - 1] : null;
-        const nextItem = index < groupedItems.length - 1 ? groupedItems[index + 1] : null;
-
-        const isFirst = prevItem?.type === 'date-header';
-        const isLast = nextItem?.type === 'date-header' || nextItem == null;
-        const isSingle = isFirst && isLast;
 
         return (
           <Pressable
             style={[
               styles.sessionCard,
-              isSingle
+              item.cardPosition === 'single'
                 ? styles.sessionCardSingle
-                : isFirst
+                : item.cardPosition === 'first'
                   ? styles.sessionCardFirst
-                  : isLast
+                  : item.cardPosition === 'last'
                     ? styles.sessionCardLast
                     : {},
             ]}
             onPress={() => navigateToSession(session.id)}
           >
-            <Avatar id={avatarId} size={48} />
+            <Avatar id={item.avatarId} size={48} />
             <View style={styles.sessionContent}>
               <Text style={styles.sessionTitle} numberOfLines={1}>
-                {sessionName}
+                {item.sessionName}
               </Text>
               <Text style={styles.sessionSubtitle} numberOfLines={1}>
-                {sessionSubtitle}
+                {item.sessionSubtitle}
               </Text>
             </View>
           </Pressable>
@@ -221,18 +140,10 @@ export default function SessionHistory() {
 
       return null;
     },
-    [groupedItems, navigateToSession]
+    [navigateToSession]
   );
 
-  const keyExtractor = React.useCallback((item: SessionHistoryItem, index: number) => {
-    if (item.type === 'date-header') {
-      return `date-${item.date}-${index}`;
-    }
-    if (item.type === 'session' && item.session) {
-      return `session-${item.session.id}`;
-    }
-    return `item-${index}`;
-  }, []);
+  const keyExtractor = React.useCallback((item: SessionHistoryItem) => item.key, []);
 
   if (!allSessions) {
     return (

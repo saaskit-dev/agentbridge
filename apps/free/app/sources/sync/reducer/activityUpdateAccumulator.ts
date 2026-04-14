@@ -14,45 +14,57 @@ export class ActivityUpdateAccumulator {
   ) {}
 
   addUpdate(update: ApiEphemeralActivityUpdate): void {
-    const sessionId = update.id;
-    const lastState = this.lastEmittedStates.get(sessionId);
+    this.addUpdates([update]);
+  }
 
-    // Check if this is a critical timestamp update (more than half of disconnect timeout old)
-    const timeSinceLastUpdate = lastState ? update.activeAt - lastState.activeAt : 0;
-    const isCriticalTimestamp = timeSinceLastUpdate > 60000; // Half of 120 second timeout
+  addUpdates(updates: ApiEphemeralActivityUpdate[]): void {
+    if (updates.length === 0) {
+      return;
+    }
 
-    // Check if this is a significant state change that needs immediate emission
-    const isSignificantChange =
-      !lastState ||
-      lastState.active !== update.active ||
-      lastState.thinking !== update.thinking ||
-      isCriticalTimestamp;
+    let hasSignificantChange = false;
 
-    if (isSignificantChange) {
+    for (const update of updates) {
+      const sessionId = update.id;
+      const lastState = this.lastEmittedStates.get(sessionId);
+
+      // Check if this is a critical timestamp update (more than half of disconnect timeout old)
+      const timeSinceLastUpdate = lastState ? update.activeAt - lastState.activeAt : 0;
+      const isCriticalTimestamp = timeSinceLastUpdate > 60000; // Half of 120 second timeout
+
+      // Check if this is a significant state change that needs immediate emission
+      const isSignificantChange =
+        !lastState ||
+        lastState.active !== update.active ||
+        lastState.thinking !== update.thinking ||
+        isCriticalTimestamp;
+
+      this.pendingUpdates.set(sessionId, update);
+      if (isSignificantChange) {
+        hasSignificantChange = true;
+      }
+    }
+
+    if (hasSignificantChange) {
       // Cancel any pending timeout
       if (this.timeoutId) {
         clearTimeout(this.timeoutId);
         this.timeoutId = null;
       }
 
-      // Add the immediate update to pending updates
-      this.pendingUpdates.set(sessionId, update);
-
       // Flush all pending updates together (batched)
       this.flushPendingUpdates();
-    } else {
-      // Accumulate for debounced emission (only timestamp updates)
-      this.pendingUpdates.set(sessionId, update);
-
-      // Only start a new timer if one isn't already running
-      if (!this.timeoutId) {
-        this.timeoutId = setTimeout(() => {
-          this.flushPendingUpdates();
-          this.timeoutId = null;
-        }, this.debounceDelay);
-      }
-      // Don't reset the timer for subsequent updates - let it fire!
+      return;
     }
+
+    // Only start a new timer if one isn't already running
+    if (!this.timeoutId) {
+      this.timeoutId = setTimeout(() => {
+        this.flushPendingUpdates();
+        this.timeoutId = null;
+      }, this.debounceDelay);
+    }
+    // Don't reset the timer for subsequent updates - let it fire!
   }
 
   private flushPendingUpdates(): void {

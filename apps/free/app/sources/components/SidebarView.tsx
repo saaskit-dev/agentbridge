@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
-import { Text, View, Pressable, useWindowDimensions } from 'react-native';
+import { Text, View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { FABWide } from './FABWide';
@@ -10,7 +10,7 @@ import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { useMachineStatus } from '@/hooks/useMachineStatus';
 import { useDesktopSidebarWidth } from '@/hooks/useDesktopSidebarWidth';
-import { useSocketStatus, useFriendRequests, useSettings, useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
+import { useSocketStatus, useSetting, useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { t } from '@/text';
@@ -19,7 +19,6 @@ import { clampSidebarWidth } from '@/utils/sidebarSizing';
 import { useSocketConnectionStatus } from '@/utils/socketConnectionStatus';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { MainView } from './MainView';
-import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
   container: {
@@ -143,20 +142,17 @@ export const SidebarView = React.memo(() => {
   const socketStatus = useSocketStatus();
   const realtimeStatus = useRealtimeStatus();
   const realtimeMode = useRealtimeMode();
-  const friendRequests = useFriendRequests();
-  const inboxHasContent = useInboxHasContent();
-  const settings = useSettings();
-  const { machines, onlineCount } = useMachineStatus();
+  const experimentsEnabled = useSetting('experiments');
+  const { machineCount, onlineCount } = useMachineStatus();
   const connectionStatus = useSocketConnectionStatus();
 
   // Calculate sidebar width and determine title positioning
   // Uses same formula as SidebarNavigator.tsx:18 for consistency
-  const { width: windowWidth } = useWindowDimensions();
   const { width: preferredSidebarWidth } = useDesktopSidebarWidth();
   const sidebarWidth = clampSidebarWidth(preferredSidebarWidth);
   // With experiments: 4 icons (148px total), threshold 408px > max 360px → always left-justify
   // Without experiments: 3 icons (108px total), threshold 328px → left-justify below ~340px
-  const shouldLeftJustify = settings.experiments || sidebarWidth < 340;
+  const shouldLeftJustify = experimentsEnabled || sidebarWidth < 340;
 
   const handleNewSession = React.useCallback(() => {
     router.push('/new');
@@ -200,7 +196,7 @@ export const SidebarView = React.memo(() => {
           <Text style={[styles.statusText, { color: connectionStatus.textColor }]}>
             {connectionStatus.text}
           </Text>
-          {socketStatus.status === 'connected' && machines.length > 0 && (
+          {socketStatus.status === 'connected' && machineCount > 0 && (
             <>
               <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginHorizontal: 4 }]}>
                 ·

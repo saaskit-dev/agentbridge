@@ -1,7 +1,5 @@
 import * as React from 'react';
 import { ValueSync } from '@/utils/sync';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
-const logger = new Logger('app/components/autocomplete/useActiveSuggestions');
 
 interface SuggestionOptions {
   clampSelection?: boolean; // If true, clamp instead of preserving exact position
@@ -72,23 +70,10 @@ export function useActiveSuggestions(
   // Sync query to suggestions
   const sync = React.useMemo(() => {
     return new ValueSync<string | null>(async query => {
-      logger.debug('🎯 useActiveSuggestions: Processing query:', JSON.stringify(query));
       if (!query) {
-        logger.debug('🎯 useActiveSuggestions: No query, skipping');
         return;
       }
       const suggestions = await handler(query);
-      logger.debug(
-        '🎯 useActiveSuggestions: Got suggestions:',
-        JSON.stringify(
-          suggestions,
-          (key, value) => {
-            if (key === 'component') return '[Function]';
-            return value;
-          },
-          2
-        )
-      );
       setState(prev => {
         if (clampSelection) {
           // Simply clamp the selection to valid range
@@ -134,7 +119,7 @@ export function useActiveSuggestions(
   }, [clampSelection, autoSelectFirst, handler]);
   React.useEffect(() => {
     sync.setValue(query);
-  }, [query]);
+  }, [query, sync]);
 
   // If no query return empty suggestions
   if (!query) {

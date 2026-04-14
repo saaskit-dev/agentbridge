@@ -117,7 +117,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
   const router = useRouter();
   const { theme } = useUnistyles();
   const socketStatus = useSocketStatus();
-  const { machines, onlineCount } = useMachineStatus();
+  const { machineCount, onlineCount } = useMachineStatus();
   const connectionStatus = useSocketConnectionStatus();
   const focusAudioEnabled = useLocalSetting('focusAudioEnabled');
 
@@ -156,7 +156,7 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
               {connectionStatus.text}
             </Text>
           </Pressable>
-          {socketStatus.status === 'connected' && machines.length > 0 && (
+          {socketStatus.status === 'connected' && machineCount > 0 && (
             <>
               <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginHorizontal: 4 }]}>
                 ·

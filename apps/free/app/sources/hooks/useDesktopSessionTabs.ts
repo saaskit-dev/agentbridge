@@ -35,6 +35,12 @@ export const desktopSessionTabsStore = create<DesktopSessionTabsState>(set => ({
       const existing = state.tabs.find(item => item.id === tab.id);
 
       if (existing) {
+        if (existing.title === tab.title) {
+          return {
+            tabs: state.tabs,
+            suppressUntil: nextSuppressUntil,
+          };
+        }
         return {
           tabs: state.tabs.map(item => (item.id === tab.id ? { ...item, title: tab.title } : item)),
           suppressUntil: nextSuppressUntil,
@@ -57,8 +63,15 @@ export const desktopSessionTabsStore = create<DesktopSessionTabsState>(set => ({
     }),
   updateTabTitle: (id, title) =>
     set(state => {
-      if (!state.tabs.some(tab => tab.id === id)) {
+      const existing = state.tabs.find(tab => tab.id === id);
+      if (!existing) {
         return state;
+      }
+      if (existing.title === title) {
+        return {
+          tabs: state.tabs,
+          suppressUntil: pruneSuppressedTabs(state.suppressUntil),
+        };
       }
       return {
         tabs: state.tabs.map(tab => (tab.id === id ? { ...tab, title } : tab)),
@@ -97,6 +110,10 @@ export const desktopSessionTabsStore = create<DesktopSessionTabsState>(set => ({
 
 export function useDesktopSessionTabs() {
   return desktopSessionTabsStore();
+}
+
+export function useDesktopSessionTabsState<T>(selector: (state: DesktopSessionTabsState) => T) {
+  return desktopSessionTabsStore(selector);
 }
 
 export function resetDesktopSessionTabsForTests() {

@@ -28,7 +28,13 @@ interface ChatHeaderViewProps {
 }
 
 /** Small tap-to-copy badge for IDs in dev mode. Dark background pill for visibility on any header. */
-function CopyableBadge({ label, value }: { label: string; value: string }) {
+const CopyableBadge = React.memo(function CopyableBadge({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   const [copied, setCopied] = React.useState(false);
   const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(
@@ -66,9 +72,9 @@ function CopyableBadge({ label, value }: { label: string; value: string }) {
       </Text>
     </Pressable>
   );
-}
+});
 
-export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
+export const ChatHeaderView = React.memo(({
   title,
   subtitle,
   onBackPress,
@@ -79,7 +85,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
   flavor,
   devSessionId,
   desktopActions,
-}) => {
+}: ChatHeaderViewProps) => {
   const { theme } = useUnistyles();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -87,13 +93,13 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
   const lastTitlePressRef = React.useRef(0);
   const isDesktop = isDesktopPlatform();
 
-  const handleBackPress = () => {
+  const handleBackPress = React.useCallback(() => {
     if (onBackPress) {
       onBackPress();
     } else {
       navigation.goBack();
     }
-  };
+  }, [navigation, onBackPress]);
 
   const handleTitlePress = React.useCallback(() => {
     if (!onTitleDoublePress) return;
@@ -208,7 +214,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
       </View>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

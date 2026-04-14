@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
-import { useRouter } from 'expo-router';
 import React from 'react';
 import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -25,16 +24,11 @@ import { FreeError } from '@/utils/errors';
 import { Modal } from '@/modal';
 import { sessionDelete } from '@/sync/ops';
 import { useSetting } from '@/sync/storage';
-import { SessionListViewItem } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { requestReview } from '@/utils/requestReview';
 import { useIsTablet } from '@/utils/responsive';
-import {
-  getSessionName,
-  useSessionStatus,
-  getSessionSubtitle,
-  getSessionAvatarId,
-} from '@/utils/sessionUtils';
+import { buildSessionsListItems, SessionsListRenderItem } from './sessionsListItems';
+import { useSessionStatus } from '@/utils/sessionUtils';
 
 const stylesheet = StyleSheet.create(theme => ({
   container: {
@@ -208,19 +202,19 @@ export function SessionsList() {
   const isTablet = useIsTablet();
   const navigateToSession = useNavigateToSession();
   const compactSessionView = useSetting('compactSessionView');
-  const router = useRouter();
   const selectable = isTablet;
-  const experiments = useSetting('experiments');
-  const dataWithSelected = selectable
-    ? React.useMemo(() => {
-        return data?.map(item => ({
-          ...item,
-          selected: pathname.startsWith(
-            `/session/${item.type === 'session' ? item.session.id : ''}`
-          ),
-        }));
-      }, [data, pathname])
-    : data;
+  const selectedSessionId = React.useMemo(() => {
+    if (!selectable || !pathname.startsWith('/session/')) {
+      return undefined;
+    }
+
+    const parts = pathname.split('/');
+    return parts[2] || undefined;
+  }, [pathname, selectable]);
+  const listItems = React.useMemo(
+    () => (data ? buildSessionsListItems(data, selectedSessionId) : null),
+    [data, selectedSessionId]
+  );
 
   // Request review
   React.useEffect(() => {
@@ -235,23 +229,14 @@ export function SessionsList() {
   }
 
   const keyExtractor = React.useCallback(
-    (item: SessionListViewItem & { selected?: boolean }, index: number) => {
-      switch (item.type) {
-        case 'header':
-          return `header-${item.title}-${index}`;
-        case 'active-sessions':
-          return 'active-sessions';
-        case 'project-group':
-          return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
-        case 'session':
-          return `session-${item.session.id}`;
-      }
+    (item: SessionsListRenderItem) => {
+      return item.key;
     },
     []
   );
 
   const renderItem = React.useCallback(
-    ({ item, index }: { item: SessionListViewItem & { selected?: boolean }; index: number }) => {
+    ({ item, index }: { item: SessionsListRenderItem; index: number }) => {
       switch (item.type) {
         case 'header':
           return (
@@ -261,17 +246,10 @@ export function SessionsList() {
           );
 
         case 'active-sessions':
-          // Extract just the session ID from pathname (e.g., /session/abc123/file -> abc123)
-          let selectedId: string | undefined;
-          if (isTablet && pathname.startsWith('/session/')) {
-            const parts = pathname.split('/');
-            selectedId = parts[2]; // parts[0] is empty, parts[1] is 'session', parts[2] is the ID
-          }
-
           const ActiveComponent = compactSessionView
             ? ActiveSessionsGroupCompact
             : ActiveSessionsGroup;
-          return <ActiveComponent sessions={item.sessions} selectedSessionId={selectedId} />;
+          return <ActiveComponent sessions={item.sessions} selectedSessionId={item.selectedSessionId} />;
 
         case 'project-group':
           return (
@@ -286,31 +264,24 @@ export function SessionsList() {
           );
 
         case 'session':
-          // Determine card styling based on position within date group
-          const prevItem = index > 0 && dataWithSelected ? dataWithSelected[index - 1] : null;
-          const nextItem =
-            index < (dataWithSelected?.length || 0) - 1 && dataWithSelected
-              ? dataWithSelected[index + 1]
-              : null;
-
-          const isFirst = prevItem?.type === 'header';
-          const isLast =
-            nextItem?.type === 'header' || nextItem == null || nextItem?.type === 'active-sessions';
-          const isSingle = isFirst && isLast;
-
           return (
             <SessionItem
               session={item.session}
+              sessionName={item.sessionName}
+              sessionSubtitle={item.sessionSubtitle}
+              avatarId={item.avatarId}
               selected={item.selected}
-              isFirst={isFirst}
-              isLast={isLast}
-              isSingle={isSingle}
+              isFirst={item.cardPosition === 'first'}
+              isLast={item.cardPosition === 'last'}
+              isSingle={item.cardPosition === 'single'}
+              isTablet={isTablet}
+              navigateToSession={navigateToSession}
               testID={`session-item-${index}`}
             />
           );
       }
     },
-    [pathname, dataWithSelected, compactSessionView]
+    [compactSessionView, isTablet, navigateToSession]
   );
 
   // Remove this section as we'll use FlatList for all items now
@@ -325,7 +296,7 @@ export function SessionsList() {
     <View style={styles.container}>
       <View style={styles.contentContainer}>
         <FlatList
-          data={dataWithSelected}
+          data={listItems}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
           contentContainerStyle={{
@@ -345,25 +316,31 @@ export function SessionsList() {
 const SessionItem = React.memo(
   ({
     session,
+    sessionName,
+    sessionSubtitle,
+    avatarId,
     selected,
     isFirst,
     isLast,
     isSingle,
+    isTablet,
+    navigateToSession,
     testID,
   }: {
     session: Session;
+    sessionName: string;
+    sessionSubtitle: string;
+    avatarId: string;
     selected?: boolean;
     isFirst?: boolean;
     isLast?: boolean;
     isSingle?: boolean;
+    isTablet: boolean;
+    navigateToSession: (sessionId: string) => void;
     testID?: string;
   }) => {
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
-    const sessionName = getSessionName(session);
-    const sessionSubtitle = getSessionSubtitle(session);
-    const navigateToSession = useNavigateToSession();
-    const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
 
@@ -385,10 +362,6 @@ const SessionItem = React.memo(
         },
       ]);
     }, [performDelete]);
-
-    const avatarId = React.useMemo(() => {
-      return getSessionAvatarId(session);
-    }, [session]);
 
     const itemContent = (
       <Pressable

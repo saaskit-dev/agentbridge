@@ -9,22 +9,17 @@ import { Avatar } from './Avatar';
 import { ProjectGitStatus } from './ProjectGitStatus';
 import { SessionRowActionButton } from './SessionRowActionButton';
 import { StatusDot } from './StatusDot';
+import { buildProjectSessionGroups } from './activeSessionGroups';
 import { WebPortal } from './web/WebPortal';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
-import { compareCreatedDesc } from '@/sync/entitySort';
 import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
 import { useAllMachines, useSetting } from '@/sync/storage';
-import { Session, Machine } from '@/sync/storageTypes';
+import { Session } from '@/sync/storageTypes';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
-import {
-  getSessionName,
-  useSessionStatus,
-  getSessionAvatarId,
-  formatPathRelativeToHome,
-} from '@/utils/sessionUtils';
+import { useSessionStatus } from '@/utils/sessionUtils';
 import { storage } from '@/sync/storage';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
@@ -312,95 +307,22 @@ export function ActiveSessionsGroupCompact({
   const styles = stylesheet;
   const machines = useAllMachines();
   const [contextMenu, setContextMenu] = React.useState<ContextMenuState | null>(null);
-
-  const machinesMap = React.useMemo(() => {
-    const map: Record<string, Machine> = {};
-    machines.forEach(machine => {
-      map[machine.id] = machine;
-    });
-    return map;
-  }, [machines]);
-
-  // Group sessions by project, then associate with machine
-  const projectGroups = React.useMemo(() => {
-    const groups = new Map<
-      string,
-      {
-        path: string;
-        displayPath: string;
-        machines: Map<
-          string,
-          {
-            machine: Machine | null;
-            machineName: string;
-            sessions: Session[];
-          }
-        >;
-      }
-    >();
-
-    sessions.forEach(session => {
-      const projectPath = session.metadata?.path || '';
-      const unknownText = t('status.unknown');
-      const machineId = session.metadata?.machineId || unknownText;
-
-      // Get machine info
-      const machine = machineId !== unknownText ? machinesMap[machineId] : null;
-      const machineName =
-        machine?.metadata?.displayName ||
-        machine?.metadata?.host ||
-        (machineId !== unknownText ? machineId : `<${unknownText}>`);
-
-      // Get or create project group
-      let projectGroup = groups.get(projectPath);
-      if (!projectGroup) {
-        const displayPath = formatPathRelativeToHome(projectPath, session.metadata?.homeDir);
-        projectGroup = {
-          path: projectPath,
-          displayPath,
-          machines: new Map(),
-        };
-        groups.set(projectPath, projectGroup);
-      }
-
-      // Get or create machine group within project
-      let machineGroup = projectGroup.machines.get(machineId);
-      if (!machineGroup) {
-        machineGroup = {
-          machine,
-          machineName,
-          sessions: [],
-        };
-        projectGroup.machines.set(machineId, machineGroup);
-      }
-
-      // Add session to machine group
-      machineGroup.sessions.push(session);
-    });
-
-    // Sort sessions within each machine group by creation time (newest first)
-    groups.forEach(projectGroup => {
-      projectGroup.machines.forEach(machineGroup => {
-        machineGroup.sessions.sort(compareCreatedDesc);
-      });
-    });
-
-    return groups;
-  }, [sessions, machinesMap]);
-
-  // Sort project groups by display path
-  const sortedProjectGroups = React.useMemo(() => {
-    return Array.from(projectGroups.entries()).sort(([, groupA], [, groupB]) => {
-      return groupA.displayPath.localeCompare(groupB.displayPath);
-    });
-  }, [projectGroups]);
+  const unknownText = t('status.unknown');
+  const projectGroups = React.useMemo(
+    () =>
+      buildProjectSessionGroups(sessions, machines, {
+        unknownMachineId: unknownText,
+        unknownMachineDisplayName: `<${unknownText}>`,
+      }),
+    [machines, sessions, unknownText]
+  );
 
   return (
     <View style={styles.container}>
-      {sortedProjectGroups.map(([projectPath, projectGroup]) => {
-        // Get the avatar ID from the first session
-        const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
-        const avatarId = firstSession ? getSessionAvatarId(firstSession) : undefined;
+      {projectGroups.map(projectGroup => {
+        const projectPath = projectGroup.path;
+        const firstSession = projectGroup.firstSession;
+        const avatarId = projectGroup.firstSessionAvatarId ?? undefined;
 
         return (
           <View key={projectPath}>
@@ -421,28 +343,24 @@ export function ActiveSessionsGroupCompact({
             {/* Card with just the sessions */}
             <View style={styles.projectCard}>
               {/* Sessions grouped by machine within the card */}
-              {Array.from(projectGroup.machines.entries())
-                .sort(([, machineA], [, machineB]) =>
-                  machineA.machineName.localeCompare(machineB.machineName)
-                )
-                .map(([machineId, machineGroup]) => (
-                  <View key={`${projectPath}-${machineId}`}>
-                    {machineGroup.sessions.map((session, index) => (
-                      <CompactSessionRow
-                        key={session.id}
-                        session={session}
-                        selected={selectedSessionId === session.id}
-                        contextMenu={contextMenu}
-                        onOpenContextMenu={setContextMenu}
-                        showBorder={
-                          index < machineGroup.sessions.length - 1 ||
-                          Array.from(projectGroup.machines.keys()).indexOf(machineId) <
-                            projectGroup.machines.size - 1
-                        }
-                      />
-                    ))}
-                  </View>
-                ))}
+              {projectGroup.machineGroups.map((machineGroup, machineIndex) => (
+                <View key={`${projectPath}-${machineGroup.machineId}`}>
+                  {machineGroup.sessions.map((item, index) => (
+                    <CompactSessionRow
+                      key={item.session.id}
+                      session={item.session}
+                      sessionName={item.sessionName}
+                      selected={selectedSessionId === item.session.id}
+                      contextMenu={contextMenu}
+                      onOpenContextMenu={setContextMenu}
+                      showBorder={
+                        index < machineGroup.sessions.length - 1 ||
+                        machineIndex < projectGroup.machineGroups.length - 1
+                      }
+                    />
+                  ))}
+                </View>
+              ))}
             </View>
           </View>
         );
@@ -494,12 +412,14 @@ export function ActiveSessionsGroupCompact({
 const CompactSessionRow = React.memo(
   ({
     session,
+    sessionName,
     selected,
     contextMenu,
     onOpenContextMenu,
     showBorder,
   }: {
     session: Session;
+    sessionName: string;
     selected?: boolean;
     contextMenu: ContextMenuState | null;
     onOpenContextMenu: React.Dispatch<React.SetStateAction<ContextMenuState | null>>;
@@ -508,7 +428,6 @@ const CompactSessionRow = React.memo(
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const sessionStatus = useSessionStatus(session);
-    const sessionName = getSessionName(session);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);

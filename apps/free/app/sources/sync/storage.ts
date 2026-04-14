@@ -167,6 +167,16 @@ interface StorageState {
   applySessions: (
     sessions: (Omit<Session, 'presence'> & { presence?: 'online' | number })[]
   ) => void;
+  applySessionEphemeralUpdates: (
+    updates: Array<{
+      id: string;
+      status?: Session['status'];
+      activeAt?: number;
+      thinking?: boolean;
+      thinkingAt?: number;
+      latestUsage?: Session['latestUsage'];
+    }>
+  ) => boolean;
   applyMachines: (machines: Machine[], replace?: boolean) => void;
   applyLoaded: () => void;
   applyReady: () => void;
@@ -187,6 +197,7 @@ interface StorageState {
   applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
   applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
   clearAllSessionMessages: () => void;
+  dropSessionMessages: (sessionIds: string[]) => void;
   isMutableToolCall: (sessionId: string, callId: string) => boolean;
   setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'reconnecting' | 'connected' | 'error') => void;
   setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => void;
@@ -342,6 +353,200 @@ function buildSessionListViewData(sessions: Record<string, Session>): SessionLis
   return listData;
 }
 
+function buildLegacySessionsData(sessions: Record<string, Session>): SessionListItem[] {
+  const activeSessions: Session[] = [];
+  const inactiveSessions: Session[] = [];
+
+  Object.values(sessions).forEach(session => {
+    if (isSessionActive(session)) {
+      activeSessions.push(session);
+    } else {
+      inactiveSessions.push(session);
+    }
+  });
+
+  activeSessions.sort(compareCreatedDesc);
+  inactiveSessions.sort(compareCreatedDesc);
+
+  const listData: SessionListItem[] = [];
+
+  if (activeSessions.length > 0) {
+    listData.push('online');
+    listData.push(...activeSessions);
+  }
+
+  if (inactiveSessions.length > 0) {
+    listData.push('offline');
+    listData.push(...inactiveSessions);
+  }
+
+  return listData;
+}
+
+function patchLegacySessionsData(
+  sessionsData: SessionListItem[] | null,
+  updatedSessions: Map<string, Session>
+): SessionListItem[] | null {
+  if (!sessionsData || updatedSessions.size === 0) {
+    return sessionsData;
+  }
+
+  let changed = false;
+  const nextData = sessionsData.map(item => {
+    if (typeof item === 'string') {
+      return item;
+    }
+    const updated = updatedSessions.get(item.id);
+    if (!updated) {
+      return item;
+    }
+    changed = true;
+    return updated;
+  });
+
+  return changed ? nextData : sessionsData;
+}
+
+function patchSessionListViewData(
+  sessionListViewData: SessionListViewItem[] | null,
+  updatedSessions: Map<string, Session>
+): SessionListViewItem[] | null {
+  if (!sessionListViewData || updatedSessions.size === 0) {
+    return sessionListViewData;
+  }
+
+  let changed = false;
+  const nextData = sessionListViewData.map(item => {
+    if (item.type === 'active-sessions') {
+      let groupChanged = false;
+      const sessions = item.sessions.map(session => {
+        const updated = updatedSessions.get(session.id);
+        if (!updated) {
+          return session;
+        }
+        groupChanged = true;
+        return updated;
+      });
+      if (!groupChanged) {
+        return item;
+      }
+      changed = true;
+      return { ...item, sessions };
+    }
+
+    if (item.type === 'session') {
+      const updated = updatedSessions.get(item.session.id);
+      if (!updated) {
+        return item;
+      }
+      changed = true;
+      return { ...item, session: updated };
+    }
+
+    return item;
+  });
+
+  return changed ? nextData : sessionListViewData;
+}
+
+function hasMessageSortKeyChanged(previous: Message, next: Message): boolean {
+  return previous.createdAt !== next.createdAt || previous.seq !== next.seq;
+}
+
+function findMessageInsertIndex(messages: Message[], message: Message): number {
+  let low = 0;
+  let high = messages.length;
+
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    const current = messages[mid];
+    if (!current) {
+      break;
+    }
+    if (sortMessagesDesc(message, current) < 0) {
+      high = mid;
+    } else {
+      low = mid + 1;
+    }
+  }
+
+  return low;
+}
+
+function mergeSortedMessages(
+  existingMessages: Message[],
+  existingMessagesMap: Record<string, Message>,
+  incomingMessages: Message[]
+): {
+  messages: Message[];
+  messagesMap: Record<string, Message>;
+} {
+  if (incomingMessages.length === 0) {
+    return {
+      messages: existingMessages,
+      messagesMap: existingMessagesMap,
+    };
+  }
+
+  const dedupedIncoming = new Map<string, Message>();
+  for (const message of incomingMessages) {
+    dedupedIncoming.set(message.id, message);
+  }
+
+  const mergedMessagesMap = { ...existingMessagesMap };
+  const nextMessages = existingMessages.slice();
+  const existingIndexes = new Map<string, number>();
+  existingMessages.forEach((message, index) => {
+    existingIndexes.set(message.id, index);
+  });
+
+  const newMessages: Message[] = [];
+  let requiresFullSort = false;
+
+  for (const [messageId, nextMessage] of dedupedIncoming) {
+    const previousMessage = existingMessagesMap[messageId];
+    mergedMessagesMap[messageId] = nextMessage;
+
+    if (!previousMessage) {
+      newMessages.push(nextMessage);
+      continue;
+    }
+
+    const existingIndex = existingIndexes.get(messageId);
+    if (existingIndex === undefined || hasMessageSortKeyChanged(previousMessage, nextMessage)) {
+      requiresFullSort = true;
+      break;
+    }
+
+    nextMessages[existingIndex] = nextMessage;
+  }
+
+  if (requiresFullSort) {
+    return {
+      messages: Object.values(mergedMessagesMap).sort(sortMessagesDesc),
+      messagesMap: mergedMessagesMap,
+    };
+  }
+
+  if (newMessages.length === 0) {
+    return {
+      messages: nextMessages,
+      messagesMap: mergedMessagesMap,
+    };
+  }
+
+  newMessages.sort(sortMessagesDesc);
+  for (const message of newMessages) {
+    const insertIndex = findMessageInsertIndex(nextMessages, message);
+    nextMessages.splice(insertIndex, 0, message);
+  }
+
+  return {
+    messages: nextMessages,
+    messagesMap: mergedMessagesMap,
+  };
+}
+
 export const storage = create<StorageState>()((set, get) => {
   const { settings, version } = loadSettings();
   const localSettings = loadLocalSettings();
@@ -458,48 +663,7 @@ export const storage = create<StorageState>()((set, get) => {
           };
         });
 
-        // Build active set from all sessions (including existing ones)
-        const activeSet = new Set<string>();
-        Object.values(mergedSessions).forEach(session => {
-          if (isSessionActive(session)) {
-            activeSet.add(session.id);
-          }
-        });
-
-        // Separate active and inactive sessions
-        const activeSessions: Session[] = [];
-        const inactiveSessions: Session[] = [];
-
-        // Process all sessions from merged set
-        Object.values(mergedSessions).forEach(session => {
-          if (activeSet.has(session.id)) {
-            activeSessions.push(session);
-          } else {
-            inactiveSessions.push(session);
-          }
-        });
-
-        // Sort both arrays by creation date for stable ordering
-        activeSessions.sort(compareCreatedDesc);
-        inactiveSessions.sort(compareCreatedDesc);
-
-        // Build flat list data for FlashList
-        const listData: SessionListItem[] = [];
-
-        if (activeSessions.length > 0) {
-          listData.push('online');
-          listData.push(...activeSessions);
-        }
-
-        // Legacy sessionsData - to be removed
-        // Machines are now integrated into sessionListViewData
-
-        if (inactiveSessions.length > 0) {
-          listData.push('offline');
-          listData.push(...inactiveSessions);
-        }
-
-        // logger.debug(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
+        const listData = buildLegacySessionsData(mergedSessions);
 
         // Process AgentState updates for sessions that already have messages loaded
         const updatedSessionMessages = { ...state.sessionMessages };
@@ -559,12 +723,11 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Always update the session messages, even if no new messages were created
             // This ensures the reducer state is updated with the new AgentState
-            const mergedMessagesMap = { ...existingSessionMessages.messagesMap };
-            processedMessages.forEach(message => {
-              mergedMessagesMap[message.id] = message;
-            });
-
-            const messagesArray = Object.values(mergedMessagesMap).sort(sortMessagesDesc);
+            const { messages: messagesArray, messagesMap: mergedMessagesMap } = mergeSortedMessages(
+              existingSessionMessages.messages,
+              existingSessionMessages.messagesMap,
+              processedMessages
+            );
 
             updatedSessionMessages[session.id] = {
               messages: messagesArray,
@@ -605,6 +768,90 @@ export const storage = create<StorageState>()((set, get) => {
           sessionMessages: updatedSessionMessages,
         };
       }),
+    applySessionEphemeralUpdates: (
+      updates: Array<{
+        id: string;
+        status?: Session['status'];
+        activeAt?: number;
+        thinking?: boolean;
+        thinkingAt?: number;
+        latestUsage?: Session['latestUsage'];
+      }>
+    ) => {
+      let activeMembershipChanged = false;
+
+      set(state => {
+        if (updates.length === 0) {
+          return state;
+        }
+
+        const nextSessions: Record<string, Session> = { ...state.sessions };
+        const changedSessions = new Map<string, Session>();
+
+        for (const update of updates) {
+          const session = state.sessions[update.id];
+          if (!session) {
+            continue;
+          }
+
+          const nextStatus = update.status ?? session.status;
+          const nextActiveAt = update.activeAt ?? session.activeAt;
+          const nextPresence = resolveSessionOnlineState({
+            status: nextStatus,
+            activeAt: nextActiveAt,
+          });
+          const nextThinking = update.thinking ?? session.thinking;
+          const nextThinkingAt = update.thinkingAt ?? session.thinkingAt;
+          const nextLatestUsage =
+            update.latestUsage === undefined ? session.latestUsage : update.latestUsage;
+
+          if (
+            nextStatus === session.status &&
+            nextActiveAt === session.activeAt &&
+            nextPresence === session.presence &&
+            nextThinking === session.thinking &&
+            nextThinkingAt === session.thinkingAt &&
+            nextLatestUsage === session.latestUsage
+          ) {
+            continue;
+          }
+
+          if (nextStatus !== session.status) {
+            activeMembershipChanged = true;
+          }
+
+          const nextSession: Session = {
+            ...session,
+            status: nextStatus,
+            activeAt: nextActiveAt,
+            presence: nextPresence,
+            thinking: nextThinking,
+            thinkingAt: nextThinkingAt,
+            latestUsage: nextLatestUsage,
+          };
+
+          nextSessions[session.id] = nextSession;
+          changedSessions.set(session.id, nextSession);
+        }
+
+        if (changedSessions.size === 0) {
+          return state;
+        }
+
+        return {
+          ...state,
+          sessions: nextSessions,
+          sessionsData: activeMembershipChanged
+            ? buildLegacySessionsData(nextSessions)
+            : patchLegacySessionsData(state.sessionsData, changedSessions),
+          sessionListViewData: activeMembershipChanged
+            ? buildSessionListViewData(nextSessions)
+            : patchSessionListViewData(state.sessionListViewData, changedSessions),
+        };
+      });
+
+      return activeMembershipChanged;
+    },
     applyLoaded: () =>
       set(state => {
         const result = {
@@ -655,14 +902,11 @@ export const storage = create<StorageState>()((set, get) => {
           latestStatus = reducerResult.latestStatus;
         }
 
-        // Merge messages
-        const mergedMessagesMap = { ...existingSession.messagesMap };
-        processedMessages.forEach(message => {
-          mergedMessagesMap[message.id] = message;
-        });
-
-        // Convert to array and sort by seq (stable) then createdAt (fallback)
-        const messagesArray = Object.values(mergedMessagesMap).sort(sortMessagesDesc);
+        const { messages: messagesArray, messagesMap: mergedMessagesMap } = mergeSortedMessages(
+          existingSession.messages,
+          existingSession.messagesMap,
+          processedMessages
+        );
 
         // Update session with todos and latestUsage
         // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
@@ -879,6 +1123,31 @@ export const storage = create<StorageState>()((set, get) => {
         ...state,
         sessionMessages: {},
       })),
+    dropSessionMessages: (sessionIds: string[]) =>
+      set(state => {
+        if (sessionIds.length === 0) {
+          return state;
+        }
+
+        let changed = false;
+        const nextSessionMessages = { ...state.sessionMessages };
+        for (const sessionId of sessionIds) {
+          if (!(sessionId in nextSessionMessages)) {
+            continue;
+          }
+          delete nextSessionMessages[sessionId];
+          changed = true;
+        }
+
+        if (!changed) {
+          return state;
+        }
+
+        return {
+          ...state,
+          sessionMessages: nextSessionMessages,
+        };
+      }),
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'reconnecting' | 'connected' | 'error') =>
       set(state => ({
         ...state,
@@ -948,21 +1217,16 @@ export const storage = create<StorageState>()((set, get) => {
 
         // Don't store empty strings, convert to null
         const normalizedDraft = draft?.trim() ? draft : null;
+        if (session.draft === normalizedDraft) {
+          return state;
+        }
 
-        // Collect all drafts for persistence
-        const allDrafts: Record<string, string> = {};
-        Object.entries(state.sessions).forEach(([id, sess]) => {
-          if (id === sessionId) {
-            if (normalizedDraft) {
-              allDrafts[id] = normalizedDraft;
-            }
-          } else if (sess.draft) {
-            allDrafts[id] = sess.draft;
-          }
-        });
-
-        // Persist drafts
-        saveSessionDrafts(allDrafts);
+        if (normalizedDraft) {
+          sessionDrafts[sessionId] = normalizedDraft;
+        } else {
+          delete sessionDrafts[sessionId];
+        }
+        saveSessionDrafts(sessionDrafts);
 
         const updatedSessions = {
           ...state.sessions,
@@ -971,15 +1235,13 @@ export const storage = create<StorageState>()((set, get) => {
             draft: normalizedDraft,
           },
         };
-
-        // Rebuild sessionListViewData to update the UI immediately
-        const sessionListViewData = buildSessionListViewData(updatedSessions);
-        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
 
         return {
           ...state,
           sessions: updatedSessions,
-          sessionListViewData,
+          sessionsData: patchLegacySessionsData(state.sessionsData, changedSessions),
+          sessionListViewData: patchSessionListViewData(state.sessionListViewData, changedSessions),
         };
       }),
     setSessionQueuedMessages: (sessionId: string, queuedMessages: QueuedMessage[]) =>
@@ -994,14 +1256,14 @@ export const storage = create<StorageState>()((set, get) => {
             queuedMessages,
           },
         };
-
-        const sessionListViewData = buildSessionListViewData(updatedSessions);
+        const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
         saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
 
         return {
           ...state,
           sessions: updatedSessions,
-          sessionListViewData,
+          sessionsData: patchLegacySessionsData(state.sessionsData, changedSessions),
+          sessionListViewData: patchSessionListViewData(state.sessionListViewData, changedSessions),
         };
       }),
     enqueueSessionQueuedMessage: (sessionId: string, queuedMessage: QueuedMessage) =>
@@ -1016,12 +1278,13 @@ export const storage = create<StorageState>()((set, get) => {
             queuedMessages: nextQueuedMessages,
           },
         };
-        const sessionListViewData = buildSessionListViewData(updatedSessions);
+        const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
         saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
         return {
           ...state,
           sessions: updatedSessions,
-          sessionListViewData,
+          sessionsData: patchLegacySessionsData(state.sessionsData, changedSessions),
+          sessionListViewData: patchSessionListViewData(state.sessionListViewData, changedSessions),
         };
       }),
     updateSessionQueuedMessage: (sessionId: string, queuedMessage: QueuedMessage) =>
@@ -1038,11 +1301,13 @@ export const storage = create<StorageState>()((set, get) => {
             queuedMessages: nextQueuedMessages,
           },
         };
+        const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
         saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
         return {
           ...state,
           sessions: updatedSessions,
-          sessionListViewData: buildSessionListViewData(updatedSessions),
+          sessionsData: patchLegacySessionsData(state.sessionsData, changedSessions),
+          sessionListViewData: patchSessionListViewData(state.sessionListViewData, changedSessions),
         };
       }),
     removeSessionQueuedMessage: (sessionId: string, queuedMessageId: string) =>
@@ -1059,11 +1324,13 @@ export const storage = create<StorageState>()((set, get) => {
             queuedMessages: nextQueuedMessages,
           },
         };
+        const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
         saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
         return {
           ...state,
           sessions: updatedSessions,
-          sessionListViewData: buildSessionListViewData(updatedSessions),
+          sessionsData: patchLegacySessionsData(state.sessionsData, changedSessions),
+          sessionListViewData: patchSessionListViewData(state.sessionListViewData, changedSessions),
         };
       }),
     removeSessionQueuedMessages: (sessionId: string, queuedMessageIds: string[]) =>
@@ -1081,11 +1348,13 @@ export const storage = create<StorageState>()((set, get) => {
             queuedMessages: nextQueuedMessages,
           },
         };
+        const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
         saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
         return {
           ...state,
           sessions: updatedSessions,
-          sessionListViewData: buildSessionListViewData(updatedSessions),
+          sessionsData: patchLegacySessionsData(state.sessionsData, changedSessions),
+          sessionListViewData: patchSessionListViewData(state.sessionListViewData, changedSessions),
         };
       }),
     updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) =>
@@ -1330,9 +1599,8 @@ export const storage = create<StorageState>()((set, get) => {
         const { [sessionId]: deletedGitStatus, ...remainingGitStatus } = state.sessionGitStatus;
 
         // Clear drafts and permission modes from persistent storage
-        const drafts = loadSessionDrafts();
-        delete drafts[sessionId];
-        saveSessionDrafts(drafts);
+        delete sessionDrafts[sessionId];
+        saveSessionDrafts(sessionDrafts);
 
         const modes = loadSessionPermissionModes();
         delete modes[sessionId];
@@ -1506,6 +1774,111 @@ export function useSessionCapabilities(id: string) {
 }
 
 const emptyArray: unknown[] = [];
+const emptyMachines: Machine[] = [];
+const emptySessionsList: Session[] = [];
+const messageIdsCache = new WeakMap<Message[], string[]>();
+let cachedMachinesSource: Record<string, Machine> | null = null;
+let cachedAllMachines: Machine[] = emptyMachines;
+let cachedMachineCount = 0;
+let cachedSessionsSource: Record<string, Session> | null = null;
+let cachedAllSessions: Session[] = emptySessionsList;
+let cachedActiveSessionCount = 0;
+const recentSessionsCache = new Map<number, { source: Session[]; value: Session[] }>();
+
+function getCachedMessageIds(messages: Message[]): string[] {
+  const cachedIds = messageIdsCache.get(messages);
+  if (cachedIds) {
+    return cachedIds;
+  }
+  const nextIds = messages.map(message => message.id);
+  messageIdsCache.set(messages, nextIds);
+  return nextIds;
+}
+
+function selectAllMachines(state: StorageState): Machine[] {
+  if (!state.isDataReady) {
+    return emptyMachines;
+  }
+  if (state.machines === cachedMachinesSource) {
+    return cachedAllMachines;
+  }
+
+  cachedMachinesSource = state.machines;
+  cachedAllMachines = Object.values(state.machines).sort(compareCreatedDesc).filter(machine => machine.active);
+  cachedMachineCount = cachedAllMachines.length;
+  return cachedAllMachines;
+}
+
+function selectMachineCount(state: StorageState): number {
+  if (!state.isDataReady) {
+    return 0;
+  }
+  if (state.machines !== cachedMachinesSource) {
+    selectAllMachines(state);
+  }
+  return cachedMachineCount;
+}
+
+function ensureSessionSelectorCache(state: StorageState) {
+  if (state.sessions === cachedSessionsSource) {
+    return;
+  }
+
+  cachedSessionsSource = state.sessions;
+  const allSessions = Object.values(state.sessions);
+  cachedActiveSessionCount = 0;
+  for (const session of allSessions) {
+    if (session.status === 'active') {
+      cachedActiveSessionCount += 1;
+    }
+  }
+  cachedAllSessions = allSessions.sort(compareUpdatedDesc);
+}
+
+function selectActiveSessionCount(state: StorageState): number {
+  ensureSessionSelectorCache(state);
+  return cachedActiveSessionCount;
+}
+
+function selectAllSessions(state: StorageState): Session[] {
+  if (!state.isDataReady) {
+    return emptySessionsList;
+  }
+  ensureSessionSelectorCache(state);
+  return cachedAllSessions;
+}
+
+function selectRecentSessions(state: StorageState, limit: number): Session[] {
+  if (!state.isDataReady || limit <= 0) {
+    return emptySessionsList;
+  }
+
+  const allSessions = selectAllSessions(state);
+  const nextLength = Math.min(limit, allSessions.length);
+  const cached = recentSessionsCache.get(limit);
+  if (cached) {
+    if (cached.source === allSessions) {
+      return cached.value;
+    }
+    if (cached.value.length === nextLength) {
+      let matchesPrefix = true;
+      for (let index = 0; index < nextLength; index += 1) {
+        if (cached.value[index] !== allSessions[index]) {
+          matchesPrefix = false;
+          break;
+        }
+      }
+      if (matchesPrefix) {
+        recentSessionsCache.set(limit, { source: allSessions, value: cached.value });
+        return cached.value;
+      }
+    }
+  }
+
+  const nextSessions = allSessions.slice(0, limit);
+  recentSessionsCache.set(limit, { source: allSessions, value: nextSessions });
+  return nextSessions;
+}
 
 export function useSessionMessages(sessionId: string): {
   messages: Message[];
@@ -1541,7 +1914,7 @@ export function useSessionMessageIds(sessionId: string): string[] {
   return storage(
     useShallow(state => {
       const session = state.sessionMessages[sessionId];
-      return session?.messages.map(m => m.id) ?? emptyIds;
+      return session?.messages ? getCachedMessageIds(session.messages) : emptyIds;
     })
   );
 }
@@ -1557,6 +1930,14 @@ export function useSessionUsage(sessionId: string) {
 
 export function useSessionActiveToolCallCount(sessionId: string): number {
   return storage(state => state.sessionMessages[sessionId]?.reducerState?.activeToolCallCount ?? 0);
+}
+
+export function useSessionThinking(sessionId: string): boolean {
+  return storage(state => state.sessions[sessionId]?.thinking ?? false);
+}
+
+export function useSessionControlledByUser(sessionId: string): boolean {
+  return storage(state => state.sessions[sessionId]?.agentState?.controlledByUser ?? false);
 }
 
 export function useSettings(): Settings {
@@ -1585,16 +1966,30 @@ export function useLocalSettings(): LocalSettings {
 }
 
 export function useAllMachines(): Machine[] {
-  return storage(
-    useShallow(state => {
-      if (!state.isDataReady) return [];
-      return Object.values(state.machines).sort(compareCreatedDesc).filter(v => v.active);
-    })
-  );
+  return storage(selectAllMachines);
+}
+
+export function useMachineCount(): number {
+  return storage(selectMachineCount);
 }
 
 export function useMachine(machineId: string): Machine | null {
   return storage(useShallow(state => state.machines[machineId] ?? null));
+}
+
+export function useSessionRecoveryFailed(
+  machineId: string | null | undefined,
+  sessionId: string
+): boolean {
+  return storage(state => {
+    const failures = state.machines[machineId ?? '']?.daemonState?.failedRecoveries as
+      | Array<{ sessionId: string }>
+      | undefined;
+    if (!failures) {
+      return false;
+    }
+    return failures.some(failure => failure.sessionId === sessionId);
+  });
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {
@@ -1602,18 +1997,19 @@ export function useSessionListViewData(): SessionListViewItem[] | null {
 }
 
 export function useActiveSessionCount(): number {
-  return storage(
-    useShallow(state => Object.values(state.sessions).filter(session => session.status === 'active').length)
-  );
+  return storage(selectActiveSessionCount);
 }
 
 export function useAllSessions(): Session[] {
-  return storage(
-    useShallow(state => {
-      if (!state.isDataReady) return [];
-      return Object.values(state.sessions).sort(compareUpdatedDesc);
-    })
+  return storage(selectAllSessions);
+}
+
+export function useRecentSessions(limit: number): Session[] {
+  const selector = React.useMemo(
+    () => (state: StorageState) => selectRecentSessions(state, limit),
+    [limit]
   );
+  return storage(selector);
 }
 
 export function useLocalSettingMutable<K extends keyof LocalSettings>(
@@ -1658,6 +2054,10 @@ export function useSessionProjectGitStatus(sessionId: string | null) {
 
 export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {
   return storage(useShallow(state => state.localSettings[name]));
+}
+
+export function useAcknowledgedCliVersion(machineId: string | null | undefined): string | undefined {
+  return storage(state => (machineId ? state.localSettings.acknowledgedCliVersions[machineId] : undefined));
 }
 
 // Artifact hooks

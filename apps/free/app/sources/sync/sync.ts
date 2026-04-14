@@ -198,6 +198,7 @@ class Sync {
   private static readonly BACKGROUND_SEND_TIMEOUT_MS = 30_000;
   private static readonly DESKTOP_RESUME_COOLDOWN_MS = 4000;
   private static readonly DESKTOP_REFRESH_INVALIDATION_COOLDOWN_MS = 12_000;
+  private static readonly MAX_INACTIVE_SESSION_MESSAGE_CACHES = 2;
   encryption!: Encryption;
   private shouldPromptBackgroundReconnectOnResume = false;
   private backgroundReconnectPromptInFlight = false;
@@ -587,13 +588,16 @@ class Sync {
   onSessionVisible = async (sessionId: string) => {
     const log = sessionLogger(logger, sessionId);
     log.debug('[sync] onSessionVisible');
+    this.pruneInactiveSessionMessageCache(sessionId);
 
     // Load cached messages from local SQLite first (instant render)
-    if (!this.sessionLastSeq.has(sessionId)) {
+    if (!storage.getState().sessionMessages[sessionId]) {
       try {
-        const cachedSeq = await messageDB.getLastSeq(sessionId);
+        const cachedSeq = this.sessionLastSeq.get(sessionId) ?? (await messageDB.getLastSeq(sessionId));
         if (cachedSeq > 0) {
-          this.setSessionLastSeq(sessionId, cachedSeq);
+          if (!this.sessionLastSeq.has(sessionId)) {
+            this.setSessionLastSeq(sessionId, cachedSeq);
+          }
           // Load latest messages for fast initial render; older messages are
           // fetched on demand via loadOlderMessages (triggered by ChatList scroll).
           // Use a generous limit (500) to avoid splitting streaming text chunks
@@ -659,6 +663,56 @@ class Sync {
       getVoiceHooks().onSessionFocus(sessionId, session.metadata || undefined);
     }
   };
+
+  private pruneInactiveSessionMessageCache(visibleSessionId: string) {
+    const state = storage.getState();
+    const keepSessionIds = new Set<string>([visibleSessionId]);
+
+    Object.entries(state.sessions).forEach(([sessionId, session]) => {
+      if (session.status === 'active') {
+        keepSessionIds.add(sessionId);
+      }
+    });
+    this.pendingOutbox.forEach((_messages, sessionId) => keepSessionIds.add(sessionId));
+    this.sessionMessageQueue.forEach((_messages, sessionId) => keepSessionIds.add(sessionId));
+    this.sessionQueueProcessing.forEach(sessionId => keepSessionIds.add(sessionId));
+
+    const inactiveLoadedEntries = Object.entries(state.sessionMessages).filter(([sessionId, sessionMessages]) => {
+      if (keepSessionIds.has(sessionId)) {
+        return false;
+      }
+      if (!sessionMessages.isLoaded) {
+        return false;
+      }
+      return state.sessions[sessionId]?.status !== 'active';
+    });
+
+    if (inactiveLoadedEntries.length <= Sync.MAX_INACTIVE_SESSION_MESSAGE_CACHES) {
+      return;
+    }
+
+    inactiveLoadedEntries
+      .sort(
+        ([leftId], [rightId]) =>
+          (state.sessions[rightId]?.updatedAt ?? 0) - (state.sessions[leftId]?.updatedAt ?? 0)
+      )
+      .slice(0, Sync.MAX_INACTIVE_SESSION_MESSAGE_CACHES)
+      .forEach(([sessionId]) => keepSessionIds.add(sessionId));
+
+    const evictedSessionIds = inactiveLoadedEntries
+      .map(([sessionId]) => sessionId)
+      .filter(sessionId => !keepSessionIds.has(sessionId));
+
+    if (evictedSessionIds.length === 0) {
+      return;
+    }
+
+    storage.getState().dropSessionMessages(evictedSessionIds);
+    logger.debug('[sync] evicted inactive session message caches', {
+      visibleSessionId,
+      evictedCount: evictedSessionIds.length,
+    });
+  }
 
   private getMessagesSync(sessionId: string): InvalidateSync {
     let sync = this.messagesSync.get(sessionId);
@@ -2794,11 +2848,7 @@ class Sync {
     // Zustand: remove this session's messages entirely so the reducer
     // starts fresh (processedIds is cleared). applyMessages / applyMessagesLoaded
     // will recreate the entry from scratch.
-    const state = storage.getState();
-    if (state.sessionMessages[sessionId]) {
-      const { [sessionId]: _, ...remaining } = state.sessionMessages;
-      storage.setState({ sessionMessages: remaining });
-    }
+    storage.getState().dropSessionMessages([sessionId]);
 
     log.info('[sync] session cache cleared');
 
@@ -3805,7 +3855,15 @@ class Sync {
 
     if (sessions.length > 0) {
       // logger.debug('flushing activity updates ' + sessions.length);
-      this.applySessions(sessions);
+      this.applySessionEphemeralUpdates(
+        sessions.map(session => ({
+          id: session.id,
+          status: session.status,
+          activeAt: session.activeAt,
+          thinking: session.thinking,
+          thinkingAt: session.thinkingAt,
+        }))
+      );
       // logger.debug(`🔄 Activity updates flushed - updated ${sessions.length} sessions`);
     }
   };
@@ -3829,12 +3887,12 @@ class Sync {
 
     // Handle batched activity updates (server aggregates multiple session heartbeats into one)
     if (updateData.type === 'batch-activity') {
-      for (const activity of updateData.activities) {
-        this.activityAccumulator.addUpdate({
+      this.activityAccumulator.addUpdates(
+        updateData.activities.map(activity => ({
           type: 'activity',
           ...activity,
-        });
-      }
+        }))
+      );
       return;
     }
 
@@ -3869,12 +3927,7 @@ class Sync {
           timestamp: updateData.timestamp,
         };
 
-        this.applySessions([
-          {
-            ...session,
-            latestUsage,
-          },
-        ]);
+        this.applySessionEphemeralUpdates([{ id: session.id, latestUsage }]);
       }
     }
 
@@ -3903,9 +3956,9 @@ class Sync {
         // ACP idle is inactivity-based and can briefly fire before the authoritative
         // turn-end/task_complete lifecycle event arrives.
         if (result.latestStatus === 'working') {
-          this.applySessions([
+          this.applySessionEphemeralUpdates([
             {
-              ...session,
+              id: session.id,
               thinking: true,
               thinkingAt: Date.now(),
             },
@@ -3979,6 +4032,28 @@ class Sync {
       if (queued.length > 0) {
         this.getSendSync(session.id).invalidate();
       }
+    }
+  };
+
+  private applySessionEphemeralUpdates = (
+    updates: Array<{
+      id: string;
+      status?: Session['status'];
+      activeAt?: number;
+      thinking?: boolean;
+      thinkingAt?: number;
+      latestUsage?: Session['latestUsage'];
+    }>
+  ) => {
+    if (updates.length === 0) {
+      return;
+    }
+
+    const active = storage.getState().getActiveSessions();
+    const activeMembershipChanged = storage.getState().applySessionEphemeralUpdates(updates);
+    if (activeMembershipChanged) {
+      const newActive = storage.getState().getActiveSessions();
+      this.applySessionDiff(active, newActive);
     }
   };
 

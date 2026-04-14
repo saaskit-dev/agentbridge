@@ -10,7 +10,7 @@ import { buildMarkdownViewProps } from './markdown/markdownViewProps';
 import { StreamingAgentText } from './StreamingText';
 import { ToolView } from './tools/ToolView';
 import { Typography } from '@/constants/Typography';
-import { useLocalSetting, useSetting, useSession } from '@/sync/storage';
+import { useLocalSetting, useSetting, useSessionThinking } from '@/sync/storage';
 import { Metadata } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/sync/typesMessage';
@@ -319,7 +319,7 @@ function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
 
 function ThinkingBlock(props: { message: AgentTextMessage; sessionId: string }) {
   const { theme } = useUnistyles();
-  const isSessionThinking = useSession(props.sessionId)?.thinking ?? false;
+  const isSessionThinking = useSessionThinking(props.sessionId);
 
   // Track whether the user has manually toggled this block.
   // Once manually toggled, auto-expand/collapse is disabled.

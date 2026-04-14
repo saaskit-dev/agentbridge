@@ -14,6 +14,15 @@ export type ChatListItem =
   | { type: 'date-separator'; label: string; key: string }
   | { type: 'time-separator'; label: string; key: string };
 
+export type ChatUserNavItem = {
+  listIndex: number;
+  messageId: string;
+  seq: number;
+  preview: string;
+  time: string;
+  createdAt: number;
+};
+
 function isSameDay(a: number, b: number): boolean {
   const da = new Date(a);
   const db = new Date(b);
@@ -37,6 +46,18 @@ export function buildChatListItems(
   formatDateLabel: (ts: number) => string,
   formatTime: (ts: number) => string
 ): ChatListItem[] {
+  return buildChatListData(messages, formatDateLabel, formatTime).listItems;
+}
+
+export function buildChatListData(
+  messages: Message[],
+  formatDateLabel: (ts: number) => string,
+  formatTime: (ts: number) => string
+): {
+  listItems: ChatListItem[];
+  messagesById: Map<string, Message>;
+  userNavItems: ChatUserNavItem[];
+} {
   const items: ChatListItem[] = [];
   const groups: Array<{
     messageIds: string[];
@@ -44,6 +65,8 @@ export function buildChatListItems(
     createdAt: number;
     role: 'user' | 'assistant';
   }> = [];
+  const messagesById = new Map<string, Message>();
+  const userInfoById = new Map<string, { text: string; createdAt: number }>();
 
   const getRole = (message: Message): 'user' | 'assistant' =>
     message.kind === 'user-text' ? 'user' : 'assistant';
@@ -52,6 +75,13 @@ export function buildChatListItems(
 
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
+    messagesById.set(message.id, message);
+    if (message.kind === 'user-text') {
+      userInfoById.set(message.id, {
+        text: message.displayText || message.text,
+        createdAt: message.createdAt,
+      });
+    }
     const role = getRole(message);
     if (!currentGroup || currentGroup.role !== role) {
       currentGroup = {
@@ -103,5 +133,31 @@ export function buildChatListItems(
   }
 
   items.reverse();
-  return items;
+  const userNavItems: ChatUserNavItem[] = [];
+  let seq = 1;
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index];
+    if (item?.type !== 'message-group' || item.role !== 'user') {
+      continue;
+    }
+    const info = userInfoById.get(item.primaryMessageId);
+    if (!info) {
+      continue;
+    }
+    const preview = info.text.split('\n').slice(0, 2).join(' ').trim() || '…';
+    userNavItems.push({
+      listIndex: index,
+      messageId: item.primaryMessageId,
+      seq: seq++,
+      preview,
+      time: formatTime(info.createdAt),
+      createdAt: info.createdAt,
+    });
+  }
+
+  return {
+    listItems: items,
+    messagesById,
+    userNavItems,
+  };
 }

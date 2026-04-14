@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
-import { useSessionActiveToolCallCount, useMachine } from '@/sync/storage';
+import { useSessionActiveToolCallCount, useSessionRecoveryFailed } from '@/sync/storage';
 
 export type SessionState =
   | 'disconnected'
@@ -28,20 +28,12 @@ export interface SessionStatus {
  */
 export function useSessionStatus(session: Session): SessionStatus {
   const activeToolCallCount = useSessionActiveToolCallCount(session.id);
-  const machine = useMachine(session.metadata?.machineId ?? '');
   const isOnline = session.presence === 'online';
   const hasPermissions =
     session.agentState?.requests && Object.keys(session.agentState.requests).length > 0
       ? true
       : false;
-
-  const isRecoveryFailed = React.useMemo(() => {
-    const failures = machine?.daemonState?.failedRecoveries as
-      | Array<{ sessionId: string }>
-      | undefined;
-    if (!failures) return false;
-    return failures.some(f => f.sessionId === session.id);
-  }, [machine?.daemonState?.failedRecoveries, session.id]);
+  const isRecoveryFailed = useSessionRecoveryFailed(session.metadata?.machineId, session.id);
 
   const vibingMessage = React.useMemo(() => {
     return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';

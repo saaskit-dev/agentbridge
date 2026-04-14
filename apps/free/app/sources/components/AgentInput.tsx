@@ -443,6 +443,7 @@ export const AgentInput = React.memo(
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
+    const isWideLayout = screenWidth > 700;
 
     const hasText = props.value.trim().length > 0;
     const hasReadyAttachments = (props.pendingAttachments ?? []).some(a => !a.uploading && !a.error);
@@ -641,6 +642,14 @@ export const AgentInput = React.memo(
       activeWord,
       props.autocompleteSuggestions,
       { clampSelection: true, wrapAround: true }
+    );
+    const renderedSuggestions = React.useMemo(
+      () =>
+        suggestions.map(suggestion => {
+          const Component = suggestion.component;
+          return <Component key={suggestion.key} />;
+        }),
+      [suggestions]
     );
 
     // Debug logging
@@ -911,7 +920,7 @@ export const AgentInput = React.memo(
     );
 
     return (
-      <View style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 8 }]}>
+      <View style={[styles.container, { paddingHorizontal: isWideLayout ? 16 : 8 }]}>
         <View style={[styles.innerContainer, { maxWidth: layout.maxWidth }]}>
           {/* Autocomplete suggestions overlay + tap-outside to dismiss */}
           {suggestions.length > 0 && (
@@ -924,13 +933,10 @@ export const AgentInput = React.memo(
               </TouchableWithoutFeedback>
               <View
                 pointerEvents={composerChromeLocked ? 'none' : 'auto'}
-                style={[styles.autocompleteOverlay, { paddingHorizontal: screenWidth > 700 ? 0 : 8 }]}
+                style={[styles.autocompleteOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}
               >
                 <AgentInputAutocomplete
-                  suggestions={suggestions.map(s => {
-                    const Component = s.component;
-                    return <Component key={s.key} />;
-                  })}
+                  suggestions={renderedSuggestions}
                   selectedIndex={selected}
                   onSelect={handleSuggestionSelect}
                   itemHeight={48}
@@ -946,7 +952,7 @@ export const AgentInput = React.memo(
                 <View style={styles.overlayBackdrop} />
               </TouchableWithoutFeedback>
               <View
-                style={[styles.settingsOverlay, { paddingHorizontal: screenWidth > 700 ? 0 : 8 }]}
+                style={[styles.settingsOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}
               >
                 <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
                   {/* Permission Mode Section */}
@@ -1299,7 +1305,7 @@ export const AgentInput = React.memo(
                 <View style={styles.overlayBackdrop} />
               </TouchableWithoutFeedback>
               <View
-                style={[styles.settingsOverlay, { paddingHorizontal: screenWidth > 700 ? 0 : 8 }]}
+                style={[styles.settingsOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}
               >
                 <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
                   <View style={styles.overlaySection}>
