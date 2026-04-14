@@ -292,10 +292,6 @@ echo "==> Archive iOS app"
     -configuration Release \
     -destination generic/platform=iOS \
     -archivePath "$ARCHIVE_PATH" \
-    -allowProvisioningUpdates \
-    -authenticationKeyPath "$AUTH_KEY_PATH" \
-    -authenticationKeyID "$ASC_KEY_ID" \
-    -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
     MARKETING_VERSION="$VERSION" \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     archive
@@ -308,11 +304,7 @@ echo "==> Export IPA"
     -exportArchive \
     -archivePath "$ARCHIVE_PATH" \
     -exportPath "$EXPORT_PATH" \
-    -exportOptionsPlist "$EXPORT_OPTIONS_PLIST" \
-    -allowProvisioningUpdates \
-    -authenticationKeyPath "$AUTH_KEY_PATH" \
-    -authenticationKeyID "$ASC_KEY_ID" \
-    -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+    -exportOptionsPlist "$EXPORT_OPTIONS_PLIST"
 )
 
 IPA_PATH="$(find "$EXPORT_PATH" -maxdepth 1 -name '*.ipa' | head -n 1)"
