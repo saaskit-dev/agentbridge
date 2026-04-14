@@ -699,9 +699,16 @@ function NewSessionWizard() {
     };
   }, [recentMachinePaths]);
 
-  const handleMachineClick = React.useCallback(() => {
-    router.push('/new/pick/machine');
-  }, [router]);
+  const handleMachineSelect = React.useCallback(
+    (machineId: string) => {
+      if (machineId === selectedMachineId) {
+        return;
+      }
+      setSelectedMachineId(machineId);
+      setSelectedPath(getRecentPathForMachine(machineId, recentMachinePaths));
+    },
+    [recentMachinePaths, selectedMachineId]
+  );
 
   const handlePathClick = React.useCallback(() => {
     if (selectedMachineId) {
@@ -1007,7 +1014,9 @@ function NewSessionWizard() {
               machineName={
                 selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host
               }
-              onMachineClick={handleMachineClick}
+              machineOptions={machines}
+              selectedMachineId={selectedMachineId}
+              onMachineSelect={handleMachineSelect}
               currentPath={selectedPath}
               onPathClick={handlePathClick}
             />

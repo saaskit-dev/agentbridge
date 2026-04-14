@@ -50,6 +50,7 @@ import {
 import { Modal } from '@/modal/ModalManager';
 import { t } from '@/text';
 import { Theme } from '@/theme';
+import type { Machine } from '@/sync/storageTypes';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/AgentInput');
 
@@ -110,6 +111,9 @@ interface AgentInputProps {
   onAgentChange?: (agent: AppAgentFlavor) => void;
   onAgentClick?: () => void;
   machineName?: string | null;
+  machineOptions?: Machine[];
+  selectedMachineId?: string | null;
+  onMachineSelect?: (machineId: string) => void;
   onMachineClick?: () => void;
   currentPath?: string | null;
   onPathClick?: () => void;
@@ -714,12 +718,14 @@ export const AgentInput = React.memo(
 
     // Agent picker overlay state
     const [showAgentPicker, setShowAgentPicker] = React.useState(false);
+    const [showMachinePicker, setShowMachinePicker] = React.useState(false);
 
     // Close settings overlays and dismiss keyboard while the composer chrome is locked (send in flight or abort).
     React.useEffect(() => {
       if (composerChromeLocked) {
         setShowSettings(false);
         setShowAgentPicker(false);
+        setShowMachinePicker(false);
         inputRef.current?.blur();
       }
     }, [composerChromeLocked]);
@@ -1420,6 +1426,105 @@ export const AgentInput = React.memo(
             </>
           )}
 
+          {showMachinePicker && props.machineOptions && props.onMachineSelect && (
+            <>
+              <TouchableWithoutFeedback onPress={() => setShowMachinePicker(false)}>
+                <View style={styles.overlayBackdrop} />
+              </TouchableWithoutFeedback>
+              <View
+                style={[styles.settingsOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}
+              >
+                <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
+                  <View style={styles.overlaySection}>
+                    <Text style={styles.overlaySectionTitle}>{t('machinePicker.headerTitle')}</Text>
+                    {props.machineOptions.length > 0 ? (
+                      props.machineOptions.map(machine => {
+                        const machineLabel =
+                          machine.metadata?.displayName || machine.metadata?.host || machine.id;
+                        const secondaryLabel =
+                          machine.metadata?.displayName && machine.metadata?.host
+                            ? machine.metadata.host
+                            : null;
+                        const isSelected = machine.id === props.selectedMachineId;
+
+                        return (
+                          <Pressable
+                            key={machine.id}
+                            onPress={() => {
+                              hapticsLight();
+                              props.onMachineSelect?.(machine.id);
+                              setShowMachinePicker(false);
+                            }}
+                            style={({ pressed }) => ({
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingHorizontal: 16,
+                              paddingVertical: 8,
+                              backgroundColor: pressed
+                                ? theme.colors.surfacePressed
+                                : 'transparent',
+                            })}
+                          >
+                            <View
+                              style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: 8,
+                                borderWidth: 2,
+                                borderColor: isSelected
+                                  ? theme.colors.radio.active
+                                  : theme.colors.radio.inactive,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginRight: 12,
+                              }}
+                            >
+                              {isSelected && <View style={styles.radioButtonDot} />}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={{
+                                  fontSize: 14,
+                                  color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                  ...Typography.default(),
+                                }}
+                              >
+                                {machineLabel}
+                              </Text>
+                              {secondaryLabel ? (
+                                <Text
+                                  style={{
+                                    fontSize: 11,
+                                    color: theme.colors.textSecondary,
+                                    ...Typography.default(),
+                                  }}
+                                >
+                                  {secondaryLabel}
+                                </Text>
+                              ) : null}
+                            </View>
+                          </Pressable>
+                        );
+                      })
+                    ) : (
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          color: theme.colors.textSecondary,
+                          paddingHorizontal: 16,
+                          paddingVertical: 8,
+                          ...Typography.default(),
+                        }}
+                      >
+                        {t('machinePicker.noMachinesAvailable')}
+                      </Text>
+                    )}
+                  </View>
+                </FloatingOverlay>
+              </View>
+            </>
+          )}
+
           {/* Connection status, context warning, and permission mode */}
           {(props.connectionStatus ||
             contextWarning ||
@@ -1651,10 +1756,18 @@ export const AgentInput = React.memo(
               }}
             >
               {/* Machine chip */}
-              {props.machineName !== undefined && props.onMachineClick && (
+              {props.machineName !== undefined &&
+                (props.onMachineSelect || props.onMachineClick) && (
                 <Pressable
                   onPress={() => {
                     hapticsLight();
+                    if (props.onMachineSelect) {
+                      inputRef.current?.blur();
+                      setShowSettings(false);
+                      setShowAgentPicker(false);
+                      setShowMachinePicker(prev => !prev);
+                      return;
+                    }
                     props.onMachineClick?.();
                   }}
                   hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
@@ -1682,6 +1795,13 @@ export const AgentInput = React.memo(
                       ? t('agentInput.noMachinesAvailable')
                       : props.machineName}
                   </Text>
+                  {props.onMachineSelect ? (
+                    <Ionicons
+                      name={showMachinePicker ? 'chevron-up' : 'chevron-down'}
+                      size={14}
+                      color={theme.colors.textSecondary}
+                    />
+                  ) : null}
                 </Pressable>
               )}
 
