@@ -79,14 +79,6 @@ APP_ENV=production
 IOS_BUILD_NUMBER=$BUILD_NUMBER
 EOF
 
-if [ -n "${GOOGLE_SERVICES_PLIST:-}" ]; then
-  printf '%s\n' "$GOOGLE_SERVICES_PLIST" > "$APP_DIR/ios/Freedev/GoogleService-Info.plist"
-fi
-
-if [ -n "${GOOGLE_SERVICES_JSON:-}" ]; then
-  printf '%s\n' "$GOOGLE_SERVICES_JSON" > "$APP_DIR/android/app/google-services.json"
-fi
-
 EXPORT_OPTIONS_PLIST="$(mktemp "${TMPDIR:-/tmp}/free-ios-export-options.XXXXXX.plist")"
 cat > "$EXPORT_OPTIONS_PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -114,6 +106,11 @@ echo "==> Sync Expo config into native iOS project"
   cd "$APP_DIR"
   APP_ENV=production IOS_BUILD_NUMBER="$BUILD_NUMBER" npx expo prebuild --platform ios --non-interactive
 )
+
+if [ -n "${GOOGLE_SERVICES_PLIST:-}" ]; then
+  mkdir -p "$APP_DIR/ios/Freedev"
+  printf '%s\n' "$GOOGLE_SERVICES_PLIST" > "$APP_DIR/ios/Freedev/GoogleService-Info.plist"
+fi
 
 echo "==> Install CocoaPods"
 (
