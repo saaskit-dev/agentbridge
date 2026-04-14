@@ -928,27 +928,23 @@ const FoldedDaemonErrorRow = React.memo(
     collapseToolsSignal?: number;
   }) => {
     const { theme } = useUnistyles();
-    const [expanded, setExpanded] = useState(false);
     const summaryText = useMemo(
       () => getDaemonErrorSummaryText(props.messages[0], props.messages.length),
       [props.messages]
     );
 
     return (
-      <View>
-        <Pressable
-          onPress={() => setExpanded(value => !value)}
+      <View style={{ alignItems: 'center' }}>
+        <View
           style={{
             marginHorizontal: 8,
             marginVertical: 2,
             paddingHorizontal: 12,
             paddingVertical: 8,
             borderRadius: 10,
-            alignSelf: 'flex-start',
+            alignSelf: 'center',
             maxWidth: layout.maxWidth,
-            flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
             opacity: 0.88,
           }}
         >
@@ -957,34 +953,14 @@ const FoldedDaemonErrorRow = React.memo(
               color: theme.colors.warningCritical,
               fontSize: 11,
               lineHeight: 16,
-              flexShrink: 1,
+              textAlign: 'center',
               ...Typography.default(),
             }}
-            numberOfLines={1}
+            numberOfLines={2}
           >
             {summaryText}
           </Text>
-          <Text
-            style={{
-              color: theme.colors.textSecondary,
-              fontSize: 11,
-              ...Typography.default(),
-            }}
-          >
-            {expanded ? '收起' : '展开'}
-          </Text>
-        </Pressable>
-        {expanded
-          ? props.messageIds.map(messageId => (
-              <MessageRow
-                key={messageId}
-                messageId={messageId}
-                metadata={props.metadata}
-                sessionId={props.sessionId}
-                collapseToolsSignal={props.collapseToolsSignal}
-              />
-            ))
-          : null}
+        </View>
       </View>
     );
   }

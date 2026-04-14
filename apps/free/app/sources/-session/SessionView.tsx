@@ -62,6 +62,7 @@ import {
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 import * as ImagePicker from 'expo-image-picker';
+import { layout } from '@/components/layout';
 import {
   uploadAttachment,
   uploadClipboardImage,
@@ -84,7 +85,10 @@ const QueuedMessagesPanel = React.memo(function QueuedMessagesPanel(props: {
   return (
     <View
       style={{
-        marginHorizontal: 12,
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        paddingHorizontal: 12,
         marginBottom: 8,
         borderRadius: 14,
         padding: 10,

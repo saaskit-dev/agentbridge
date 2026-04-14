@@ -9,6 +9,7 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { useDesktopSessionFilesSidebar } from '@/hooks/useDesktopSessionFilesSidebar';
 import { Modal } from '@/modal';
+import { getGitStatusFiles, type GitFileStatus, type GitStatusFiles } from '@/sync/gitStatusFiles';
 import { sessionListDirectory, type DirectoryEntry } from '@/sync/ops';
 import { searchFiles, type FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
@@ -106,6 +107,58 @@ const styles = StyleSheet.create(theme => ({
   treeContent: {
     paddingVertical: 6,
   },
+  gitCard: {
+    marginHorizontal: 8,
+    marginTop: 10,
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  gitCardHeader: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  gitBranchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  gitBranchText: {
+    marginLeft: 6,
+    fontSize: 13,
+    ...Typography.default('semiBold'),
+  },
+  gitSummaryText: {
+    fontSize: 11,
+    ...Typography.default(),
+  },
+  gitEmptyWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  gitEmptyTitle: {
+    marginTop: 10,
+    fontSize: 13,
+    textAlign: 'center',
+    ...Typography.default('semiBold'),
+  },
+  gitEmptySubtitle: {
+    marginTop: 6,
+    fontSize: 12,
+    textAlign: 'center',
+    ...Typography.default(),
+  },
+  gitSectionHeader: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  gitSectionTitle: {
+    fontSize: 12,
+    ...Typography.default('semiBold'),
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -122,6 +175,12 @@ const styles = StyleSheet.create(theme => ({
     fontSize: 13,
     color: theme.colors.text,
     ...Typography.default(),
+  },
+  rowMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    ...Typography.mono(),
   },
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -253,6 +312,8 @@ export function SessionFilesSidebar({
   const [searchQuery, setSearchQuery] = React.useState('');
   const [searchResults, setSearchResults] = React.useState<FileItem[]>([]);
   const [isLoadingRoot, setIsLoadingRoot] = React.useState(false);
+  const [gitStatusFiles, setGitStatusFiles] = React.useState<GitStatusFiles | null>(null);
+  const [isLoadingGit, setIsLoadingGit] = React.useState(false);
   const [isSearching, setIsSearching] = React.useState(false);
   const [isDragging, setIsDragging] = React.useState(false);
   const [isHovering, setIsHovering] = React.useState(false);
@@ -380,6 +441,30 @@ export function SessionFilesSidebar({
   }, [loadDirectory, rootPath, sessionId]);
 
   React.useEffect(() => {
+    let cancelled = false;
+
+    const loadGitStatus = async () => {
+      setIsLoadingGit(true);
+      try {
+        const result = await getGitStatusFiles(sessionId);
+        if (!cancelled) {
+          setGitStatusFiles(result);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingGit(false);
+        }
+      }
+    };
+
+    void loadGitStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  React.useEffect(() => {
     if (!activeFilePath) return;
     void revealPath(activeFilePath);
   }, [activeFilePath, revealPath]);
@@ -443,6 +528,16 @@ export function SessionFilesSidebar({
     await Clipboard.setStringAsync(path);
     Modal.alert(t('common.copied'), t('files.pathCopied'));
   }, [activeFilePath, selectedFilePath]);
+
+  const refreshGitStatus = React.useCallback(async () => {
+    setIsLoadingGit(true);
+    try {
+      const result = await getGitStatusFiles(sessionId);
+      setGitStatusFiles(result);
+    } finally {
+      setIsLoadingGit(false);
+    }
+  }, [sessionId]);
 
   const startResize = React.useCallback(
     (startClientX: number) => {
@@ -607,6 +702,78 @@ export function SessionFilesSidebar({
     ]
   );
 
+  const renderGitStatusIcon = React.useCallback(
+    (file: GitFileStatus) => {
+      let statusColor: string;
+      let statusIcon: string;
+
+      switch (file.status) {
+        case 'modified':
+          statusColor = '#FF9500';
+          statusIcon = 'diff-modified';
+          break;
+        case 'added':
+          statusColor = '#34C759';
+          statusIcon = 'diff-added';
+          break;
+        case 'deleted':
+          statusColor = theme.colors.textDestructive;
+          statusIcon = 'diff-removed';
+          break;
+        case 'renamed':
+          statusColor = '#007AFF';
+          statusIcon = 'arrow-right';
+          break;
+        case 'untracked':
+          statusColor = theme.colors.textSecondary;
+          statusIcon = 'file';
+          break;
+        default:
+          return null;
+      }
+
+      return <Octicons name={statusIcon as any} size={16} color={statusColor} />;
+    },
+    [theme.colors.textDestructive, theme.colors.textSecondary]
+  );
+
+  const renderGitFileSubtitle = React.useCallback(
+    (file: GitFileStatus) => {
+      const pathPart = file.filePath || t('files.projectRoot');
+      const parts = [pathPart];
+      const lineChanges: string[] = [];
+      if (file.linesAdded > 0) lineChanges.push(`+${file.linesAdded}`);
+      if (file.linesRemoved > 0) lineChanges.push(`-${file.linesRemoved}`);
+      if (lineChanges.length > 0) {
+        parts.push(lineChanges.join(' '));
+      }
+      return parts.join(' • ');
+    },
+    []
+  );
+
+  const resolveGitFileAbsolutePath = React.useCallback(
+    (file: GitFileStatus) => {
+      if (file.fullPath.startsWith('/')) {
+        return file.fullPath;
+      }
+      return `${rootPath.replace(/\/+$/, '')}/${file.fullPath}`;
+    },
+    [rootPath]
+  );
+
+  const handleGitFilePress = React.useCallback(
+    (file: GitFileStatus) => {
+      const absolutePath = resolveGitFileAbsolutePath(file);
+      setSelectedFilePath(absolutePath);
+      onOpenFile(absolutePath);
+    },
+    [onOpenFile, resolveGitFileAbsolutePath]
+  );
+
+  const hasGitChanges =
+    (gitStatusFiles?.totalStaged || 0) > 0 || (gitStatusFiles?.totalUnstaged || 0) > 0;
+
   const resizeHandleStyle: ViewStyle = {
     position: 'absolute',
     top: 0,
@@ -640,6 +807,7 @@ export function SessionFilesSidebar({
                   onPress={() => {
                     directoryCache.delete(cacheKey(sessionId, rootPath));
                     void loadDirectory(rootPath);
+                    void refreshGitStatus();
                   }}
                   style={styles.headerButton}
                 >
@@ -707,6 +875,140 @@ export function SessionFilesSidebar({
               <>
                 <Text style={styles.sectionLabel}>Project</Text>
                 {tree.map(node => renderNode(node, 0))}
+                <View
+                  style={[
+                    styles.gitCard,
+                    {
+                      backgroundColor: theme.colors.surfaceHigh,
+                      borderColor: theme.colors.divider,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.gitCardHeader,
+                      { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider },
+                    ]}
+                  >
+                    <View style={styles.gitBranchRow}>
+                      <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
+                      <Text style={[styles.gitBranchText, { color: theme.colors.text }]}>
+                        {gitStatusFiles?.branch || t('files.detachedHead')}
+                      </Text>
+                    </View>
+                    <Text style={[styles.gitSummaryText, { color: theme.colors.textSecondary }]}>
+                      {gitStatusFiles
+                        ? t('files.summary', {
+                            staged: gitStatusFiles.totalStaged,
+                            unstaged: gitStatusFiles.totalUnstaged,
+                          })
+                        : isLoadingGit
+                          ? 'Loading Git status...'
+                          : t('files.notRepo')}
+                    </Text>
+                  </View>
+
+                  {isLoadingGit ? (
+                    <View style={styles.gitEmptyWrap}>
+                      <Ionicons name="sync-outline" size={18} color={theme.colors.textSecondary} />
+                      <Text style={[styles.gitEmptyTitle, { color: theme.colors.textSecondary }]}>
+                        Loading Git status...
+                      </Text>
+                    </View>
+                  ) : !gitStatusFiles ? (
+                    <View style={styles.gitEmptyWrap}>
+                      <Octicons name="git-branch" size={20} color={theme.colors.textSecondary} />
+                      <Text style={[styles.gitEmptyTitle, { color: theme.colors.textSecondary }]}>
+                        {t('files.notRepo')}
+                      </Text>
+                      <Text style={[styles.gitEmptySubtitle, { color: theme.colors.textSecondary }]}>
+                        {t('files.notUnderGit')}
+                      </Text>
+                    </View>
+                  ) : !hasGitChanges ? (
+                    <View style={styles.gitEmptyWrap}>
+                      <Octicons name="check-circle" size={20} color={theme.colors.success} />
+                      <Text style={[styles.gitEmptyTitle, { color: theme.colors.text }]}>
+                        {t('files.noChanges')}
+                      </Text>
+                      <Text style={[styles.gitEmptySubtitle, { color: theme.colors.textSecondary }]}>
+                        Working tree is clean.
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      {gitStatusFiles.stagedFiles.length > 0 ? (
+                        <>
+                          <View
+                            style={[
+                              styles.gitSectionHeader,
+                              { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.divider },
+                            ]}
+                          >
+                            <Text style={[styles.gitSectionTitle, { color: theme.colors.success }]}>
+                              {t('files.stagedChanges', { count: gitStatusFiles.stagedFiles.length })}
+                            </Text>
+                          </View>
+                          {gitStatusFiles.stagedFiles.map(file => (
+                            <Pressable
+                              key={`staged-${file.fullPath}`}
+                              onPress={() => handleGitFilePress(file)}
+                              style={[styles.row, { paddingLeft: 10 }]}
+                            >
+                              <View style={{ marginRight: 8 }}>
+                                <FileIcon fileName={file.fileName} size={16} />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.rowLabel} numberOfLines={1}>
+                                  {file.fileName}
+                                </Text>
+                                <Text style={styles.rowMeta} numberOfLines={1}>
+                                  {renderGitFileSubtitle(file)}
+                                </Text>
+                              </View>
+                              {renderGitStatusIcon(file)}
+                            </Pressable>
+                          ))}
+                        </>
+                      ) : null}
+
+                      {gitStatusFiles.unstagedFiles.length > 0 ? (
+                        <>
+                          <View
+                            style={[
+                              styles.gitSectionHeader,
+                              { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.divider },
+                            ]}
+                          >
+                            <Text style={[styles.gitSectionTitle, { color: theme.colors.warning }]}>
+                              {t('files.unstagedChanges', { count: gitStatusFiles.unstagedFiles.length })}
+                            </Text>
+                          </View>
+                          {gitStatusFiles.unstagedFiles.map(file => (
+                            <Pressable
+                              key={`unstaged-${file.fullPath}`}
+                              onPress={() => handleGitFilePress(file)}
+                              style={[styles.row, { paddingLeft: 10 }]}
+                            >
+                              <View style={{ marginRight: 8 }}>
+                                <FileIcon fileName={file.fileName} size={16} />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.rowLabel} numberOfLines={1}>
+                                  {file.fileName}
+                                </Text>
+                                <Text style={styles.rowMeta} numberOfLines={1}>
+                                  {renderGitFileSubtitle(file)}
+                                </Text>
+                              </View>
+                              {renderGitStatusIcon(file)}
+                            </Pressable>
+                          ))}
+                        </>
+                      ) : null}
+                    </>
+                  )}
+                </View>
               </>
             )}
           </ScrollView>
