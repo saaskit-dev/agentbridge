@@ -26,7 +26,7 @@ const logger = new Logger('app/components/SessionFilesSidebar');
 
 type SidebarTool = 'files' | 'git';
 
-type ContextMenuKind = 'file' | 'git';
+type ContextMenuKind = 'file' | 'git' | 'git-toolbar';
 
 type ContextMenuState = {
   x: number;
@@ -87,6 +87,11 @@ type GitListRow =
       node: GitTreeNode;
       depth: number;
     };
+
+type GitFileBuckets = {
+  tracked: GitFileStatus[];
+  untracked: GitFileStatus[];
+};
 
 const directoryCache = new Map<string, { loadedAt: number; nodes: FileTreeNode[] }>();
 
@@ -353,6 +358,109 @@ const styles = StyleSheet.create(theme => ({
     fontSize: 11,
     ...Typography.default('semiBold'),
   },
+  toolbarButtonPrimary: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
+  },
+  toolbarButtonTextPrimary: {
+    color: '#FFFFFF',
+  },
+  gitToolbarCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  gitToolbarCompactTitle: {
+    fontSize: 12,
+    ...Typography.default('semiBold'),
+  },
+  gitToolbarCompactActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  gitToolbarCompactAction: {
+    minHeight: 24,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  gitToolbarCompactActionText: {
+    fontSize: 11,
+    ...Typography.default('semiBold'),
+  },
+  gitStageToggle: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  gitCommitDock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  gitCommitInput: {
+    height: 34,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    ...Typography.default(),
+    fontSize: 12,
+  },
+  gitCommitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  gitCommitButton: {
+    minWidth: 108,
+    minHeight: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+  },
+  gitCommitButtonText: {
+    fontSize: 12,
+    ...Typography.default('semiBold'),
+  },
+  gitBranchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  gitBranchBarText: {
+    fontSize: 11,
+    ...Typography.default('semiBold'),
+  },
+  gitFetchButton: {
+    minHeight: 24,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gitFetchButtonText: {
+    fontSize: 11,
+    ...Typography.default('semiBold'),
+  },
 }));
 
 function setResizeCursor(active: boolean) {
@@ -563,6 +671,7 @@ export function SessionFilesSidebar({
   const [contextMenu, setContextMenu] = React.useState<ContextMenuState | null>(null);
   const [gitExpandedPaths, setGitExpandedPaths] = React.useState<Set<string>>(new Set());
   const [gitCommandBusy, setGitCommandBusy] = React.useState(false);
+  const [gitCommitMessage, setGitCommitMessage] = React.useState('');
   const [isSearching, setIsSearching] = React.useState(false);
   const [isDragging, setIsDragging] = React.useState(false);
   const [isHovering, setIsHovering] = React.useState(false);
@@ -993,6 +1102,24 @@ export function SessionFilesSidebar({
           await runGitCommand('git stash pop');
           break;
         }
+        case 'switch-branch': {
+          const raw = await Modal.prompt('Switch branch', 'Enter branch name (local or remote)', {
+            placeholder: 'e.g. main or feature/my-branch',
+            confirmText: 'Switch',
+          });
+          if (raw === null) {
+            return;
+          }
+          const branchName = raw.trim();
+          if (!branchName) {
+            Modal.alert('Invalid branch', 'Branch name is required.');
+            return;
+          }
+          const escaped = shellQuote(branchName);
+          const switchCommand = `git switch ${escaped} || git switch --track origin/${escaped}`;
+          await runGitCommand(switchCommand);
+          break;
+        }
         case 'stage': {
           await runGitStage(filePath);
           break;
@@ -1107,25 +1234,64 @@ export function SessionFilesSidebar({
     [gitExpandedPaths]
   );
 
-  const stagedGitTree = React.useMemo(
-    () => buildGitTree(gitStatusFiles?.stagedFiles ?? [], 'staged'),
-    [gitStatusFiles?.stagedFiles]
+  const gitFileBuckets = React.useMemo<GitFileBuckets>(() => {
+    const byPath = new Map<string, GitFileStatus>();
+    const stagedFiles = gitStatusFiles?.stagedFiles ?? [];
+    const unstagedFiles = gitStatusFiles?.unstagedFiles ?? [];
+
+    for (const file of stagedFiles) {
+      byPath.set(file.fullPath, { ...file, isStaged: true });
+    }
+
+    for (const file of unstagedFiles) {
+      const existing = byPath.get(file.fullPath);
+      if (existing) {
+        byPath.set(file.fullPath, {
+          ...existing,
+          status: file.status === 'untracked' ? existing.status : file.status,
+          linesAdded: Math.max(existing.linesAdded, file.linesAdded),
+          linesRemoved: Math.max(existing.linesRemoved, file.linesRemoved),
+        });
+      } else {
+        byPath.set(file.fullPath, { ...file, isStaged: false });
+      }
+    }
+
+    const tracked: GitFileStatus[] = [];
+    const untracked: GitFileStatus[] = [];
+    for (const file of byPath.values()) {
+      if (file.status === 'untracked' && !file.isStaged) {
+        untracked.push(file);
+      } else {
+        tracked.push(file);
+      }
+    }
+
+    tracked.sort((a, b) => a.fullPath.localeCompare(b.fullPath));
+    untracked.sort((a, b) => a.fullPath.localeCompare(b.fullPath));
+
+    return { tracked, untracked };
+  }, [gitStatusFiles?.stagedFiles, gitStatusFiles?.unstagedFiles]);
+
+  const trackedGitTree = React.useMemo(
+    () => buildGitTree(gitFileBuckets.tracked, 'staged'),
+    [gitFileBuckets.tracked]
   );
-  const unstagedGitTree = React.useMemo(
-    () => buildGitTree(gitStatusFiles?.unstagedFiles ?? [], 'unstaged'),
-    [gitStatusFiles?.unstagedFiles]
+  const untrackedGitTree = React.useMemo(
+    () => buildGitTree(gitFileBuckets.untracked, 'unstaged'),
+    [gitFileBuckets.untracked]
   );
   const visibleFileRows = React.useMemo(
     () => flattenVisibleFileTree(tree, expandedPaths),
     [expandedPaths, tree]
   );
-  const visibleStagedGitRows = React.useMemo(
-    () => flattenVisibleGitTree(stagedGitTree, gitExpandedPaths),
-    [gitExpandedPaths, stagedGitTree]
+  const visibleTrackedGitRows = React.useMemo(
+    () => flattenVisibleGitTree(trackedGitTree, gitExpandedPaths),
+    [gitExpandedPaths, trackedGitTree]
   );
-  const visibleUnstagedGitRows = React.useMemo(
-    () => flattenVisibleGitTree(unstagedGitTree, gitExpandedPaths),
-    [gitExpandedPaths, unstagedGitTree]
+  const visibleUntrackedGitRows = React.useMemo(
+    () => flattenVisibleGitTree(untrackedGitTree, gitExpandedPaths),
+    [gitExpandedPaths, untrackedGitTree]
   );
 
   const startResize = React.useCallback(
@@ -1389,15 +1555,15 @@ export function SessionFilesSidebar({
   const gitListRows = React.useMemo(() => {
     const rows: GitListRow[] = [];
 
-    if (visibleStagedGitRows.length > 0) {
+    if (visibleTrackedGitRows.length > 0) {
       rows.push({
         type: 'section',
-        key: 'section-staged',
-        title: t('files.stagedChanges', { count: gitStatusFiles?.stagedFiles.length ?? 0 }),
+        key: 'section-tracked',
+        title: `Tracked (${gitFileBuckets.tracked.length})`,
         tone: 'success',
       });
       rows.push(
-        ...visibleStagedGitRows.map(row => ({
+        ...visibleTrackedGitRows.map(row => ({
           type: 'node' as const,
           key: row.key,
           node: row.node,
@@ -1406,15 +1572,15 @@ export function SessionFilesSidebar({
       );
     }
 
-    if (visibleUnstagedGitRows.length > 0) {
+    if (visibleUntrackedGitRows.length > 0) {
       rows.push({
         type: 'section',
-        key: 'section-unstaged',
-        title: t('files.unstagedChanges', { count: gitStatusFiles?.unstagedFiles.length ?? 0 }),
+        key: 'section-untracked',
+        title: `Untracked (${gitFileBuckets.untracked.length})`,
         tone: 'warning',
       });
       rows.push(
-        ...visibleUnstagedGitRows.map(row => ({
+        ...visibleUntrackedGitRows.map(row => ({
           type: 'node' as const,
           key: row.key,
           node: row.node,
@@ -1425,16 +1591,16 @@ export function SessionFilesSidebar({
 
     return rows;
   }, [
-    gitStatusFiles?.stagedFiles.length,
-    gitStatusFiles?.unstagedFiles.length,
-    visibleStagedGitRows,
-    visibleUnstagedGitRows,
+    gitFileBuckets.tracked.length,
+    gitFileBuckets.untracked.length,
+    visibleTrackedGitRows,
+    visibleUntrackedGitRows,
   ]);
   const renderGitRow = React.useCallback(
     ({ item }: { item: GitListRow }) => {
       if (item.type === 'section') {
-        const sectionColor =
-          item.tone === 'success' ? theme.colors.success : theme.colors.warning;
+      const sectionColor =
+          item.tone === 'success' ? theme.colors.textSecondary : theme.colors.warning;
         return (
           <View
             style={[
@@ -1453,6 +1619,7 @@ export function SessionFilesSidebar({
       const selected =
         node.type === 'file' &&
         (selectedFilePath === absolutePath || absoluteActiveFilePath === absolutePath);
+      const isStaged = Boolean(node.status?.isStaged);
 
       return (
         <Pressable
@@ -1470,9 +1637,9 @@ export function SessionFilesSidebar({
               absolutePath,
               fileName: node.name,
               isDirectory: node.type === 'directory',
-              isStaged: node.section === 'staged',
+              isStaged,
               status: node.status?.status,
-              section: node.section,
+              section: isStaged ? 'staged' : 'unstaged',
             });
           }}
           style={[styles.row, selected && styles.rowSelected, { paddingLeft: 10 + depth * 14 }]}
@@ -1509,7 +1676,31 @@ export function SessionFilesSidebar({
               </Text>
             ) : null}
           </View>
-          {node.status ? renderGitStatusIcon(node.status) : null}
+          {node.status ? (
+            <>
+              {renderGitStatusIcon(node.status)}
+              {node.type === 'file' ? (
+                <Pressable
+                  onPress={(event: any) => {
+                    event?.stopPropagation?.();
+                    void handleGitAction(isStaged ? 'unstage' : 'stage', node.path, {
+                      section: isStaged ? 'staged' : 'unstaged',
+                      status: node.status?.status,
+                    });
+                  }}
+                  style={[
+                    styles.gitStageToggle,
+                    {
+                      borderColor: isStaged ? '#3B82F6' : theme.colors.divider,
+                      backgroundColor: isStaged ? '#3B82F6' : theme.colors.surface,
+                    },
+                  ]}
+                >
+                  {isStaged ? <Ionicons name="checkmark" size={12} color="#FFFFFF" /> : null}
+                </Pressable>
+              ) : null}
+            </>
+          ) : null}
         </Pressable>
       );
     },
@@ -1518,12 +1709,12 @@ export function SessionFilesSidebar({
       isGitNodeExpanded,
       onOpenFile,
       openContextMenu,
+      handleGitAction,
       renderGitFileSubtitle,
       renderGitStatusIcon,
       resolveFileAbsolutePath,
       selectedFilePath,
       theme.colors.divider,
-      theme.colors.success,
       theme.colors.surface,
       theme.colors.textSecondary,
       theme.colors.warning,
@@ -1532,182 +1723,194 @@ export function SessionFilesSidebar({
   );
 
   const renderFooter = React.useCallback(() => {
-    const pathText =
-      activeTool === 'files'
-        ? selectedFilePath ?? absoluteActiveFilePath ?? rootPath
-        : gitStatusFiles?.branch || t('files.detachedHead');
+    if (activeTool !== 'files') {
+      return null;
+    }
+    const pathText = selectedFilePath ?? absoluteActiveFilePath ?? rootPath;
 
     return (
       <View style={styles.footer}>
-        <Text style={styles.footerLabel}>{activeTool === 'files' ? t('common.files') : 'Git'}</Text>
+        <Text style={styles.footerLabel}>{t('common.files')}</Text>
         <Text style={styles.footerPath} numberOfLines={2}>
           {pathText}
         </Text>
       </View>
     );
-  }, [activeTool, absoluteActiveFilePath, gitStatusFiles?.branch, rootPath, selectedFilePath]);
+  }, [activeTool, absoluteActiveFilePath, rootPath, selectedFilePath]);
 
   const renderGitToolbar = React.useCallback(() => {
     if (activeTool !== 'git' || !gitStatusFiles) return null;
     const canStageAll = (gitStatusFiles?.totalUnstaged || 0) > 0;
-    const canUnstageAll = (gitStatusFiles?.totalStaged || 0) > 0;
-    const canDiscardAll =
-      (gitStatusFiles?.totalUnstaged || 0) > 0 || (gitStatusFiles?.totalStaged || 0) > 0;
-    const canStash =
-      (gitStatusFiles?.totalUnstaged || 0) > 0 || (gitStatusFiles?.totalStaged || 0) > 0;
+    const totalChanges = (gitStatusFiles?.totalStaged || 0) + (gitStatusFiles?.totalUnstaged || 0);
 
     return (
-      <View style={styles.toolbar}>
-        <Pressable
-          onPress={() => void refreshGitData()}
-          style={[styles.toolbarButton, isGitBusy && styles.toolbarButtonDisabled]}
-          disabled={isGitBusy}
-        >
-          <Ionicons name="refresh-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Refresh</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('stage-all')}
-          disabled={isGitBusy || !canStageAll}
-          style={[styles.toolbarButton, (isGitBusy || !canStageAll) && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="git-branch-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Stage All</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('unstage-all')}
-          disabled={isGitBusy || !canUnstageAll}
-          style={[styles.toolbarButton, (isGitBusy || !canUnstageAll) && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="git-compare-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Unstage All</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('discard-all')}
-          disabled={isGitBusy || !canDiscardAll}
-          style={[styles.toolbarButton, (isGitBusy || !canDiscardAll) && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="trash-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Discard</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('commit')}
-          disabled={isGitBusy}
-          style={[styles.toolbarButton, isGitBusy && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="git-commit-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Commit</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('fetch')}
-          disabled={isGitBusy}
-          style={[styles.toolbarButton, isGitBusy && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="cloud-download-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Fetch</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('pull')}
-          disabled={isGitBusy}
-          style={[styles.toolbarButton, isGitBusy && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="cloud-download-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Pull</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('sync')}
-          disabled={isGitBusy}
-          style={[styles.toolbarButton, isGitBusy && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="refresh-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Sync</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('push')}
-          disabled={isGitBusy}
-          style={[styles.toolbarButton, isGitBusy && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="cloud-upload-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Push</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('stash')}
-          disabled={isGitBusy || !canStash}
-          style={[styles.toolbarButton, (isGitBusy || !canStash) && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="archive-outline" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Stash</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void handleGitAction('stash-pop')}
-          disabled={isGitBusy}
-          style={[styles.toolbarButton, isGitBusy && styles.toolbarButtonDisabled]}
-        >
-          <Ionicons name="archive" size={14} color={theme.colors.text} />
-          <Text style={styles.toolbarButtonText}>Stash Pop</Text>
-        </Pressable>
+      <View style={[styles.gitToolbarCompact, { borderBottomColor: theme.colors.divider }]}>
+        <Text style={[styles.gitToolbarCompactTitle, { color: theme.colors.textSecondary }]}>
+          {totalChanges} Changes
+        </Text>
+        <View style={styles.gitToolbarCompactActions}>
+          <Pressable
+            onPress={() => void handleGitAction('stage-all')}
+            disabled={isGitBusy || !canStageAll}
+            style={[
+              styles.gitToolbarCompactAction,
+              {
+                borderColor: canStageAll ? '#3B82F6' : theme.colors.divider,
+                backgroundColor: canStageAll ? '#3B82F6' : theme.colors.surface,
+              },
+              (isGitBusy || !canStageAll) && styles.toolbarButtonDisabled,
+            ]}
+          >
+            <Text
+              style={[
+                styles.gitToolbarCompactActionText,
+                { color: canStageAll ? '#FFFFFF' : theme.colors.text },
+              ]}
+            >
+              Stage All
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={(event: any) => {
+              openContextMenu(event, 'git-toolbar', '__toolbar__', {
+                fileName: gitStatusFiles?.branch || 'Git actions',
+              });
+            }}
+            disabled={isGitBusy}
+            style={[
+              styles.gitToolbarCompactAction,
+              {
+                borderColor: theme.colors.divider,
+                backgroundColor: theme.colors.surface,
+              },
+              isGitBusy && styles.toolbarButtonDisabled,
+            ]}
+          >
+            <Ionicons name="ellipsis-horizontal" size={14} color={theme.colors.text} />
+          </Pressable>
+        </View>
       </View>
     );
-    }, [
+  }, [
     activeTool,
     gitStatusFiles,
     gitStatusFiles?.totalStaged,
     gitStatusFiles?.totalUnstaged,
     isGitBusy,
     handleGitAction,
-    refreshGitData,
+    openContextMenu,
+    theme.colors.divider,
+    theme.colors.surface,
     theme.colors.text,
+    theme.colors.textSecondary,
   ]);
 
   const gitListHeader = React.useMemo(
     () => (
       <>
-        <View
-          style={[
-            styles.gitCard,
-            {
-              backgroundColor: theme.colors.surfaceHigh,
-              borderColor: theme.colors.divider,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.gitCardHeader,
-              { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider },
-            ]}
-          >
-            <View style={styles.gitBranchRow}>
-              <Octicons name="git-branch" size={15} color={theme.colors.textSecondary} />
-              <Text style={[styles.gitBranchText, { color: theme.colors.text }]}>
-                {gitStatusFiles?.branch || t('files.detachedHead')}
-              </Text>
-            </View>
-            <Text style={[styles.gitSummaryText, { color: theme.colors.textSecondary }]}>
-              {gitStatusFiles
-                ? t('files.summary', {
-                    staged: gitStatusFiles.totalStaged,
-                    unstaged: gitStatusFiles.totalUnstaged,
-                  })
-                : isLoadingGit
-                  ? t('common.loading')
-                  : t('files.notRepo')}
-            </Text>
-          </View>
-        </View>
         {renderGitToolbar()}
       </>
     ),
-    [
-      gitStatusFiles,
-      isLoadingGit,
-      renderGitToolbar,
-      theme.colors.divider,
-      theme.colors.surfaceHigh,
-      theme.colors.text,
-      theme.colors.textSecondary,
-    ]
+    [renderGitToolbar]
   );
+
+  const commitWithMessage = React.useCallback(async () => {
+    const message = gitCommitMessage.trim();
+    if (!message) {
+      Modal.alert('Commit message required', 'Please enter a commit message.');
+      return;
+    }
+    const success = await runGitCommand(`git commit -m ${shellQuote(message)}`);
+    if (success) {
+      setGitCommitMessage('');
+    }
+  }, [gitCommitMessage, runGitCommand]);
+
+  const renderGitCommitDock = React.useCallback(() => {
+    if (activeTool !== 'git' || !gitStatusFiles) return null;
+    const canCommit = (gitStatusFiles.totalStaged || 0) > 0 && gitCommitMessage.trim().length > 0;
+    const branchText = `${getProjectLabel(rootPath)} / ${gitStatusFiles.branch || t('files.detachedHead')}`;
+
+    return (
+      <View
+        style={[
+          styles.gitCommitDock,
+          {
+            borderTopColor: theme.colors.divider,
+            backgroundColor: theme.colors.surface,
+          },
+        ]}
+      >
+        <View style={styles.gitBranchBar}>
+          <Pressable
+            onPress={() => void handleGitAction('switch-branch')}
+            disabled={isGitBusy}
+            style={isGitBusy ? styles.toolbarButtonDisabled : undefined}
+          >
+            <Text style={[styles.gitBranchBarText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+              {branchText}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void handleGitAction('fetch')}
+            disabled={isGitBusy}
+            style={[
+              styles.gitFetchButton,
+              {
+                borderColor: theme.colors.divider,
+                backgroundColor: theme.colors.surface,
+              },
+              isGitBusy && styles.toolbarButtonDisabled,
+            ]}
+          >
+            <Text style={[styles.gitFetchButtonText, { color: theme.colors.text }]}>Fetch</Text>
+          </Pressable>
+        </View>
+        <TextInput
+          value={gitCommitMessage}
+          onChangeText={setGitCommitMessage}
+          placeholder="Enter commit message"
+          placeholderTextColor={theme.colors.textSecondary}
+          style={[
+            styles.gitCommitInput,
+            {
+              borderColor: theme.colors.divider,
+              backgroundColor: theme.colors.input.background,
+              color: theme.colors.text,
+            },
+          ]}
+        />
+        <Pressable
+          onPress={() => void commitWithMessage()}
+          disabled={isGitBusy || !canCommit}
+          style={[
+            styles.gitCommitButton,
+            {
+              borderColor: '#3B82F6',
+              backgroundColor: '#3B82F6',
+              alignSelf: 'flex-end',
+            },
+            (isGitBusy || !canCommit) && styles.toolbarButtonDisabled,
+          ]}
+        >
+          <Text style={[styles.gitCommitButtonText, { color: '#FFFFFF' }]}>Commit Tracked</Text>
+        </Pressable>
+      </View>
+    );
+  }, [
+    activeTool,
+    commitWithMessage,
+    gitCommitMessage,
+    gitStatusFiles,
+    handleGitAction,
+    isGitBusy,
+    rootPath,
+    theme.colors.divider,
+    theme.colors.input.background,
+    theme.colors.surface,
+    theme.colors.text,
+    theme.colors.textSecondary,
+  ]);
 
   const renderContextMenu = React.useCallback(() => {
     if (!contextMenu) return null;
@@ -1749,6 +1952,15 @@ export function SessionFilesSidebar({
         label: 'Copy Path',
         action: 'copy-path',
       });
+    } else if (contextMenu.kind === 'git-toolbar') {
+      items.push({ key: 'switch-branch', icon: 'git-branch-outline', label: 'Switch Branch', action: 'switch-branch' });
+      items.push({ key: 'fetch', icon: 'cloud-download-outline', label: 'Fetch', action: 'fetch' });
+      items.push({ key: 'sync', icon: 'refresh-outline', label: 'Sync', action: 'sync' });
+      items.push({ key: 'stage-all', icon: 'git-branch-outline', label: 'Stage All', action: 'stage-all' });
+      items.push({ key: 'unstage-all', icon: 'git-compare-outline', label: 'Unstage All', action: 'unstage-all' });
+      items.push({ key: 'stash', icon: 'archive-outline', label: 'Stash', action: 'stash' });
+      items.push({ key: 'stash-pop', icon: 'archive', label: 'Stash Pop', action: 'stash-pop' });
+      items.push({ key: 'discard-all', icon: 'trash-outline', label: 'Discard All', danger: true, action: 'discard-all' });
     }
 
     const handleAction = (action: string) => {
@@ -1770,6 +1982,8 @@ export function SessionFilesSidebar({
           section: contextMenu.section,
           status: contextMenu.status,
         });
+      } else if (contextMenu.kind === 'git-toolbar') {
+        void handleGitAction(action);
       }
       closeContextMenu();
     };
@@ -2035,6 +2249,7 @@ export function SessionFilesSidebar({
                 <Ionicons name="sync-outline" size={20} color={theme.colors.textSecondary} />
                 <Text style={styles.emptyText}>{t('common.loading')}</Text>
               </View>
+              {renderGitCommitDock()}
             </View>
           ) : !gitStatusFiles ? (
             <View style={styles.treeScroll}>
@@ -2052,6 +2267,7 @@ export function SessionFilesSidebar({
                 <Octicons name="check-circle" size={20} color={theme.colors.success} />
                 <Text style={styles.emptyText}>{t('files.noChanges')}</Text>
               </View>
+              {renderGitCommitDock()}
             </View>
           ) : (
             <FlatList
@@ -2061,6 +2277,7 @@ export function SessionFilesSidebar({
               keyExtractor={item => item.key}
               renderItem={renderGitRow}
               ListHeaderComponent={gitListHeader}
+              ListFooterComponent={renderGitCommitDock}
               initialNumToRender={60}
               maxToRenderPerBatch={32}
               windowSize={12}
