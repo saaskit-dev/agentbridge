@@ -9,6 +9,27 @@ set -euo pipefail
 
 APP_ID="${ASC_APP_ID:-6760917195}"
 GROUP="${2:-${TESTFLIGHT_GROUP:-public}}"
+LOG_PATH="${TESTFLIGHT_LOG_PATH:-}"
+
+run_with_log() {
+  if [ -z "$LOG_PATH" ]; then
+    "$@"
+    return
+  fi
+
+  mkdir -p "$(dirname "$LOG_PATH")"
+
+  set +e
+  "$@" 2>&1 | tee "$LOG_PATH"
+  local status="${PIPESTATUS[0]}"
+  set -e
+
+  if [ "$status" -ne 0 ]; then
+    echo "TestFlight distribution failed. Full log: $LOG_PATH" >&2
+    tail -n 120 "$LOG_PATH" >&2 || true
+    exit "$status"
+  fi
+}
 
 if [ -n "${1:-}" ]; then
   BUILD_ARG="--build-number $1"
@@ -26,13 +47,14 @@ fi
 
 # --wait: poll until ASC finishes processing (VALID), then distribute
 # --notify is off by default, so external testers won't get email
-asc publish testflight \
-  --app "$APP_ID" \
-  $BUILD_ARG \
-  --group "$GROUP" \
-  --wait \
-  --poll-interval 30s \
-  --timeout 30m \
-  --output table
+run_with_log \
+  asc publish testflight \
+    --app "$APP_ID" \
+    $BUILD_ARG \
+    --group "$GROUP" \
+    --wait \
+    --poll-interval 30s \
+    --timeout 30m \
+    --output table
 
 echo "Done. Build distributed to '$GROUP' group (no notification sent)."

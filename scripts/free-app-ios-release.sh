@@ -19,6 +19,7 @@ IOS_WIDGET_PROFILE_NAME=""
 IOS_WIDGET_PROFILE_UUID=""
 XCODEBUILD_LOG_PATH=""
 KEYCHAIN_PATH=""
+UPLOAD_LOG_PATH=""
 
 IOS_MAIN_BUNDLE_ID="app.saaskit.freecode"
 IOS_MAIN_BUNDLE_RESOURCE_ID="6G58X7AWS8"
@@ -76,6 +77,25 @@ for line in summary:
     print(line)
 print("---- end summary ----")
 PY
+    exit "$status"
+  fi
+}
+
+run_logged_command() {
+  local phase="$1"
+  shift
+
+  local log_path="$APP_DIR/.artifacts/ios/${phase}.log"
+  mkdir -p "$(dirname "$log_path")"
+
+  set +e
+  "$@" 2>&1 | tee "$log_path"
+  local status="${PIPESTATUS[0]}"
+  set -e
+
+  if [ "$status" -ne 0 ]; then
+    echo "${phase} failed. Full log: $log_path" >&2
+    tail -n 120 "$log_path" >&2 || true
     exit "$status"
   fi
 }
@@ -379,16 +399,18 @@ if [ -z "$IPA_PATH" ]; then
 fi
 
 echo "==> Upload IPA to App Store Connect"
-xcrun altool \
-  --upload-app \
-  --type ios \
-  --file "$IPA_PATH" \
-  --apiKey "$ASC_KEY_ID" \
-  --apiIssuer "$ASC_ISSUER_ID"
+run_logged_command upload-app-store-connect \
+  xcrun altool \
+    --upload-app \
+    --type ios \
+    --file "$IPA_PATH" \
+    --apiKey "$ASC_KEY_ID" \
+    --apiIssuer "$ASC_ISSUER_ID"
 
 if [ "$DISTRIBUTE_EXTERNAL" = "true" ]; then
   echo "==> Distribute build to TestFlight group: $TESTFLIGHT_GROUP"
-  "$APP_DIR/scripts/distribute-testflight.sh" "$BUILD_NUMBER" "$TESTFLIGHT_GROUP"
+  TESTFLIGHT_LOG_PATH="$APP_DIR/.artifacts/ios/distribute-testflight.log" \
+    "$APP_DIR/scripts/distribute-testflight.sh" "$BUILD_NUMBER" "$TESTFLIGHT_GROUP"
 fi
 
 echo
