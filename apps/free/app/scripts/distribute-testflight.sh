@@ -10,7 +10,7 @@ set -euo pipefail
 APP_ID="${ASC_APP_ID:-6760917195}"
 GROUP="${2:-${TESTFLIGHT_GROUP:-public}}"
 LOG_PATH="${TESTFLIGHT_LOG_PATH:-}"
-BUILD_DISCOVERY_TIMEOUT_SECONDS="${BUILD_DISCOVERY_TIMEOUT_SECONDS:-900}"
+BUILD_DISCOVERY_TIMEOUT_SECONDS="${BUILD_DISCOVERY_TIMEOUT_SECONDS:-3600}"
 BUILD_DISCOVERY_POLL_SECONDS="${BUILD_DISCOVERY_POLL_SECONDS:-30}"
 
 log_info() {
@@ -76,10 +76,13 @@ for item in payload.get("data", [])[:10]:
     print(
         "build candidate:",
         {
+            "id": item.get("id"),
             "version": attrs.get("version"),
             "buildNumber": attrs.get("buildNumber"),
             "uploadedBuildNumber": attrs.get("uploadedBuildNumber"),
             "processingState": attrs.get("processingState"),
+            "appStoreState": attrs.get("appStoreState"),
+            "usesNonExemptEncryption": attrs.get("usesNonExemptEncryption"),
         },
     )
 PY
@@ -96,11 +99,14 @@ wait_for_build() {
       exit 1
     fi
 
-    log_info "Waiting for build \"$build_number\" to appear in App Store Connect..."
+    log_info "Waiting for build \"$build_number\" to appear in App Store Connect... elapsed=${waited}s timeout=${BUILD_DISCOVERY_TIMEOUT_SECONDS}s"
     log_build_snapshot >> "${LOG_PATH:-/dev/stdout}" 2>/dev/null || true
     sleep "$BUILD_DISCOVERY_POLL_SECONDS"
     waited=$((waited + BUILD_DISCOVERY_POLL_SECONDS))
   done
+
+  log_info "Build \"$build_number\" appeared in App Store Connect after ${waited}s"
+  log_build_snapshot >> "${LOG_PATH:-/dev/stdout}" 2>/dev/null || true
 }
 
 if [ -n "${1:-}" ]; then
