@@ -219,15 +219,20 @@ require_env ASC_PRIVATE_KEY
 detect_default_keychain() {
   local real_home keychain
 
-  real_home="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
-  if [ -z "$real_home" ]; then
-    echo "Failed to resolve real home directory for $(id -un)" >&2
-    exit 1
+  if [ -n "${IOS_SIGNING_KEYCHAIN_PATH:-}" ]; then
+    keychain="$IOS_SIGNING_KEYCHAIN_PATH"
+  else
+    real_home="$(dscl . -read "/Users/$(id -un)" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+    if [ -z "$real_home" ]; then
+      echo "Failed to resolve real home directory for $(id -un)" >&2
+      exit 1
+    fi
+
+    keychain="$real_home/Library/Keychains/login.keychain-db"
   fi
 
-  keychain="$real_home/Library/Keychains/login.keychain-db"
   if [ -z "$keychain" ] || [ ! -f "$keychain" ]; then
-    echo "Failed to detect user login keychain at $keychain" >&2
+    echo "Failed to detect signing keychain at $keychain" >&2
     exit 1
   fi
 
