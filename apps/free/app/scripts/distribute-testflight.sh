@@ -10,9 +10,8 @@ set -euo pipefail
 APP_ID="${ASC_APP_ID:-6760917195}"
 GROUP="${2:-${TESTFLIGHT_GROUP:-public}}"
 LOG_PATH="${TESTFLIGHT_LOG_PATH:-}"
-TESTFLIGHT_PUBLISH_TIMEOUT="${TESTFLIGHT_PUBLISH_TIMEOUT:-50m}"
-TESTFLIGHT_POLL_INTERVAL="${TESTFLIGHT_POLL_INTERVAL:-30s}"
-TESTFLIGHT_RETRY_SECONDS="${TESTFLIGHT_RETRY_SECONDS:-30}"
+BUILD_DISCOVERY_TIMEOUT_SECONDS="${BUILD_DISCOVERY_TIMEOUT_SECONDS:-900}"
+BUILD_DISCOVERY_POLL_SECONDS="${BUILD_DISCOVERY_POLL_SECONDS:-30}"
 
 log_info() {
   echo "$@"
@@ -42,73 +41,65 @@ run_with_log() {
   fi
 }
 
-duration_to_seconds() {
-  local value="$1"
-  case "$value" in
-    *h) echo $(( ${value%h} * 3600 )) ;;
-    *m) echo $(( ${value%m} * 60 )) ;;
-    *s) echo $(( ${value%s} )) ;;
-    *) echo "$value" ;;
-  esac
+build_exists() {
+  local build_number="$1"
+
+  asc builds list --app "$APP_ID" --output json 2>/dev/null \
+    | python3 - "$build_number" <<'PY'
+import json
+import sys
+
+target = sys.argv[1]
+payload = json.load(sys.stdin)
+for item in payload.get("data", []):
+    attrs = item.get("attributes", {})
+    candidates = [
+        attrs.get("buildNumber"),
+        attrs.get("uploadedBuildNumber"),
+        attrs.get("version"),
+    ]
+    if any(str(value) == target for value in candidates if value is not None):
+        sys.exit(0)
+sys.exit(1)
+PY
 }
 
-publish_with_retry() {
-  local build_arg="$1"
-  local deadline elapsed=0
-  local timeout_seconds
-  timeout_seconds="$(duration_to_seconds "$TESTFLIGHT_PUBLISH_TIMEOUT")"
+log_build_snapshot() {
+  asc builds list --app "$APP_ID" --output json 2>/dev/null \
+    | python3 <<'PY'
+import json
+import sys
 
-  if [ -z "$timeout_seconds" ] || ! [[ "$timeout_seconds" =~ ^[0-9]+$ ]]; then
-    echo "Invalid TESTFLIGHT_PUBLISH_TIMEOUT: $TESTFLIGHT_PUBLISH_TIMEOUT" >&2
-    exit 1
-  fi
+payload = json.load(sys.stdin)
+for item in payload.get("data", [])[:10]:
+    attrs = item.get("attributes", {})
+    print(
+        "build candidate:",
+        {
+            "version": attrs.get("version"),
+            "buildNumber": attrs.get("buildNumber"),
+            "uploadedBuildNumber": attrs.get("uploadedBuildNumber"),
+            "processingState": attrs.get("processingState"),
+        },
+    )
+PY
+}
 
-  deadline="$timeout_seconds"
+wait_for_build() {
+  local build_number="$1"
+  local waited=0
 
-  while true; do
-    local output_file
-    output_file="$(mktemp "${TMPDIR:-/tmp}/testflight-publish.XXXXXX.log")"
-
-    set +e
-    asc publish testflight \
-      --app "$APP_ID" \
-      $build_arg \
-      --group "$GROUP" \
-      --wait \
-      --poll-interval "$TESTFLIGHT_POLL_INTERVAL" \
-      --timeout "$TESTFLIGHT_PUBLISH_TIMEOUT" \
-      --output table >"$output_file" 2>&1
-    local status=$?
-    set -e
-
-    cat "$output_file"
-    if [ -n "$LOG_PATH" ]; then
-      mkdir -p "$(dirname "$LOG_PATH")"
-      cat "$output_file" >> "$LOG_PATH"
-    fi
-
-    if [ "$status" -eq 0 ]; then
-      rm -f "$output_file"
-      return
-    fi
-
-    if ! grep -q 'no build found for app' "$output_file"; then
-      echo "TestFlight distribution failed. Full log: ${LOG_PATH:-$output_file}" >&2
-      tail -n 120 "$output_file" >&2 || true
-      rm -f "$output_file"
-      exit "$status"
-    fi
-
-    rm -f "$output_file"
-
-    if [ "$elapsed" -ge "$deadline" ]; then
-      echo "Timed out waiting for App Store Connect to expose the uploaded build for TestFlight publish." >&2
+  while ! build_exists "$build_number"; do
+    if [ "$waited" -ge "$BUILD_DISCOVERY_TIMEOUT_SECONDS" ]; then
+      log_info "Error: timed out waiting for build \"$build_number\" to appear in App Store Connect"
+      log_build_snapshot >> "${LOG_PATH:-/dev/stdout}" 2>/dev/null || true
       exit 1
     fi
 
-    log_info "Build not publishable yet. Retrying TestFlight publish in ${TESTFLIGHT_RETRY_SECONDS}s... elapsed=${elapsed}s timeout=${timeout_seconds}s"
-    sleep "$TESTFLIGHT_RETRY_SECONDS"
-    elapsed=$((elapsed + TESTFLIGHT_RETRY_SECONDS))
+    log_info "Waiting for build \"$build_number\" to appear in App Store Connect..."
+    log_build_snapshot >> "${LOG_PATH:-/dev/stdout}" 2>/dev/null || true
+    sleep "$BUILD_DISCOVERY_POLL_SECONDS"
+    waited=$((waited + BUILD_DISCOVERY_POLL_SECONDS))
   done
 }
 
@@ -128,10 +119,18 @@ else
   echo "Using latest build: $LATEST"
 fi
 
-log_info "Publishing TestFlight build \"$BUILD_NUMBER\" to group \"$GROUP\" with timeout=${TESTFLIGHT_PUBLISH_TIMEOUT}"
+wait_for_build "$BUILD_NUMBER"
 
-# --wait: once ASC can see the build, keep polling until processing finishes.
-# If ASC has not exposed the build yet, retry the publish command in-place.
-publish_with_retry "$BUILD_ARG"
+# --wait: poll until ASC finishes processing (VALID), then distribute
+# --notify is off by default, so external testers won't get email
+run_with_log \
+  asc publish testflight \
+    --app "$APP_ID" \
+    $BUILD_ARG \
+    --group "$GROUP" \
+    --wait \
+    --poll-interval 30s \
+    --timeout 30m \
+    --output table
 
 echo "Done. Build distributed to '$GROUP' group (no notification sent)."
