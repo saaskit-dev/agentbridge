@@ -23,8 +23,36 @@ on:
         default: false
         type: boolean
 
+concurrency:
+  group: release-desktop
+  cancel-in-progress: false
+
 jobs:
+  quality_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Check dependency architecture
+        run: pnpm run check:deps
+
+      - name: Typecheck (core + CLI)
+        run: pnpm typecheck
+
   prepare_release:
+    needs: quality_gate
     name: Prepare Desktop Release
     runs-on: ${{ fromJSON(vars.MACOS_RUNNER_LABELS_JSON || vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","local-mac"]') }}
     permissions:
@@ -45,6 +73,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Bump version and create tag
         id: prepare
@@ -133,25 +166,22 @@ jobs:
             bundle-args: "--bundles appimage,deb"
 
     runs-on: ${{ fromJSON(matrix.runner) }}
+    if: ${{ needs.prepare_release.result == 'success' && (matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true') }}
 
     steps:
       - uses: actions/checkout@v4
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         with:
           ref: refs/tags/${{ needs.prepare_release.outputs.tag_name }}
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
 
       - uses: actions/setup-node@v4
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         with:
           node-version: 20
           cache: pnpm
 
       - name: Install Rust toolchain
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         run: bash ./scripts/setup-rust-ci.sh
 
       - name: Install Linux system dependencies
@@ -167,30 +197,25 @@ jobs:
             patchelf
 
       - name: Rust cache
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './apps/free/app/src-tauri -> target'
 
       - name: Install dependencies
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         run: pnpm install --frozen-lockfile
 
       - name: Prepare updater config
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         env:
           TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
           DESKTOP_UPDATER_REPOSITORY: ${{ github.repository }}
         run: node ./scripts/prepare-desktop-updater-config.js --require-key
 
       - name: Materialize updater signing key
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         env:
           TAURI_SIGNING_PRIVATE_KEY_RAW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: node ./scripts/prepare-tauri-signing-key.js
 
       - uses: tauri-apps/tauri-action@v0
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -209,7 +234,6 @@ jobs:
           args: --config src-tauri/tauri.updater.conf.json ${{ matrix.bundle-args }}
 
       - name: Verify release target
-        if: ${{ matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

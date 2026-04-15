@@ -32,6 +32,7 @@ const outDir = mkdtempSync(path.join(tmpdir(), 'free-ota-'));
 const releaseId = randomUUID();
 const createdAt = new Date().toISOString();
 const tagName = `ota-${channel}-${releaseId}`;
+const uploadedAssetNames = new Set();
 
 function readRepositorySlug() {
   try {
@@ -94,6 +95,10 @@ async function createGitHubRelease() {
 }
 
 async function uploadReleaseAsset(uploadUrlTemplate, assetName, buffer, contentType) {
+  if (uploadedAssetNames.has(assetName)) {
+    return null;
+  }
+
   const uploadUrl = uploadUrlTemplate.replace('{?name,label}', `?name=${encodeURIComponent(assetName)}`);
   const response = await fetch(uploadUrl, {
     method: 'POST',
@@ -111,6 +116,7 @@ async function uploadReleaseAsset(uploadUrlTemplate, assetName, buffer, contentT
     throw new Error(`Failed to upload GitHub release asset ${assetName}: ${response.status} ${await response.text()}`);
   }
 
+  uploadedAssetNames.add(assetName);
   return response.json();
 }
 
