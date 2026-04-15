@@ -95,6 +95,7 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security default-keychain -d user -s "$KEYCHAIN_PATH"
           echo "IOS_SIGNING_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "IOS_ORIGINAL_KEYCHAIN_PATH=/Users/dev/Library/Keychains/login.keychain-db" >> "$GITHUB_ENV"
 
       - name: Release iOS from self-hosted runner
         env:
@@ -111,3 +112,18 @@ jobs:
           IOS_SIGNING_KEYCHAIN_PATH: ${{ env.IOS_SIGNING_KEYCHAIN_PATH }}
           TESTFLIGHT_GROUP: ${{ vars.TESTFLIGHT_GROUP }}
         run: ./scripts/free-app-ios-release.sh
+
+      - name: Restore user keychain
+        if: always()
+        env:
+          IOS_SIGNING_KEYCHAIN_PATH: ${{ env.IOS_SIGNING_KEYCHAIN_PATH }}
+          IOS_ORIGINAL_KEYCHAIN_PATH: ${{ env.IOS_ORIGINAL_KEYCHAIN_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -n "${IOS_ORIGINAL_KEYCHAIN_PATH:-}" ] && [ -f "$IOS_ORIGINAL_KEYCHAIN_PATH" ]; then
+            security list-keychains -d user -s "$IOS_ORIGINAL_KEYCHAIN_PATH"
+            security default-keychain -d user -s "$IOS_ORIGINAL_KEYCHAIN_PATH"
+          fi
+          if [ -n "${IOS_SIGNING_KEYCHAIN_PATH:-}" ] && [ -f "$IOS_SIGNING_KEYCHAIN_PATH" ]; then
+            security delete-keychain "$IOS_SIGNING_KEYCHAIN_PATH" || true
+          fi
