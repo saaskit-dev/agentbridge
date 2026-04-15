@@ -13,6 +13,14 @@ LOG_PATH="${TESTFLIGHT_LOG_PATH:-}"
 BUILD_DISCOVERY_TIMEOUT_SECONDS="${BUILD_DISCOVERY_TIMEOUT_SECONDS:-900}"
 BUILD_DISCOVERY_POLL_SECONDS="${BUILD_DISCOVERY_POLL_SECONDS:-30}"
 
+log_info() {
+  echo "$@"
+  if [ -n "$LOG_PATH" ]; then
+    mkdir -p "$(dirname "$LOG_PATH")"
+    printf '%s\n' "$@" >> "$LOG_PATH"
+  fi
+}
+
 run_with_log() {
   if [ -z "$LOG_PATH" ]; then
     "$@"
@@ -44,9 +52,36 @@ import sys
 target = sys.argv[1]
 payload = json.load(sys.stdin)
 for item in payload.get("data", []):
-    if str(item.get("attributes", {}).get("version", "")) == target:
+    attrs = item.get("attributes", {})
+    candidates = [
+        attrs.get("buildNumber"),
+        attrs.get("uploadedBuildNumber"),
+        attrs.get("version"),
+    ]
+    if any(str(value) == target for value in candidates if value is not None):
         sys.exit(0)
 sys.exit(1)
+PY
+}
+
+log_build_snapshot() {
+  asc builds list --app "$APP_ID" --output json 2>/dev/null \
+    | python3 <<'PY'
+import json
+import sys
+
+payload = json.load(sys.stdin)
+for item in payload.get("data", [])[:10]:
+    attrs = item.get("attributes", {})
+    print(
+        "build candidate:",
+        {
+            "version": attrs.get("version"),
+            "buildNumber": attrs.get("buildNumber"),
+            "uploadedBuildNumber": attrs.get("uploadedBuildNumber"),
+            "processingState": attrs.get("processingState"),
+        },
+    )
 PY
 }
 
@@ -56,11 +91,13 @@ wait_for_build() {
 
   while ! build_exists "$build_number"; do
     if [ "$waited" -ge "$BUILD_DISCOVERY_TIMEOUT_SECONDS" ]; then
-      echo "Error: timed out waiting for build \"$build_number\" to appear in App Store Connect" >&2
+      log_info "Error: timed out waiting for build \"$build_number\" to appear in App Store Connect"
+      log_build_snapshot >> "${LOG_PATH:-/dev/stdout}" 2>/dev/null || true
       exit 1
     fi
 
-    echo "Waiting for build \"$build_number\" to appear in App Store Connect..."
+    log_info "Waiting for build \"$build_number\" to appear in App Store Connect..."
+    log_build_snapshot >> "${LOG_PATH:-/dev/stdout}" 2>/dev/null || true
     sleep "$BUILD_DISCOVERY_POLL_SECONDS"
     waited=$((waited + BUILD_DISCOVERY_POLL_SECONDS))
   done
@@ -72,7 +109,7 @@ if [ -n "${1:-}" ]; then
 else
   # Find the latest build number
   LATEST=$(asc builds list --app "$APP_ID" --output json 2>/dev/null \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data'][0]['attributes']['version'])" 2>/dev/null || true)
+    | python3 -c "import sys,json; d=json.load(sys.stdin); attrs=d['data'][0]['attributes']; print(attrs.get('buildNumber') or attrs.get('uploadedBuildNumber') or attrs.get('version') or '')" 2>/dev/null || true)
   if [ -z "$LATEST" ]; then
     echo "Error: could not determine latest build number" >&2
     exit 1
