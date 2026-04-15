@@ -73,6 +73,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Materialize Firebase config files
+        env:
+          GOOGLE_SERVICES_PLIST_RAW: ${{ secrets.GOOGLE_SERVICES_PLIST }}
+          GOOGLE_SERVICES_JSON_RAW: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_SERVICES_PLIST_RAW:-}" ]; then
+            IOS_GOOGLE_SERVICES_PATH="$RUNNER_TEMP/GoogleService-Info.plist"
+            printf '%s\n' "$GOOGLE_SERVICES_PLIST_RAW" > "$IOS_GOOGLE_SERVICES_PATH"
+            chmod 600 "$IOS_GOOGLE_SERVICES_PATH"
+            echo "GOOGLE_SERVICES_PLIST=$IOS_GOOGLE_SERVICES_PATH" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${GOOGLE_SERVICES_JSON_RAW:-}" ]; then
+            ANDROID_GOOGLE_SERVICES_PATH="$RUNNER_TEMP/google-services.json"
+            printf '%s\n' "$GOOGLE_SERVICES_JSON_RAW" > "$ANDROID_GOOGLE_SERVICES_PATH"
+            chmod 600 "$ANDROID_GOOGLE_SERVICES_PATH"
+            echo "GOOGLE_SERVICES_JSON=$ANDROID_GOOGLE_SERVICES_PATH" >> "$GITHUB_ENV"
+          fi
+
       - name: Publish OTA to self-hosted server
         working-directory: apps/free/app
         env:
@@ -84,6 +103,4 @@ jobs:
           OTA_SERVER_TOKEN: ${{ secrets.OTA_SERVER_TOKEN }}
           OTA_GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GOOGLE_SERVICES_PLIST: ${{ secrets.GOOGLE_SERVICES_PLIST }}
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: pnpm run ota
