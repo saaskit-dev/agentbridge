@@ -10,6 +10,8 @@ set -euo pipefail
 APP_ID="${ASC_APP_ID:-6760917195}"
 GROUP="${2:-${TESTFLIGHT_GROUP:-public}}"
 LOG_PATH="${TESTFLIGHT_LOG_PATH:-}"
+BUILD_DISCOVERY_TIMEOUT_SECONDS="${BUILD_DISCOVERY_TIMEOUT_SECONDS:-900}"
+BUILD_DISCOVERY_POLL_SECONDS="${BUILD_DISCOVERY_POLL_SECONDS:-30}"
 
 run_with_log() {
   if [ -z "$LOG_PATH" ]; then
@@ -31,7 +33,41 @@ run_with_log() {
   fi
 }
 
+build_exists() {
+  local build_number="$1"
+
+  asc builds list --app "$APP_ID" --output json 2>/dev/null \
+    | python3 - "$build_number" <<'PY'
+import json
+import sys
+
+target = sys.argv[1]
+payload = json.load(sys.stdin)
+for item in payload.get("data", []):
+    if str(item.get("attributes", {}).get("version", "")) == target:
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+wait_for_build() {
+  local build_number="$1"
+  local waited=0
+
+  while ! build_exists "$build_number"; do
+    if [ "$waited" -ge "$BUILD_DISCOVERY_TIMEOUT_SECONDS" ]; then
+      echo "Error: timed out waiting for build \"$build_number\" to appear in App Store Connect" >&2
+      exit 1
+    fi
+
+    echo "Waiting for build \"$build_number\" to appear in App Store Connect..."
+    sleep "$BUILD_DISCOVERY_POLL_SECONDS"
+    waited=$((waited + BUILD_DISCOVERY_POLL_SECONDS))
+  done
+}
+
 if [ -n "${1:-}" ]; then
+  BUILD_NUMBER="$1"
   BUILD_ARG="--build-number $1"
 else
   # Find the latest build number
@@ -41,9 +77,12 @@ else
     echo "Error: could not determine latest build number" >&2
     exit 1
   fi
+  BUILD_NUMBER="$LATEST"
   BUILD_ARG="--build-number $LATEST"
   echo "Using latest build: $LATEST"
 fi
+
+wait_for_build "$BUILD_NUMBER"
 
 # --wait: poll until ASC finishes processing (VALID), then distribute
 # --notify is off by default, so external testers won't get email
