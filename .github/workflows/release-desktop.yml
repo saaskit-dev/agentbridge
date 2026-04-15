@@ -26,7 +26,7 @@ on:
 jobs:
   prepare_release:
     name: Prepare Desktop Release
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.MACOS_RUNNER_LABELS_JSON || vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","local-mac"]') }}
     permissions:
       contents: write
     outputs:

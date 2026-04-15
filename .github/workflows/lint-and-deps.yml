@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint_and_deps:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.MACOS_RUNNER_LABELS_JSON || vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","local-mac"]') }}
     steps:
       - uses: actions/checkout@v4
 
