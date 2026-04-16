@@ -3,6 +3,28 @@ import { Platform } from 'react-native';
 
 type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
+export interface DesktopCLIStatus {
+  installed: boolean;
+  path: string | null;
+  version: string | null;
+  hasCredentials: boolean;
+  daemonStateExists: boolean;
+  daemonRunning: boolean;
+  curlPath: string | null;
+  bashPath: string | null;
+  gitPath: string | null;
+  nodePath: string | null;
+  nodeVersion: string | null;
+  brewPath: string | null;
+  installIssues: Array<{
+    code: string;
+    message: string;
+    canAutoFix: boolean;
+    suggestedAction: string | null;
+  }>;
+  canAutoRepair: boolean;
+}
+
 let invokePromise: Promise<TauriInvoke> | null = null;
 
 export function isTauriDesktop(): boolean {
@@ -31,6 +53,45 @@ export async function isTauriUpdaterEnabled(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function getDesktopCLIStatus(): Promise<DesktopCLIStatus> {
+  if (!isTauriDesktop()) {
+    throw new Error('Desktop CLI status is only available in Tauri desktop');
+  }
+
+  const invoke = await getTauriInvoke();
+  return await invoke<DesktopCLIStatus>('desktop_get_cli_status');
+}
+
+export async function installDesktopCLI(): Promise<DesktopCLIStatus> {
+  if (!isTauriDesktop()) {
+    throw new Error('Desktop CLI installation is only available in Tauri desktop');
+  }
+
+  const invoke = await getTauriInvoke();
+  return await invoke<DesktopCLIStatus>('desktop_install_cli');
+}
+
+export async function repairDesktopCLIEnvironment(): Promise<DesktopCLIStatus> {
+  if (!isTauriDesktop()) {
+    throw new Error('Desktop CLI repair is only available in Tauri desktop');
+  }
+
+  const invoke = await getTauriInvoke();
+  return await invoke<DesktopCLIStatus>('desktop_repair_cli_environment');
+}
+
+export async function bootstrapDesktopCLIAuth(input: {
+  token: string;
+  secret: string;
+}): Promise<DesktopCLIStatus> {
+  if (!isTauriDesktop()) {
+    throw new Error('Desktop CLI bootstrap is only available in Tauri desktop');
+  }
+
+  const invoke = await getTauriInvoke();
+  return await invoke<DesktopCLIStatus>('desktop_bootstrap_cli_auth', { payload: input });
 }
 
 export function getTauriErrorMessage(

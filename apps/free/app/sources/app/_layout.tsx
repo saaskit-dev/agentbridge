@@ -17,7 +17,7 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
-import { AuthProvider } from '@/auth/AuthContext';
+import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import { FocusAudioController } from '@/components/FocusAudioController';
@@ -26,8 +26,9 @@ import { StatusBarProvider } from '@/components/StatusBarProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import sodium from '@/encryption/libsodium.lib';
 import { initPasteImageBridge } from '@/utils/pasteImageBridge';
-import { ModalProvider } from '@/modal';
+import { Modal, ModalProvider } from '@/modal';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
+import { useDesktopCLIStatus } from '@/hooks/useDesktopCLIStatus';
 import { initKVStores } from '@/sync/cachedKVStore';
 import { syncRestore } from '@/sync/sync';
 import { loadCachedSessions, loadLocalSettings, loadSettings, saveLocalSettings } from '@/sync/persistence';
@@ -40,6 +41,7 @@ import {
 } from '@/widget/focusAudioWidget';
 // import * as SystemUI from 'expo-system-ui';
 import { AsyncLock } from '@/utils/lock';
+import { isTauriDesktop } from '@/utils/tauri';
 import { useWatchConnectivity } from '@/hooks/useWatchConnectivity';
 import { useDisableTauriNativeContextMenu } from '@/hooks/useDisableTauriNativeContextMenu';
 import { useTauriDevtoolsShortcut } from '@/hooks/useTauriDevtoolsShortcut';
@@ -132,6 +134,111 @@ function applyFocusAudioWidgetURL(url: string | null) {
     ...state,
     localSettings: nextLocalSettings,
   }));
+}
+
+function DesktopCLIOnboardingPrompt() {
+  const auth = useAuth();
+  const { state, installOrUpdate, authorize } = useDesktopCLIStatus(auth.credentials);
+  const promptStateRef = React.useRef<'idle' | 'install' | 'auth'>('idle');
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || !isTauriDesktop()) {
+      return;
+    }
+
+    if (
+      state.isChecking ||
+      state.isRepairing ||
+      state.isInstalling ||
+      state.isAuthorizing ||
+      !auth.isAuthenticated ||
+      promptStateRef.current !== 'idle'
+    ) {
+      return;
+    }
+
+    if (state.needsInstall && (state.canAutoRepair || (state.curlPath && state.bashPath))) {
+      promptStateRef.current = 'install';
+      void (async () => {
+        const confirmed = await Modal.confirm(
+          'Install Free CLI',
+          state.installIssues.length > 0 && state.canAutoRepair
+            ? 'Free CLI is not installed and this Mac is missing some prerequisites. Let the app repair them automatically, then install Free CLI now?'
+            : 'Free CLI is not installed on this Mac. Install it now so this desktop app can control local agents?',
+          {
+            confirmText: 'Install',
+            cancelText: 'Later',
+          }
+        );
+
+        if (confirmed) {
+          await installOrUpdate();
+        }
+      })().finally(() => {
+        promptStateRef.current = 'idle';
+      });
+      return;
+    }
+
+    if (!state.needsInstall && state.needsAuth) {
+      promptStateRef.current = 'auth';
+      void (async () => {
+        const confirmed = await Modal.confirm(
+          'Authorize This PC',
+          'Free CLI is installed but not linked to your current account. Authorize this Mac now and start the local daemon?',
+          {
+            confirmText: 'Authorize',
+            cancelText: 'Later',
+          }
+        );
+
+        if (confirmed) {
+          await authorize();
+        }
+      })().finally(() => {
+        promptStateRef.current = 'idle';
+      });
+      return;
+    }
+
+    if (!state.needsInstall && state.hasCredentials && !state.daemonRunning) {
+      promptStateRef.current = 'auth';
+      void (async () => {
+        const confirmed = await Modal.confirm(
+          'Start local daemon',
+          'This Mac is already linked to your account, but the local daemon is not ready yet. Start it now?',
+          {
+            confirmText: 'Start',
+            cancelText: 'Later',
+          }
+        );
+
+        if (confirmed) {
+          await authorize();
+        }
+      })().finally(() => {
+        promptStateRef.current = 'idle';
+      });
+    }
+  }, [
+    auth.isAuthenticated,
+    authorize,
+    state.canAutoRepair,
+    state.installIssues,
+    installOrUpdate,
+    state.isAuthorizing,
+    state.isChecking,
+    state.isRepairing,
+    state.isInstalling,
+    state.needsAuth,
+    state.needsInstall,
+    state.hasCredentials,
+    state.daemonRunning,
+    state.curlPath,
+    state.bashPath,
+  ]);
+
+  return null;
 }
 
 async function loadFonts() {
@@ -344,6 +451,7 @@ export default function RootLayout() {
                 <CommandPaletteProvider>
                   <RealtimeProvider>
                     <FocusAudioController />
+                    <DesktopCLIOnboardingPrompt />
                     <HorizontalSafeAreaWrapper>
                       <SidebarNavigator />
                     </HorizontalSafeAreaWrapper>

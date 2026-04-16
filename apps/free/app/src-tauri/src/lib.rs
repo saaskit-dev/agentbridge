@@ -1,6 +1,8 @@
+use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
+use base64::Engine as _;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
-use std::{fs, io, path::PathBuf, sync::Mutex};
+use std::{fs, io, path::PathBuf, process::Command, sync::Mutex, thread, time::Duration};
 use tauri::Manager;
 
 const SCHEMA_SQL: &str = r#"
@@ -77,6 +79,41 @@ struct KvEntry {
   value: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopCliInstallIssue {
+  code: String,
+  message: String,
+  can_auto_fix: bool,
+  suggested_action: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopCliStatus {
+  installed: bool,
+  path: Option<String>,
+  version: Option<String>,
+  has_credentials: bool,
+  daemon_state_exists: bool,
+  daemon_running: bool,
+  curl_path: Option<String>,
+  bash_path: Option<String>,
+  git_path: Option<String>,
+  node_path: Option<String>,
+  node_version: Option<String>,
+  brew_path: Option<String>,
+  install_issues: Vec<DesktopCliInstallIssue>,
+  can_auto_repair: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopCliBootstrapPayload {
+  token: String,
+  secret: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct SessionIdPayload {
   session_id: String,
@@ -134,6 +171,263 @@ struct KvDeletePayload {
 
 fn map_rusqlite_error(error: rusqlite::Error) -> String {
   error.to_string()
+}
+
+fn free_home_dir() -> CommandResult<PathBuf> {
+  let home = std::env::var("HOME").map_err(|_| String::from("HOME is not set"))?;
+  Ok(PathBuf::from(home).join(".free"))
+}
+
+fn run_shell(command: &str) -> CommandResult<std::process::Output> {
+  Command::new("/bin/sh")
+    .arg("-lc")
+    .arg(command)
+    .output()
+    .map_err(|error| error.to_string())
+}
+
+fn command_path(name: &str) -> CommandResult<Option<String>> {
+  let output = run_shell(&format!("command -v {}", name))?;
+  if !output.status.success() {
+    return Ok(None);
+  }
+
+  let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+  if stdout.is_empty() {
+    Ok(None)
+  } else {
+    Ok(Some(stdout))
+  }
+}
+
+fn parse_cli_version(raw: &str) -> Option<String> {
+  for line in raw.lines() {
+    if let Some(rest) = line.strip_prefix("free version:") {
+      return rest.split_whitespace().next().map(|value| value.trim().to_string());
+    }
+  }
+
+  for token in raw.split_whitespace() {
+    let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '-');
+    let mut parts = trimmed.split('.');
+    let is_semver_like = parts.by_ref().take(3).all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()))
+      && trimmed.matches('.').count() >= 2;
+    if is_semver_like {
+      return Some(trimmed.to_string());
+    }
+  }
+
+  None
+}
+
+fn read_command_version(command: &str) -> CommandResult<Option<String>> {
+  let output = run_shell(&format!("{} --version", command))?;
+  if !output.status.success() {
+    return Ok(None);
+  }
+
+  let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+  if stdout.is_empty() {
+    Ok(None)
+  } else {
+    Ok(Some(stdout))
+  }
+}
+
+fn parse_node_major(raw: &str) -> Option<u32> {
+  let version = raw
+    .lines()
+    .next()
+    .map(str::trim)
+    .unwrap_or_default()
+    .trim_start_matches('v');
+  version.split('.').next()?.parse::<u32>().ok()
+}
+
+fn build_install_issues(
+  brew_path: &Option<String>,
+  bash_path: &Option<String>,
+  curl_path: &Option<String>,
+  git_path: &Option<String>,
+  node_path: &Option<String>,
+  node_version: &Option<String>,
+) -> Vec<DesktopCliInstallIssue> {
+  let brew_available = brew_path.is_some();
+  let mut issues = Vec::new();
+
+  if bash_path.is_none() {
+    issues.push(DesktopCliInstallIssue {
+      code: String::from("missing_bash"),
+      message: String::from("bash is missing. Free CLI installer requires bash."),
+      can_auto_fix: false,
+      suggested_action: Some(String::from("Install bash manually, then retry.")),
+    });
+  }
+
+  if curl_path.is_none() {
+    issues.push(DesktopCliInstallIssue {
+      code: String::from("missing_curl"),
+      message: String::from("curl is missing. Free CLI installs through install.sh, so curl is required."),
+      can_auto_fix: brew_available,
+      suggested_action: Some(if brew_available {
+        String::from("Homebrew can install curl automatically.")
+      } else {
+        String::from("Install curl manually, then retry.")
+      }),
+    });
+  }
+
+  if git_path.is_none() {
+    issues.push(DesktopCliInstallIssue {
+      code: String::from("missing_git"),
+      message: String::from("git is missing. The official installer clones the repository before building."),
+      can_auto_fix: brew_available,
+      suggested_action: Some(if brew_available {
+        String::from("Homebrew can install git automatically.")
+      } else {
+        String::from("Install git or Xcode Command Line Tools, then retry.")
+      }),
+    });
+  }
+
+  if node_path.is_none() {
+    issues.push(DesktopCliInstallIssue {
+      code: String::from("missing_node"),
+      message: String::from("Node.js is missing. Free CLI requires Node.js 20 or newer."),
+      can_auto_fix: brew_available,
+      suggested_action: Some(if brew_available {
+        String::from("Homebrew can install Node.js automatically.")
+      } else {
+        String::from("Install Node.js 20 or newer, then retry.")
+      }),
+    });
+  } else if let Some(version) = node_version {
+    if parse_node_major(version).map(|major| major < 20).unwrap_or(true) {
+      issues.push(DesktopCliInstallIssue {
+        code: String::from("node_too_old"),
+        message: format!(
+          "Node.js {} is installed, but Free CLI requires Node.js 20 or newer.",
+          version.lines().next().unwrap_or(version)
+        ),
+        can_auto_fix: brew_available,
+        suggested_action: Some(if brew_available {
+          String::from("Homebrew can upgrade Node.js automatically.")
+        } else {
+          String::from("Upgrade Node.js to 20 or newer, then retry.")
+        }),
+      });
+    }
+  }
+
+  issues
+}
+
+fn read_cli_status() -> CommandResult<DesktopCliStatus> {
+  let free_home = free_home_dir()?;
+  let credentials_path = free_home.join("access.key");
+  let daemon_state_path = free_home.join("daemon.state.json");
+  let free_path = command_path("free")?;
+  let brew_path = command_path("brew")?;
+  let curl_path = command_path("curl")?;
+  let bash_path = command_path("bash")?;
+  let git_path = command_path("git")?;
+  let node_path = command_path("node")?;
+  let node_version = if node_path.is_some() {
+    read_command_version("node")?
+  } else {
+    None
+  };
+  let install_issues = build_install_issues(
+    &brew_path,
+    &bash_path,
+    &curl_path,
+    &git_path,
+    &node_path,
+    &node_version,
+  );
+
+  let version = if free_path.is_some() {
+    let output = run_shell("free --version")?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    parse_cli_version(&stdout).or_else(|| parse_cli_version(&stderr))
+  } else {
+    None
+  };
+
+  Ok(DesktopCliStatus {
+    installed: free_path.is_some(),
+    path: free_path,
+    version,
+    has_credentials: credentials_path.exists(),
+    daemon_state_exists: daemon_state_path.exists(),
+    daemon_running: read_daemon_running(&daemon_state_path),
+    curl_path,
+    bash_path,
+    git_path,
+    node_path,
+    node_version,
+    brew_path,
+    can_auto_repair: install_issues.iter().all(|issue| issue.can_auto_fix),
+    install_issues,
+  })
+}
+
+fn decode_secret_to_standard_base64(secret: &str) -> CommandResult<String> {
+  for decoded in [
+    URL_SAFE_NO_PAD.decode(secret),
+    URL_SAFE.decode(secret),
+    STANDARD.decode(secret),
+    STANDARD_NO_PAD.decode(secret),
+  ] {
+    if let Ok(bytes) = decoded {
+      return Ok(STANDARD.encode(bytes));
+    }
+  }
+
+  Err(String::from("Invalid secret format"))
+}
+
+fn is_process_alive(pid: i64) -> bool {
+  if pid <= 0 {
+    return false;
+  }
+
+  let result = unsafe { libc::kill(pid as i32, 0) };
+  if result == 0 {
+    return true;
+  }
+
+  let errno = io::Error::last_os_error().raw_os_error().unwrap_or_default();
+  errno == libc::EPERM
+}
+
+fn read_daemon_running(daemon_state_path: &PathBuf) -> bool {
+  if !daemon_state_path.exists() {
+    return false;
+  }
+
+  let content = match fs::read_to_string(daemon_state_path) {
+    Ok(value) => value,
+    Err(_) => return false,
+  };
+  let parsed: serde_json::Value = match serde_json::from_str(&content) {
+    Ok(value) => value,
+    Err(_) => return false,
+  };
+  let pid = parsed.get("pid").and_then(|value| value.as_i64()).unwrap_or_default();
+  is_process_alive(pid)
+}
+
+fn set_owner_only_permissions(path: &PathBuf, mode: u32) -> CommandResult<()> {
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let permissions = fs::Permissions::from_mode(mode);
+    fs::set_permissions(path, permissions).map_err(|error| error.to_string())?;
+  }
+
+  Ok(())
 }
 
 fn apply_migrations(connection: &Connection) -> CommandResult<()> {
@@ -524,6 +818,151 @@ fn desktop_is_updater_enabled() -> bool {
   updater_enabled()
 }
 
+#[tauri::command]
+fn desktop_get_cli_status() -> CommandResult<DesktopCliStatus> {
+  read_cli_status()
+}
+
+#[tauri::command]
+fn desktop_install_cli() -> CommandResult<DesktopCliStatus> {
+  let status = read_cli_status()?;
+  if !status.install_issues.is_empty() {
+    let details = status
+      .install_issues
+      .iter()
+      .map(|issue| issue.message.clone())
+      .collect::<Vec<_>>()
+      .join(" ");
+    return Err(format!("Cannot install Free CLI yet. {}", details));
+  }
+
+  let output = run_shell(
+    "set -euo pipefail; tmp=\"$(mktemp -t free-install.XXXXXX.sh)\"; trap 'rm -f \"$tmp\"' EXIT; curl -fsSL https://raw.githubusercontent.com/saaskit-dev/agentbridge/main/install.sh -o \"$tmp\"; bash \"$tmp\"",
+  )?;
+  if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() { stderr } else { stdout };
+    return Err(if detail.is_empty() {
+      String::from("Failed to install Free CLI")
+    } else {
+      detail
+    });
+  }
+
+  read_cli_status()
+}
+
+#[tauri::command]
+fn desktop_repair_cli_environment() -> CommandResult<DesktopCliStatus> {
+  let status = read_cli_status()?;
+  if status.install_issues.is_empty() {
+    return Ok(status);
+  }
+
+  if status.brew_path.is_none() {
+    let details = status
+      .install_issues
+      .iter()
+      .map(|issue| issue.message.clone())
+      .collect::<Vec<_>>()
+      .join(" ");
+    return Err(format!(
+      "Automatic repair is unavailable because Homebrew is not installed. {}",
+      details
+    ));
+  }
+
+  let mut packages = Vec::new();
+  for issue in &status.install_issues {
+    match issue.code.as_str() {
+      "missing_curl" => packages.push("curl"),
+      "missing_git" => packages.push("git"),
+      "missing_node" | "node_too_old" => packages.push("node"),
+      _ => {}
+    }
+  }
+  packages.sort();
+  packages.dedup();
+
+  if packages.is_empty() {
+    let details = status
+      .install_issues
+      .iter()
+      .map(|issue| issue.message.clone())
+      .collect::<Vec<_>>()
+      .join(" ");
+    return Err(format!("Detected issues cannot be auto-fixed safely. {}", details));
+  }
+
+  let install_command = format!(
+    "HOMEBREW_NO_AUTO_UPDATE=1 brew install {}",
+    packages.join(" ")
+  );
+  let output = run_shell(&install_command)?;
+  if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() { stderr } else { stdout };
+    return Err(if detail.is_empty() {
+      String::from("Automatic environment repair failed")
+    } else {
+      detail
+    });
+  }
+
+  read_cli_status()
+}
+
+#[tauri::command]
+fn desktop_bootstrap_cli_auth(
+  payload: DesktopCliBootstrapPayload,
+) -> CommandResult<DesktopCliStatus> {
+  let status = read_cli_status()?;
+  if !status.installed {
+    return Err(String::from("Free CLI is not installed"));
+  }
+
+  let free_home = free_home_dir()?;
+  fs::create_dir_all(&free_home).map_err(|error| error.to_string())?;
+  set_owner_only_permissions(&free_home, 0o700)?;
+
+  let access_key_path = free_home.join("access.key");
+  let secret_base64 = decode_secret_to_standard_base64(&payload.secret)?;
+  let credentials = serde_json::json!({
+    "token": payload.token,
+    "secret": secret_base64,
+  });
+  fs::write(
+    &access_key_path,
+    serde_json::to_vec_pretty(&credentials).map_err(|error| error.to_string())?,
+  )
+  .map_err(|error| error.to_string())?;
+  set_owner_only_permissions(&access_key_path, 0o600)?;
+
+  let daemon_output = run_shell("nohup free daemon start-sync >/dev/null 2>&1 &")?;
+  if !daemon_output.status.success() {
+    let stderr = String::from_utf8_lossy(&daemon_output.stderr).trim().to_string();
+    return Err(if stderr.is_empty() {
+      String::from("Failed to start Free daemon")
+    } else {
+      stderr
+    });
+  }
+
+  for _ in 0..30 {
+    let refreshed = read_cli_status()?;
+    if refreshed.daemon_running {
+      return Ok(refreshed);
+    }
+    thread::sleep(Duration::from_millis(500));
+  }
+
+  Err(String::from(
+    "CLI credentials were written, but the daemon did not become ready. Create/login to your account if needed, then run `free daemon status` to diagnose.",
+  ))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let mut builder = tauri::Builder::default()
@@ -565,7 +1004,11 @@ pub fn run() {
       desktop_message_db_kv_delete,
       desktop_message_db_kv_delete_all,
       desktop_open_devtools,
-      desktop_is_updater_enabled
+      desktop_is_updater_enabled,
+      desktop_get_cli_status,
+      desktop_repair_cli_environment,
+      desktop_install_cli,
+      desktop_bootstrap_cli_auth
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
