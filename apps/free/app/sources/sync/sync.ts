@@ -591,7 +591,10 @@ class Sync {
     log.debug('[sync] onSessionVisible');
     this.pruneInactiveSessionMessageCache(sessionId);
 
-    // Load cached messages from local SQLite first (instant render)
+    // Load cached messages from local SQLite first.
+    // If the session has a populated local cache, hydrate the full cached history
+    // before switching the UI into the loaded state so the first render reflects
+    // the complete local session, not just a recent tail.
     if (!storage.getState().sessionMessages[sessionId]) {
       try {
         const cachedSeq = this.sessionLastSeq.get(sessionId) ?? (await messageDB.getLastSeq(sessionId));
@@ -599,50 +602,23 @@ class Sync {
           if (!this.sessionLastSeq.has(sessionId)) {
             this.setSessionLastSeq(sessionId, cachedSeq);
           }
-          // Load latest messages for fast initial render; older messages are
-          // fetched on demand via loadOlderMessages (triggered by ChatList scroll).
-          // Use a generous limit (500) to avoid splitting streaming text chunks
-          // across cache boundaries — ACP backends emit one raw message per
-          // text delta, so a single response can easily exceed 50 rows.
-          const cached = await messageDB.getMessages(sessionId, {
-            limit: 500,
-            beforeSeq: cachedSeq + 1,
-          });
-          if (cached.length > 0) {
-            const minSeq = Math.min(...cached.map(m => m.seq));
-            this.sessionOldestSeq.set(sessionId, minSeq);
-            if (cached.length >= 500 || minSeq > 1) {
-              storage
-                .getState()
-                .setSessionOlderMessagesState(sessionId, { hasOlderMessages: true });
-            }
-
-            const normalized: NormalizedMessage[] = [];
-            for (const msg of cached) {
-              try {
-                const raw = JSON.parse(msg.content);
-                const n = normalizeRawMessage(msg.id, msg.created_at, raw);
-                if (n) {
-                  if (msg.seq) n.seq = msg.seq;
-                  if (!n.traceId && msg.trace_id) n.traceId = msg.trace_id;
-                  normalized.push(n);
-                }
-              } catch {
-                /* skip corrupt cache entries */
-              }
-            }
-            if (normalized.length > 0) {
-              // Cache loads with ORDER BY seq DESC (to get latest N rows).
-              // Reverse to ASC so the reducer processes messages chronologically —
-              // mergeIntoPreviousRootAgentText requires createdAt >= previous.createdAt.
-              normalized.reverse();
-              this.enqueueMessages(sessionId, normalized);
-              log.debug('[sync] loaded from SQLite cache', {
-                count: normalized.length,
-                lastSeq: cachedSeq,
-                oldestSeq: minSeq,
-              });
-            }
+          const cachedHydration = await this.loadCachedSessionMessages(sessionId, cachedSeq);
+          if (cachedHydration.messages.length > 0) {
+            const hydratedAt = Date.now();
+            this.applyMessages(sessionId, cachedHydration.messages);
+            storage.getState().applyMessagesLoaded(sessionId);
+            storage.getState().markSessionLocalHydrated(sessionId, hydratedAt);
+            this.sessionOldestSeq.set(sessionId, cachedHydration.oldestSeq);
+            storage.getState().setSessionOlderMessagesState(sessionId, {
+              hasOlderMessages: cachedHydration.hasOlderMessages,
+            });
+            log.debug('[sync] hydrated SQLite cache', {
+              count: cachedHydration.messages.length,
+              batchCount: cachedHydration.batchCount,
+              lastSeq: cachedSeq,
+              oldestSeq: cachedHydration.oldestSeq,
+              hasOlderMessages: cachedHydration.hasOlderMessages,
+            });
           }
         }
       } catch (error) {
@@ -664,6 +640,99 @@ class Sync {
       getVoiceHooks().onSessionFocus(sessionId, session.metadata || undefined);
     }
   };
+
+  private getLocalCacheHydrateBatchSize() {
+    if (isTauriDesktop()) {
+      return 4000;
+    }
+    if (Platform.OS === 'web') {
+      return 2000;
+    }
+    return 1000;
+  }
+
+  private normalizeCachedMessages(rows: Array<{
+    id: string;
+    seq: number;
+    content: string;
+    trace_id: string | null;
+    created_at: number;
+  }>): NormalizedMessage[] {
+    const normalized: NormalizedMessage[] = [];
+    for (const row of rows) {
+      try {
+        const raw = JSON.parse(row.content);
+        const message = normalizeRawMessage(row.id, row.created_at, raw);
+        if (!message) {
+          continue;
+        }
+        if (row.seq) {
+          message.seq = row.seq;
+        }
+        if (!message.traceId && row.trace_id) {
+          message.traceId = row.trace_id;
+        }
+        normalized.push(message);
+      } catch {
+        // Skip corrupt cache rows and continue hydrating the rest of the session.
+      }
+    }
+    return normalized;
+  }
+
+  private async loadCachedSessionMessages(
+    sessionId: string,
+    cachedSeq: number
+  ): Promise<{
+    messages: NormalizedMessage[];
+    oldestSeq: number;
+    hasOlderMessages: boolean;
+    batchCount: number;
+  }> {
+    const batchSize = this.getLocalCacheHydrateBatchSize();
+    let beforeSeq = cachedSeq + 1;
+    let oldestSeq = cachedSeq;
+    let batchCount = 0;
+    const chronologicalBatches: NormalizedMessage[][] = [];
+
+    while (beforeSeq > 0) {
+      const rows = await messageDB.getMessages(sessionId, {
+        limit: batchSize,
+        beforeSeq,
+      });
+      if (rows.length === 0) {
+        break;
+      }
+
+      batchCount += 1;
+      oldestSeq = Math.min(oldestSeq, ...rows.map(row => row.seq));
+
+      const normalizedBatch = this.normalizeCachedMessages(rows);
+      if (normalizedBatch.length > 0) {
+        // beforeSeq queries return DESC order. Reverse each page so the reducer
+        // receives ASC messages when we stitch pages back together.
+        normalizedBatch.reverse();
+        chronologicalBatches.push(normalizedBatch);
+      }
+
+      if (rows.length < batchSize || oldestSeq <= 1) {
+        break;
+      }
+      beforeSeq = oldestSeq;
+    }
+
+    const messages: NormalizedMessage[] = [];
+    for (let index = chronologicalBatches.length - 1; index >= 0; index -= 1) {
+      messages.push(...chronologicalBatches[index]!);
+    }
+
+    return {
+      messages,
+      oldestSeq,
+      hasOlderMessages: oldestSeq > 1,
+      batchCount,
+    };
+  }
 
   private pruneInactiveSessionMessageCache(visibleSessionId: string) {
     const state = storage.getState();

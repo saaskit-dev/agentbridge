@@ -114,6 +114,7 @@ interface SessionMessages {
   messageIndexMap: Record<string, number>;
   reducerState: ReducerState;
   isLoaded: boolean;
+  lastLocalHydratedAt: number;
   hasOlderMessages: boolean;
   isLoadingOlder: boolean;
 }
@@ -186,6 +187,7 @@ interface StorageState {
     messages: NormalizedMessage[]
   ) => { changed: string[]; hasReadyEvent: boolean; latestStatus?: 'working' | 'idle' };
   applyMessagesLoaded: (sessionId: string) => void;
+  markSessionLocalHydrated: (sessionId: string, hydratedAt?: number) => void;
   setSessionOlderMessagesState: (
     sessionId: string,
     state: { hasOlderMessages?: boolean; isLoadingOlder?: boolean }
@@ -764,6 +766,7 @@ export const storage = create<StorageState>()((set, get) => {
               messageIndexMap: mergedMessageIndexMap,
               reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
               isLoaded: existingSessionMessages.isLoaded,
+              lastLocalHydratedAt: existingSessionMessages.lastLocalHydratedAt,
               hasOlderMessages: existingSessionMessages.hasOlderMessages,
               isLoadingOlder: existingSessionMessages.isLoadingOlder,
             };
@@ -911,6 +914,7 @@ export const storage = create<StorageState>()((set, get) => {
           messageIndexMap: {},
           reducerState: createReducer(),
           isLoaded: false,
+          lastLocalHydratedAt: 0,
           hasOlderMessages: false,
           isLoadingOlder: false,
         };
@@ -989,6 +993,7 @@ export const storage = create<StorageState>()((set, get) => {
               messageIndexMap: mergedMessageIndexMap,
               reducerState: existingSession.reducerState, // Explicitly include the mutated reducer state
               isLoaded: true,
+              lastLocalHydratedAt: existingSession.lastLocalHydratedAt,
             },
           },
         };
@@ -1057,6 +1062,7 @@ export const storage = create<StorageState>()((set, get) => {
                 messagesMap,
                 messageIndexMap,
                 isLoaded: true,
+                lastLocalHydratedAt: 0,
                 hasOlderMessages: false,
                 isLoadingOlder: false,
               } satisfies SessionMessages,
@@ -1076,6 +1082,24 @@ export const storage = create<StorageState>()((set, get) => {
         }
 
         return result;
+      }),
+    markSessionLocalHydrated: (sessionId: string, hydratedAt = Date.now()) =>
+      set(state => {
+        const existingSession = state.sessionMessages[sessionId];
+        if (!existingSession) {
+          return state;
+        }
+
+        return {
+          ...state,
+          sessionMessages: {
+            ...state.sessionMessages,
+            [sessionId]: {
+              ...existingSession,
+              lastLocalHydratedAt: hydratedAt,
+            } satisfies SessionMessages,
+          },
+        };
       }),
     setSessionOlderMessagesState: (
       sessionId: string,
@@ -1970,6 +1994,10 @@ export function useSessionMessageStats(sessionId: string): { count: number; isLo
       };
     })
   );
+}
+
+export function useSessionLocalHydratedAt(sessionId: string): number {
+  return storage(state => state.sessionMessages[sessionId]?.lastLocalHydratedAt ?? 0);
 }
 
 export function useMessage(sessionId: string, messageId: string): Message | null {

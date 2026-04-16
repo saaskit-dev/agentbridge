@@ -20,6 +20,7 @@ import { layout } from './layout';
 import { MessageView } from './MessageView';
 import {
   useSessionControlledByUser,
+  useSessionLocalHydratedAt,
   useSessionMessages,
   useMessage,
   useSessionThinking,
@@ -46,10 +47,23 @@ const REFRESH_LOCK_AFTER_CONTENT_MS = 600;
 
 const FAB_SIZE = 40;
 const FAB_GAP = 12;
-const DESKTOP_INITIAL_NUM_TO_RENDER = 20;
+const DESKTOP_INITIAL_NUM_TO_RENDER = 36;
 const DEFAULT_INITIAL_NUM_TO_RENDER = 50;
 const DESKTOP_WINDOW_SIZE = 5;
 const DEFAULT_WINDOW_SIZE = 7;
+const DESKTOP_MAX_TO_RENDER_PER_BATCH = 24;
+const DEFAULT_MAX_TO_RENDER_PER_BATCH = 10;
+const DESKTOP_UPDATE_CELLS_BATCHING_PERIOD = 16;
+const DEFAULT_UPDATE_CELLS_BATCHING_PERIOD = 50;
+const HYDRATE_BOOST_DURATION_MS = 1200;
+const HYDRATE_BOOST_DESKTOP_INITIAL_NUM_TO_RENDER = 96;
+const HYDRATE_BOOST_DEFAULT_INITIAL_NUM_TO_RENDER = 72;
+const HYDRATE_BOOST_DESKTOP_WINDOW_SIZE = 9;
+const HYDRATE_BOOST_DEFAULT_WINDOW_SIZE = 8;
+const HYDRATE_BOOST_DESKTOP_MAX_TO_RENDER_PER_BATCH = 48;
+const HYDRATE_BOOST_DEFAULT_MAX_TO_RENDER_PER_BATCH = 24;
+const HYDRATE_BOOST_DESKTOP_UPDATE_CELLS_BATCHING_PERIOD = 8;
+const HYDRATE_BOOST_DEFAULT_UPDATE_CELLS_BATCHING_PERIOD = 16;
 const MAX_VISIBLE_MESSAGES_CACHE_ENTRIES = 4;
 
 type VisibleMessagesCacheEntry = {
@@ -1253,8 +1267,30 @@ const ChatListInternal = React.memo(
     jumpToRecentUserSignal: number;
   }) => {
     const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.sessionId);
+    const lastLocalHydratedAt = useSessionLocalHydratedAt(props.sessionId);
     const isSessionThinking = useSessionThinking(props.sessionId);
     const visibleMessages = useMemo(() => buildVisibleMessages(messages), [messages]);
+    const [isHydrationBoostActive, setIsHydrationBoostActive] = useState(false);
+
+    useEffect(() => {
+      if (!lastLocalHydratedAt) {
+        setIsHydrationBoostActive(false);
+        return;
+      }
+
+      const elapsed = Date.now() - lastLocalHydratedAt;
+      if (elapsed >= HYDRATE_BOOST_DURATION_MS) {
+        setIsHydrationBoostActive(false);
+        return;
+      }
+
+      setIsHydrationBoostActive(true);
+      const timeout = setTimeout(() => {
+        setIsHydrationBoostActive(false);
+      }, HYDRATE_BOOST_DURATION_MS - elapsed);
+
+      return () => clearTimeout(timeout);
+    }, [lastLocalHydratedAt]);
 
     // ----- pull states -----
     const [refreshPull, setRefreshPull] = useState<PullState>('idle');
@@ -1670,9 +1706,37 @@ const ChatListInternal = React.memo(
       };
     }, []);
 
-    const initialNumToRender =
-      Platform.OS === 'web' ? DESKTOP_INITIAL_NUM_TO_RENDER : DEFAULT_INITIAL_NUM_TO_RENDER;
-    const windowSize = Platform.OS === 'web' ? DESKTOP_WINDOW_SIZE : DEFAULT_WINDOW_SIZE;
+    const initialNumToRender = isHydrationBoostActive
+      ? Math.min(
+          listItems.length,
+          Platform.OS === 'web'
+            ? HYDRATE_BOOST_DESKTOP_INITIAL_NUM_TO_RENDER
+            : HYDRATE_BOOST_DEFAULT_INITIAL_NUM_TO_RENDER
+        )
+      : Platform.OS === 'web'
+        ? DESKTOP_INITIAL_NUM_TO_RENDER
+        : DEFAULT_INITIAL_NUM_TO_RENDER;
+    const windowSize = isHydrationBoostActive
+      ? Platform.OS === 'web'
+        ? HYDRATE_BOOST_DESKTOP_WINDOW_SIZE
+        : HYDRATE_BOOST_DEFAULT_WINDOW_SIZE
+      : Platform.OS === 'web'
+        ? DESKTOP_WINDOW_SIZE
+        : DEFAULT_WINDOW_SIZE;
+    const maxToRenderPerBatch = isHydrationBoostActive
+      ? Platform.OS === 'web'
+        ? HYDRATE_BOOST_DESKTOP_MAX_TO_RENDER_PER_BATCH
+        : HYDRATE_BOOST_DEFAULT_MAX_TO_RENDER_PER_BATCH
+      : Platform.OS === 'web'
+        ? DESKTOP_MAX_TO_RENDER_PER_BATCH
+        : DEFAULT_MAX_TO_RENDER_PER_BATCH;
+    const updateCellsBatchingPeriod = isHydrationBoostActive
+      ? Platform.OS === 'web'
+        ? HYDRATE_BOOST_DESKTOP_UPDATE_CELLS_BATCHING_PERIOD
+        : HYDRATE_BOOST_DEFAULT_UPDATE_CELLS_BATCHING_PERIOD
+      : Platform.OS === 'web'
+        ? DESKTOP_UPDATE_CELLS_BATCHING_PERIOD
+        : DEFAULT_UPDATE_CELLS_BATCHING_PERIOD;
 
     return (
       <View style={{ flex: 1, position: 'relative', width: '100%', alignSelf: 'stretch' }}>
@@ -1684,7 +1748,8 @@ const ChatListInternal = React.memo(
           bounces={!isRefreshInteractionLocked}
           keyExtractor={keyExtractor}
           initialNumToRender={initialNumToRender}
-          maxToRenderPerBatch={10}
+          maxToRenderPerBatch={maxToRenderPerBatch}
+          updateCellsBatchingPeriod={updateCellsBatchingPeriod}
           windowSize={windowSize}
           overScrollMode={isRefreshInteractionLocked ? 'never' : 'always'}
           removeClippedSubviews={Platform.OS !== 'ios'}

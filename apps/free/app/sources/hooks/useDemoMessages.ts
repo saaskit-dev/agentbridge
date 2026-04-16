@@ -32,6 +32,7 @@ export function useDemoMessages(messages: Message[]) {
           messageIndexMap,
           reducerState: createReducer(),
           isLoaded: true,
+          lastLocalHydratedAt: 0,
           hasOlderMessages: false,
           isLoadingOlder: false,
         },
