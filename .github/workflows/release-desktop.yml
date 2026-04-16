@@ -247,7 +247,7 @@ jobs:
           set -euo pipefail
           KEY_FILE="$RUNNER_TEMP/tauri-signing-key.txt"
           TEST_FILE="$RUNNER_TEMP/desktop-secret-validation.txt"
-          printf '%s\n' "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
+          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
           printf 'desktop secret validation\n' > "$TEST_FILE"
           pnpm --dir apps/free/app exec tauri signer sign \
             -f "$KEY_FILE" \
