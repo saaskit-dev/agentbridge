@@ -259,7 +259,7 @@ jobs:
           process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);
           EOF
           printf 'desktop secret validation\n' > "$TEST_FILE"
-          pnpm exec tauri signer sign \
+          pnpm --dir apps/free/app exec tauri signer sign \
             -f "$KEY_FILE" \
             -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
             "$TEST_FILE"
