@@ -17,14 +17,19 @@
 import net from 'node:net';
 import fs from 'node:fs';
 import readline from 'node:readline';
+import os from 'node:os';
+import { join } from 'node:path';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify, toError } from '@saaskit-dev/agentbridge';
 import type { SessionManager } from '../sessions/SessionManager';
 import type { SpawnSessionOptions, SpawnSessionResult } from './protocol';
 import type { IPCClientMessage, IPCServerMessage } from './protocol';
-import type { NormalizedMessage } from '../sessions/types';
+import type { NormalizedAgentContent, NormalizedMessage } from '../sessions/types';
 
 const logger = new Logger('daemon/ipc/IPCServer');
+const MAX_IPC_MESSAGE_CHARS = 256_000;
+const MAX_IPC_STRING_PREVIEW = 4_000;
+const MAX_IPC_ARRAY_ITEMS = 20;
 
 // ---------------------------------------------------------------------------
 // HistoryRing — O(1) ring buffer for per-session message history
@@ -77,6 +82,7 @@ export class IPCServer {
   /** sessionId → ring buffer of recent agent_output messages */
   private history = new Map<string, HistoryRing>();
   private readonly HISTORY_SIZE = 500;
+  private readonly ipcPreviewDir = join(os.tmpdir(), 'agentbridge-ipc-previews');
 
   /**
    * Recovery gate: when the daemon is recovering persisted sessions at startup,
@@ -124,24 +130,33 @@ export class IPCServer {
    * Called by AgentSession.pipeBackendOutput() via the injected broadcast callback.
    */
   broadcast(sessionId: string, msg: IPCServerMessage): void {
-    if (msg.type === 'agent_output') {
+    const safeMsg = this.makeSocketSafeMessage(sessionId, msg);
+
+    if (safeMsg.type === 'agent_output') {
       let ring = this.history.get(sessionId);
       if (!ring) {
         ring = new HistoryRing(this.HISTORY_SIZE);
         this.history.set(sessionId, ring);
       }
-      ring.push(msg.msg);
+      ring.push(safeMsg.msg);
     }
 
     const sockets = this.attachments.get(sessionId) ?? new Set();
-    if (msg.type === 'session_state') {
+    if (safeMsg.type === 'session_state') {
       logger.info('[IPCServer] broadcasting session_state', {
         sessionId,
-        state: (msg as { state: string }).state,
+        state: safeMsg.state,
         attachedSockets: sockets.size,
       });
     }
-    const line = JSON.stringify(msg) + '\n';
+    const line = this.serializeForSocket(safeMsg);
+    if (!line) {
+      logger.error('[IPCServer] failed to serialize IPC message after fallback', undefined, {
+        sessionId,
+        msgType: safeMsg.type,
+      });
+      return;
+    }
     const deadSockets: net.Socket[] = [];
     for (const socket of sockets) {
       if (!socket.writable) {
@@ -357,11 +372,7 @@ export class IPCServer {
       historySize: history.length,
       attachedClients: set.size,
     });
-    this.writeToSocket(socket, {
-      type: 'history',
-      sessionId,
-      msgs: history,
-    });
+    this.writeToSocket(socket, this.makeHistoryMessage(sessionId, history));
   }
 
   private handleMessage(socket: net.Socket, msg: IPCClientMessage): void {
@@ -582,11 +593,220 @@ export class IPCServer {
       });
       return;
     }
+    const line = this.serializeForSocket(msg);
+    if (!line) {
+      logger.error('[IPCServer] writeToSocket: serialization failed after fallback', undefined, {
+        type: msg.type,
+      });
+      return;
+    }
     try {
-      socket.write(JSON.stringify(msg) + '\n');
+      socket.write(line);
     } catch {
       // EPIPE — client disconnected
       logger.debug('[IPCServer] writeToSocket: write failed (EPIPE)', { type: msg.type });
+    }
+  }
+
+  private serializeForSocket(msg: IPCServerMessage): string | null {
+    try {
+      const line = JSON.stringify(msg) + '\n';
+      if (line.length > MAX_IPC_MESSAGE_CHARS) {
+        return null;
+      }
+      return line;
+    } catch {
+      return null;
+    }
+  }
+
+  private makeSocketSafeMessage(sessionId: string, msg: IPCServerMessage): IPCServerMessage {
+    if (this.serializeForSocket(msg)) {
+      return msg;
+    }
+    if (msg.type !== 'agent_output') {
+      return {
+        type: 'error',
+        message: `[IPCServer] ${msg.type} payload too large for local IPC delivery`,
+      };
+    }
+
+    const fallback = this.makeOversizedPayloadNotice(sessionId, msg.msg);
+    logger.warn('[IPCServer] replaced oversized agent_output with local fallback', {
+      sessionId,
+      originalRole: msg.msg.role,
+      messageId: msg.msg.id,
+    });
+    return fallback;
+  }
+
+  private makeHistoryMessage(sessionId: string, msgs: NormalizedMessage[]): IPCServerMessage {
+    if (msgs.length === 0) {
+      return { type: 'history', sessionId, msgs: [] };
+    }
+
+    let trimmed = msgs;
+    while (trimmed.length > 0) {
+      const candidate: IPCServerMessage = {
+        type: 'history',
+        sessionId,
+        msgs: trimmed,
+      };
+      if (this.serializeForSocket(candidate)) {
+        if (trimmed.length !== msgs.length) {
+          logger.warn('[IPCServer] trimmed history replay to fit IPC size limit', {
+            sessionId,
+            originalCount: msgs.length,
+            trimmedCount: trimmed.length,
+          });
+        }
+        return candidate;
+      }
+      trimmed = trimmed.slice(Math.max(1, Math.floor(trimmed.length / 2)));
+    }
+
+    logger.warn('[IPCServer] history replay omitted because payload still exceeded IPC limit', {
+      sessionId,
+      originalCount: msgs.length,
+    });
+    return { type: 'history', sessionId, msgs: [this.makeOversizedHistoryNotice(sessionId)] };
+  }
+
+  private makeOversizedPayloadNotice(
+    sessionId: string,
+    original: NormalizedMessage
+  ): Extract<IPCServerMessage, { type: 'agent_output' }> {
+    if (original.role === 'agent') {
+      return {
+        type: 'agent_output',
+        sessionId,
+        msg: {
+          ...original,
+          content: original.content.map(block => this.makeSocketSafeAgentBlock(block)),
+        },
+      };
+    }
+
+    if (original.role === 'user') {
+      return {
+        type: 'agent_output',
+        sessionId,
+        msg: {
+          ...original,
+          content: {
+            type: 'text',
+            text: this.truncateString(original.content.text),
+          },
+        },
+      };
+    }
+
+    return {
+      type: 'agent_output',
+      sessionId,
+      msg: {
+        ...original,
+        content: {
+          type: 'message',
+          message:
+            'Local IPC output was truncated for safe streaming. Full content was preserved in server/app history.',
+        },
+      },
+    };
+  }
+
+  private makeOversizedHistoryNotice(sessionId: string): NormalizedMessage {
+    return {
+      id: `ipc-history-${sessionId}`,
+      createdAt: Date.now(),
+      isSidechain: false,
+      role: 'event',
+      content: {
+        type: 'message',
+        message:
+          'Local history replay was trimmed to stay within the IPC size limit. Full content remains available in server/app history.',
+      },
+    };
+  }
+
+  private makeSocketSafeAgentBlock(block: NormalizedAgentContent): NormalizedAgentContent {
+    switch (block.type) {
+      case 'text':
+        return { ...block, text: this.truncateString(block.text) };
+      case 'thinking':
+        return { ...block, thinking: this.truncateString(block.thinking) };
+      case 'summary':
+        return { ...block, summary: this.truncateString(block.summary) };
+      case 'sidechain':
+        return { ...block, prompt: this.truncateString(block.prompt) };
+      case 'tool-call':
+        return {
+          ...block,
+          input: this.makeSocketSafeUnknown(block.input),
+          description: block.description ? this.truncateString(block.description) : block.description,
+        };
+      case 'tool-result':
+        return {
+          ...block,
+          content: this.makeSocketSafeUnknown(block.content),
+        };
+    }
+  }
+
+  private makeSocketSafeUnknown(value: unknown, depth = 0): unknown {
+    if (value == null) return value;
+    if (typeof value === 'string') return this.truncateString(value);
+    if (
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint' ||
+      typeof value === 'symbol'
+    ) {
+      return value;
+    }
+    if (typeof value === 'function') {
+      return safeStringify(value);
+    }
+    if (depth >= 4) {
+      return '[Truncated nested value for IPC safety]';
+    }
+    if (Array.isArray(value)) {
+      return value
+        .slice(0, MAX_IPC_ARRAY_ITEMS)
+        .map(item => this.makeSocketSafeUnknown(item, depth + 1));
+    }
+    if (typeof value === 'object') {
+      const entries = Object.entries(value as Record<string, unknown>).slice(0, MAX_IPC_ARRAY_ITEMS);
+      return Object.fromEntries(
+        entries.map(([key, nested]) => [key, this.makeSocketSafeUnknown(nested, depth + 1)])
+      );
+    }
+    return safeStringify(value);
+  }
+
+  private truncateString(value: string): string {
+    if (value.length <= MAX_IPC_STRING_PREVIEW) {
+      return value;
+    }
+    const previewPath = this.writeOversizedPreview(value);
+    const suffix = previewPath
+      ? `\n...[truncated for local IPC, original length=${value.length}, full output saved to ${previewPath}]`
+      : `\n...[truncated for local IPC, original length=${value.length}]`;
+    return value.slice(0, MAX_IPC_STRING_PREVIEW) + suffix;
+  }
+
+  private writeOversizedPreview(value: string): string | null {
+    try {
+      fs.mkdirSync(this.ipcPreviewDir, { recursive: true, mode: 0o700 });
+      const filename = `ipc-preview-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.txt`;
+      const filePath = join(this.ipcPreviewDir, filename);
+      fs.writeFileSync(filePath, value, { encoding: 'utf-8', mode: 0o600 });
+      return filePath;
+    } catch (error) {
+      logger.warn('[IPCServer] failed to persist oversized IPC preview', {
+        error: safeStringify(error),
+      });
+      return null;
     }
   }
 

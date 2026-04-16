@@ -189,6 +189,30 @@ describe('IPC Protocol', () => {
     }
   });
 
+  it('broadcast degrades oversized agent_output instead of crashing daemon IPC', async () => {
+    const { server, client } = await setupPair();
+
+    const histPromise = waitForMessage(client, 'history');
+    client.send({ type: 'attach', sessionId: 'sess-oversized' });
+    await histPromise;
+
+    const outputPromise = waitForMessage(client, 'agent_output');
+    const msg = makeMsg('x'.repeat(300_000));
+    server.broadcast('sess-oversized', { type: 'agent_output', sessionId: 'sess-oversized', msg });
+
+    const output = await outputPromise;
+    if (output.type === 'agent_output') {
+      expect(output.msg.role).toBe('agent');
+      expect(output.msg.content[0]).toMatchObject({
+        type: 'text',
+      });
+      if (output.msg.content[0]?.type === 'text') {
+        expect(output.msg.content[0].text).toContain('[truncated for local IPC');
+        expect(output.msg.content[0].text).toContain('full output saved to');
+      }
+    }
+  });
+
   it('broadcast does not deliver to detached client', async () => {
     const { server, client } = await setupPair();
 
@@ -236,6 +260,70 @@ describe('IPC Protocol', () => {
     const hist = await histPromise;
     if (hist.type === 'history') {
       expect(hist.msgs).toHaveLength(2);
+    }
+  });
+
+  it('history replay trims oversized payloads to IPC-safe fallbacks', async () => {
+    const { server, client } = await setupPair();
+
+    server.broadcast('sess-history', {
+      type: 'agent_output',
+      sessionId: 'sess-history',
+      msg: makeMsg('y'.repeat(300_000)),
+    });
+
+    const histPromise = waitForMessage(client, 'history');
+    client.send({ type: 'attach', sessionId: 'sess-history' });
+
+    const hist = await histPromise;
+    if (hist.type === 'history') {
+      expect(hist.msgs).toHaveLength(1);
+      expect(hist.msgs[0].role).toBe('agent');
+      if (hist.msgs[0].role === 'agent' && hist.msgs[0].content[0]?.type === 'text') {
+        expect(hist.msgs[0].content[0].text).toContain('[truncated for local IPC');
+        expect(hist.msgs[0].content[0].text).toContain('full output saved to');
+      }
+    }
+  });
+
+  it('broadcast preserves tool-result preview for oversized structured payloads', async () => {
+    const { server, client } = await setupPair();
+
+    const histPromise = waitForMessage(client, 'history');
+    client.send({ type: 'attach', sessionId: 'sess-tool' });
+    await histPromise;
+
+    const outputPromise = waitForMessage(client, 'agent_output');
+    server.broadcast('sess-tool', {
+      type: 'agent_output',
+      sessionId: 'sess-tool',
+      msg: {
+        id: 'tool-msg',
+        createdAt: Date.now(),
+        isSidechain: false,
+        role: 'agent',
+        content: [
+          {
+            type: 'tool-result',
+            tool_use_id: 'tool-1',
+            content: { stdout: 'z'.repeat(300_000), nested: { note: 'ok' } },
+            is_error: false,
+            uuid: 'u1',
+            parentUUID: null,
+          },
+        ],
+      },
+    });
+
+    const output = await outputPromise;
+    if (output.type === 'agent_output' && output.msg.role === 'agent') {
+      expect(output.msg.content[0]).toMatchObject({
+        type: 'tool-result',
+      });
+      if (output.msg.content[0]?.type === 'tool-result') {
+        expect(JSON.stringify(output.msg.content[0].content)).toContain('[truncated for local IPC');
+        expect(JSON.stringify(output.msg.content[0].content)).toContain('full output saved to');
+      }
     }
   });
 
