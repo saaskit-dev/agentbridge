@@ -2,7 +2,7 @@ import { type Fastify } from '../types';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { getUpdatesGatewayConfig } from '@/app/updates/config';
 import { proxyExpoUpdates } from '@/app/updates/proxy';
-import { readLatestOtaRelease } from '@/app/updates/releaseStore';
+import { readLatestDesktopRelease, readLatestOtaRelease } from '@/app/updates/releaseStore';
 
 const logger = new Logger('app/api/routes/updatesRoutes');
 
@@ -67,7 +67,44 @@ async function handleUpdatesRequest(request: any, reply: any) {
   }
 }
 
+async function handleDesktopUpdatesRequest(request: any, reply: any) {
+  const channel = String(request.query.channel || 'stable');
+  const latest = await readLatestDesktopRelease(channel);
+  if (!latest) {
+    return reply.code(404).send({ error: 'desktop_update_not_found' });
+  }
+
+  try {
+    const response = await fetch(latest.latestJsonUrl, {
+      headers: {
+        accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      logger.error('Failed to fetch desktop updater manifest', {
+        channel,
+        status: response.status,
+        latestJsonUrl: latest.latestJsonUrl,
+      });
+      return reply.code(502).send({ error: 'desktop_update_unavailable' });
+    }
+
+    reply.header('cache-control', 'private, max-age=0');
+    reply.header('content-type', 'application/json');
+    return reply.send(await response.text());
+  } catch (error) {
+    logger.error('Failed to proxy desktop updater manifest', {
+      channel,
+      error: String(error),
+      latestJsonUrl: latest.latestJsonUrl,
+    });
+    return reply.code(502).send({ error: 'desktop_update_unavailable' });
+  }
+}
+
 export function updatesRoutes(app: Fastify) {
   app.get('/updates', handleUpdatesRequest);
   app.post('/updates', handleUpdatesRequest);
+  app.get('/updates/desktop/latest.json', handleDesktopUpdatesRequest);
 }

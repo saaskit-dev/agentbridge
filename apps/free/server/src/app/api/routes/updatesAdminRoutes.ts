@@ -2,9 +2,13 @@ import { z } from 'zod';
 import { type Fastify } from '../types';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import {
+  listDesktopReleases,
   listOtaReleases,
+  promoteDesktopRelease,
   promoteOtaRelease,
+  readLatestDesktopRelease,
   readLatestOtaRelease,
+  saveDesktopRelease,
   saveOtaRelease,
 } from '@/app/updates/releaseStore';
 
@@ -59,6 +63,23 @@ const otaPromoteSchema = z.object({
   releaseId: z.string().min(1),
 });
 
+const desktopReleaseSchema = z.object({
+  id: z.string().min(1),
+  channel: z.string().min(1),
+  version: z.string().min(1),
+  tagName: z.string().min(1),
+  releaseUrl: z.string().url(),
+  latestJsonUrl: z.string().url(),
+  createdAt: z.string().min(1),
+  gitCommit: z.string().nullable(),
+  actor: z.string().nullable(),
+  notes: z.string().nullable().optional(),
+});
+
+const desktopPromoteSchema = z.object({
+  releaseId: z.string().min(1),
+});
+
 function requireAdminToken(request: any, reply: any): boolean {
   const expected = process.env.EXPO_UPDATES_ADMIN_TOKEN;
   if (!expected) {
@@ -96,6 +117,30 @@ export function updatesAdminRoutes(app: Fastify) {
   app.get('/updates/admin/releases', async (request, reply) => {
     if (!requireAdminToken(request, reply)) return;
     return reply.send({ releases: await listOtaReleases() });
+  });
+
+  app.post(
+    '/updates/admin/desktop/releases',
+    {
+      schema: {
+        body: desktopReleaseSchema,
+      },
+    },
+    async (request, reply) => {
+      if (!requireAdminToken(request, reply)) return;
+      await saveDesktopRelease(request.body);
+      logger.info('Stored desktop release metadata', {
+        releaseId: request.body.id,
+        channel: request.body.channel,
+        version: request.body.version,
+      });
+      return reply.send({ ok: true });
+    }
+  );
+
+  app.get('/updates/admin/desktop/releases', async (request, reply) => {
+    if (!requireAdminToken(request, reply)) return;
+    return reply.send({ releases: await listDesktopReleases() });
   });
 
   app.post(
@@ -138,6 +183,44 @@ export function updatesAdminRoutes(app: Fastify) {
         request.query.platform,
         request.query.runtimeVersion
       );
+      return reply.send({ release: latest });
+    }
+  );
+
+  app.post(
+    '/updates/admin/desktop/promote',
+    {
+      schema: {
+        body: desktopPromoteSchema,
+      },
+    },
+    async (request, reply) => {
+      if (!requireAdminToken(request, reply)) return;
+      const release = await promoteDesktopRelease(request.body.releaseId);
+      if (!release) {
+        return reply.code(404).send({ error: 'release_not_found' });
+      }
+      logger.info('Promoted desktop release', {
+        releaseId: release.id,
+        channel: release.channel,
+        version: release.version,
+      });
+      return reply.send({ ok: true, release });
+    }
+  );
+
+  app.get(
+    '/updates/admin/desktop/latest',
+    {
+      schema: {
+        querystring: z.object({
+          channel: z.string().min(1).default('stable'),
+        }),
+      },
+    },
+    async (request, reply) => {
+      if (!requireAdminToken(request, reply)) return;
+      const latest = await readLatestDesktopRelease(request.query.channel);
       return reply.send({ release: latest });
     }
   );

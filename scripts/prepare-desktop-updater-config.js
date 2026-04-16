@@ -7,7 +7,9 @@ const requireKey = process.argv.includes('--require-key');
 const rootDir = path.join(__dirname, '..');
 const outputPath = path.join(rootDir, 'apps/free/app/src-tauri/tauri.updater.conf.json');
 const publicKey = process.env.TAURI_UPDATER_PUBLIC_KEY;
-const repository = process.env.DESKTOP_UPDATER_REPOSITORY || process.env.GITHUB_REPOSITORY || 'saaskit-dev/agentbridge';
+const updaterBaseUrl =
+  process.env.DESKTOP_UPDATER_BASE_URL || process.env.FREE_SERVER_URL || 'https://free-server.saaskit.app';
+const updaterChannel = process.env.DESKTOP_UPDATER_CHANNEL || 'stable';
 
 function normalizeUpdaterPublicKey(value) {
   if (!value) {
@@ -54,7 +56,9 @@ const config = {
   plugins: {
     updater: {
       pubkey: normalizeUpdaterPublicKey(publicKey),
-      endpoints: [`https://github.com/${repository}/releases/latest/download/latest.json`],
+      endpoints: [
+        `${updaterBaseUrl.replace(/\/$/, '')}/updates/desktop/latest.json?channel=${encodeURIComponent(updaterChannel)}`,
+      ],
       windows: {
         installMode: 'passive',
       },

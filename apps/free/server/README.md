@@ -60,6 +60,7 @@ FREE_MASTER_SECRET=your-secret-key node dist/bundle.cjs serve
 
 - `GET /updates`
 - `POST /updates`
+- `GET /updates/desktop/latest.json`
 
 发布管理入口：
 
@@ -67,8 +68,14 @@ FREE_MASTER_SECRET=your-secret-key node dist/bundle.cjs serve
 - `POST /updates/admin/promote`
 - `GET /updates/admin/releases`
 - `GET /updates/admin/latest`
+- `POST /updates/admin/desktop/releases`
+- `POST /updates/admin/desktop/promote`
+- `GET /updates/admin/desktop/releases`
+- `GET /updates/admin/desktop/latest`
 
 客户端请求会按 `platform + runtimeVersion + channel` 返回最新 manifest。
+Desktop updater 则通过独立地址 `/updates/desktop/latest.json?channel=stable` 获取当前桌面 release manifest，
+不会再依赖 GitHub Releases 的全局 `latest` 语义。
 
 ## Self-Hosted OTA
 

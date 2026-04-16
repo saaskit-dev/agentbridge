@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { updatesRoutes } from '../updatesRoutes';
 
-const { mockGetUpdatesGatewayConfig, mockProxyExpoUpdates, mockReadLatestOtaRelease } = vi.hoisted(() => ({
+const {
+  mockGetUpdatesGatewayConfig,
+  mockProxyExpoUpdates,
+  mockReadLatestDesktopRelease,
+  mockReadLatestOtaRelease,
+} = vi.hoisted(() => ({
   mockGetUpdatesGatewayConfig: vi.fn(),
   mockProxyExpoUpdates: vi.fn(),
+  mockReadLatestDesktopRelease: vi.fn(),
   mockReadLatestOtaRelease: vi.fn(),
 }));
 
@@ -16,6 +22,7 @@ vi.mock('@/app/updates/proxy', () => ({
 }));
 
 vi.mock('@/app/updates/releaseStore', () => ({
+  readLatestDesktopRelease: mockReadLatestDesktopRelease,
   readLatestOtaRelease: mockReadLatestOtaRelease,
 }));
 
@@ -198,5 +205,45 @@ describe('updatesRoutes', () => {
       metadata: { channel: 'production', platform: 'ios' },
       extra: {},
     });
+  });
+
+  it('returns a desktop updater manifest from the server pointer', async () => {
+    mockReadLatestDesktopRelease.mockResolvedValue({
+      id: 'desktop-v0.0.13',
+      channel: 'stable',
+      version: '0.0.13',
+      tagName: 'desktop-v0.0.13',
+      releaseUrl: 'https://github.com/example/release',
+      latestJsonUrl: 'https://example.com/latest.json',
+      createdAt: '2026-04-16T00:00:00.000Z',
+      gitCommit: 'abc123',
+      actor: 'ci',
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue('{"version":"0.0.13"}'),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { gets } = registerHandlers();
+    const handler = gets.get('/updates/desktop/latest.json');
+    const reply = makeReply();
+
+    const result = await handler!(
+      {
+        method: 'GET',
+        query: { channel: 'stable' },
+      },
+      reply
+    );
+
+    expect(mockReadLatestDesktopRelease).toHaveBeenCalledWith('stable');
+    expect(fetchMock).toHaveBeenCalledWith('https://example.com/latest.json', {
+      headers: { accept: 'application/json' },
+    });
+    expect(reply.statusCode).toBe(200);
+    expect(reply.headers['content-type']).toBe('application/json');
+    expect(result).toBe('{"version":"0.0.13"}');
   });
 });
