@@ -13,6 +13,7 @@ android/
 !modules/**/ios/**
 !modules/**/android/
 !modules/**/android/**
+targets/*/generated.entitlements
 
 # Firebase config files — real configs injected at build time via EAS secrets
 # ios/Freedev/GoogleService-Info.plist is committed as a placeholder (dummy values);
