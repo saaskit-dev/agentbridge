@@ -32,24 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - uses: pnpm/action-setup@v4
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Check dependency architecture
-        run: pnpm run check:deps
-
-      - name: Typecheck (core + CLI)
-        run: pnpm typecheck
+      - uses: ./.github/actions/quality-gate
 
   prepare_release:
     needs: quality_gate
@@ -78,6 +61,44 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Validate updater signing secrets
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_RAW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          node <<'EOF'
+          const publicKey = (process.env.TAURI_UPDATER_PUBLIC_KEY || '').trim();
+          const privateKey = (process.env.TAURI_SIGNING_PRIVATE_KEY_RAW || '').trim();
+          const password = (process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '').trim();
+
+          function decodeIfBase64(value) {
+            try {
+              const decoded = Buffer.from(value, 'base64').toString('utf8');
+              if (decoded.includes('untrusted comment:')) {
+                return decoded;
+              }
+            } catch {}
+            return value;
+          }
+
+          const normalizedPublicKey = decodeIfBase64(publicKey);
+          const normalizedPrivateKey = decodeIfBase64(privateKey);
+
+          if (!normalizedPublicKey || !normalizedPublicKey.includes('untrusted comment:') || !/public key/i.test(normalizedPublicKey)) {
+            throw new Error('TAURI_UPDATER_PUBLIC_KEY is missing or invalid');
+          }
+
+          if (!normalizedPrivateKey || !normalizedPrivateKey.includes('untrusted comment:') || !/secret key/i.test(normalizedPrivateKey)) {
+            throw new Error('TAURI_SIGNING_PRIVATE_KEY is missing or invalid');
+          }
+
+          if (!password) {
+            throw new Error('TAURI_SIGNING_PRIVATE_KEY_PASSWORD is missing');
+          }
+          EOF
 
       - name: Bump version and create tag
         id: prepare
@@ -215,6 +236,33 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY_RAW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: node ./scripts/prepare-tauri-signing-key.js
+
+      - name: Verify updater signing flow
+        if: ${{ matrix.platform-name == 'macos-arm64-self-hosted' }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEY_FILE="$RUNNER_TEMP/tauri-signing-key.txt"
+          TEST_FILE="$RUNNER_TEMP/desktop-secret-validation.txt"
+          node <<'EOF' > "$KEY_FILE"
+          const input = (process.env.TAURI_SIGNING_PRIVATE_KEY || '').trim();
+          let text = input;
+          try {
+            const decoded = Buffer.from(input, 'base64').toString('utf8');
+            if (decoded.includes('untrusted comment:')) {
+              text = decoded;
+            }
+          } catch {}
+          process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);
+          EOF
+          printf 'desktop secret validation\n' > "$TEST_FILE"
+          pnpm exec tauri signer sign \
+            -f "$KEY_FILE" \
+            -p "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" \
+            "$TEST_FILE"
+          test -f "${TEST_FILE}.sig"
 
       - uses: tauri-apps/tauri-action@v0
         env:

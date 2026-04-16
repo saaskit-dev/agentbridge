@@ -1,0 +1,27 @@
+name: Quality Gate
+description: Install dependencies and run shared repository validation checks
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - uses: pnpm/action-setup@v4
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Lint
+      shell: bash
+      run: pnpm lint
+
+    - name: Check dependency architecture
+      shell: bash
+      run: pnpm run check:deps
+
+    - name: Typecheck (core + CLI)
+      shell: bash
+      run: pnpm typecheck

@@ -22,24 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - uses: pnpm/action-setup@v4
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Check dependency architecture
-        run: pnpm run check:deps
-
-      - name: Typecheck (core + CLI)
-        run: pnpm typecheck
+      - uses: ./.github/actions/quality-gate
 
   deploy:
     needs: validate
