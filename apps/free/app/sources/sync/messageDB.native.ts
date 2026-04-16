@@ -2,7 +2,9 @@
  * RFC-010: Native (iOS/Android) SQLite message cache via expo-sqlite.
  */
 import * as SQLite from 'expo-sqlite';
+import type { SQLiteBindValue } from 'expo-sqlite';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { sanitizeSQLiteParams } from './cacheContent';
 import type { CachedCapabilitiesRow, CachedMessage, MessageDB } from './messageDBSchema';
 import { MIGRATION_SQL_STATEMENTS, SCHEMA_SQL } from './messageDBSchema';
 
@@ -27,6 +29,10 @@ async function getDB(): Promise<SQLite.SQLiteDatabase> {
   return db;
 }
 
+function sqliteParams(params: readonly (SQLiteBindValue | undefined)[]): SQLiteBindValue[] {
+  return sanitizeSQLiteParams(params);
+}
+
 export const messageDB: MessageDB = {
   async init() {
     await getDB();
@@ -37,12 +43,12 @@ export const messageDB: MessageDB = {
     if (opts.beforeSeq != null) {
       return d.getAllAsync<CachedMessage>(
         'SELECT * FROM messages WHERE session_id = ? AND seq < ? ORDER BY seq DESC LIMIT ?',
-        [sessionId, opts.beforeSeq, opts.limit]
+        sqliteParams([sessionId, opts.beforeSeq, opts.limit])
       );
     }
     return d.getAllAsync<CachedMessage>(
       'SELECT * FROM messages WHERE session_id = ? ORDER BY seq ASC LIMIT ?',
-      [sessionId, opts.limit]
+      sqliteParams([sessionId, opts.limit])
     );
   },
 
@@ -50,7 +56,7 @@ export const messageDB: MessageDB = {
     const d = await getDB();
     const row = await d.getFirstAsync<{ last_seq: number }>(
       'SELECT last_seq FROM session_sync WHERE session_id = ?',
-      [sessionId]
+      sqliteParams([sessionId])
     );
     return row?.last_seq ?? 0;
   },
@@ -63,7 +69,7 @@ export const messageDB: MessageDB = {
         await d.runAsync(
           `INSERT OR REPLACE INTO messages (id, session_id, seq, content, trace_id, role, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [m.id, sessionId, m.seq, m.content, m.trace_id, m.role, m.created_at, m.updated_at]
+          sqliteParams([m.id, sessionId, m.seq, m.content, m.trace_id, m.role, m.created_at, m.updated_at])
         );
       }
     });
@@ -73,7 +79,7 @@ export const messageDB: MessageDB = {
     const d = await getDB();
     await d.runAsync(
       'INSERT OR REPLACE INTO session_sync (session_id, last_seq, synced_at) VALUES (?, ?, ?)',
-      [sessionId, seq, Date.now()]
+      sqliteParams([sessionId, seq, Date.now()])
     );
   },
 
@@ -84,20 +90,20 @@ export const messageDB: MessageDB = {
         await d.runAsync(
           `INSERT OR REPLACE INTO messages (id, session_id, seq, content, trace_id, role, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [m.id, sessionId, m.seq, m.content, m.trace_id, m.role, m.created_at, m.updated_at]
+          sqliteParams([m.id, sessionId, m.seq, m.content, m.trace_id, m.role, m.created_at, m.updated_at])
         );
       }
       await d.runAsync(
         'INSERT OR REPLACE INTO session_sync (session_id, last_seq, synced_at) VALUES (?, ?, ?)',
-        [sessionId, seq, Date.now()]
+        sqliteParams([sessionId, seq, Date.now()])
       );
     });
   },
 
   async deleteSession(sessionId) {
     const d = await getDB();
-    await d.runAsync('DELETE FROM messages WHERE session_id = ?', [sessionId]);
-    await d.runAsync('DELETE FROM session_sync WHERE session_id = ?', [sessionId]);
+    await d.runAsync('DELETE FROM messages WHERE session_id = ?', sqliteParams([sessionId]));
+    await d.runAsync('DELETE FROM session_sync WHERE session_id = ?', sqliteParams([sessionId]));
   },
 
   async deleteAll() {
@@ -112,7 +118,7 @@ export const messageDB: MessageDB = {
     const d = await getDB();
     const row = await d.getFirstAsync<CachedCapabilitiesRow>(
       'SELECT * FROM capabilities_cache WHERE machine_id = ? AND agent_type = ?',
-      [machineId, agentType]
+      sqliteParams([machineId, agentType])
     );
     return row ?? null;
   },
@@ -122,7 +128,7 @@ export const messageDB: MessageDB = {
     await d.runAsync(
       `INSERT OR REPLACE INTO capabilities_cache (machine_id, agent_type, capabilities, updated_at, kv_version)
        VALUES (?, ?, ?, ?, ?)`,
-      [row.machine_id, row.agent_type, row.capabilities, row.updated_at, row.kv_version]
+      sqliteParams([row.machine_id, row.agent_type, row.capabilities, row.updated_at, row.kv_version])
     );
   },
 
@@ -130,7 +136,7 @@ export const messageDB: MessageDB = {
     const d = await getDB();
     return d.getAllAsync<{ key: string; value: string }>(
       'SELECT key, value FROM kv_store WHERE namespace = ?',
-      [namespace]
+      sqliteParams([namespace])
     );
   },
 
@@ -138,17 +144,17 @@ export const messageDB: MessageDB = {
     const d = await getDB();
     await d.runAsync(
       'INSERT OR REPLACE INTO kv_store (namespace, key, value) VALUES (?, ?, ?)',
-      [namespace, key, value]
+      sqliteParams([namespace, key, value])
     );
   },
 
   async kvDelete(namespace, key) {
     const d = await getDB();
-    await d.runAsync('DELETE FROM kv_store WHERE namespace = ? AND key = ?', [namespace, key]);
+    await d.runAsync('DELETE FROM kv_store WHERE namespace = ? AND key = ?', sqliteParams([namespace, key]));
   },
 
   async kvDeleteAll(namespace) {
     const d = await getDB();
-    await d.runAsync('DELETE FROM kv_store WHERE namespace = ?', [namespace]);
+    await d.runAsync('DELETE FROM kv_store WHERE namespace = ?', sqliteParams([namespace]));
   },
 };

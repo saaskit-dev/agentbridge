@@ -9,6 +9,52 @@
 
 ---
 
+## apps/free/app/sources/app/(app)/machine/[id]/import-sessions.tsx — iOS 禁用 FlatList `removeClippedSubviews`
+
+**问题**：在 React Native Fabric 的 iOS 真机上，导入 session 列表页开启 `removeClippedSubviews` 后，TestFlight 崩溃日志命中
+`RCTViewComponentView updateClippedSubviewsWithClipRect:relativeToView:` 递归栈并以 `SIGABRT` 终止。
+
+**触发条件**：
+
+- iOS TestFlight / release 包
+- 新架构 Fabric 打开
+- 进入 machine import sessions 页面并滚动 `FlatList`
+- 该列表启用 `removeClippedSubviews`
+
+**修复内容**：
+
+- 该页面的 `FlatList` 仅在 Android 保持 `removeClippedSubviews`
+- iOS 显式关闭，优先规避 native clipped-subview 崩溃
+
+**上游**：React Native 官方 `FlatList` 文档明确标注 `removeClippedSubviews` 可能导致内容/渲染 bug，Fabric 下 iOS 原生栈也已出现对应崩溃迹象。
+
+**删除条件**：升级到确认不再出现 `RCTViewComponentView updateClippedSubviewsWithClipRect:relativeToView:` 崩溃的 React Native / Expo 版本，并完成 iOS 真机回归后可移除。
+
+---
+
+## apps/free/app/sources/sync/cacheContent.ts / messageDB.native.ts — SQLite bind 参数统一把 `undefined` 归一化为 `null`
+
+**问题**：TestFlight 旧崩溃日志在 iOS 上命中 `SQLiteModule.bindStatementParam`、`convertNSExceptionToJSError` 与 Hermes `EXC_BAD_ACCESS` 组合栈。
+`expo-sqlite` 的 TurboModule 路径在绑定非法参数值（尤其 `undefined`）时，会先抛原生异常，再由 JSI/Exception 转换链路放大成进程级崩溃。
+
+**触发条件**：
+
+- iOS TestFlight / release 包
+- App 通过 `expo-sqlite` 写入 SQLite
+- 绑定参数数组里混入 `undefined`（例如 `JSON.stringify(undefined)` 的结果）
+
+**修复内容**：
+
+- 新增 `serializeCachedContent()`，保证缓存消息内容最差也写入 JSON `null`
+- 新增 `sanitizeSQLiteParams()`，在 native SQLite 封装层把所有 `undefined` 统一转换为 `null`
+- 让错误退化为可观测的 SQL/约束失败，而不是 native bind 崩溃
+
+**上游**：崩溃栈指向 Expo SQLite iOS TurboModule 绑定路径；当前修复属于对第三方原生异常放大行为的防御性兼容处理。
+
+**删除条件**：确认上游 `expo-sqlite` 在 iOS 上对 `undefined`/非法绑定值做了安全处理，且新包长期不再出现 `SQLiteModule.bindStatementParam` / `convertNSExceptionToJSError` 相关崩溃后可移除。
+
+---
+
 ## packages/core/package.json / scripts/dev.sh — 清理 macOS `uchg` 不可变 dist 目录
 
 **问题**：在 macOS 上，`packages/core/dist` 偶发会被打上 `uchg`（user immutable）标记，导致即使文件归属正确，

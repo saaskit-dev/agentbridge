@@ -398,7 +398,8 @@ export default function ImportSessionsScreen() {
           initialNumToRender={16}
           maxToRenderPerBatch={16}
           windowSize={8}
-          removeClippedSubviews
+          // Fabric + iOS has known clipped-subview instability on some FlatLists.
+          removeClippedSubviews={Platform.OS === 'android'}
           ListHeaderComponent={
             <View style={styles.page}>
               <View style={styles.searchWrap}>

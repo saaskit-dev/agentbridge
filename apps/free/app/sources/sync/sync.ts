@@ -72,6 +72,7 @@ import { InvalidateSync } from '@/utils/sync';
 import { isTauriDesktop } from '@/utils/tauri';
 import type { PermissionMode } from './sessionCapabilities';
 import { messageDB } from './messageDB';
+import { serializeCachedContent } from './cacheContent';
 import { mergeQueuedMessagesForPromotion } from './syncQueue';
 
 const logger = new Logger('app/sync');
@@ -2582,7 +2583,7 @@ class Sync {
             id: n.id,
             session_id: sessionId,
             seq: messages[origIdx]?.seq ?? 0,
-            content: JSON.stringify(decryptedMessages[origIdx]?.content ?? null),
+            content: serializeCachedContent(decryptedMessages[origIdx]?.content),
             trace_id: n.traceId ?? decryptedMessages[origIdx]?.traceId ?? null,
             role: n.role ?? 'agent',
             created_at: n.createdAt ?? Date.now(),
@@ -2763,7 +2764,7 @@ class Sync {
           id: n.id,
           session_id: sessionId,
           seq: ack.messages![i]?.seq ?? 0,
-          content: JSON.stringify(decryptedMessages[i]?.content),
+          content: serializeCachedContent(decryptedMessages[i]?.content),
           trace_id: n.traceId ?? decryptedMessages[i]?.traceId ?? null,
           role: n.role ?? 'agent',
           created_at: n.createdAt ?? Date.now(),
@@ -3172,7 +3173,7 @@ class Sync {
             id: n.id,
             session_id: sessionId,
             seq,
-            content: JSON.stringify(decryptedMessages[origIdx]?.content ?? null),
+            content: serializeCachedContent(decryptedMessages[origIdx]?.content),
             trace_id: n.traceId ?? decryptedMessages[origIdx]?.traceId ?? null,
             role: n.role ?? 'agent',
             created_at: n.createdAt ?? Date.now(),
@@ -3410,7 +3411,7 @@ class Sync {
                     id: lastMessage.id,
                     session_id: sessionId,
                     seq: incomingSeq,
-                    content: JSON.stringify(decrypted.content),
+                    content: serializeCachedContent(decrypted.content),
                     trace_id: lastMessage.traceId ?? decrypted.traceId ?? null,
                     role: lastMessage.role ?? 'agent',
                     created_at: lastMessage.createdAt ?? Date.now(),
