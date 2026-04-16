@@ -61,8 +61,11 @@ function updateVersion(newVersion) {
   console.log('  2. 构建桌面包:');
   console.log('     ./run desktop release');
   console.log('');
-  console.log('  3. 或直接构建移动端 (EAS 会自动运行 prebuild):');
-  console.log('     cd apps/free/app && eas build');
+  console.log('  3. 构建 Android APK:');
+  console.log('     ./run release android');
+  console.log('');
+  console.log('  4. 或在 self-hosted macOS runner / 本机构建 iOS:');
+  console.log('     ./scripts/free-app-release-production.sh ios');
 }
 
 function main() {

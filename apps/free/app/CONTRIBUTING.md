@@ -9,7 +9,7 @@
 | **Development** | `app.saaskit.freecode.dev` | Free (dev) | 本地开发，连局域网 dev server |
 | **Production**  | `app.saaskit.freecode`     | Free       | App Store / TestFlight        |
 
-公测当前通过 **TestFlight**（iOS）分发；Android 生产链路走 signed AAB + Google Play。
+公测当前通过 **TestFlight**（iOS）分发；Android 当前按变体直接产出 signed APK，并上传到 GitHub Release 用于设备分发安装。
 
 ## Quick Start
 
@@ -38,8 +38,11 @@ pnpm tauri:build:production
 # 生产版 iOS → App Store
 ./run release ios
 
-# 生产版 Android → signed AAB
+# 生产版 Android → signed APK
 ./run release android
+
+# 开发版 Android（.dev 包名，本地 server）→ signed APK
+./run release android-dev
 
 # OTA 热更新（无需审核）
 ./run ota
@@ -51,6 +54,8 @@ pnpm tauri:build:production
 
 - `development`（默认）→ `.dev` bundle ID，连局域网 dev server
 - `production` → 正式 bundle ID，连生产服务器
+
+两种变体都可以构建为 release-signed APK；是否是 release 包不再由 `APP_ENV` 决定。
 
 ## Deep Linking
 

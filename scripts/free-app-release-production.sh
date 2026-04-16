@@ -7,7 +7,7 @@
 #
 # 说明:
 #   iOS 走本机 / self-hosted GitHub runner + App Store Connect。
-#   Android 走本机 / self-hosted GitHub runner 构建 signed AAB，CI 再上传 Google Play。
+#   Android 走本机构建 signed APK，用于直接分发安装。
 
 set -e
 
@@ -27,8 +27,8 @@ case "${1:-}" in
         APP_ENV=production "$ROOT_DIR/scripts/free-app-ios-release.sh"
         ;;
     android)
-        echo "🤖 本机构建 Android AAB..."
-        APP_ENV=production "$ROOT_DIR/scripts/free-app-android-release.sh"
+        echo "🤖 本机构建 Android 生产 APK..."
+        APP_ENV=production "$ROOT_DIR/scripts/free-app-android-apk.sh"
         ;;
     "")
         echo "用法: $0 ios|android" >&2

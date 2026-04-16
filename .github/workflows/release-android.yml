@@ -1,0 +1,235 @@
+name: Release Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: Version bump strategy
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - version
+      version:
+        description: Explicit version when bump_type=version
+        required: false
+        type: string
+      include_dev:
+        description: Also publish the development (.dev) APK
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: release-android
+  cancel-in-progress: false
+
+jobs:
+  quality_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Check dependency architecture
+        run: pnpm run check:deps
+
+      - name: Typecheck (core + CLI)
+        run: pnpm typecheck
+
+  prepare_release:
+    needs: quality_gate
+    name: Prepare Android Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      tag_name: ${{ steps.prepare.outputs.tag_name }}
+      release_sha: ${{ steps.prepare.outputs.release_sha }}
+      release_id: ${{ steps.prepare.outputs.release_id }}
+      release_url: ${{ steps.prepare.outputs.release_url }}
+      include_dev: ${{ steps.prepare.outputs.include_dev }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bump version and create tag
+        id: prepare
+        env:
+          INPUT_BUMP_TYPE: ${{ inputs.bump_type }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_INCLUDE_DEV: ${{ inputs.include_dev }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ "$INPUT_BUMP_TYPE" = "version" ]; then
+            if [ -z "${INPUT_VERSION:-}" ]; then
+              echo "version input is required when bump_type=version" >&2
+              exit 1
+            fi
+            node ./scripts/version.js "$INPUT_VERSION"
+          else
+            node ./scripts/version.js "$INPUT_BUMP_TYPE"
+          fi
+
+          VERSION="$(node -p "require('./apps/free/app/package.json').version")"
+          TAG_NAME="android-v${VERSION}"
+
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG_NAME" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/free/app/package.json apps/free/app/src-tauri/tauri.conf.json
+          git commit -m "Release android ${VERSION}"
+          git tag "$TAG_NAME"
+          git push origin HEAD:refs/heads/main
+          git push origin "$TAG_NAME"
+
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          RELEASE_BODY="$(mktemp)"
+          cat > "$RELEASE_BODY" <<EOF
+          Android APK release for Free.
+
+          - Includes production signed APK
+          - Includes development signed APK when requested
+          - SHA256SUMS.txt is attached for integrity verification
+          EOF
+          gh release create "$TAG_NAME" \
+            --repo "${{ github.repository }}" \
+            --title "Android $TAG_NAME" \
+            --notes-file "$RELEASE_BODY" \
+            --target "$RELEASE_SHA" \
+            --verify-tag
+          RELEASE_ID="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json databaseId --jq '.databaseId')"
+          RELEASE_URL="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json url --jq '.url')"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+          echo "release_url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+          echo "include_dev=$INPUT_INCLUDE_DEV" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize prepared release
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Android Release Prepared
+          - Version: ${{ steps.prepare.outputs.version }}
+          - Tag: \`${{ steps.prepare.outputs.tag_name }}\`
+          - Release: ${{ steps.prepare.outputs.release_url }}
+          - Include dev APK: \`${{ steps.prepare.outputs.include_dev }}\`
+          EOF
+
+  release:
+    needs: prepare_release
+    runs-on: ${{ fromJSON(vars.ANDROID_RUNNER_LABELS_JSON || '["self-hosted","Linux","X64","android-build"]') }}
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ needs.prepare_release.outputs.tag_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Android release artifacts
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          ANDROID_VERSION_CODE: ${{ vars.ANDROID_VERSION_CODE }}
+        run: |
+          set -euo pipefail
+          VARIANTS="production"
+          if [ "${{ needs.prepare_release.outputs.include_dev }}" = "true" ]; then
+            VARIANTS="$VARIANTS development"
+          fi
+          ./scripts/free-android-release.sh $VARIANTS
+
+      - name: Upload Android assets to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RELEASE_DIR="apps/free/app/dist-android/${{ needs.prepare_release.outputs.version }}"
+          find "$RELEASE_DIR" -type f -print0 | while IFS= read -r -d '' asset; do
+            gh release upload "${{ needs.prepare_release.outputs.tag_name }}" \
+              "$asset" \
+              --repo "${{ github.repository }}" \
+              --clobber
+          done
+
+      - name: Verify Android assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ASSET_NAMES="$(gh release view "${{ needs.prepare_release.outputs.tag_name }}" --repo "${{ github.repository }}" --json assets --jq '.assets[].name')"
+          echo "$ASSET_NAMES"
+          echo "$ASSET_NAMES" | grep -qx 'SHA256SUMS.txt'
+          echo "$ASSET_NAMES" | grep -qx 'build-production.env'
+          echo "$ASSET_NAMES" | grep -Eqx "free-production-${{ needs.prepare_release.outputs.version }}-[0-9]+\\.apk"
+          if [ "${{ needs.prepare_release.outputs.include_dev }}" = "true" ]; then
+            echo "$ASSET_NAMES" | grep -qx 'build-development.env'
+            echo "$ASSET_NAMES" | grep -Eqx "free-development-${{ needs.prepare_release.outputs.version }}-[0-9]+\\.apk"
+          fi
+
+      - name: Summarize published release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ASSET_NAMES="$(gh release view "${{ needs.prepare_release.outputs.tag_name }}" --repo "${{ github.repository }}" --json assets --jq '.assets[].name' | paste -sd ', ' -)"
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Android Release Published
+          - Version: ${{ needs.prepare_release.outputs.version }}
+          - Tag: \`${{ needs.prepare_release.outputs.tag_name }}\`
+          - Release: ${{ needs.prepare_release.outputs.release_url }}
+          - Assets: ${ASSET_NAMES:-none}
+          EOF
