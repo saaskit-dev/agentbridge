@@ -43,8 +43,8 @@ import {
   useIsDataReady,
   useLocalSetting,
   useRealtimeStatus,
+  useSessionMessageStats,
   useSessionQueuedMessages,
-  useSessionMessages,
   useSessionSendError,
   useSessionUsage,
   useSetting,
@@ -436,9 +436,9 @@ function SessionViewLoaded(props: {
       voiceHooks.onVoiceStopped();
     }
   }, [realtimeStatus, sessionId]);
-  const { messages, isLoaded } = useSessionMessages(sessionId);
-  const hasRenderedMessagesRef = React.useRef(messages.length > 0);
-  if (messages.length > 0) {
+  const { count: messageCount, isLoaded } = useSessionMessageStats(sessionId);
+  const hasRenderedMessagesRef = React.useRef(messageCount > 0);
+  if (messageCount > 0) {
     hasRenderedMessagesRef.current = true;
   }
   const sendError = useSessionSendError(sessionId);
@@ -1042,7 +1042,7 @@ function SessionViewLoaded(props: {
     gitStatusSync.getSync(sessionId);
   }, [sessionId]);
 
-  const shouldRenderChatList = messages.length > 0 || hasRenderedMessagesRef.current;
+  const shouldRenderChatList = messageCount > 0 || hasRenderedMessagesRef.current;
   const previousRenderStateRef = React.useRef<{
     shouldRenderChatList: boolean;
     messageCount: number;
@@ -1053,23 +1053,23 @@ function SessionViewLoaded(props: {
     if (
       !previous ||
       previous.shouldRenderChatList !== shouldRenderChatList ||
-      previous.messageCount !== messages.length ||
+      previous.messageCount !== messageCount ||
       previous.isLoaded !== isLoaded
     ) {
       logger.debug('[chat-render] session content state changed', {
         sessionId,
         shouldRenderChatList,
-        messageCount: messages.length,
+        messageCount,
         isLoaded,
         hadRenderedMessages: hasRenderedMessagesRef.current,
       });
       previousRenderStateRef.current = {
         shouldRenderChatList,
-        messageCount: messages.length,
+        messageCount,
         isLoaded,
       };
     }
-  }, [isLoaded, messages.length, sessionId, shouldRenderChatList]);
+  }, [isLoaded, messageCount, sessionId, shouldRenderChatList]);
 
   const content = (
     <>

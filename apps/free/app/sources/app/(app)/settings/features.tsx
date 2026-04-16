@@ -13,7 +13,6 @@ export default function FeaturesSettingsScreen() {
     useSettingMutable('agentInputEnterToSend');
   const [commandPaletteEnabled, setCommandPaletteEnabled] =
     useLocalSettingMutable('commandPaletteEnabled');
-  const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
   const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
   return (
     <ItemList style={{ paddingTop: 0 }}>
@@ -31,13 +30,6 @@ export default function FeaturesSettingsScreen() {
           }
           icon={<Ionicons name="flask-outline" size={29} color="#5856D6" />}
           rightElement={<Switch value={experiments} onValueChange={setExperiments} />}
-          showChevron={false}
-        />
-        <Item
-          title={t('settingsFeatures.markdownCopyV2')}
-          subtitle={t('settingsFeatures.markdownCopyV2Subtitle')}
-          icon={<Ionicons name="text-outline" size={29} color="#34C759" />}
-          rightElement={<Switch value={markdownCopyV2} onValueChange={setMarkdownCopyV2} />}
           showChevron={false}
         />
         <Item

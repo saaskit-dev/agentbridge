@@ -78,21 +78,49 @@ const styles = StyleSheet.create(theme => ({
     flex: 1,
     alignItems: 'center',
   },
+  titleContent: {
+    alignItems: 'center',
+    gap: 6,
+  },
   titleText: {
     fontSize: 17,
     color: theme.colors.header.tint,
     fontWeight: '600',
     ...Typography.default('semiBold'),
   },
-  statusContainer: {
+  statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: -2,
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '500',
-    lineHeight: 16,
+  statusChip: {
+    minHeight: 24,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.divider,
+  },
+  statusChipPressed: {
+    backgroundColor: theme.colors.surfacePressedOverlay,
+  },
+  statusChipText: {
+    fontSize: 11,
+    lineHeight: 14,
+    ...Typography.default('semiBold'),
+  },
+  statusDotInline: {
+    marginRight: 6,
+  },
+  statusGhostText: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: theme.colors.textSecondary,
     ...Typography.default(),
   },
   headerButton: {
@@ -142,46 +170,50 @@ const HeaderTitle = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
 
   return (
     <View style={styles.titleContainer}>
-      <Text style={styles.titleText}>{t(TAB_TITLES[activeTab])}</Text>
+      <View style={styles.titleContent}>
+        <Text style={styles.titleText}>{t(TAB_TITLES[activeTab])}</Text>
       {!!connectionStatus.text && (
-        <View style={styles.statusContainer}>
-          <StatusDot
-            color={connectionStatus.color}
-            isPulsing={connectionStatus.isPulsing}
-            size={6}
-            style={{ marginRight: 4 }}
-          />
-          <Pressable onPress={handleOpenServer} hitSlop={8}>
-            <Text style={[styles.statusText, { color: connectionStatus.color }]}>
+        <View style={styles.statusRow}>
+          <Pressable
+            onPress={handleOpenServer}
+            hitSlop={8}
+            style={({ pressed }) => [styles.statusChip, pressed ? styles.statusChipPressed : null]}
+          >
+            <StatusDot
+              color={connectionStatus.color}
+              isPulsing={connectionStatus.isPulsing}
+              size={6}
+              style={styles.statusDotInline}
+            />
+            <Text style={[styles.statusChipText, { color: connectionStatus.color }]}>
               {connectionStatus.text}
             </Text>
           </Pressable>
           {socketStatus.status === 'connected' && machineCount > 0 && (
-            <>
-              <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginHorizontal: 4 }]}>
-                ·
+            <Pressable
+              onPress={handleOpenSettings}
+              hitSlop={8}
+              style={({ pressed }) => [styles.statusChip, pressed ? styles.statusChipPressed : null]}
+            >
+              <Text style={[styles.statusChipText, { color: machineStatusColor }]}>
+                {machineStatusText}
               </Text>
-              <Pressable onPress={handleOpenSettings} hitSlop={8}>
-                <Text style={[styles.statusText, { color: machineStatusColor }]}>
-                  {machineStatusText}
-                </Text>
-              </Pressable>
-            </>
+            </Pressable>
           )}
           {activeTab === 'sessions' && backgroundPlaybackText && (
-            <>
-              <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginHorizontal: 4 }]}>
-                ·
+            <Pressable
+              onPress={handleOpenFocusAudio}
+              hitSlop={8}
+              style={({ pressed }) => [styles.statusChip, pressed ? styles.statusChipPressed : null]}
+            >
+              <Text style={[styles.statusGhostText, { color: theme.colors.status.connected }]}>
+                {backgroundPlaybackText}
               </Text>
-              <Pressable onPress={handleOpenFocusAudio} hitSlop={8}>
-                <Text style={[styles.statusText, { color: theme.colors.status.connected }]}>
-                  {backgroundPlaybackText}
-                </Text>
-              </Pressable>
-            </>
+            </Pressable>
           )}
         </View>
       )}
+      </View>
     </View>
   );
 });

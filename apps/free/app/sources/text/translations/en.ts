@@ -177,6 +177,16 @@ export const en: TranslationStructure = {
     supportUs: 'Join Us',
     supportUsSubtitlePro: 'You are a Builder 🎉',
     supportUsSubtitle: 'Be part of the future',
+    workspaceControl: 'Your mobile control surface for local coding agents.',
+    machineSummary: ({ total, online }: { total: number; online: number }) =>
+      `${online}/${total} machines online`,
+    machineSummaryLong: ({ total, online }: { total: number; online: number }) =>
+      `${online} live in the current view, ${total} available to inspect. Open any machine to inspect paths, sessions, and daemon state.`,
+    devicesReadyTitle: 'Devices Ready',
+    noMachinesConnectedYet: 'No machines connected yet. Link your first device to start and monitor sessions here.',
+    openMachine: 'Open Machine',
+    scanQrDescription: 'Point your camera at the terminal QR code and bring a machine online in seconds.',
+    pasteTerminalLinkDescription: 'Paste a terminal auth link when you want to pair manually or from another desktop.',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `${service} account connected`,
@@ -606,10 +616,13 @@ export const en: TranslationStructure = {
     emptyMainScreen: {
       // Used by EmptyMainScreen component
       readyToCode: 'Ready to code?',
+      productSubtitle: 'Turn this phone into a live control room for the coding sessions running on your machines.',
+      commandLabel: 'Terminal Setup',
       installCli: 'Install the Free CLI',
       runIt: 'Run it',
       scanQrCode: 'Scan the QR code',
       openCamera: 'Open Camera',
+      manualHint: 'Already have a terminal auth link? Paste it instead.',
     },
   },
 
@@ -691,6 +704,11 @@ export const en: TranslationStructure = {
 
   sidebar: {
     sessionsTitle: 'Free',
+    scopeLabel: 'Scope',
+    allMachines: 'All Machines',
+    noSessionsForMachine: 'No sessions on this machine',
+    machineFilterDescription: 'Choose which machine sessions appear in the sidebar.',
+    voiceLive: 'Voice Live',
   },
 
   toolView: {
@@ -1167,7 +1185,9 @@ export const en: TranslationStructure = {
     // Markdown copy functionality
     codeCopied: 'Code copied',
     copyFailed: 'Failed to copy',
+    copyMarkdown: 'Copy Markdown',
     mermaidRenderFailed: 'Failed to render mermaid diagram',
+    openSelection: 'Open Selection Page',
   },
 
   artifacts: {

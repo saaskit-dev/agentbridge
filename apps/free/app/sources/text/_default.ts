@@ -202,6 +202,16 @@ export const en = {
     supportUs: 'Join Us',
     supportUsSubtitlePro: 'You are a Builder 🎉',
     supportUsSubtitle: 'Be part of the future',
+    workspaceControl: 'Your mobile control surface for local coding agents.',
+    machineSummary: ({ total, online }: { total: number; online: number }) =>
+      `${online}/${total} machines online`,
+    machineSummaryLong: ({ total, online }: { total: number; online: number }) =>
+      `${online} live in the current view, ${total} available to inspect. Open any machine to inspect paths, sessions, and daemon state.`,
+    devicesReadyTitle: 'Devices Ready',
+    noMachinesConnectedYet: 'No machines connected yet. Link your first device to start and monitor sessions here.',
+    openMachine: 'Open Machine',
+    scanQrDescription: 'Point your camera at the terminal QR code and bring a machine online in seconds.',
+    pasteTerminalLinkDescription: 'Paste a terminal auth link when you want to pair manually or from another desktop.',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `${service} account connected`,
@@ -631,10 +641,13 @@ export const en = {
     emptyMainScreen: {
       // Used by EmptyMainScreen component
       readyToCode: 'Ready to code?',
+      productSubtitle: 'Turn this phone into a live control room for the coding sessions running on your machines.',
+      commandLabel: 'Terminal Setup',
       installCli: 'Install the Free CLI',
       runIt: 'Run it',
       scanQrCode: 'Scan the QR code',
       openCamera: 'Open Camera',
+      manualHint: 'Already have a terminal auth link? Paste it instead.',
     },
   },
 
@@ -716,6 +729,11 @@ export const en = {
 
   sidebar: {
     sessionsTitle: 'Free',
+    scopeLabel: 'Scope',
+    allMachines: 'All Machines',
+    noSessionsForMachine: 'No sessions on this machine',
+    machineFilterDescription: 'Choose which machine sessions appear in the sidebar.',
+    voiceLive: 'Voice Live',
   },
 
   toolView: {
@@ -1192,7 +1210,9 @@ export const en = {
     // Markdown copy functionality
     codeCopied: 'Code copied',
     copyFailed: 'Copy failed',
+    copyMarkdown: 'Copy Markdown',
     mermaidRenderFailed: 'Failed to render mermaid diagram',
+    openSelection: 'Open Selection Page',
   },
 
   artifacts: {
@@ -1407,18 +1427,13 @@ export type Translations = typeof en;
  * Generic translation type that matches the structure of Translations
  * but allows different string values (for other languages)
  */
-export type TranslationStructure = {
-  readonly [K in keyof Translations]: {
-    readonly [P in keyof Translations[K]]: Translations[K][P] extends string
+type TranslationLeaf = string | ((...args: any[]) => string);
+export type TranslationStructure<T = Translations> = {
+  readonly [K in keyof T]?: T[K] extends TranslationLeaf
+    ? T[K] extends string
       ? string
-      : Translations[K][P] extends (...args: any[]) => string
-        ? Translations[K][P]
-        : Translations[K][P] extends object
-          ? {
-              readonly [Q in keyof Translations[K][P]]: Translations[K][P][Q] extends string
-                ? string
-                : Translations[K][P][Q];
-            }
-          : Translations[K][P];
-  };
+      : T[K]
+    : T[K] extends object
+      ? TranslationStructure<T[K]>
+      : T[K];
 };

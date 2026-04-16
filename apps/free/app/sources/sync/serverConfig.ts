@@ -1,17 +1,19 @@
 import Constants from 'expo-constants';
 import { serverConfigStore } from './cachedKVStore';
+import { config } from '@/config';
 
 const SERVER_KEY = 'custom-server-url';
 const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
 
-// __DEV__ 由 React Native 运行时注入：debug build = true, release build = false
-// debug 时优先用 app.config.js 烘焙的局域网 IP 地址，release 时直接用生产 URL
-const DEFAULT_SERVER_URL: string = __DEV__
+// Runtime env and JS bundling mode are separate concerns:
+// - config.isDev tracks the baked app variant (development/production)
+// - __DEV__ tracks Metro/debug JS execution
+const DEFAULT_SERVER_URL: string = config.isDev
   ? (Constants.expoConfig?.extra?.app?.serverUrl ?? PRODUCTION_SERVER_URL)
   : PRODUCTION_SERVER_URL;
 
 function getDevWebServerUrlFromLocation(): string | null {
-  if (!__DEV__ || typeof window === 'undefined') {
+  if (!config.isDev || typeof window === 'undefined') {
     return null;
   }
 
@@ -47,7 +49,7 @@ function isProductionServerUrl(url: string | undefined): boolean {
 }
 
 export function isIgnoringProductionCustomServerInDev(): boolean {
-  return __DEV__ && isProductionServerUrl(getStoredCustomServerUrl());
+  return Boolean(config.isDev) && isProductionServerUrl(getStoredCustomServerUrl());
 }
 
 export function getServerUrl(): string {

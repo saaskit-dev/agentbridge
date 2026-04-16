@@ -106,6 +106,7 @@ export function StreamingText({
 }: StreamingTextProps) {
   const { state, reset } = useStreamingText({
     sessionId,
+    messageId,
     onTextComplete: (msgId, text) => {
       // Optionally handle completion
     },

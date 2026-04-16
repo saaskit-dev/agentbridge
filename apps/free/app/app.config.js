@@ -3,8 +3,8 @@ const os = require('os');
 
 // 两个变体：
 //
-//   development   本地开发   .dev bundleId   debug 签名   连局域网 dev server
-//   production    线上+公测  app.saaskit.freecode          App Store / TestFlight
+//   development   本地开发 / 内测   .dev bundleId   可签名 release APK   连局域网 dev server
+//   production    线上发布          app.saaskit.freecode   可签名 release APK   连生产服务器
 const variant = process.env.APP_ENV || 'development';
 const iosBuildNumber = process.env.IOS_BUILD_NUMBER || '1';
 const androidVersionCode = Number.parseInt(process.env.ANDROID_VERSION_CODE || iosBuildNumber, 10) || 1;
@@ -250,6 +250,7 @@ export default {
         projectId: expoProjectId,
       },
       app: {
+        variant,
         isDev: variant === 'development',
         serverUrl,
         elevenLabsAgentIdDev: 'agent_1601kmtfet07fdxvxdrt15jxn7xe',

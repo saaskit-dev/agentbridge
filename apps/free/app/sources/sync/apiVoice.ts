@@ -22,7 +22,7 @@ export async function fetchVoiceToken(
   logger.debug(`[Voice] User ID: ${userId}`);
 
   // Get agent ID from config
-  const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
+  const agentId = config.isDev ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
 
   if (!agentId) {
     throw new Error('Agent ID not configured');

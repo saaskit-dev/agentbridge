@@ -43,7 +43,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
   }
 
   const experimentsEnabled = storage.getState().settings.experiments;
-  const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
+  const agentId = config.isDev ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
 
   if (!agentId) {
     log.error('Agent ID not configured');

@@ -32,6 +32,8 @@ const logger = new Logger('app/hooks/useStreamingText');
 export interface UseStreamingTextOptions {
   /** Session ID to filter events for */
   sessionId: string;
+  /** Message ID to filter events for */
+  messageId?: string | null;
   /** Callback when text delta is received */
   onTextDelta?: (messageId: string, delta: string) => void;
   /** Callback when text streaming completes */
@@ -67,7 +69,7 @@ export interface UseStreamingTextReturn {
  * ```
  */
 export function useStreamingText(options: UseStreamingTextOptions): UseStreamingTextReturn {
-  const { sessionId, onTextDelta, onTextComplete } = options;
+  const { sessionId, messageId, onTextDelta, onTextComplete } = options;
 
   // isMounted guard to prevent setState after unmount
   const isMountedRef = useRef(true);
@@ -89,11 +91,6 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
 
     const handleEphemeral = (update: ApiEphemeralUpdate) => {
       if (!isMountedRef.current) return;
-
-      // Only process streaming events for our session
-      if ('sessionId' in update && update.sessionId !== sessionId) {
-        return;
-      }
 
       switch (update.type) {
         case 'text_delta': {
@@ -121,13 +118,16 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
     };
 
     // Subscribe to ephemeral updates
-    const unsubscribe = sync.onEphemeralUpdate?.(handleEphemeral as (update: unknown) => void);
+    const unsubscribe = sync.onEphemeralUpdate?.(handleEphemeral as (update: unknown) => void, {
+      sessionId,
+      messageId: messageId ?? undefined,
+    });
 
     return () => {
       isMountedRef.current = false;
       unsubscribe?.();
     };
-  }, [sessionId]);
+  }, [messageId, sessionId]);
 
   // Reset streaming state
   const reset = useCallback(() => {

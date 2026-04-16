@@ -80,21 +80,65 @@ export {
  * Each language must match the exact structure of the English translations
  * All languages defined in SUPPORTED_LANGUAGES must be imported and included here
  */
-const translations: Record<SupportedLanguage, TranslationStructure> = {
+const rawTranslations: Record<SupportedLanguage, TranslationStructure> = {
   en,
-  ru, // TypeScript will enforce that ru matches the TranslationStructure type exactly
-  pl, // TypeScript will enforce that pl matches the TranslationStructure type exactly
-  es, // TypeScript will enforce that es matches the TranslationStructure type exactly
-  it, // TypeScript will enforce that it matches the TranslationStructure type exactly
-  pt, // TypeScript will enforce that pt matches the TranslationStructure type exactly
-  ca, // TypeScript will enforce that ca matches the TranslationStructure type exactly
-  'zh-Hans': zhHans, // TypeScript will enforce that zh matches the TranslationStructure type exactly
-  'zh-Hant': zhHant, // TypeScript will enforce that zh-Hant matches the TranslationStructure type exactly
-  ja, // TypeScript will enforce that ja matches the TranslationStructure type exactly
+  ru,
+  pl,
+  es,
+  it,
+  pt,
+  ca,
+  'zh-Hans': zhHans,
+  'zh-Hant': zhHant,
+  ja,
+};
+
+function mergeTranslations<T extends Record<string, any>>(base: T, overrides?: TranslationStructure<T>): T {
+  if (!overrides) {
+    return base;
+  }
+
+  const result: Record<string, any> = Array.isArray(base) ? [...base] : { ...base };
+  for (const key of Object.keys(overrides) as Array<keyof T>) {
+    const overrideValue = overrides[key];
+    if (overrideValue === undefined) {
+      continue;
+    }
+
+    const baseValue = base[key];
+    if (
+      baseValue &&
+      overrideValue &&
+      typeof baseValue === 'object' &&
+      typeof overrideValue === 'object' &&
+      !Array.isArray(baseValue) &&
+      !Array.isArray(overrideValue)
+    ) {
+      result[key as string] = mergeTranslations(baseValue, overrideValue as TranslationStructure<typeof baseValue>);
+      continue;
+    }
+
+    result[key as string] = overrideValue;
+  }
+
+  return result as T;
+}
+
+const translations: Record<SupportedLanguage, Translations> = {
+  en,
+  ru: mergeTranslations(en, ru),
+  pl: mergeTranslations(en, pl),
+  es: mergeTranslations(en, es),
+  it: mergeTranslations(en, it),
+  pt: mergeTranslations(en, pt),
+  ca: mergeTranslations(en, ca),
+  'zh-Hans': mergeTranslations(en, zhHans),
+  'zh-Hant': mergeTranslations(en, zhHant),
+  ja: mergeTranslations(en, ja),
 };
 
 // Compile-time check: ensure all supported languages have translations
-const _typeCheck: Record<SupportedLanguage, TranslationStructure> = translations;
+const _typeCheck: Record<SupportedLanguage, TranslationStructure> = rawTranslations;
 
 //
 // Resolve language

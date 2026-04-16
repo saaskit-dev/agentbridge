@@ -26,7 +26,7 @@ import {
   saveSessionDesiredConfigOptions,
   loadSessionModelModes,
   saveSessionModelModes,
-  saveCachedSessions,
+  scheduleSaveCachedSessions,
 } from './persistence';
 import { Profile } from './profile';
 import { projectManager } from './projectManager';
@@ -111,6 +111,7 @@ export type KnownEntitlements = 'pro';
 interface SessionMessages {
   messages: Message[];
   messagesMap: Record<string, Message>;
+  messageIndexMap: Record<string, number>;
   reducerState: ReducerState;
   isLoaded: boolean;
   hasOlderMessages: boolean;
@@ -476,15 +477,18 @@ function findMessageInsertIndex(messages: Message[], message: Message): number {
 function mergeSortedMessages(
   existingMessages: Message[],
   existingMessagesMap: Record<string, Message>,
+  existingMessageIndexMap: Record<string, number>,
   incomingMessages: Message[]
 ): {
   messages: Message[];
   messagesMap: Record<string, Message>;
+  messageIndexMap: Record<string, number>;
 } {
   if (incomingMessages.length === 0) {
     return {
       messages: existingMessages,
       messagesMap: existingMessagesMap,
+      messageIndexMap: existingMessageIndexMap,
     };
   }
 
@@ -495,10 +499,7 @@ function mergeSortedMessages(
 
   const mergedMessagesMap = { ...existingMessagesMap };
   const nextMessages = existingMessages.slice();
-  const existingIndexes = new Map<string, number>();
-  existingMessages.forEach((message, index) => {
-    existingIndexes.set(message.id, index);
-  });
+  const nextMessageIndexMap = { ...existingMessageIndexMap };
 
   const newMessages: Message[] = [];
   let requiresFullSort = false;
@@ -512,7 +513,7 @@ function mergeSortedMessages(
       continue;
     }
 
-    const existingIndex = existingIndexes.get(messageId);
+    const existingIndex = nextMessageIndexMap[messageId];
     if (existingIndex === undefined || hasMessageSortKeyChanged(previousMessage, nextMessage)) {
       requiresFullSort = true;
       break;
@@ -522,9 +523,15 @@ function mergeSortedMessages(
   }
 
   if (requiresFullSort) {
+    const sortedMessages = Object.values(mergedMessagesMap).sort(sortMessagesDesc);
+    const sortedMessageIndexMap: Record<string, number> = {};
+    sortedMessages.forEach((message, index) => {
+      sortedMessageIndexMap[message.id] = index;
+    });
     return {
-      messages: Object.values(mergedMessagesMap).sort(sortMessagesDesc),
+      messages: sortedMessages,
       messagesMap: mergedMessagesMap,
+      messageIndexMap: sortedMessageIndexMap,
     };
   }
 
@@ -532,6 +539,7 @@ function mergeSortedMessages(
     return {
       messages: nextMessages,
       messagesMap: mergedMessagesMap,
+      messageIndexMap: nextMessageIndexMap,
     };
   }
 
@@ -541,9 +549,14 @@ function mergeSortedMessages(
     nextMessages.splice(insertIndex, 0, message);
   }
 
+  nextMessages.forEach((message, index) => {
+    nextMessageIndexMap[message.id] = index;
+  });
+
   return {
     messages: nextMessages,
     messagesMap: mergedMessagesMap,
+    messageIndexMap: nextMessageIndexMap,
   };
 }
 
@@ -610,6 +623,7 @@ export const storage = create<StorageState>()((set, get) => {
     },
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: 'online' | number })[]) =>
       set(state => {
+        let shouldRefreshProjects = Object.keys(state.sessions).length === 0;
         // Load drafts and permission modes if sessions are empty (initial load)
         const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
         const savedPermissionModes =
@@ -627,20 +641,21 @@ export const storage = create<StorageState>()((set, get) => {
         sessions.forEach(session => {
           // Use centralized resolver for consistent state management
           const presence = resolveSessionOnlineState(session);
+          const previousSession = state.sessions[session.id];
 
           // Preserve existing draft and permission mode if they exist, or load from saved data
-          const existingDraft = state.sessions[session.id]?.draft;
-          const existingQueuedMessages = state.sessions[session.id]?.queuedMessages;
+          const existingDraft = previousSession?.draft;
+          const existingQueuedMessages = previousSession?.queuedMessages;
           const savedDraft = savedDrafts[session.id];
-          const existingPermissionMode = state.sessions[session.id]?.permissionMode;
+          const existingPermissionMode = previousSession?.permissionMode;
           const savedPermissionMode = savedPermissionModes[session.id];
-          const existingDesiredAgentMode = state.sessions[session.id]?.desiredAgentMode;
+          const existingDesiredAgentMode = previousSession?.desiredAgentMode;
           const savedDesiredAgentMode = savedDesiredAgentModes[session.id];
-          const existingDesiredConfigOptions = state.sessions[session.id]?.desiredConfigOptions;
+          const existingDesiredConfigOptions = previousSession?.desiredConfigOptions;
           const savedDesiredConfigOption = savedDesiredConfigOptions[session.id];
-          const existingModelMode = state.sessions[session.id]?.modelMode;
+          const existingModelMode = previousSession?.modelMode;
           const savedModelMode = savedModelModes[session.id];
-          const existingLatestUsage = state.sessions[session.id]?.latestUsage;
+          const existingLatestUsage = previousSession?.latestUsage;
           const fallbackPermissionMode: PermissionMode = isSandboxEnabled(session.metadata)
             ? 'yolo'
             : 'accept-edits';
@@ -661,6 +676,15 @@ export const storage = create<StorageState>()((set, get) => {
             modelMode: existingModelMode || savedModelMode || session.modelMode || null,
             latestUsage: session.latestUsage || existingLatestUsage,
           };
+
+          if (
+            !shouldRefreshProjects &&
+            (!previousSession ||
+              previousSession.metadata?.machineId !== session.metadata?.machineId ||
+              previousSession.metadata?.path !== session.metadata?.path)
+          ) {
+            shouldRefreshProjects = true;
+          }
         });
 
         const listData = buildLegacySessionsData(mergedSessions);
@@ -723,15 +747,21 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Always update the session messages, even if no new messages were created
             // This ensures the reducer state is updated with the new AgentState
-            const { messages: messagesArray, messagesMap: mergedMessagesMap } = mergeSortedMessages(
+            const {
+              messages: messagesArray,
+              messagesMap: mergedMessagesMap,
+              messageIndexMap: mergedMessageIndexMap,
+            } = mergeSortedMessages(
               existingSessionMessages.messages,
               existingSessionMessages.messagesMap,
+              existingSessionMessages.messageIndexMap,
               processedMessages
             );
 
             updatedSessionMessages[session.id] = {
               messages: messagesArray,
               messagesMap: mergedMessagesMap,
+              messageIndexMap: mergedMessageIndexMap,
               reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
               isLoaded: existingSessionMessages.isLoaded,
               hasOlderMessages: existingSessionMessages.hasOlderMessages,
@@ -758,7 +788,9 @@ export const storage = create<StorageState>()((set, get) => {
             machineMetadataMap.set(machine.id, machine.metadata);
           }
         });
-        projectManager.updateSessions(Object.values(mergedSessions), machineMetadataMap);
+        if (shouldRefreshProjects) {
+          projectManager.updateSessions(Object.values(mergedSessions), machineMetadataMap);
+        }
 
         return {
           ...state,
@@ -876,6 +908,7 @@ export const storage = create<StorageState>()((set, get) => {
         const existingSession = state.sessionMessages[sessionId] || {
           messages: [],
           messagesMap: {},
+          messageIndexMap: {},
           reducerState: createReducer(),
           isLoaded: false,
           hasOlderMessages: false,
@@ -902,11 +935,23 @@ export const storage = create<StorageState>()((set, get) => {
           latestStatus = reducerResult.latestStatus;
         }
 
-        const { messages: messagesArray, messagesMap: mergedMessagesMap } = mergeSortedMessages(
-          existingSession.messages,
-          existingSession.messagesMap,
-          processedMessages
-        );
+        const hasProcessedMessages = processedMessages.length > 0;
+        const {
+          messages: messagesArray,
+          messagesMap: mergedMessagesMap,
+          messageIndexMap: mergedMessageIndexMap,
+        } = hasProcessedMessages
+          ? mergeSortedMessages(
+              existingSession.messages,
+              existingSession.messagesMap,
+              existingSession.messageIndexMap,
+              processedMessages
+            )
+          : {
+              messages: existingSession.messages,
+              messagesMap: existingSession.messagesMap,
+              messageIndexMap: existingSession.messageIndexMap,
+            };
 
         // Update session with todos and latestUsage
         // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
@@ -941,6 +986,7 @@ export const storage = create<StorageState>()((set, get) => {
               ...existingSession,
               messages: messagesArray,
               messagesMap: mergedMessagesMap,
+              messageIndexMap: mergedMessageIndexMap,
               reducerState: existingSession.reducerState, // Explicitly include the mutated reducer state
               isLoaded: true,
             },
@@ -971,6 +1017,7 @@ export const storage = create<StorageState>()((set, get) => {
           // Process AgentState if it exists
           let messages: Message[] = [];
           const messagesMap: Record<string, Message> = {};
+          const messageIndexMap: Record<string, number> = {};
 
           if (agentState) {
             // Process AgentState through reducer to get initial permission messages
@@ -982,6 +1029,9 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             messages = Object.values(messagesMap).sort(sortMessagesDesc);
+            messages.forEach((message, index) => {
+              messageIndexMap[message.id] = index;
+            });
           }
 
           // Extract latestUsage from reducerState if available and update session
@@ -1005,6 +1055,7 @@ export const storage = create<StorageState>()((set, get) => {
                 reducerState,
                 messages,
                 messagesMap,
+                messageIndexMap,
                 isLoaded: true,
                 hasOlderMessages: false,
                 isLoadingOlder: false,
@@ -1257,7 +1308,9 @@ export const storage = create<StorageState>()((set, get) => {
           },
         };
         const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
-        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        scheduleSaveCachedSessions(
+          Object.values(updatedSessions).filter(current => current.status !== 'deleted')
+        );
 
         return {
           ...state,
@@ -1279,7 +1332,9 @@ export const storage = create<StorageState>()((set, get) => {
           },
         };
         const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
-        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        scheduleSaveCachedSessions(
+          Object.values(updatedSessions).filter(current => current.status !== 'deleted')
+        );
         return {
           ...state,
           sessions: updatedSessions,
@@ -1302,7 +1357,9 @@ export const storage = create<StorageState>()((set, get) => {
           },
         };
         const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
-        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        scheduleSaveCachedSessions(
+          Object.values(updatedSessions).filter(current => current.status !== 'deleted')
+        );
         return {
           ...state,
           sessions: updatedSessions,
@@ -1325,7 +1382,9 @@ export const storage = create<StorageState>()((set, get) => {
           },
         };
         const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
-        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        scheduleSaveCachedSessions(
+          Object.values(updatedSessions).filter(current => current.status !== 'deleted')
+        );
         return {
           ...state,
           sessions: updatedSessions,
@@ -1349,7 +1408,9 @@ export const storage = create<StorageState>()((set, get) => {
           },
         };
         const changedSessions = new Map<string, Session>([[sessionId, updatedSessions[sessionId]!]]);
-        saveCachedSessions(Object.values(updatedSessions).filter(current => current.status !== 'deleted'));
+        scheduleSaveCachedSessions(
+          Object.values(updatedSessions).filter(current => current.status !== 'deleted')
+        );
         return {
           ...state,
           sessions: updatedSessions,
@@ -1894,6 +1955,18 @@ export function useSessionMessages(sessionId: string): {
         isLoaded: session?.isLoaded ?? false,
         hasOlderMessages: session?.hasOlderMessages ?? false,
         isLoadingOlder: session?.isLoadingOlder ?? false,
+      };
+    })
+  );
+}
+
+export function useSessionMessageStats(sessionId: string): { count: number; isLoaded: boolean } {
+  return storage(
+    useShallow(state => {
+      const session = state.sessionMessages[sessionId];
+      return {
+        count: session?.messages.length ?? 0,
+        isLoaded: session?.isLoaded ?? false,
       };
     })
   );

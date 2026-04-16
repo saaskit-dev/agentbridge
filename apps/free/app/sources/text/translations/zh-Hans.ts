@@ -201,6 +201,16 @@ export const zhHans: TranslationStructure = {
     supportUs: '加入共建',
     supportUsSubtitlePro: '您已是共建者 🎉',
     supportUsSubtitle: '成为未来的一部分',
+    workspaceControl: '把这台手机变成你本地编码 Agent 的移动控制台。',
+    machineSummary: ({ total, online }: { total: number; online: number }) =>
+      `${online}/${total} 台设备在线`,
+    machineSummaryLong: ({ total, online }: { total: number; online: number }) =>
+      `当前视图中有 ${online} 台在线设备，共可查看 ${total} 台。打开任意设备即可查看路径、会话和 daemon 状态。`,
+    devicesReadyTitle: '设备状态总览',
+    noMachinesConnectedYet: '还没有已连接设备。先链接第一台设备，再在这里统一查看和管理会话。',
+    openMachine: '查看设备',
+    scanQrDescription: '用手机相机扫描终端中的二维码，几秒内把设备带到线上。',
+    pasteTerminalLinkDescription: '如果你在另一台桌面上配对，或想手动连接，直接粘贴终端认证链接。',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -614,10 +624,13 @@ export const zhHans: TranslationStructure = {
     emptyMainScreen: {
       // Used by EmptyMainScreen component
       readyToCode: '准备开始编程？',
+      productSubtitle: '把这台手机变成一间实时控制室，随时查看并接管你机器上正在运行的编码会话。',
+      commandLabel: '终端准备',
       installCli: '安装 Free CLI',
       runIt: '运行它',
       scanQrCode: '扫描二维码',
       openCamera: '打开相机',
+      manualHint: '如果你已经拿到终端认证链接，也可以直接粘贴。',
     },
   },
 
@@ -694,6 +707,11 @@ export const zhHans: TranslationStructure = {
 
   sidebar: {
     sessionsTitle: 'Free',
+    scopeLabel: '范围',
+    allMachines: '所有设备',
+    noSessionsForMachine: '该设备下暂无会话',
+    machineFilterDescription: '选择侧边栏中显示哪台设备的会话。',
+    voiceLive: '语音在线',
   },
 
   toolView: {
@@ -1156,7 +1174,9 @@ export const zhHans: TranslationStructure = {
     // Markdown copy functionality
     codeCopied: '代码已复制',
     copyFailed: '复制失败',
+    copyMarkdown: '复制 Markdown',
     mermaidRenderFailed: '渲染 mermaid 图表失败',
+    openSelection: '打开选择页',
   },
 
   artifacts: {

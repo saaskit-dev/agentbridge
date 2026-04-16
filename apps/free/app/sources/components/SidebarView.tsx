@@ -36,7 +36,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     position: 'relative',
   },
   logoContainer: {
-    width: 32,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.divider,
   },
   logo: {
     height: 24,
@@ -54,7 +61,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     flex: 1,
     flexDirection: 'column',
     alignItems: 'flex-start',
-    marginLeft: 8,
+    marginLeft: 10,
     justifyContent: 'center',
   },
   titleText: {
@@ -63,19 +70,39 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     color: theme.colors.header.tint,
     ...Typography.default('semiBold'),
   },
-  statusContainer: {
+  statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: -2,
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 5,
   },
   statusDot: {
-    marginRight: 4,
+    marginRight: 6,
+  },
+  statusChip: {
+    minHeight: 24,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: theme.colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.divider,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   statusText: {
     fontSize: 11,
-    fontWeight: '500',
-    lineHeight: 16,
+    lineHeight: 14,
     ...Typography.default(),
+  },
+  statusLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    color: theme.colors.textSecondary,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    ...Typography.default('semiBold'),
   },
   rightContainer: {
     marginLeft: 'auto',
@@ -186,25 +213,31 @@ export const SidebarView = React.memo(() => {
     <>
       <Text style={styles.titleText}>{t('sidebar.sessionsTitle')}</Text>
       {!!connectionStatus.text && (
-        <View style={styles.statusContainer}>
-          <StatusDot
-            color={connectionStatus.color}
-            isPulsing={connectionStatus.isPulsing}
-            size={6}
-            style={styles.statusDot}
-          />
-          <Text style={[styles.statusText, { color: connectionStatus.textColor }]}>
-            {connectionStatus.text}
-          </Text>
+        <View style={styles.statusRow}>
+          <View style={styles.statusChip}>
+            <StatusDot
+              color={connectionStatus.color}
+              isPulsing={connectionStatus.isPulsing}
+              size={6}
+              style={styles.statusDot}
+            />
+            <Text style={[styles.statusText, { color: connectionStatus.textColor }]}>
+              {connectionStatus.text}
+            </Text>
+          </View>
           {socketStatus.status === 'connected' && machineCount > 0 && (
-            <>
-              <Text style={[styles.statusText, { color: theme.colors.textSecondary, marginHorizontal: 4 }]}>
-                ·
-              </Text>
+            <View style={styles.statusChip}>
               <Text style={[styles.statusText, { color: machineStatusColor }]}>
                 {machineStatusText}
               </Text>
-            </>
+            </View>
+          )}
+          {realtimeStatus === 'connected' && (
+            <View style={styles.statusChip}>
+              <Text style={[styles.statusLabel, { color: theme.colors.status.connected }]}>
+                {t('sidebar.voiceLive')}
+              </Text>
+            </View>
           )}
         </View>
       )}

@@ -311,6 +311,25 @@ export function saveCachedSessions(sessions: Session[]) {
   );
 }
 
+let cachedSessionsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingCachedSessions: Session[] | null = null;
+
+export function scheduleSaveCachedSessions(sessions: Session[], delayMs = 150) {
+  pendingCachedSessions = sessions;
+  if (cachedSessionsSaveTimer) {
+    clearTimeout(cachedSessionsSaveTimer);
+  }
+  cachedSessionsSaveTimer = setTimeout(() => {
+    cachedSessionsSaveTimer = null;
+    if (!pendingCachedSessions) {
+      return;
+    }
+    const nextSessions = pendingCachedSessions;
+    pendingCachedSessions = null;
+    saveCachedSessions(nextSessions);
+  }, delayMs);
+}
+
 export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
   const localSettings = kvStore.getString('local-settings');
   if (localSettings) {

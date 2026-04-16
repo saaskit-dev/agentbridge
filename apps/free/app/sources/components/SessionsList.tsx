@@ -23,12 +23,13 @@ import { useFreeAction } from '@/hooks/useFreeAction';
 import { FreeError } from '@/utils/errors';
 import { Modal } from '@/modal';
 import { sessionDelete } from '@/sync/ops';
-import { useSetting } from '@/sync/storage';
+import { useAllMachines, useSetting } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { requestReview } from '@/utils/requestReview';
 import { useIsTablet } from '@/utils/responsive';
 import { buildSessionsListItems, SessionsListRenderItem } from './sessionsListItems';
 import { useSessionStatus } from '@/utils/sessionUtils';
+import { MachineFilterOption, SessionMachineScopeBar } from './SessionMachineScopeBar';
 
 const stylesheet = StyleSheet.create(theme => ({
   container: {
@@ -192,16 +193,30 @@ const stylesheet = StyleSheet.create(theme => ({
     textAlign: 'center',
     ...Typography.default('semiBold'),
   },
+  emptyFilteredContainer: {
+    paddingHorizontal: 32,
+    paddingTop: 56,
+    alignItems: 'center',
+  },
+  emptyFilteredText: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    ...Typography.default(),
+  },
 }));
 
 export function SessionsList() {
   const styles = stylesheet;
   const safeArea = useSafeAreaInsets();
-  const data = useVisibleSessionListViewData();
   const pathname = usePathname();
   const isTablet = useIsTablet();
   const navigateToSession = useNavigateToSession();
   const compactSessionView = useSetting('compactSessionView');
+  const machines = useAllMachines();
+  const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(null);
+  const unfilteredData = useVisibleSessionListViewData();
+  const data = useVisibleSessionListViewData(selectedMachineId);
   const selectable = isTablet;
   const selectedSessionId = React.useMemo(() => {
     if (!selectable || !pathname.startsWith('/session/')) {
@@ -211,10 +226,76 @@ export function SessionsList() {
     const parts = pathname.split('/');
     return parts[2] || undefined;
   }, [pathname, selectable]);
+  const filterOptions = React.useMemo<MachineFilterOption[]>(() => {
+    if (!unfilteredData) {
+      return [];
+    }
+
+    const counts = new Map<string, number>();
+    for (const item of unfilteredData) {
+      if (item.type === 'active-sessions') {
+        for (const session of item.sessions) {
+          const machineId = session.metadata?.machineId;
+          if (machineId) {
+            counts.set(machineId, (counts.get(machineId) ?? 0) + 1);
+          }
+        }
+        continue;
+      }
+
+      if (item.type === 'session') {
+        const machineId = item.session.metadata?.machineId;
+        if (machineId) {
+          counts.set(machineId, (counts.get(machineId) ?? 0) + 1);
+        }
+      }
+    }
+
+    const machineOptions = Array.from(counts.entries())
+      .map(([machineId, count]) => {
+        const machine = machines.find(item => item.id === machineId);
+        const label = machine?.metadata?.displayName || machine?.metadata?.host || machineId;
+        return {
+          id: machineId,
+          label,
+          count,
+          isOnline: machine?.active ?? false,
+          host: machine?.metadata?.host,
+        };
+      })
+      .sort((left, right) => {
+        const leftOnline = left.isOnline ? 1 : 0;
+        const rightOnline = right.isOnline ? 1 : 0;
+        if (leftOnline !== rightOnline) {
+          return rightOnline - leftOnline;
+        }
+        return left.label.localeCompare(right.label);
+      });
+
+    return [
+      {
+        id: null,
+        label: t('sidebar.allMachines'),
+        count: Array.from(counts.values()).reduce((sum, count) => sum + count, 0),
+      },
+      ...machineOptions,
+    ];
+  }, [machines, unfilteredData]);
+
+  React.useEffect(() => {
+    if (!selectedMachineId) {
+      return;
+    }
+    const stillExists = filterOptions.some(option => option.id === selectedMachineId);
+    if (!stillExists) {
+      setSelectedMachineId(null);
+    }
+  }, [filterOptions, selectedMachineId]);
   const listItems = React.useMemo(
     () => (data ? buildSessionsListItems(data, selectedSessionId) : null),
     [data, selectedSessionId]
   );
+  const showMachineFilters = filterOptions.length > 2;
 
   // Request review
   React.useEffect(() => {
@@ -287,8 +368,19 @@ export function SessionsList() {
   // Remove this section as we'll use FlatList for all items now
 
   const HeaderComponent = React.useCallback(() => {
-    return <UpdateBanner />;
-  }, []);
+    return (
+      <>
+        <UpdateBanner />
+        {showMachineFilters ? (
+          <SessionMachineScopeBar
+            options={filterOptions}
+            selectedMachineId={selectedMachineId}
+            onSelect={setSelectedMachineId}
+          />
+        ) : null}
+      </>
+    );
+  }, [filterOptions, selectedMachineId, showMachineFilters]);
 
   // Footer removed - all sessions now shown inline
 
@@ -304,8 +396,16 @@ export function SessionsList() {
             maxWidth: layout.maxWidth,
             alignSelf: 'center',
             width: '100%',
+            flexGrow: 1,
           }}
           ListHeaderComponent={HeaderComponent}
+          ListEmptyComponent={
+            selectedMachineId ? (
+              <View style={styles.emptyFilteredContainer}>
+                <Text style={styles.emptyFilteredText}>{t('sidebar.noSessionsForMachine')}</Text>
+              </View>
+            ) : null
+          }
         />
       </View>
     </View>

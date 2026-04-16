@@ -164,6 +164,16 @@ export const zhHant: TranslationStructure = {
     supportUs: '加入我們',
     supportUsSubtitlePro: '您是共建者 🎉',
     supportUsSubtitle: '成為未來的一部分',
+    workspaceControl: '把這台手機變成你本地編碼 Agent 的行動控制台。',
+    machineSummary: ({ total, online }: { total: number; online: number }) =>
+      `${online}/${total} 台裝置在線`,
+    machineSummaryLong: ({ total, online }: { total: number; online: number }) =>
+      `目前檢視中有 ${online} 台在線裝置，共可查看 ${total} 台。打開任意裝置即可查看路徑、對話和 daemon 狀態。`,
+    devicesReadyTitle: '裝置狀態總覽',
+    noMachinesConnectedYet: '還沒有已連接裝置。先連接第一台裝置，再在這裡統一查看和管理對話。',
+    openMachine: '查看裝置',
+    scanQrDescription: '用手機相機掃描終端中的 QR Code，幾秒內把裝置帶到線上。',
+    pasteTerminalLinkDescription: '如果你在另一台桌面上配對，或想手動連接，直接貼上終端驗證連結。',
 
     // Dynamic settings messages
     accountConnected: ({ service }: { service: string }) => `已連結 ${service} 帳戶`,
@@ -577,10 +587,13 @@ export const zhHant: TranslationStructure = {
     emptyMainScreen: {
       // Used by EmptyMainScreen component
       readyToCode: '準備開始寫程式？',
+      productSubtitle: '把這台手機變成一間即時控制室，隨時查看並接管你機器上正在運行的編碼對話。',
+      commandLabel: '終端準備',
       installCli: '安裝 Free CLI',
       runIt: '執行它',
       scanQrCode: '掃描 QR Code',
       openCamera: '開啟相機',
+      manualHint: '如果你已經拿到終端驗證連結，也可以直接貼上。',
     },
   },
 
@@ -657,6 +670,11 @@ export const zhHant: TranslationStructure = {
 
   sidebar: {
     sessionsTitle: 'Free',
+    scopeLabel: '範圍',
+    allMachines: '所有裝置',
+    noSessionsForMachine: '此裝置下暫無對話',
+    machineFilterDescription: '選擇側邊欄中要顯示哪台裝置的對話。',
+    voiceLive: '語音在線',
   },
 
   toolView: {
@@ -1110,7 +1128,9 @@ export const zhHant: TranslationStructure = {
     // Markdown copy functionality
     codeCopied: '程式碼已複製',
     copyFailed: '複製失敗',
+    copyMarkdown: '複製 Markdown',
     mermaidRenderFailed: '渲染 mermaid 圖表失敗',
+    openSelection: '打開選擇頁',
   },
 
   artifacts: {

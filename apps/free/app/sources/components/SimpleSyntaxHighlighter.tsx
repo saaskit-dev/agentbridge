@@ -60,13 +60,33 @@ const bracketPairs = {
 
 const openBrackets = Object.keys(bracketPairs);
 const closeBrackets = Object.values(bracketPairs);
+const MAX_TOKEN_CACHE_ENTRIES = 32;
+const tokenCache = new Map<string, Array<{ text: string; type: string; nestLevel?: number }>>();
+
+function getTokenCacheKey(code: string, language: string | null) {
+  return `${language ?? 'plain'}\u0000${code}`;
+}
 
 // Enhanced tokenizer with comprehensive token types
 const tokenizeCode = (code: string, language: string | null) => {
+  const cacheKey = getTokenCacheKey(code, language);
+  const cached = tokenCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const tokens: Array<{ text: string; type: string; nestLevel?: number }> = [];
 
   if (!language) {
-    return [{ text: code, type: 'default' }];
+    const plainTokens = [{ text: code, type: 'default' }];
+    tokenCache.set(cacheKey, plainTokens);
+    if (tokenCache.size > MAX_TOKEN_CACHE_ENTRIES) {
+      const oldestKey = tokenCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        tokenCache.delete(oldestKey);
+      }
+    }
+    return plainTokens;
   }
 
   const lang = language.toLowerCase();
@@ -327,6 +347,14 @@ const tokenizeCode = (code: string, language: string | null) => {
 
     globalOffset += line.length;
   });
+
+  tokenCache.set(cacheKey, tokens);
+  if (tokenCache.size > MAX_TOKEN_CACHE_ENTRIES) {
+    const oldestKey = tokenCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      tokenCache.delete(oldestKey);
+    }
+  }
 
   return tokens;
 };

@@ -47,9 +47,6 @@ export const LocalSettingsSchema = z.object({
   themePreference: z
     .enum(['light', 'dark', 'adaptive'])
     .describe('Theme preference: light, dark, or adaptive (follows system)'),
-  markdownCopyV2: z
-    .boolean()
-    .describe('Replace native paragraph selection with long-press modal for full markdown copy'),
   // CLI version acknowledgments - keyed by machineId
   acknowledgedCliVersions: z
     .record(z.string(), z.string())
@@ -97,7 +94,6 @@ export const localSettingsDefaults: LocalSettings = {
   sessionFilesSidebarWidth: null,
   sessionFilesSidebarCollapsed: false,
   themePreference: 'adaptive',
-  markdownCopyV2: true,
   acknowledgedCliVersions: {},
   backgroundReconnectPromptHandled: false,
   focusAudioEnabled: false,

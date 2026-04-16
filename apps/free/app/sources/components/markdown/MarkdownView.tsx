@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { Link } from 'expo-router';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { Pressable, ScrollView, View, Platform } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -10,6 +11,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { ImagePreviewModal } from '../ImagePreviewModal';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Text } from '../StyledText';
+import { WebPortal } from '../web/WebPortal';
 import { MermaidRenderer } from './MermaidRenderer';
 import { isLocalMarkdownImageSource, resolveLocalMarkdownImagePath } from './markdownImageSource';
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
@@ -17,7 +19,6 @@ import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { sessionReadFile } from '@/sync/ops';
 import { storeTempText } from '@/sync/persistence';
-import { useLocalSetting } from '@/sync/storage';
 import { t } from '@/text';
 import {
   encodeSessionFilePathForRoute,
@@ -118,12 +119,9 @@ export const MarkdownView = React.memo(
       [props.markdownFilePath, props.sessionId]
     );
 
-    // Prefer inline text selection across platforms when markdownCopyV2 is enabled.
-    // The legacy fallback keeps the old native long-press selection screen only when the
-    // experiment is turned off on mobile.
-    const markdownCopyV2 = useLocalSetting('markdownCopyV2');
-    const selectable = Platform.OS === 'web' || markdownCopyV2;
+    const selectable = Platform.OS === 'web';
     const router = useRouter();
+    const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
 
     const handleLongPress = React.useCallback(() => {
       try {
@@ -134,6 +132,16 @@ export const MarkdownView = React.memo(
         Modal.alert('Error', 'Failed to open text selection. Please try again.');
       }
     }, [props.markdown, router]);
+
+    const handleCopyMarkdown = React.useCallback(async () => {
+      try {
+        await Clipboard.setStringAsync(props.markdown);
+        Modal.alert(t('items.copiedToClipboard', { label: t('markdown.copyMarkdown') }));
+      } catch (error) {
+        logger.error('Error copying markdown:', toError(error));
+        Modal.alert(t('common.error'), t('markdown.copyFailed'));
+      }
+    }, [props.markdown]);
     const renderContent = () => {
       return (
         <View style={{ width: '100%' }}>
@@ -261,12 +269,44 @@ export const MarkdownView = React.memo(
       );
     };
 
-    if (Platform.OS === 'web' || markdownCopyV2) {
-      return renderContent();
+    if (Platform.OS === 'web') {
+      return (
+        <>
+          <View
+            style={{ width: '100%' }}
+            // @ts-ignore - Web-only context menu support
+            onContextMenu={(event: any) => {
+              event.preventDefault();
+              setContextMenu({
+                x: event.clientX ?? 0,
+                y: event.clientY ?? 0,
+              });
+            }}
+          >
+            {renderContent()}
+          </View>
+          {contextMenu ? (
+            <MarkdownContextMenu
+              x={contextMenu.x}
+              y={contextMenu.y}
+              onClose={() => setContextMenu(null)}
+              onCopyMarkdown={() => {
+                void handleCopyMarkdown();
+                setContextMenu(null);
+              }}
+              onOpenSelection={() => {
+                handleLongPress();
+                setContextMenu(null);
+              }}
+            />
+          ) : null}
+        </>
+      );
     }
 
-    // Use GestureDetector with LongPress gesture - it doesn't block pan gestures
-    // so horizontal scrolling in code blocks and tables still works
+    // On mobile we keep a dedicated long-press copy/selection flow.
+    // GestureDetector does not block pan gestures, so horizontal scrolling in code
+    // blocks and tables still works.
     const longPressGesture = Gesture.LongPress()
       .minDuration(500)
       .onStart(() => {
@@ -278,6 +318,92 @@ export const MarkdownView = React.memo(
       <GestureDetector gesture={longPressGesture}>
         <View style={{ width: '100%' }}>{renderContent()}</View>
       </GestureDetector>
+    );
+  }
+);
+
+const MarkdownContextMenu = React.memo(
+  ({
+    x,
+    y,
+    onClose,
+    onCopyMarkdown,
+    onOpenSelection,
+  }: {
+    x: number;
+    y: number;
+    onClose: () => void;
+    onCopyMarkdown: () => void;
+    onOpenSelection: () => void;
+  }) => {
+    const menuWidth = 220;
+    const itemHeight = 40;
+    const menuHeight = itemHeight * 3 + 1;
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : x + menuWidth + 16;
+    const viewportHeight =
+      typeof window !== 'undefined' ? window.innerHeight : y + menuHeight + 16;
+    const left = Math.max(8, Math.min(x + 10, viewportWidth - menuWidth - 8));
+    const top = Math.max(8, Math.min(y + 10, viewportHeight - menuHeight - 8));
+
+    return (
+      <WebPortal>
+        <Pressable
+          onPress={onClose}
+          // @ts-ignore - Web-only context menu support
+          onContextMenu={(event: any) => {
+            event.preventDefault();
+            onClose();
+          }}
+          style={{
+            position: 'fixed' as any,
+            inset: 0,
+            zIndex: 999,
+          }}
+        />
+        <View
+          style={{
+            position: 'fixed' as any,
+            left,
+            top,
+            zIndex: 1000,
+            width: menuWidth,
+            backgroundColor: style.contextMenu.backgroundColor,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: style.contextMenu.borderColor,
+            shadowColor: '#000',
+            shadowOpacity: 0.14,
+            shadowRadius: 18,
+            shadowOffset: { width: 0, height: 8 },
+            overflow: 'hidden',
+          }}
+        >
+          <View
+            style={[
+              style.contextMenuItem,
+              {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: style.contextMenu.borderColor,
+              },
+            ]}
+          >
+            <Ionicons name="document-text-outline" size={16} color={style.contextMenuMuted.color} />
+            <Text style={style.contextMenuTitle}>{t('common.copy')}</Text>
+          </View>
+          <Pressable onPress={onCopyMarkdown} style={style.contextMenuItem}>
+            <Ionicons name="copy-outline" size={16} color={style.contextMenuText.color} />
+            <Text style={style.contextMenuText}>{t('markdown.copyMarkdown')}</Text>
+          </Pressable>
+          <Pressable onPress={onOpenSelection} style={style.contextMenuItem}>
+            <Ionicons name="text-outline" size={16} color={style.contextMenuText.color} />
+            <Text style={style.contextMenuText}>{t('markdown.openSelection')}</Text>
+          </Pressable>
+          <View style={style.contextMenuDivider} />
+          <Pressable onPress={onClose} style={style.contextMenuItem}>
+            <Text style={style.contextMenuText}>{t('common.cancel')}</Text>
+          </Pressable>
+        </View>
+      </WebPortal>
     );
   }
 );
@@ -1043,6 +1169,34 @@ const style = StyleSheet.create(theme => ({
     color: theme.colors.text,
     fontSize: 12,
     lineHeight: 16,
+  },
+  contextMenu: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.divider,
+  },
+  contextMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  contextMenuTitle: {
+    color: theme.colors.text,
+    ...Typography.default('semiBold'),
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  contextMenuText: {
+    color: theme.colors.text,
+    ...Typography.default(),
+  },
+  contextMenuMuted: {
+    color: theme.colors.textSecondary,
+  },
+  contextMenuDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: theme.colors.divider,
   },
 
   //

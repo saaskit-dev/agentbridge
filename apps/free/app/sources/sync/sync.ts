@@ -20,7 +20,7 @@ import {
   savePendingSettings,
   loadPendingOutbox,
   savePendingOutbox,
-  saveCachedSessions,
+  scheduleSaveCachedSessions,
   loadHandledReconnectToken,
   saveHandledReconnectToken,
   loadPendingReconnectAcks,
@@ -1126,9 +1126,6 @@ class Sync {
 
     if (shouldQueueLocally) {
       storage.getState().enqueueSessionQueuedMessage(sessionId, queuedMessage);
-      saveCachedSessions(
-        Object.values(storage.getState().sessions).filter(current => current.status !== 'deleted')
-      );
       log.info('[App] queued local pending message', {
         userId: this.accountId,
         id: queuedMessage.id,
@@ -1336,10 +1333,38 @@ class Sync {
    * Subscribe to ephemeral updates (text_delta, text_complete, etc.)
    * Returns unsubscribe function.
    */
-  onEphemeralUpdate(callback: (update: unknown) => void): () => void {
-    this.ephemeralUpdateCallbacks.add(callback);
+  onEphemeralUpdate(
+    callback: (update: unknown) => void,
+    options?: { sessionId?: string; messageId?: string }
+  ): () => void {
+    const wrappedCallback = (update: unknown) => {
+      if (!options) {
+        callback(update);
+        return;
+      }
+
+      if (!update || typeof update !== 'object') {
+        return;
+      }
+
+      const updateSessionId =
+        'sessionId' in update && typeof update.sessionId === 'string' ? update.sessionId : null;
+      if (options.sessionId && updateSessionId !== options.sessionId) {
+        return;
+      }
+
+      const updateMessageId =
+        'messageId' in update && typeof update.messageId === 'string' ? update.messageId : null;
+      if (options.messageId && updateMessageId !== options.messageId) {
+        return;
+      }
+
+      callback(update);
+    };
+
+    this.ephemeralUpdateCallbacks.add(wrappedCallback);
     return () => {
-      this.ephemeralUpdateCallbacks.delete(callback);
+      this.ephemeralUpdateCallbacks.delete(wrappedCallback);
     };
   }
 
@@ -4022,7 +4047,7 @@ class Sync {
   ) => {
     const active = storage.getState().getActiveSessions();
     storage.getState().applySessions(sessions);
-    saveCachedSessions(
+    scheduleSaveCachedSessions(
       Object.values(storage.getState().sessions).filter(session => session.status !== 'deleted')
     );
     const newActive = storage.getState().getActiveSessions();

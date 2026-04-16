@@ -18,7 +18,12 @@ import { ChatFooter } from './ChatFooter';
 import { buildChatListData, type ChatListItem, type ChatUserNavItem } from './chatListItems';
 import { layout } from './layout';
 import { MessageView } from './MessageView';
-import { useSessionControlledByUser, useSessionMessages, useMessage } from '@/sync/storage';
+import {
+  useSessionControlledByUser,
+  useSessionMessages,
+  useMessage,
+  useSessionThinking,
+} from '@/sync/storage';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { Message } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
@@ -37,9 +42,23 @@ const MIN_LOADING_MS = 300;
 const MESSAGE_HIGHLIGHT_MS = 1200;
 /** Scroll offset threshold to consider user "at bottom" (inverted: y ≈ 0). */
 const AT_BOTTOM_THRESHOLD = 80;
+const REFRESH_LOCK_AFTER_CONTENT_MS = 600;
 
 const FAB_SIZE = 40;
 const FAB_GAP = 12;
+const DESKTOP_INITIAL_NUM_TO_RENDER = 20;
+const DEFAULT_INITIAL_NUM_TO_RENDER = 50;
+const DESKTOP_WINDOW_SIZE = 5;
+const DEFAULT_WINDOW_SIZE = 7;
+const MAX_VISIBLE_MESSAGES_CACHE_ENTRIES = 4;
+
+type VisibleMessagesCacheEntry = {
+  source: Message[];
+  visible: Message[];
+  latestUserMessageCreatedAt: number | null;
+};
+
+const visibleMessagesCache: VisibleMessagesCacheEntry[] = [];
 
 function shouldHideHistoricalDaemonError(
   message: Message,
@@ -55,6 +74,11 @@ function shouldHideHistoricalDaemonError(
 }
 
 function buildVisibleMessages(messages: Message[]): Message[] {
+  const incremental = buildVisibleMessagesIncremental(messages);
+  if (incremental) {
+    return incremental;
+  }
+
   let latestUserMessageCreatedAt: number | null = null;
   for (const message of messages) {
     if (message.kind === 'user-text') {
@@ -64,6 +88,11 @@ function buildVisibleMessages(messages: Message[]): Message[] {
   }
 
   if (latestUserMessageCreatedAt === null) {
+    storeVisibleMessagesCache({
+      source: messages,
+      visible: messages,
+      latestUserMessageCreatedAt: null,
+    });
     return messages;
   }
 
@@ -86,7 +115,88 @@ function buildVisibleMessages(messages: Message[]): Message[] {
     }
   }
 
-  return filteredMessages ?? messages;
+  const visible = filteredMessages ?? messages;
+  storeVisibleMessagesCache({
+    source: messages,
+    visible,
+    latestUserMessageCreatedAt,
+  });
+  return visible;
+}
+
+function buildVisibleMessagesIncremental(messages: Message[]): Message[] | null {
+  const previous = findVisibleMessagesBase(messages);
+  if (!previous) {
+    return null;
+  }
+
+  const prependedCount = messages.length - previous.source.length;
+  if (prependedCount <= 0) {
+    return null;
+  }
+
+  const prependedMessages = messages.slice(0, prependedCount);
+  if (prependedMessages.some(message => message.kind === 'user-text')) {
+    return null;
+  }
+
+  const latestUserMessageCreatedAt = previous.latestUserMessageCreatedAt;
+  if (latestUserMessageCreatedAt === null) {
+    storeVisibleMessagesCache({
+      source: messages,
+      visible: messages,
+      latestUserMessageCreatedAt: null,
+    });
+    return messages;
+  }
+
+  const nextVisiblePrefix = prependedMessages.filter(
+    message => !shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt)
+  );
+  const visible = nextVisiblePrefix.length > 0
+    ? [...nextVisiblePrefix, ...previous.visible]
+    : previous.visible;
+
+  storeVisibleMessagesCache({
+    source: messages,
+    visible,
+    latestUserMessageCreatedAt,
+  });
+  return visible;
+}
+
+function findVisibleMessagesBase(messages: Message[]): VisibleMessagesCacheEntry | null {
+  for (const entry of visibleMessagesCache) {
+    const prependedCount = messages.length - entry.source.length;
+    if (prependedCount <= 0) {
+      continue;
+    }
+
+    let matches = true;
+    for (let index = 0; index < entry.source.length; index += 1) {
+      if (messages[index + prependedCount] !== entry.source[index]) {
+        matches = false;
+        break;
+      }
+    }
+
+    if (matches) {
+      return entry;
+    }
+  }
+
+  return null;
+}
+
+function storeVisibleMessagesCache(entry: VisibleMessagesCacheEntry) {
+  const existingIndex = visibleMessagesCache.findIndex(candidate => candidate.source === entry.source);
+  if (existingIndex >= 0) {
+    visibleMessagesCache.splice(existingIndex, 1);
+  }
+  visibleMessagesCache.unshift(entry);
+  if (visibleMessagesCache.length > MAX_VISIBLE_MESSAGES_CACHE_ENTRIES) {
+    visibleMessagesCache.length = MAX_VISIBLE_MESSAGES_CACHE_ENTRIES;
+  }
 }
 
 function isSameDay(a: number, b: number): boolean {
@@ -1006,7 +1116,7 @@ const TurnGroupRow = React.memo(
   (props: {
     sessionId: string;
     messageIds: string[];
-    messagesById: Map<string, Message>;
+    getMessageById: (messageId: string) => Message | undefined;
     metadata: Metadata | null;
     createdAt: number;
     role: 'user' | 'assistant';
@@ -1022,7 +1132,7 @@ const TurnGroupRow = React.memo(
 
       for (let index = 0; index < props.messageIds.length; ) {
         const messageId = props.messageIds[index];
-        const message = props.messagesById.get(messageId);
+        const message = props.getMessageById(messageId);
         if (!message) {
           index += 1;
           continue;
@@ -1039,7 +1149,7 @@ const TurnGroupRow = React.memo(
         let nextIndex = index + 1;
         while (nextIndex < props.messageIds.length) {
           const nextId = props.messageIds[nextIndex];
-          const nextMessage = props.messagesById.get(nextId);
+          const nextMessage = props.getMessageById(nextId);
           if (!nextMessage || getDaemonErrorSignature(nextMessage) !== signature) break;
           groupedIds.push(nextId);
           groupedMessages.push(nextMessage);
@@ -1059,7 +1169,7 @@ const TurnGroupRow = React.memo(
       }
 
       return blocks;
-    }, [props.messageIds, props.messagesById]);
+    }, [props.getMessageById, props.messageIds]);
 
     return (
       <View
@@ -1143,6 +1253,7 @@ const ChatListInternal = React.memo(
     jumpToRecentUserSignal: number;
   }) => {
     const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.sessionId);
+    const isSessionThinking = useSessionThinking(props.sessionId);
     const visibleMessages = useMemo(() => buildVisibleMessages(messages), [messages]);
 
     // ----- pull states -----
@@ -1199,6 +1310,25 @@ const ChatListInternal = React.memo(
     const recentUserJumpIndexRef = useRef(-1);
     const lastHandledJumpSignalRef = useRef(0);
     const shouldFollowBottomRef = useRef(true);
+    const refreshLockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hasMountedRef = useRef(false);
+    const refreshInteractionLockedRef = useRef(false);
+    const [isRefreshInteractionLocked, setIsRefreshInteractionLocked] = useState(false);
+
+    const lockRefreshInteraction = useCallback((durationMs = REFRESH_LOCK_AFTER_CONTENT_MS) => {
+      if (!refreshInteractionLockedRef.current) {
+        refreshInteractionLockedRef.current = true;
+        setIsRefreshInteractionLocked(true);
+      }
+      if (refreshLockTimeoutRef.current) {
+        clearTimeout(refreshLockTimeoutRef.current);
+      }
+      refreshLockTimeoutRef.current = setTimeout(() => {
+        refreshInteractionLockedRef.current = false;
+        setIsRefreshInteractionLocked(false);
+        refreshLockTimeoutRef.current = null;
+      }, durationMs);
+    }, []);
 
     const updateShowScrollFab = useCallback((next: boolean) => {
       if (showScrollFabRef.current === next) return;
@@ -1241,6 +1371,12 @@ const ChatListInternal = React.memo(
           updateShowScrollFab(true);
         }
 
+        if (refreshInteractionLockedRef.current) {
+          if (refreshRef.current !== 'loading') setPull('refresh', 'idle');
+          if (olderRef.current !== 'loading') setPull('older', 'idle');
+          return;
+        }
+
         // --- Native overscroll pull indicators ---
         if (refreshRef.current !== 'loading') {
           if (y < -PULL_THRESHOLD) setPull('refresh', 'ready');
@@ -1274,6 +1410,11 @@ const ChatListInternal = React.memo(
     const handleScrollEndDrag = useCallback(() => {
       // User manually dragged — cancel any programmatic scroll suppression
       isProgrammaticScrollRef.current = false;
+      if (refreshInteractionLockedRef.current) {
+        if (refreshRef.current !== 'loading') setPull('refresh', 'idle');
+        if (olderRef.current !== 'loading') setPull('older', 'idle');
+        return;
+      }
       if (refreshRef.current === 'ready') {
         triggerLoad('refresh', () => sync.refreshMessages(props.sessionId));
       }
@@ -1312,12 +1453,32 @@ const ChatListInternal = React.memo(
       prevMessageIdsRef.current = new Set(visibleMessages.map(message => message.id));
     }, [updateUnreadCount, visibleMessages]);
 
+    useEffect(() => {
+      if (!hasMountedRef.current) {
+        hasMountedRef.current = true;
+        return;
+      }
+      lockRefreshInteraction();
+    }, [lockRefreshInteraction, visibleMessages]);
+
+    useEffect(() => {
+      if (!isSessionThinking) return;
+      lockRefreshInteraction();
+    }, [isSessionThinking, lockRefreshInteraction]);
+
     useEffect(
       () => () => {
         if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+        if (refreshLockTimeoutRef.current) clearTimeout(refreshLockTimeoutRef.current);
       },
       []
     );
+
+    useEffect(() => {
+      if (!isRefreshInteractionLocked) return;
+      if (refreshRef.current !== 'loading') setPull('refresh', 'idle');
+      if (olderRef.current !== 'loading') setPull('older', 'idle');
+    }, [isRefreshInteractionLocked, setPull]);
 
     useEffect(() => {
       if (Platform.OS !== 'web') return;
@@ -1416,6 +1577,11 @@ const ChatListInternal = React.memo(
       [visibleMessages]
     );
     listItemsRef.current = listItems;
+    const messagesByIdRef = useRef(messagesById);
+    messagesByIdRef.current = messagesById;
+    const getMessageById = useCallback((messageId: string) => {
+      return messagesByIdRef.current.get(messageId);
+    }, []);
     // ----- user message nav items (chronological: oldest first) -----
     useEffect(() => {
       if (!props.jumpToRecentUserSignal) return;
@@ -1455,8 +1621,8 @@ const ChatListInternal = React.memo(
         return (
           <TurnGroupRow
             createdAt={item.createdAt}
+            getMessageById={getMessageById}
             messageIds={item.messageIds}
-            messagesById={messagesById}
             metadata={props.metadata}
             role={item.role}
             sessionId={props.sessionId}
@@ -1466,8 +1632,8 @@ const ChatListInternal = React.memo(
         );
       },
       [
+        getMessageById,
         highlightedMessageId,
-        messagesById,
         props.jumpToRecentUserSignal,
         props.metadata,
         props.sessionId,
@@ -1476,6 +1642,7 @@ const ChatListInternal = React.memo(
 
     // onEndReached: load older (fires on both platforms when near visual top)
     const handleEndReached = useCallback(() => {
+      if (refreshInteractionLockedRef.current) return;
       if (isProgrammaticScrollRef.current) return;
       if (!hasOlderMessages || isLoadingOlder) return;
       if (olderRef.current === 'loading') return;
@@ -1503,16 +1670,23 @@ const ChatListInternal = React.memo(
       };
     }, []);
 
+    const initialNumToRender =
+      Platform.OS === 'web' ? DESKTOP_INITIAL_NUM_TO_RENDER : DEFAULT_INITIAL_NUM_TO_RENDER;
+    const windowSize = Platform.OS === 'web' ? DESKTOP_WINDOW_SIZE : DEFAULT_WINDOW_SIZE;
+
     return (
       <View style={{ flex: 1, position: 'relative', width: '100%', alignSelf: 'stretch' }}>
         <FlatList
           ref={flatListRef}
           data={listItems}
           inverted={true}
+          alwaysBounceVertical={!isRefreshInteractionLocked}
+          bounces={!isRefreshInteractionLocked}
           keyExtractor={keyExtractor}
-          initialNumToRender={50}
+          initialNumToRender={initialNumToRender}
           maxToRenderPerBatch={10}
-          windowSize={7}
+          windowSize={windowSize}
+          overScrollMode={isRefreshInteractionLocked ? 'never' : 'always'}
           removeClippedSubviews={Platform.OS !== 'ios'}
           scrollEventThrottle={16}
           onScroll={handleScroll}

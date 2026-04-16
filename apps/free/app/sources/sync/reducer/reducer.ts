@@ -303,6 +303,28 @@ export function reducer(
   const changed: Set<string> = new Set();
   let hasReadyEvent = false;
   let latestStatus: 'working' | 'idle' | undefined;
+  let hasNewRootMessages = false;
+
+  const addRootMessage = (message: ReducerMessage) => {
+    storeRootMessage(state, message);
+    hasNewRootMessages = true;
+    if (message.tool?.state === 'running') {
+      state.activeToolCallCount += 1;
+    }
+  };
+
+  const updateToolRunningState = (tool: ToolCall, nextState: ToolCall['state']) => {
+    if (tool.state === nextState) {
+      return;
+    }
+    if (tool.state === 'running') {
+      state.activeToolCallCount -= 1;
+    }
+    if (nextState === 'running') {
+      state.activeToolCallCount += 1;
+    }
+    tool.state = nextState;
+  };
 
   // First, trace all messages to identify sidechains
   const tracedMessages = traceMessages(state.tracerState, messages);
@@ -418,7 +440,7 @@ export function reducer(
     }
 
     const mid = allocateId();
-    storeRootMessage(state, {
+    addRootMessage({
       id: mid,
       realID: message.id,
       role: 'agent',
@@ -526,7 +548,7 @@ export function reducer(
               },
             };
 
-            storeRootMessage(state, {
+            addRootMessage({
               id: mid,
               realID: null,
               role: 'agent',
@@ -617,13 +639,13 @@ export function reducer(
                 message.tool.state !== 'error' &&
                 message.tool.state !== 'running'
               ) {
-                message.tool.state = 'running';
+                updateToolRunningState(message.tool, 'running');
                 hasChanged = true;
               }
             } else {
               // denied or canceled
               if (message.tool.state !== 'error' && message.tool.state !== 'completed') {
-                message.tool.state = 'error';
+                updateToolRunningState(message.tool, 'error');
                 message.tool.completedAt = completedCompletedAt;
                 if (!message.tool.result && completed.reason) {
                   message.tool.result = { error: completed.reason };
@@ -698,7 +720,7 @@ export function reducer(
             },
           };
 
-          storeRootMessage(state, {
+          addRootMessage({
             id: mid,
             realID: null,
             role: 'agent',
@@ -748,7 +770,7 @@ export function reducer(
 
       // Create a new message
       const mid = allocateId();
-      storeRootMessage(state, {
+      addRootMessage({
         id: mid,
         realID: msg.id,
         seq: msg.seq,
@@ -817,7 +839,7 @@ export function reducer(
           }
 
           const mid = allocateId();
-          storeRootMessage(state, {
+          addRootMessage({
             id: mid,
             realID: msg.id,
             seq: msg.seq,
@@ -881,7 +903,7 @@ export function reducer(
                 message.tool.permission?.status === 'approved' &&
                 message.tool.state === 'completed'
               ) {
-                message.tool.state = 'running';
+                updateToolRunningState(message.tool, 'running');
                 message.tool.completedAt = null;
                 message.tool.result = undefined;
               }
@@ -945,7 +967,7 @@ export function reducer(
             }
 
             const mid = allocateId();
-            storeRootMessage(state, {
+            addRootMessage({
               id: mid,
               realID: msg.id,
               seq: msg.seq,
@@ -990,14 +1012,16 @@ export function reducer(
   // which is critical for Phase 5.5 (merge consecutive agent-texts) to correctly treat
   // tool-call roots as merge boundaries.
   //
-  state.rootMessageIds.sort((a, b) => {
-    const ma = state.messages.get(a);
-    const mb = state.messages.get(b);
-    if (!ma || !mb) return 0;
-    // Prefer seq (server monotonic) for stable ordering; fall back to createdAt
-    if (ma.seq !== undefined && mb.seq !== undefined) return ma.seq - mb.seq;
-    return ma.createdAt - mb.createdAt;
-  });
+  if (hasNewRootMessages && state.rootMessageIds.length > 1) {
+    state.rootMessageIds.sort((a, b) => {
+      const ma = state.messages.get(a);
+      const mb = state.messages.get(b);
+      if (!ma || !mb) return 0;
+      // Prefer seq (server monotonic) for stable ordering; fall back to createdAt
+      if (ma.seq !== undefined && mb.seq !== undefined) return ma.seq - mb.seq;
+      return ma.createdAt - mb.createdAt;
+    });
+  }
 
   // Diagnostic: dump Phase 2.5 sort result for debugging interleaving issues
   if (messages.length > 50) {
@@ -1044,7 +1068,7 @@ export function reducer(
           }
 
           // Update tool state and result
-          message.tool.state = c.is_error ? 'error' : 'completed';
+          updateToolRunningState(message.tool, c.is_error ? 'error' : 'completed');
           message.tool.result = normalizePermissionResult(
             !!message.tool.permission,
             c.content,
@@ -1163,7 +1187,7 @@ export function reducer(
                 permissionMessage.tool.state !== 'completed' &&
                 permissionMessage.tool.state !== 'error'
               ) {
-                permissionMessage.tool.state = 'running';
+                updateToolRunningState(permissionMessage.tool, 'running');
                 permissionMessage.tool.startedAt = msg.createdAt;
                 permissionMessage.tool.description = c.description;
                 changed.add(existingPermissionMessageId);
@@ -1198,7 +1222,7 @@ export function reducer(
               sidechainMessage.tool &&
               sidechainMessage.tool.state === 'running'
             ) {
-              sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
+              updateToolRunningState(sidechainMessage.tool, c.is_error ? 'error' : 'completed');
               sidechainMessage.tool.result = normalizePermissionResult(
                 !!sidechainMessage.tool.permission,
                 c.content,
@@ -1243,7 +1267,7 @@ export function reducer(
               permissionMessage.tool &&
               permissionMessage.tool.state === 'running'
             ) {
-              permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
+              updateToolRunningState(permissionMessage.tool, c.is_error ? 'error' : 'completed');
               permissionMessage.tool.result = normalizePermissionResult(
                 !!permissionMessage.tool.permission,
                 c.content,
@@ -1308,7 +1332,7 @@ export function reducer(
       }
 
       const mid = allocateId();
-      storeRootMessage(state, {
+      addRootMessage({
         id: mid,
         realID: msg.id,
         seq: msg.seq,
@@ -1371,13 +1395,6 @@ export function reducer(
     logger.debug(JSON.stringify(messages, null, 2));
     logger.debug(`[REDUCER] Changed messages: ${changed.size}`);
   }
-
-  // Recount running tool calls so useSessionStatus can distinguish tool_running from thinking.
-  let runningCount = 0;
-  for (const [, msg] of state.messages) {
-    if (msg.tool?.state === 'running') runningCount++;
-  }
-  state.activeToolCallCount = runningCount;
 
   return {
     messages: newMessages,

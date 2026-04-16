@@ -16,6 +16,10 @@ export function useDemoMessages(messages: Message[]) {
 
     // Sort messages by createdAt
     const sortedMessages = [...messages].sort(compareCreatedDesc);
+    const messageIndexMap: Record<string, number> = {};
+    sortedMessages.forEach((message, index) => {
+      messageIndexMap[message.id] = index;
+    });
 
     // Write the demo messages to the hardcoded session
     storage.setState(state => ({
@@ -25,6 +29,7 @@ export function useDemoMessages(messages: Message[]) {
         [DEMO_SESSION_ID]: {
           messages: sortedMessages,
           messagesMap: messagesMap,
+          messageIndexMap,
           reducerState: createReducer(),
           isLoaded: true,
           hasOlderMessages: false,

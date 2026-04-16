@@ -716,6 +716,10 @@ export const it: TranslationStructure = {
 
   sidebar: {
     sessionsTitle: 'Free',
+    scopeLabel: 'Scope',
+    allMachines: 'All Machines',
+    noSessionsForMachine: 'No sessions on this machine',
+    machineFilterDescription: 'Choose which machine sessions appear in the sidebar.',
   },
 
   toolView: {
