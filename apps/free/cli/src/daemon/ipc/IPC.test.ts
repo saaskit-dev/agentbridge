@@ -13,7 +13,7 @@ import { IPCServer } from './IPCServer';
 import { IPCClient } from './IPCClient';
 import type { SessionManager } from '../sessions/SessionManager';
 import type { SpawnSessionOptions, SpawnSessionResult, IPCServerMessage } from './protocol';
-import type { NormalizedMessage } from '../sessions/types';
+import type { NormalizedAgentContent, NormalizedMessage } from '../sessions/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,6 +31,10 @@ function makeMsg(text: string): NormalizedMessage {
     role: 'agent',
     content: [{ type: 'text', text, uuid: 'u1', parentUUID: null }],
   } as NormalizedMessage;
+}
+
+function getAgentContentItems(msg: NormalizedMessage): NormalizedAgentContent[] | null {
+  return msg.role === 'agent' ? msg.content : null;
 }
 
 /** Stub session object — just enough to pass existence checks in IPCServer. */
@@ -203,12 +207,14 @@ describe('IPC Protocol', () => {
     const output = await outputPromise;
     if (output.type === 'agent_output') {
       expect(output.msg.role).toBe('agent');
-      expect(output.msg.content[0]).toMatchObject({
+      const contentItems = getAgentContentItems(output.msg);
+      expect(contentItems).not.toBeNull();
+      expect(contentItems?.[0]).toMatchObject({
         type: 'text',
       });
-      if (output.msg.content[0]?.type === 'text') {
-        expect(output.msg.content[0].text).toContain('[truncated for local IPC');
-        expect(output.msg.content[0].text).toContain('full output saved to');
+      if (contentItems?.[0]?.type === 'text') {
+        expect(contentItems[0].text).toContain('[truncated for local IPC');
+        expect(contentItems[0].text).toContain('full output saved to');
       }
     }
   });
