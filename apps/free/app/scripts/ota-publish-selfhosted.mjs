@@ -86,7 +86,9 @@ async function createGitHubRelease() {
       name: `OTA ${channel} ${releaseId.slice(0, 8)}`,
       body: `${message}\n\nchannel: ${channel}\nreleaseId: ${releaseId}`,
       draft: false,
-      prerelease: channel !== 'production',
+      // OTA releases must never become the repository's "latest release":
+      // the desktop updater resolves `releases/latest/download/latest.json`.
+      prerelease: true,
       target_commitish: process.env.GITHUB_SHA || undefined,
     }),
   });
