@@ -47,6 +47,7 @@ jobs:
       release_id: ${{ steps.prepare.outputs.release_id }}
       release_url: ${{ steps.prepare.outputs.release_url }}
       include_linux: ${{ steps.prepare.outputs.include_linux }}
+      release_matrix: ${{ steps.prepare.outputs.release_matrix }}
 
     steps:
       - uses: actions/checkout@v4
@@ -153,12 +154,19 @@ jobs:
           RELEASE_ID="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json databaseId --jq '.databaseId')"
           RELEASE_URL="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json url --jq '.url')"
 
+          if [ "$INPUT_INCLUDE_LINUX" = "true" ]; then
+            RELEASE_MATRIX='{"include":[{"runner":"[\"self-hosted\",\"macOS\",\"ARM64\",\"desktop-build\"]","platform-name":"macos-arm64-self-hosted","bundle-args":"--bundles app"},{"runner":"[\"ubuntu-24.04\"]","platform-name":"ubuntu-24.04","bundle-args":"--bundles appimage,deb"}]}'
+          else
+            RELEASE_MATRIX='{"include":[{"runner":"[\"self-hosted\",\"macOS\",\"ARM64\",\"desktop-build\"]","platform-name":"macos-arm64-self-hosted","bundle-args":"--bundles app"}]}'
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
           echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
           echo "release_url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
           echo "include_linux=$INPUT_INCLUDE_LINUX" >> "$GITHUB_OUTPUT"
+          echo "release_matrix=$RELEASE_MATRIX" >> "$GITHUB_OUTPUT"
 
       - name: Summarize prepared release
         run: |
@@ -177,17 +185,10 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: '["self-hosted","macOS","ARM64","desktop-build"]'
-            platform-name: macos-arm64-self-hosted
-            bundle-args: "--bundles app"
-          - runner: '["ubuntu-24.04"]'
-            platform-name: ubuntu-24.04
-            bundle-args: "--bundles appimage,deb"
+      matrix: ${{ fromJSON(needs.prepare_release.outputs.release_matrix) }}
 
     runs-on: ${{ fromJSON(matrix.runner) }}
-    if: ${{ needs.prepare_release.result == 'success' && (matrix.platform-name != 'ubuntu-24.04' || needs.prepare_release.outputs.include_linux == 'true') }}
+    if: ${{ needs.prepare_release.result == 'success' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -206,7 +207,7 @@ jobs:
         run: bash ./scripts/setup-rust-ci.sh
 
       - name: Install Linux system dependencies
-        if: ${{ matrix.platform-name == 'ubuntu-24.04' && needs.prepare_release.outputs.include_linux == 'true' }}
+        if: ${{ matrix.platform-name == 'ubuntu-24.04' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y \
