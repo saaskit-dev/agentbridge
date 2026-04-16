@@ -1,0 +1,49 @@
+name: Sync Desktop Updater Pointer
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Desktop release tag, e.g. desktop-v0.0.13
+        required: true
+        type: string
+      version:
+        description: Desktop app version, e.g. 0.0.13
+        required: true
+        type: string
+      release_url:
+        description: Optional release URL override
+        required: false
+        type: string
+      channel:
+        description: Desktop updater channel
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Publish desktop updater pointer
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DESKTOP_UPDATER_SERVER_URL: ${{ secrets.OTA_SERVER_URL }}
+          DESKTOP_UPDATER_SERVER_TOKEN: ${{ secrets.OTA_SERVER_TOKEN }}
+          DESKTOP_UPDATER_CHANNEL: ${{ inputs.channel }}
+          DESKTOP_RELEASE_TAG_NAME: ${{ inputs.tag_name }}
+          DESKTOP_RELEASE_VERSION: ${{ inputs.version }}
+          DESKTOP_RELEASE_URL: ${{ inputs.release_url || format('https://github.com/{0}/releases/tag/{1}', github.repository, inputs.tag_name) }}
+          DESKTOP_RELEASE_SHA: ${{ github.sha }}
+        run: node ./scripts/publish-desktop-release-pointer.js
