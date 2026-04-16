@@ -1,7 +1,7 @@
 {
   "name": "@free/app",
   "main": "index.ts",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "Free - Mobile and Web client for AI Coding Agents",
   "author": "saaskit-dev",
   "license": "MIT",
