@@ -247,17 +247,7 @@ jobs:
           set -euo pipefail
           KEY_FILE="$RUNNER_TEMP/tauri-signing-key.txt"
           TEST_FILE="$RUNNER_TEMP/desktop-secret-validation.txt"
-          node <<'EOF' > "$KEY_FILE"
-          const input = (process.env.TAURI_SIGNING_PRIVATE_KEY || '').trim();
-          let text = input;
-          try {
-            const decoded = Buffer.from(input, 'base64').toString('utf8');
-            if (decoded.includes('untrusted comment:')) {
-              text = decoded;
-            }
-          } catch {}
-          process.stdout.write(text.endsWith('\n') ? text : `${text}\n`);
-          EOF
+          printf '%s\n' "$TAURI_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
           printf 'desktop secret validation\n' > "$TEST_FILE"
           pnpm --dir apps/free/app exec tauri signer sign \
             -f "$KEY_FILE" \
