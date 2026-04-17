@@ -54,11 +54,7 @@
 | `project_id` | Firebase Console |
 | `mobilesdk_app_id` | Firebase Console |
 | `api_key` | Firebase Console |
-| `ANDROID_UPLOAD_KEYSTORE_BASE64` | 把 Android release keystore 做 base64 后存到 CI secret |
-| `ANDROID_UPLOAD_STORE_PASSWORD` | Android release keystore password |
-| `ANDROID_UPLOAD_KEY_ALIAS` | Android release key alias |
-| `ANDROID_UPLOAD_KEY_PASSWORD` | Android release key password |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Google Play Console service account JSON |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | 仅在未来接入 Google Play 发布时需要 |
 
 ## 4. Android App Links
 
