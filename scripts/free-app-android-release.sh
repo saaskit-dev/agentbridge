@@ -42,6 +42,10 @@ require_cmd pnpm
 require_cmd java
 require_cmd base64
 
+clean_android_build_outputs() {
+  rm -rf "$APP_DIR/android/.gradle" "$APP_DIR/android/build" "$APP_DIR/android/app/build"
+}
+
 ensure_local_android_maven_repo() {
   if [ ! -d "$LOCAL_ANDROID_MAVEN_REPO" ]; then
     return 0
@@ -153,6 +157,7 @@ echo "==> Sync Expo config into native Android project"
   npx expo prebuild --platform android --non-interactive
 )
 
+clean_android_build_outputs
 ensure_local_android_maven_repo
 
 if [ -f "$GOOGLE_SERVICES_PATH" ]; then
