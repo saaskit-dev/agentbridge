@@ -7,7 +7,7 @@
 #
 # 说明:
 #   iOS 走本机 / self-hosted GitHub runner + App Store Connect。
-#   Android 走本机构建 signed APK，用于直接分发安装。
+#   Android 走本机构建 debug-signed APK，用于直接分发安装。
 
 set -e
 

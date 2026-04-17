@@ -121,8 +121,8 @@ jobs:
           cat > "$RELEASE_BODY" <<EOF
           Android APK release for Free.
 
-          - Includes production signed APK
-          - Includes development signed APK when requested
+          - Includes production debug-signed APK
+          - Includes development debug-signed APK when requested
           - SHA256SUMS.txt is attached for integrity verification
           EOF
           gh release create "$TAG_NAME" \
@@ -182,10 +182,7 @@ jobs:
       - name: Build Android release artifacts
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
-          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
-          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
-          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          ANDROID_SIGNING_MODE: debug
         run: |
           set -euo pipefail
           VARIANTS="production"
@@ -216,10 +213,10 @@ jobs:
           echo "$ASSET_NAMES"
           echo "$ASSET_NAMES" | grep -qx 'SHA256SUMS.txt'
           echo "$ASSET_NAMES" | grep -qx 'build-production.env'
-          echo "$ASSET_NAMES" | grep -Eqx "free-production-${{ needs.prepare_release.outputs.version }}-[0-9]+\\.apk"
+          echo "$ASSET_NAMES" | grep -Eqx "free-production-debug-${{ needs.prepare_release.outputs.version }}-[0-9]+\\.apk"
           if [ "${{ needs.prepare_release.outputs.include_dev }}" = "true" ]; then
             echo "$ASSET_NAMES" | grep -qx 'build-development.env'
-            echo "$ASSET_NAMES" | grep -Eqx "free-development-${{ needs.prepare_release.outputs.version }}-[0-9]+\\.apk"
+            echo "$ASSET_NAMES" | grep -Eqx "free-development-debug-${{ needs.prepare_release.outputs.version }}-[0-9]+\\.apk"
           fi
 
       - name: Summarize published release

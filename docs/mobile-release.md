@@ -135,11 +135,7 @@ EXPO_UPDATES_URL=https://your-server.example.com/updates
 
 Android workflow 需要注入：
 
-- `ANDROID_UPLOAD_KEYSTORE_BASE64`
-- `ANDROID_UPLOAD_STORE_PASSWORD`
-- `ANDROID_UPLOAD_KEY_ALIAS`
-- `ANDROID_UPLOAD_KEY_PASSWORD`
-- `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`
+- `GOOGLE_SERVICES_JSON`
 
 CI 可选变量：
 
@@ -169,10 +165,10 @@ CI workflow：
 流程：
 
 1. `expo prebuild --platform android`
-2. 用 upload keystore 构建 signed `app-release.aab`
-3. GitHub Actions 手动触发后上传到 Google Play
+2. 用 Gradle 构建 debug-signed `app-release.apk`
+3. GitHub Actions 手动触发后上传到 GitHub Release，供团队直接分发安装
 
 ## Current Gaps
 
-- Android 链路这次只补到脚本和 CI，尚未做真实 Google Play 上传验收
+- Android 链路当前走 debug-signed APK 分发，不经过 Google Play，也不依赖 upload keystore
 - OTA 最终链路已经切到自托管 server + GitHub Releases，但仍需你们在真实环境完成一次端到端验收
