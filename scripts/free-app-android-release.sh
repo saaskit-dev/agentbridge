@@ -47,12 +47,13 @@ ensure_local_android_maven_repo() {
     return 0
   fi
 
-  LOCAL_ANDROID_MAVEN_REPO="$LOCAL_ANDROID_MAVEN_REPO" node <<'EOF'
+  APP_DIR="$APP_DIR" LOCAL_ANDROID_MAVEN_REPO="$LOCAL_ANDROID_MAVEN_REPO" node <<'EOF'
 const fs = require('fs');
 const path = require('path');
 
-const buildGradlePath = path.join(process.cwd(), 'android', 'build.gradle');
+const appDir = process.env.APP_DIR;
 const repoPath = process.env.LOCAL_ANDROID_MAVEN_REPO;
+const buildGradlePath = path.join(appDir, 'android', 'build.gradle');
 const repoBlock = `    maven { url uri("../vendor/android-maven") }\n`;
 
 let source = fs.readFileSync(buildGradlePath, 'utf8');
