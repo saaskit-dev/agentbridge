@@ -263,8 +263,12 @@ fn parse_cli_version(raw: &str) -> Option<String> {
   None
 }
 
-fn read_command_version(command: &str) -> CommandResult<Option<String>> {
-  let output = run_shell(&format!("{} --version", command))?;
+fn shell_quote(value: &str) -> String {
+  format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn read_command_version(command_path: &str) -> CommandResult<Option<String>> {
+  let output = run_shell(&format!("{} --version", shell_quote(command_path)))?;
   if !output.status.success() {
     return Ok(None);
   }
@@ -375,8 +379,8 @@ fn read_cli_status() -> CommandResult<DesktopCliStatus> {
   let bash_path = command_path("bash")?;
   let git_path = command_path("git")?;
   let node_path = command_path("node")?;
-  let node_version = if node_path.is_some() {
-    read_command_version("node")?
+  let node_version = if let Some(node_path) = node_path.as_deref() {
+    read_command_version(node_path)?
   } else {
     None
   };
@@ -389,8 +393,8 @@ fn read_cli_status() -> CommandResult<DesktopCliStatus> {
     &node_version,
   );
 
-  let version = if free_path.is_some() {
-    let output = run_shell("free --version")?;
+  let version = if let Some(free_path) = free_path.as_deref() {
+    let output = run_shell(&format!("{} --version", shell_quote(free_path)))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     parse_cli_version(&stdout).or_else(|| parse_cli_version(&stderr))
@@ -965,6 +969,10 @@ fn desktop_bootstrap_cli_auth(
   if !status.installed {
     return Err(String::from("Free CLI is not installed"));
   }
+  let free_path = status
+    .path
+    .clone()
+    .ok_or_else(|| String::from("Free CLI path could not be resolved"))?;
 
   let free_home = free_home_dir()?;
   fs::create_dir_all(&free_home).map_err(|error| error.to_string())?;
@@ -983,7 +991,10 @@ fn desktop_bootstrap_cli_auth(
   .map_err(|error| error.to_string())?;
   set_owner_only_permissions(&access_key_path, 0o600)?;
 
-  let daemon_output = run_shell("nohup free daemon start-sync >/dev/null 2>&1 &")?;
+  let daemon_output = run_shell(&format!(
+    "nohup {} daemon start-sync >/dev/null 2>&1 &",
+    shell_quote(&free_path)
+  ))?;
   if !daemon_output.status.success() {
     let stderr = String::from_utf8_lossy(&daemon_output.stderr).trim().to_string();
     return Err(if stderr.is_empty() {

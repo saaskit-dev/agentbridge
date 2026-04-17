@@ -931,53 +931,6 @@ export const SettingsView = React.memo(function SettingsView() {
                 />
             </ItemGroup> */}
 
-      {/* Machines (sorted: online first, then last seen desc) */}
-      {allMachines.length > 0 && (
-        <ItemGroup title={t('settings.machines')}>
-          {[...allMachines].map(machine => {
-            const isOnline = isMachineOnline(machine);
-            const host = machine.metadata?.host || 'Unknown';
-            const displayName = machine.metadata?.displayName;
-            const platform = machine.metadata?.platform || '';
-
-            // Use displayName if available, otherwise use host
-            const title = displayName || host;
-
-            // Build subtitle: show hostname if different from title, plus platform and status
-            let subtitle = '';
-            if (displayName && displayName !== host) {
-              subtitle = host;
-            }
-            if (platform) {
-              subtitle = subtitle ? `${subtitle} • ${platform}` : platform;
-            }
-            subtitle = subtitle
-              ? `${subtitle} • ${isOnline ? t('status.online') : t('status.offline')}`
-              : isOnline
-                ? t('status.online')
-                : t('status.offline');
-
-            return (
-              <Item
-                key={machine.id}
-                title={title}
-                subtitle={subtitle}
-                icon={
-                  <Ionicons
-                    name="desktop-outline"
-                    size={29}
-                    color={
-                      isOnline ? theme.colors.status.connected : theme.colors.status.disconnected
-                    }
-                  />
-                }
-                onPress={() => router.push(`/machine/${machine.id}`)}
-              />
-            );
-          })}
-        </ItemGroup>
-      )}
-
       {/* Features */}
       <ItemGroup title={t('settings.features')}>
         <Item
