@@ -4,17 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       bump_type:
-        description: Version bump strategy
+        description: Version strategy
         required: true
-        default: patch
+        default: time
         type: choice
         options:
+          - time
           - patch
           - minor
           - major
           - version
       version:
-        description: Explicit version when bump_type=version
+        description: Explicit desktop version when bump_type=version
         required: false
         type: string
       include_linux:
@@ -110,19 +111,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          RELEASE_TIME_ISO="$(node -e "process.stdout.write(new Date().toISOString())")"
+          export RELEASE_TIME_ISO
 
           if [ "$INPUT_BUMP_TYPE" = "version" ]; then
             if [ -z "${INPUT_VERSION:-}" ]; then
               echo "version input is required when bump_type=version" >&2
               exit 1
             fi
-            node ./scripts/version.js "$INPUT_VERSION"
+            node ./scripts/version.js desktop "$INPUT_VERSION"
           else
-            node ./scripts/version.js "$INPUT_BUMP_TYPE"
+            node ./scripts/version.js desktop "$INPUT_BUMP_TYPE"
           fi
 
           VERSION="$(node -p "require('./apps/free/app/src-tauri/tauri.conf.json').version")"
-          TAG_NAME="desktop-v${VERSION}"
+          RELEASE_STAMP="$(node -e "process.stdout.write(require('./scripts/releaseTime').generateReleaseStamp())")"
+          TAG_NAME="desktop-v${RELEASE_STAMP}"
 
           if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "Tag already exists: $TAG_NAME" >&2
@@ -131,8 +135,8 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/free/app/package.json apps/free/app/src-tauri/tauri.conf.json
-          git commit -m "Release desktop ${VERSION}"
+          git add apps/free/app/src-tauri/tauri.conf.json
+          git commit -m "Release desktop ${TAG_NAME}"
           git tag "$TAG_NAME"
           git push origin HEAD:refs/heads/main
           git push origin "$TAG_NAME"

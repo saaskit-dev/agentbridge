@@ -7,7 +7,7 @@ const os = require('os');
 //   production    线上发布          app.saaskit.freecode   可签名 release APK   连生产服务器
 const variant = process.env.APP_ENV || 'development';
 const iosBuildNumber = process.env.IOS_BUILD_NUMBER || '1';
-const androidVersionCode = Number.parseInt(process.env.ANDROID_VERSION_CODE || iosBuildNumber, 10) || 1;
+const androidVersionCode = Number.parseInt(process.env.ANDROID_VERSION_CODE || '1', 10) || 1;
 
 const PRODUCTION_SERVER_URL = 'https://free-server.saaskit.app';
 

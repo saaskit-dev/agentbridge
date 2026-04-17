@@ -57,20 +57,22 @@ On macOS, local packaging intentionally avoids Tauri's built-in DMG bundler and 
 
 ## Version Source
 
-Desktop versioning is unified through `scripts/version.js`.
+Desktop versioning is managed independently through `scripts/version.js desktop`.
 
-The script now updates all of:
+The desktop release workflow only updates:
 
-- `apps/free/app/package.json`
 - `apps/free/app/src-tauri/tauri.conf.json`
+
+Manual desktop releases now default to a time-based version strategy. The generated value stays semver-compatible for Tauri updater, but it is derived from the current release time rather than manual patch/minor bumps.
 
 Use:
 
 ```bash
-./run version patch
-./run version minor
-./run version major
-./run version 0.2.0
+./run version desktop time
+./run version desktop patch
+./run version desktop minor
+./run version desktop major
+./run version desktop 0.2.0
 ```
 
 ## Auto Update
@@ -127,7 +129,7 @@ The release workflow is now manual-only. When you trigger it, it will:
 
 1. bump the desktop version automatically
 2. commit the version change to `main`
-3. create and push `desktop-v<version>` tag
+3. create and push `desktop-v<timestamp>` tag
 4. build release artifacts from that exact release commit
 
 For macOS, the workflow builds the updater-compatible `.app` bundle first, then packages a plain drag-install `.dmg` in a separate CI step and uploads it to the same release.

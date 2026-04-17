@@ -4,17 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       bump_type:
-        description: Version bump strategy
+        description: Release strategy
         required: true
-        default: patch
+        default: time
         type: choice
         options:
+          - time
           - patch
           - minor
           - major
           - version
       version:
-        description: Explicit version when bump_type=version
+        description: Explicit Android version when bump_type=version
         required: false
         type: string
       include_dev:
@@ -71,19 +72,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          RELEASE_TIME_ISO="$(node -e "process.stdout.write(new Date().toISOString())")"
+          export RELEASE_TIME_ISO
+          SHOULD_COMMIT_VERSION=false
 
-          if [ "$INPUT_BUMP_TYPE" = "version" ]; then
-            if [ -z "${INPUT_VERSION:-}" ]; then
-              echo "version input is required when bump_type=version" >&2
+          case "$INPUT_BUMP_TYPE" in
+            time)
+              ;;
+            version)
+              if [ -z "${INPUT_VERSION:-}" ]; then
+                echo "version input is required when bump_type=version" >&2
+                exit 1
+              fi
+              node ./scripts/version.js app "$INPUT_VERSION"
+              SHOULD_COMMIT_VERSION=true
+              ;;
+            patch|minor|major)
+              node ./scripts/version.js app "$INPUT_BUMP_TYPE"
+              SHOULD_COMMIT_VERSION=true
+              ;;
+            *)
+              echo "Unsupported bump_type: $INPUT_BUMP_TYPE" >&2
               exit 1
-            fi
-            node ./scripts/version.js "$INPUT_VERSION"
-          else
-            node ./scripts/version.js "$INPUT_BUMP_TYPE"
-          fi
+              ;;
+          esac
 
           VERSION="$(node -p "require('./apps/free/app/package.json').version")"
-          TAG_NAME="android-v${VERSION}"
+          RELEASE_STAMP="$(node -e "process.stdout.write(require('./scripts/releaseTime').generateReleaseStamp())")"
+          TAG_NAME="android-v${RELEASE_STAMP}"
 
           if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "Tag already exists: $TAG_NAME" >&2
@@ -92,13 +108,15 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/free/app/package.json apps/free/app/src-tauri/tauri.conf.json
-          git commit -m "Release android ${VERSION}"
-          git tag "$TAG_NAME"
-          git push origin HEAD:refs/heads/main
-          git push origin "$TAG_NAME"
-
           RELEASE_SHA="$(git rev-parse HEAD)"
+          if [ "$SHOULD_COMMIT_VERSION" = "true" ]; then
+            git add apps/free/app/package.json
+            git commit -m "Release android ${TAG_NAME}"
+            git push origin HEAD:refs/heads/main
+            RELEASE_SHA="$(git rev-parse HEAD)"
+          fi
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"
           RELEASE_BODY="$(mktemp)"
           cat > "$RELEASE_BODY" <<EOF
           Android APK release for Free.
@@ -128,6 +146,7 @@ jobs:
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## Android Release Prepared
           - Version: ${{ steps.prepare.outputs.version }}
+          - Build strategy: `${{ inputs.bump_type }}`
           - Tag: \`${{ steps.prepare.outputs.tag_name }}\`
           - Release: ${{ steps.prepare.outputs.release_url }}
           - Include dev APK: \`${{ steps.prepare.outputs.include_dev }}\`
@@ -135,7 +154,7 @@ jobs:
 
   release:
     needs: prepare_release
-    runs-on: ${{ fromJSON(vars.ANDROID_RUNNER_LABELS_JSON || '["self-hosted","Linux","X64","android-build"]') }}
+    runs-on: ${{ fromJSON(vars.MACOS_RUNNER_LABELS_JSON || vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","local-mac"]') }}
     permissions:
       contents: write
 
@@ -167,7 +186,6 @@ jobs:
           ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
           ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
-          ANDROID_VERSION_CODE: ${{ vars.ANDROID_VERSION_CODE }}
         run: |
           set -euo pipefail
           VARIANTS="production"

@@ -31,12 +31,14 @@ CI workflow：
 
 流程：
 
-1. 本地计算下一个 build number
-2. `expo prebuild --platform ios`
-3. `pod-install`
-4. `xcodebuild archive/export`
-5. `xcrun altool` 上传 App Store Connect
-6. 按 lane 分发到 TestFlight 或生产
+1. 保持 app marketing version（例如 `0.0.1`）
+2. 本地查询 iOS 上一个 build number 并递增
+3. Android versionCode 独立自增
+4. `expo prebuild --platform ios`
+5. `pod-install`
+6. `xcodebuild archive/export`
+7. `xcrun altool` 上传 App Store Connect
+8. 按 lane 分发到 TestFlight 或生产
 
 必备 secret：
 
