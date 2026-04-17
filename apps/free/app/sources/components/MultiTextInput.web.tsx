@@ -20,16 +20,13 @@ export interface KeyPressEvent {
 
 export type OnKeyPressCallback = (event: KeyPressEvent) => boolean;
 
-export interface TextInputState {
-  text: string;
-  selection: {
-    start: number;
-    end: number;
-  };
+export interface TextInputSelection {
+  start: number;
+  end: number;
 }
 
 export interface MultiTextInputHandle {
-  setTextAndSelection: (text: string, selection: { start: number; end: number }) => void;
+  setTextAndSelection: (text: string, selection: TextInputSelection) => void;
   focus: () => void;
   blur: () => void;
 }
@@ -44,8 +41,8 @@ interface MultiTextInputProps {
   paddingLeft?: number;
   paddingRight?: number;
   onKeyPress?: OnKeyPressCallback;
-  onSelectionChange?: (selection: { start: number; end: number }) => void;
-  onStateChange?: (state: TextInputState) => void;
+  onSelectionChange?: (selection: TextInputSelection) => void;
+  onCompositionStateChange?: (isComposing: boolean) => void;
 }
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>(
@@ -57,21 +54,48 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
       maxHeight = 120,
       onKeyPress,
       onSelectionChange,
-      onStateChange,
+      onCompositionStateChange,
     } = props;
 
     const { theme } = useUnistyles();
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+    const isComposingRef = React.useRef(false);
+    const selectionRef = React.useRef<TextInputSelection>({ start: 0, end: 0 });
 
     // Convert maxHeight to approximate maxRows (assuming ~24px line height)
     const maxRows = Math.floor(maxHeight / 24);
+
+    React.useEffect(() => {
+      const max = value.length;
+      const { start, end } = selectionRef.current;
+      if (start > max || end > max) {
+        selectionRef.current = { start: max, end: max };
+      }
+    }, [value]);
+
+    const emitSelectionChange = React.useCallback(
+      (selection: TextInputSelection) => {
+        if (
+          selection.start === selectionRef.current.start &&
+          selection.end === selectionRef.current.end
+        ) {
+          return;
+        }
+        selectionRef.current = selection;
+        onSelectionChange?.(selection);
+      },
+      [onSelectionChange]
+    );
 
     const handleKeyDown = React.useCallback(
       (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (!onKeyPress) return;
 
         const isComposing =
-          e.nativeEvent.isComposing || (e.nativeEvent as any).isComposing || e.keyCode === 229;
+          isComposingRef.current ||
+          e.nativeEvent.isComposing ||
+          (e.nativeEvent as any).isComposing ||
+          e.keyCode === 229;
         if (isComposing) {
           return;
         }
@@ -129,15 +153,9 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         };
 
         onChangeText(text);
-
-        if (onStateChange) {
-          onStateChange({ text, selection });
-        }
-        if (onSelectionChange) {
-          onSelectionChange(selection);
-        }
+        emitSelectionChange(selection);
       },
-      [onChangeText, onStateChange, onSelectionChange]
+      [emitSelectionChange, onChangeText]
     );
 
     const handleSelect = React.useCallback(
@@ -147,27 +165,27 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
           start: target.selectionStart,
           end: target.selectionEnd,
         };
-
-        if (onSelectionChange) {
-          onSelectionChange(selection);
-        }
-        if (onStateChange) {
-          // Read text directly from the DOM element instead of the `value` prop.
-          // A `select` event can fire right after `change` in the same tick;
-          // the closure's `value` may still be the pre-change string, which
-          // would overwrite the correct state that handleChange just set.
-          onStateChange({ text: target.value, selection });
-        }
+        emitSelectionChange(selection);
       },
-      [onSelectionChange, onStateChange]
+      [emitSelectionChange]
     );
+
+    const handleCompositionStart = React.useCallback(() => {
+      isComposingRef.current = true;
+      onCompositionStateChange?.(true);
+    }, [onCompositionStateChange]);
+
+    const handleCompositionEnd = React.useCallback(() => {
+      isComposingRef.current = false;
+      onCompositionStateChange?.(false);
+    }, [onCompositionStateChange]);
 
     // Imperative handle for direct control
     React.useImperativeHandle(
       ref,
       () => ({
-        setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
-          if (textareaRef.current) {
+        setTextAndSelection: (text: string, selection: TextInputSelection) => {
+          if (textareaRef.current && !isComposingRef.current) {
             // Directly set value and selection on DOM element
             textareaRef.current.value = text;
             textareaRef.current.setSelectionRange(selection.start, selection.end);
@@ -175,15 +193,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
             // Trigger React's onChange by dispatching an input event
             const event = new Event('input', { bubbles: true });
             textareaRef.current.dispatchEvent(event);
-
-            // Also call callbacks directly for immediate update
-            onChangeText(text);
-            if (onStateChange) {
-              onStateChange({ text, selection });
-            }
-            if (onSelectionChange) {
-              onSelectionChange(selection);
-            }
+            emitSelectionChange(selection);
           }
         },
         focus: () => {
@@ -193,7 +203,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
           textareaRef.current?.blur();
         },
       }),
-      [onChangeText, onStateChange, onSelectionChange]
+      [emitSelectionChange]
     );
 
     return (
@@ -222,6 +232,8 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
           onChange={handleChange}
           onSelect={handleSelect}
           onKeyDown={handleKeyDown}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           maxRows={maxRows}
           autoCapitalize="sentences"
           autoCorrect="on"

@@ -28,6 +28,7 @@ import {
 } from '@/utils/sessionFilePath';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/markdown/MarkdownView');
+const MAX_INLINE_MARKDOWN_IMAGE_BYTES = 12 * 1024 * 1024;
 
 /**
  * expo-router {@link Link} is for in-app routes and http(s); file/mailto/tel must use {@link Linking}.
@@ -445,9 +446,13 @@ function useResolvedMarkdownImage(source: string, assetContext?: MarkdownAssetCo
       }
 
       try {
-        const response = await sessionReadFile(assetContext.sessionId, localSourcePath);
+        const response = await sessionReadFile(
+          assetContext.sessionId,
+          localSourcePath,
+          MAX_INLINE_MARKDOWN_IMAGE_BYTES
+        );
         if (cancelled) return;
-        if (!response.success || typeof response.content !== 'string') {
+        if (!response.success || response.truncated || typeof response.content !== 'string') {
           setResolvedUri(null);
           setLoadFailed(true);
           return;

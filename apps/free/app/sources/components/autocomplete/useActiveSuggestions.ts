@@ -5,6 +5,8 @@ interface SuggestionOptions {
   clampSelection?: boolean; // If true, clamp instead of preserving exact position
   autoSelectFirst?: boolean; // If true, automatically select first item when suggestions appear
   wrapAround?: boolean; // If true, wrap around when reaching top/bottom
+  debounceMs?: number;
+  suspend?: boolean;
 }
 
 export function useActiveSuggestions(
@@ -18,7 +20,16 @@ export function useActiveSuggestions(
   >,
   options: SuggestionOptions = {}
 ) {
-  const { clampSelection = true, autoSelectFirst = true, wrapAround = true } = options;
+  const {
+    clampSelection = true,
+    autoSelectFirst = true,
+    wrapAround = true,
+    debounceMs = 350,
+    suspend = false,
+  } = options;
+  const handlerRef = React.useRef(handler);
+  const debounceTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeQueryRef = React.useRef<string | null>(null);
 
   // State for suggestions
   const [state, setState] = React.useState<{
@@ -67,13 +78,20 @@ export function useActiveSuggestions(
     });
   }, [wrapAround]);
 
+  React.useEffect(() => {
+    handlerRef.current = handler;
+  }, [handler]);
+
   // Sync query to suggestions
   const sync = React.useMemo(() => {
     return new ValueSync<string | null>(async query => {
       if (!query) {
         return;
       }
-      const suggestions = await handler(query);
+      const suggestions = await handlerRef.current(query);
+      if (activeQueryRef.current !== query) {
+        return;
+      }
       setState(prev => {
         if (clampSelection) {
           // Simply clamp the selection to valid range
@@ -116,13 +134,54 @@ export function useActiveSuggestions(
         }
       });
     });
-  }, [clampSelection, autoSelectFirst, handler]);
+  }, [clampSelection, autoSelectFirst]);
+
   React.useEffect(() => {
-    sync.setValue(query);
-  }, [query, sync]);
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+
+    if (suspend || !query) {
+      activeQueryRef.current = null;
+      setState(prev =>
+        prev.suggestions.length === 0 && prev.selected === -1
+          ? prev
+          : { suggestions: [], selected: -1 }
+      );
+      return;
+    }
+
+    activeQueryRef.current = query;
+    setState(prev =>
+      prev.suggestions.length === 0 && prev.selected === -1
+        ? prev
+        : { suggestions: [], selected: -1 }
+    );
+    debounceTimeoutRef.current = setTimeout(() => {
+      sync.setValue(query);
+    }, debounceMs);
+
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+        debounceTimeoutRef.current = null;
+      }
+    };
+  }, [debounceMs, query, suspend, sync]);
+
+  React.useEffect(
+    () => () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      sync.stop();
+    },
+    [sync]
+  );
 
   // If no query return empty suggestions
-  if (!query) {
+  if (!query || suspend) {
     return [[], -1, moveUp, moveDown] as const;
   }
 

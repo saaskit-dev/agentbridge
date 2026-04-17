@@ -26,7 +26,7 @@ import { hapticsLight, hapticsError } from './haptics';
 import { VoiceBars } from './VoiceBars';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
-import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
+import { TextInputSelection, MultiTextInputHandle } from './MultiTextInput';
 import type { ModelMode } from './PermissionModeSelector';
 import { Typography } from '@/constants/Typography';
 import { Shaker, ShakeInstance } from './Shaker';
@@ -450,7 +450,9 @@ export const AgentInput = React.memo(
     const isWideLayout = screenWidth > 700;
 
     const hasText = props.value.trim().length > 0;
-    const hasReadyAttachments = (props.pendingAttachments ?? []).some(a => !a.uploading && !a.error);
+    const hasReadyAttachments = (props.pendingAttachments ?? []).some(
+      a => !a.uploading && !a.error
+    );
     const canSend = hasText || hasReadyAttachments;
     const [previewUri, setPreviewUri] = React.useState<string | null>(null);
 
@@ -534,7 +536,13 @@ export const AgentInput = React.memo(
         pillBackground: theme.colors.surface,
         pillTextColor: theme.colors.textSecondary,
       };
-    }, [props.usageData, theme.colors.surface, theme.colors.textSecondary, theme.colors.warning, theme.colors.warningCritical]);
+    }, [
+      props.usageData,
+      theme.colors.surface,
+      theme.colors.textSecondary,
+      theme.colors.warning,
+      theme.colors.warningCritical,
+    ]);
     const modelCapabilities = props.capabilities?.models;
     const modeCapabilities = props.capabilities?.modes;
     const hasAgentModeList = (modeCapabilities?.available?.length ?? 0) > 0;
@@ -607,37 +615,39 @@ export const AgentInput = React.memo(
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
 
-    // Autocomplete state - track text and selection together
-    const [inputState, setInputState] = React.useState<TextInputState>({
-      text: props.value,
-      selection: { start: 0, end: 0 },
-    });
+    const [selection, setSelection] = React.useState<TextInputSelection>({ start: 0, end: 0 });
+    const [isComposing, setIsComposing] = React.useState(false);
 
-    // Handle combined text and selection state changes
-    const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-      // logger.debug('📝 Input state changed:', JSON.stringify(newState));
-      setInputState(newState);
+    const handleSelectionChange = React.useCallback((nextSelection: TextInputSelection) => {
+      setSelection(prev => {
+        if (prev.start === nextSelection.start && prev.end === nextSelection.end) {
+          return prev;
+        }
+        return nextSelection;
+      });
+    }, []);
+
+    const handleCompositionStateChange = React.useCallback((nextIsComposing: boolean) => {
+      setIsComposing(prev => (prev === nextIsComposing ? prev : nextIsComposing));
     }, []);
 
     /**
-     * When the parent clears or replaces the composer value (e.g. after a successful send),
-     * the controlled `TextInput` updates from props but does not emit `onStateChange`.
-     * Without this sync, `inputState` stays on `/…` and the slash/@ menu stays visible.
+     * Clamp stale selections after programmatic value changes such as send/clear.
+     * This avoids keeping an out-of-bounds cursor after the controlled value shrinks.
      */
     React.useEffect(() => {
-      setInputState(prev => {
-        if (prev.text === props.value) {
+      setSelection(prev => {
+        const len = props.value.length;
+        if (prev.start <= len && prev.end <= len) {
           return prev;
         }
-        const len = props.value.length;
-        return { text: props.value, selection: { start: len, end: len } };
+        return { start: len, end: len };
       });
     }, [props.value]);
 
-    // Use the tracked selection from inputState
     const activeWord = useActiveWord(
-      inputState.text,
-      inputState.selection,
+      isComposing ? '' : props.value,
+      selection,
       props.autocompletePrefixes
     );
     // Using default options: clampSelection=true, autoSelectFirst=true, wrapAround=true
@@ -645,7 +655,12 @@ export const AgentInput = React.memo(
     const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(
       activeWord,
       props.autocompleteSuggestions,
-      { clampSelection: true, wrapAround: true }
+      {
+        clampSelection: true,
+        wrapAround: true,
+        debounceMs: Platform.OS === 'web' ? 280 : 450,
+        suspend: isComposing,
+      }
     );
     const renderedSuggestions = React.useMemo(
       () =>
@@ -656,18 +671,6 @@ export const AgentInput = React.memo(
       [suggestions]
     );
 
-    // Debug logging
-    // React.useEffect(() => {
-    //     logger.debug('🔍 Autocomplete Debug:', JSON.stringify({
-    //         value: props.value,
-    //         inputState,
-    //         activeWord,
-    //         suggestionsCount: suggestions.length,
-    //         selected,
-    //         prefixes: props.autocompletePrefixes
-    //     }, null, 2));
-    // }, [props.value, inputState, activeWord, suggestions.length, selected]);
-
     // Handle suggestion selection
     const handleSuggestionSelect = React.useCallback(
       (index: number) => {
@@ -677,8 +680,8 @@ export const AgentInput = React.memo(
 
         // Apply the suggestion
         const result = applySuggestion(
-          inputState.text,
-          inputState.selection,
+          props.value,
+          selection,
           suggestion.text,
           props.autocompletePrefixes,
           true // add space after
@@ -695,7 +698,7 @@ export const AgentInput = React.memo(
         // Small haptic feedback
         hapticsLight();
       },
-      [suggestions, inputState, props.autocompletePrefixes]
+      [props.autocompletePrefixes, props.value, selection, suggestions]
     );
 
     /**
@@ -706,12 +709,11 @@ export const AgentInput = React.memo(
       if (composerChromeLocked || suggestions.length === 0 || !inputRef.current) {
         return;
       }
-      const { text, selection } = inputState;
       const pos = selection.start;
-      const newText = text.slice(0, pos) + ' ' + text.slice(pos);
+      const newText = props.value.slice(0, pos) + ' ' + props.value.slice(pos);
       inputRef.current.setTextAndSelection(newText, { start: pos + 1, end: pos + 1 });
       hapticsLight();
-    }, [composerChromeLocked, suggestions.length, inputState]);
+    }, [composerChromeLocked, props.value, selection, suggestions.length]);
 
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
@@ -845,8 +847,8 @@ export const AgentInput = React.memo(
           } else if (event.key === 'Escape') {
             // Clear suggestions by collapsing selection (triggers activeWord to clear)
             if (inputRef.current) {
-              const cursorPos = inputState.selection.start;
-              inputRef.current.setTextAndSelection(inputState.text, {
+              const cursorPos = selection.start;
+              inputRef.current.setTextAndSelection(props.value, {
                 start: cursorPos,
                 end: cursorPos,
               });
@@ -907,6 +909,8 @@ export const AgentInput = React.memo(
         moveDown,
         selected,
         handleSuggestionSelect,
+        props.value,
+        selection,
         props.showAbortButton,
         props.onAbort,
         isAborting,
@@ -957,9 +961,7 @@ export const AgentInput = React.memo(
               <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
                 <View style={styles.overlayBackdrop} />
               </TouchableWithoutFeedback>
-              <View
-                style={[styles.settingsOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}
-              >
+              <View style={[styles.settingsOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}>
                 <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
                   {/* Permission Mode Section */}
                   {showLocalPermissionModeControls && !hasAgentModeList && (
@@ -1310,9 +1312,7 @@ export const AgentInput = React.memo(
               <TouchableWithoutFeedback onPress={() => setShowAgentPicker(false)}>
                 <View style={styles.overlayBackdrop} />
               </TouchableWithoutFeedback>
-              <View
-                style={[styles.settingsOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}
-              >
+              <View style={[styles.settingsOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}>
                 <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
                   <View style={styles.overlaySection}>
                     <Text style={styles.overlaySectionTitle}>{t('agentInput.agentTitle')}</Text>
@@ -1431,9 +1431,7 @@ export const AgentInput = React.memo(
               <TouchableWithoutFeedback onPress={() => setShowMachinePicker(false)}>
                 <View style={styles.overlayBackdrop} />
               </TouchableWithoutFeedback>
-              <View
-                style={[styles.settingsOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}
-              >
+              <View style={[styles.settingsOverlay, { paddingHorizontal: isWideLayout ? 0 : 8 }]}>
                 <FloatingOverlay maxHeight={400} keyboardShouldPersistTaps="always">
                   <View style={styles.overlaySection}>
                     <Text style={styles.overlaySectionTitle}>{t('machinePicker.headerTitle')}</Text>
@@ -1758,52 +1756,52 @@ export const AgentInput = React.memo(
               {/* Machine chip */}
               {props.machineName !== undefined &&
                 (props.onMachineSelect || props.onMachineClick) && (
-                <Pressable
-                  onPress={() => {
-                    hapticsLight();
-                    if (props.onMachineSelect) {
-                      inputRef.current?.blur();
-                      setShowSettings(false);
-                      setShowAgentPicker(false);
-                      setShowMachinePicker(prev => !prev);
-                      return;
-                    }
-                    props.onMachineClick?.();
-                  }}
-                  hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                  style={p => ({
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    height: 32,
-                    opacity: p.pressed ? 0.7 : 1,
-                    gap: 6,
-                  })}
-                >
-                  <Ionicons name="desktop-outline" size={14} color={theme.colors.textSecondary} />
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: theme.colors.text,
-                      fontWeight: '600',
-                      ...Typography.default('semiBold'),
+                  <Pressable
+                    onPress={() => {
+                      hapticsLight();
+                      if (props.onMachineSelect) {
+                        inputRef.current?.blur();
+                        setShowSettings(false);
+                        setShowAgentPicker(false);
+                        setShowMachinePicker(prev => !prev);
+                        return;
+                      }
+                      props.onMachineClick?.();
                     }}
+                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                    style={p => ({
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      borderRadius: Platform.select({ default: 16, android: 20 }),
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      height: 32,
+                      opacity: p.pressed ? 0.7 : 1,
+                      gap: 6,
+                    })}
                   >
-                    {props.machineName === null
-                      ? t('agentInput.noMachinesAvailable')
-                      : props.machineName}
-                  </Text>
-                  {props.onMachineSelect ? (
-                    <Ionicons
-                      name={showMachinePicker ? 'chevron-up' : 'chevron-down'}
-                      size={14}
-                      color={theme.colors.textSecondary}
-                    />
-                  ) : null}
-                </Pressable>
-              )}
+                    <Ionicons name="desktop-outline" size={14} color={theme.colors.textSecondary} />
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        color: theme.colors.text,
+                        fontWeight: '600',
+                        ...Typography.default('semiBold'),
+                      }}
+                    >
+                      {props.machineName === null
+                        ? t('agentInput.noMachinesAvailable')
+                        : props.machineName}
+                    </Text>
+                    {props.onMachineSelect ? (
+                      <Ionicons
+                        name={showMachinePicker ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color={theme.colors.textSecondary}
+                      />
+                    ) : null}
+                  </Pressable>
+                )}
 
               {/* Path chip */}
               {props.currentPath && props.onPathClick && (
@@ -1858,7 +1856,8 @@ export const AgentInput = React.memo(
                 placeholder={props.placeholder}
                 editable={!composerChromeLocked}
                 onKeyPress={handleKeyPress}
-                onStateChange={handleInputStateChange}
+                onSelectionChange={handleSelectionChange}
+                onCompositionStateChange={handleCompositionStateChange}
                 maxHeight={120}
               />
             </View>
@@ -1944,25 +1943,25 @@ export const AgentInput = React.memo(
 
             {/* Action buttons below input */}
             <View
-                style={[
-                  styles.actionButtonsContainer,
-                  {
-                    position: 'relative',
-                    minHeight: Platform.OS === 'web' ? 44 : 40,
-                    marginTop: 2,
-                    paddingTop: Platform.OS === 'web' ? 8 : 4,
-                    paddingHorizontal: Platform.OS === 'web' ? 4 : 0,
-                    paddingBottom: Platform.OS === 'web' ? 2 : 0,
-                    borderTopWidth: 1,
-                    borderTopColor: Platform.OS === 'web'
+              style={[
+                styles.actionButtonsContainer,
+                {
+                  position: 'relative',
+                  minHeight: Platform.OS === 'web' ? 44 : 40,
+                  marginTop: 2,
+                  paddingTop: Platform.OS === 'web' ? 8 : 4,
+                  paddingHorizontal: Platform.OS === 'web' ? 4 : 0,
+                  paddingBottom: Platform.OS === 'web' ? 2 : 0,
+                  borderTopWidth: 1,
+                  borderTopColor:
+                    Platform.OS === 'web'
                       ? theme.dark
                         ? 'rgba(255,255,255,0.06)'
-                      : 'rgba(18, 28, 45, 0.08)'
-                    : 'transparent',
+                        : 'rgba(18, 28, 45, 0.08)'
+                      : 'transparent',
                 },
               ]}
             >
-
               {/* Recording bar - fades in when isSpeechInputActive */}
               <Animated.View
                 pointerEvents={props.isSpeechInputActive ? 'auto' : 'none'}
@@ -1994,7 +1993,10 @@ export const AgentInput = React.memo(
                 </Text>
                 {/* Cancel - restores original text */}
                 <Pressable
-                  onPress={() => { hapticsLight(); props.onSpeechInputCancel?.(); }}
+                  onPress={() => {
+                    hapticsLight();
+                    props.onSpeechInputCancel?.();
+                  }}
                   hitSlop={10}
                   style={p => ({ opacity: p.pressed ? 0.6 : 1, padding: 4 })}
                 >
@@ -2002,7 +2004,10 @@ export const AgentInput = React.memo(
                 </Pressable>
                 {/* Done - keeps transcript */}
                 <Pressable
-                  onPress={() => { hapticsLight(); props.onSpeechInputPress?.(); }}
+                  onPress={() => {
+                    hapticsLight();
+                    props.onSpeechInputPress?.();
+                  }}
                   hitSlop={10}
                   style={p => ({ opacity: p.pressed ? 0.6 : 1, padding: 4 })}
                 >
@@ -2049,7 +2054,12 @@ export const AgentInput = React.memo(
                             style={p => [styles.agentChipButton, { opacity: p.pressed ? 0.7 : 1 }]}
                           >
                             <AgentFlavorIcon flavor={props.agentType} size={14} />
-                            <Text style={[styles.agentChipLabel, { color: theme.colors.button.secondary.tint }]}>
+                            <Text
+                              style={[
+                                styles.agentChipLabel,
+                                { color: theme.colors.button.secondary.tint },
+                              ]}
+                            >
                               {getAgentDisplayName(props.agentType)}
                             </Text>
                           </Pressable>
@@ -2178,7 +2188,6 @@ export const AgentInput = React.memo(
                         </Pressable>
                       </Shaker>
                     )}
-
                   </View>
 
                   <View

@@ -104,52 +104,20 @@ export async function getSuggestions(
     component: React.ComponentType;
   }[]
 > {
-  logger.debug('💡 getSuggestions called with query:', JSON.stringify(query));
-
   if (!query || query.length === 0) {
-    logger.debug('💡 getSuggestions: Empty query, returning empty array');
     return [];
   }
 
   // Check if it's a command (starts with /)
   if (query.startsWith('/')) {
-    logger.debug('💡 getSuggestions: Command detected');
-    const result = await getCommandSuggestions(sessionId, query);
-    logger.debug(
-      '💡 getSuggestions: Command suggestions:',
-      JSON.stringify(
-        result.map(r => ({
-          key: r.key,
-          text: r.text,
-          component: '[Function]',
-        })),
-        null,
-        2
-      )
-    );
-    return result;
+    return getCommandSuggestions(sessionId, query);
   }
 
   // Check if it's a file mention (starts with @)
   if (query.startsWith('@')) {
-    logger.debug('💡 getSuggestions: File mention detected');
-    const result = await getFileMentionSuggestions(sessionId, query);
-    logger.debug(
-      '💡 getSuggestions: File suggestions:',
-      JSON.stringify(
-        result.map(r => ({
-          key: r.key,
-          text: r.text,
-          component: '[Function]',
-        })),
-        null,
-        2
-      )
-    );
-    return result;
+    return getFileMentionSuggestions(sessionId, query);
   }
 
   // No suggestions for other queries
-  logger.debug('💡 getSuggestions: No matching prefix, returning empty array');
   return [];
 }

@@ -4,7 +4,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import { storage } from '@/sync/storage';
 
 interface UseDraftOptions {
-  autoSaveInterval?: number; // in milliseconds, default 2000
+  autoSaveInterval?: number; // in milliseconds, default 5000
 }
 
 export function useDraft(
@@ -13,7 +13,7 @@ export function useDraft(
   onChange: (value: string) => void,
   options: UseDraftOptions = {}
 ) {
-  const { autoSaveInterval = 2000 } = options;
+  const { autoSaveInterval = 5000 } = options;
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedValue = useRef<string>('');
   const isFocused = useIsFocused();
@@ -43,7 +43,7 @@ export function useDraft(
     }
   }, [sessionId, isFocused, onChange]);
 
-  // Auto-save with smart debouncing
+  // Auto-save with trailing debounce only. Avoid immediate writes while the user is still typing.
   useEffect(() => {
     if (!sessionId) return;
 
@@ -54,21 +54,9 @@ export function useDraft(
 
     // Only save if value has changed
     if (value !== lastSavedValue.current) {
-      const wasEmpty = !lastSavedValue.current.trim();
-      const isEmpty = !value.trim();
-
-      if (wasEmpty !== isEmpty) {
-        // State transition: empty <-> non-empty
-        // Save immediately for instant feedback
+      saveTimeoutRef.current = setTimeout(() => {
         saveDraft(value);
-      } else if (!isEmpty) {
-        // Text is being modified (non-empty to non-empty)
-        // Debounce to avoid excessive saves
-        saveTimeoutRef.current = setTimeout(() => {
-          saveDraft(value);
-        }, autoSaveInterval);
-      }
-      // If both are empty, no need to save
+      }, autoSaveInterval);
     }
 
     return () => {
@@ -77,6 +65,20 @@ export function useDraft(
       }
     };
   }, [value, sessionId, autoSaveInterval, saveDraft]);
+
+  // Persist when leaving the screen so delayed auto-save does not lose the latest draft.
+  useEffect(() => {
+    if (!sessionId || isFocused) return;
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    if (value !== lastSavedValue.current) {
+      saveDraft(value);
+    }
+  }, [isFocused, sessionId, value, saveDraft]);
 
   // Save on app state change (background/inactive)
   useEffect(() => {

@@ -9,8 +9,6 @@ import {
 } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
-import { Logger } from '@saaskit-dev/agentbridge/telemetry';
-const logger = new Logger('app/components/MultiTextInput');
 
 export type SupportedKey =
   | 'Enter'
@@ -28,16 +26,13 @@ export interface KeyPressEvent {
 
 export type OnKeyPressCallback = (event: KeyPressEvent) => boolean;
 
-export interface TextInputState {
-  text: string;
-  selection: {
-    start: number;
-    end: number;
-  };
+export interface TextInputSelection {
+  start: number;
+  end: number;
 }
 
 export interface MultiTextInputHandle {
-  setTextAndSelection: (text: string, selection: { start: number; end: number }) => void;
+  setTextAndSelection: (text: string, selection: TextInputSelection) => void;
   focus: () => void;
   blur: () => void;
 }
@@ -54,8 +49,8 @@ interface MultiTextInputProps {
   /** When false, the field does not accept focus or edits (e.g. while sending or aborting). */
   editable?: boolean;
   onKeyPress?: OnKeyPressCallback;
-  onSelectionChange?: (selection: { start: number; end: number }) => void;
-  onStateChange?: (state: TextInputState) => void;
+  onSelectionChange?: (selection: TextInputSelection) => void;
+  onCompositionStateChange?: (isComposing: boolean) => void;
 }
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>(
@@ -68,13 +63,19 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
       editable = true,
       onKeyPress,
       onSelectionChange,
-      onStateChange,
     } = props;
 
     const { theme } = useUnistyles();
-    // Track latest selection in a ref
-    const selectionRef = React.useRef({ start: 0, end: 0 });
+    const selectionRef = React.useRef<TextInputSelection>({ start: 0, end: 0 });
     const inputRef = React.useRef<TextInput>(null);
+
+    React.useEffect(() => {
+      const max = value.length;
+      const { start, end } = selectionRef.current;
+      if (start > max || end > max) {
+        selectionRef.current = { start: max, end: max };
+      }
+    }, [value]);
 
     const handleKeyPress = React.useCallback(
       (e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
@@ -134,21 +135,9 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         // Don't assume cursor position here — let onSelectionChange report the real position.
         // Previously this forced selection to text.length, which broke mid-text editing,
         // external keyboard word completions, and cursor repositioning.
-
-        logger.debug('📝 MultiTextInput.native: Text changed:', JSON.stringify({ text }));
-
         onChangeText(text);
-
-        // Eagerly notify onStateChange with the fresh text and current selection.
-        // handleSelectionChange uses `value` from its closure, which may be stale
-        // when RN fires onSelectionChange in the same tick as onChangeText (before
-        // the parent re-renders). By also reporting here we guarantee the consumer
-        // sees the correct text immediately.
-        if (onStateChange) {
-          onStateChange({ text, selection: selectionRef.current });
-        }
       },
-      [onChangeText, onStateChange]
+      [onChangeText]
     );
 
     const handleSelectionChange = React.useCallback(
@@ -163,18 +152,14 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
             selection.end !== selectionRef.current.end
           ) {
             selectionRef.current = selection;
-            logger.debug('📍 MultiTextInput.native: Selection changed:', JSON.stringify(selection));
 
             if (onSelectionChange) {
               onSelectionChange(selection);
             }
-            if (onStateChange) {
-              onStateChange({ text: value, selection });
-            }
           }
         }
       },
-      [value, onSelectionChange, onStateChange]
+      [onSelectionChange]
     );
 
     // Imperative handle for direct control
@@ -182,11 +167,6 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
       ref,
       () => ({
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
-          logger.debug(
-            '🎯 MultiTextInput.native: setTextAndSelection:',
-            JSON.stringify({ text, selection })
-          );
-
           if (inputRef.current) {
             // Use setNativeProps for direct manipulation
             inputRef.current.setNativeProps({
@@ -194,14 +174,9 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
               selection: selection,
             });
 
-            // Update our ref
             selectionRef.current = selection;
 
-            // Notify through callbacks
             onChangeText(text);
-            if (onStateChange) {
-              onStateChange({ text, selection });
-            }
             if (onSelectionChange) {
               onSelectionChange(selection);
             }
@@ -214,7 +189,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
           inputRef.current?.blur();
         },
       }),
-      [onChangeText, onStateChange, onSelectionChange]
+      [onChangeText, onSelectionChange]
     );
 
     return (
