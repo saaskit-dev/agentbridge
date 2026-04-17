@@ -31,6 +31,7 @@ import type { SessionCapabilities } from '@/daemon/sessions/capabilities';
 import {
   loadPendingSessionOutbox,
   persistPendingSessionOutbox,
+  type PendingOutboxPlaceholder,
 } from './sessionOutboxPersistence';
 
 const logger = new Logger('api/apiSession');
@@ -132,6 +133,7 @@ export class ApiSessionClient extends EventEmitter {
    *  'reconnect' — subsequent connect: decrypt and route messages normally */
   private nextReplayMode: 'recovery' | 'reconnect' = 'recovery';
   private pendingOutbox: PendingOutboxMessage[] = [];
+  private pendingOutboxRestoreWarnings: PendingOutboxPlaceholder[] = [];
   private readonly sendSync: InvalidateSync;
   private readonly receiveSync: InvalidateSync;
   private readonly outboxPersistenceLock = new AsyncLock();
@@ -230,6 +232,14 @@ export class ApiSessionClient extends EventEmitter {
       // it would trigger a parallel fetchMessages() that processes the same messages
       // as the replay, causing user messages to be routed to the agent twice.
       // Flush any messages that were queued while disconnected
+      void this.outboxReady
+        .then(() => this.flushRestoredOutboxWarnings())
+        .catch(error => {
+          logger.error('[apiSession] failed to publish outbox restore warning', undefined, {
+            sessionId: this.sessionId,
+            error: String(error),
+          });
+        });
       this.sendSync.invalidate();
     });
 
@@ -1268,16 +1278,73 @@ export class ApiSessionClient extends EventEmitter {
     this.socket.close();
   }
 
+  private buildRestoreWarningMessage(placeholders: PendingOutboxPlaceholder[]): string {
+    const total = placeholders.length;
+    const oversizedCount = placeholders.filter(
+      placeholder => placeholder.reason === 'message_too_large'
+    ).length;
+    const serializationFailureCount = total - oversizedCount;
+
+    const parts: string[] = [];
+    if (oversizedCount > 0) {
+      parts.push(
+        `${oversizedCount} offline queued message${oversizedCount === 1 ? '' : 's'} were too large to save`
+      );
+    }
+    if (serializationFailureCount > 0) {
+      parts.push(
+        `${serializationFailureCount} offline queued message${serializationFailureCount === 1 ? '' : 's'} could not be serialized`
+      );
+    }
+
+    const summary = parts.join('; ');
+    return `${summary}. Those messages were not restored after daemon recovery. Please resend them.`;
+  }
+
+  private async flushRestoredOutboxWarnings(): Promise<void> {
+    if (this.pendingOutboxRestoreWarnings.length === 0) {
+      return;
+    }
+
+    const placeholders = this.pendingOutboxRestoreWarnings.slice();
+    const warningMessage = this.buildRestoreWarningMessage(placeholders);
+    await this.sendSessionEvent({
+      type: 'message',
+      message: warningMessage,
+    });
+    this.pendingOutboxRestoreWarnings = [];
+    logger.warn('[apiSession] published outbox restore warning', {
+      sessionId: this.sessionId,
+      placeholderCount: placeholders.length,
+      placeholderReasons: placeholders.map(placeholder => placeholder.reason),
+      originalMessageIds: placeholders.map(placeholder => placeholder.originalMessageId),
+    });
+  }
+
   private async restorePersistedOutbox(): Promise<void> {
     const restored = await loadPendingSessionOutbox(this.sessionId);
     if (restored.length === 0) {
       return;
     }
-    this.pendingOutbox.push(...restored);
+
+    const pendingMessages: PendingOutboxMessage[] = [];
+    const placeholders: PendingOutboxPlaceholder[] = [];
+    for (const entry of restored) {
+      if ('type' in entry && entry.type === 'persisted-outbox-placeholder') {
+        placeholders.push(entry);
+      } else {
+        pendingMessages.push(entry as PendingOutboxMessage);
+      }
+    }
+
+    this.pendingOutbox.push(...pendingMessages);
+    this.pendingOutboxRestoreWarnings.push(...placeholders);
     logger.info('[apiSession] restored persisted outbox', {
       sessionId: this.sessionId,
-      restoredCount: restored.length,
-      ids: restored.map(message => message.id),
+      restoredCount: pendingMessages.length,
+      placeholderCount: placeholders.length,
+      ids: pendingMessages.map(message => message.id),
+      placeholderIds: placeholders.map(placeholder => placeholder.originalMessageId),
     });
   }
 

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiSessionClient } from './apiSession';
 import { createCipher, encryptToWireString, decryptFromWireString } from './encryption';
 import type { Update } from './types';
+import type { PendingOutboxEntry } from './sessionOutboxPersistence';
 
 /** Helper: create a minimal NormalizedMessage for pipeline tests. */
 function testMsg(label: string) {
@@ -31,7 +32,7 @@ const {
     throw lastError;
   }),
   mockDelay: vi.fn(async () => undefined),
-  mockLoadPendingSessionOutbox: vi.fn(async (): Promise<Array<{ id: string; content: string }>> => []),
+  mockLoadPendingSessionOutbox: vi.fn(async (): Promise<PendingOutboxEntry[]> => []),
   mockPersistPendingSessionOutbox: vi.fn(async () => undefined),
 }));
 
@@ -321,6 +322,48 @@ describe('ApiSessionClient v3 messages API migration', () => {
 
     expect(mockSocket.emitWithAck.mock.calls[0][1].messages[0].id).toBe('persisted-1');
     expect((client as any).pendingOutbox).toHaveLength(0);
+  });
+
+  it('publishes a visible warning when persisted outbox placeholders are restored', async () => {
+    mockLoadPendingSessionOutbox.mockResolvedValueOnce([
+      {
+        type: 'persisted-outbox-placeholder',
+        originalMessageId: 'oversized-1',
+        reason: 'message_too_large',
+        originalContentLength: 3_000_000,
+        createdAt: 1,
+      },
+    ]);
+    const client = new ApiSessionClient('fake-token', session);
+    mockSocket.emitWithAck.mockResolvedValue({
+      ok: true,
+      messages: [{ id: 'warning-1', seq: 1, createdAt: 1, updatedAt: 1 }],
+    });
+
+    emitSocketEvent('connect');
+
+    await waitForCheck(() => {
+      expect(mockSocket.emitWithAck).toHaveBeenCalled();
+    });
+
+    const sendMessagesCall = mockSocket.emitWithAck.mock.calls.find(
+      (call: any[]) => call[0] === 'send-messages'
+    );
+    expect(sendMessagesCall).toBeTruthy();
+    const [warningMessage] = sendMessagesCall?.[1].messages ?? [];
+    const decrypted = await decryptFromWireString(
+      session.encryptionKey,
+      session.encryptionVariant,
+      warningMessage.content
+    );
+    expect(decrypted).toMatchObject({
+      role: 'event',
+      content: {
+        type: 'message',
+        message: expect.stringContaining('too large to save'),
+      },
+    });
+    expect((client as any).pendingOutboxRestoreWarnings).toHaveLength(0);
   });
 
   it('holds queued messages during planned server restart and flushes after reconnect', async () => {
