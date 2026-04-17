@@ -410,7 +410,7 @@ run_logged_command upload-app-store-connect \
 if [ "$DISTRIBUTE_EXTERNAL" = "true" ]; then
   echo "==> Distribute build to TestFlight group: $TESTFLIGHT_GROUP"
   TESTFLIGHT_LOG_PATH="$APP_DIR/.artifacts/ios/distribute-testflight.log" \
-    "$APP_DIR/scripts/distribute-testflight.sh" "$BUILD_NUMBER" "$TESTFLIGHT_GROUP"
+    bash "$APP_DIR/scripts/distribute-testflight.sh" "$BUILD_NUMBER" "$TESTFLIGHT_GROUP"
 fi
 
 echo
