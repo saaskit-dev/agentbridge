@@ -194,7 +194,7 @@ export default function FilesScreen() {
     } catch (error) {
       if (browseRequestIdRef.current === requestId) {
         logger.error('browse listDirectory failed', toError(error));
-        setBrowseError(t('files.browseLoadFailed'));
+        setBrowseError(toError(error).message || t('files.browseLoadFailed'));
         setBrowseEntries([]);
       }
     } finally {
@@ -287,14 +287,14 @@ export default function FilesScreen() {
         }
         const response = await sessionReadFile(sessionId, absolutePath);
         if (!response.success || typeof response.content !== 'string') {
-          Modal.alert(t('common.error'), t('files.downloadError'));
+          Modal.alert(t('common.error'), response.error || t('files.downloadError'));
           return;
         }
         const mimeType = getImageMimeType(fileName) ?? 'application/octet-stream';
         await downloadBase64File(fileName, response.content, mimeType);
       } catch (error) {
         logger.error('downloadFile failed', toError(error));
-        Modal.alert(t('common.error'), t('files.downloadError'));
+        Modal.alert(t('common.error'), toError(error).message || t('files.downloadError'));
       } finally {
         setIsBusy(false);
       }

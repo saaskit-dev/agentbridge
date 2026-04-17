@@ -1392,7 +1392,10 @@ export function reducer(
   //
 
   if (ENABLE_LOGGING) {
-    logger.debug(JSON.stringify(messages, null, 2));
+    logger.debug('[REDUCER] Messages preview', {
+      messageCount: messages.length,
+      previewIds: messages.slice(0, 5).map(message => message.id),
+    });
     logger.debug(`[REDUCER] Changed messages: ${changed.size}`);
   }
 

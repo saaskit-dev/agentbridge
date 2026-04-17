@@ -3465,7 +3465,14 @@ class Sync {
           const currentLastSeq = this.sessionLastSeq.get(sessionId);
           const incomingSeq = updateData.body.message.seq;
           if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
-            log.debug('🔄 Sync: Applying message (fast path):', JSON.stringify(lastMessage));
+            log.debug('🔄 Sync: Applying message (fast path)', {
+              messageId: lastMessage.id,
+              role: lastMessage.role,
+              contentType:
+                lastMessage.role === 'agent'
+                  ? lastMessage.content[0]?.type
+                  : lastMessage.content.type,
+            });
             this.enqueueMessages(sessionId, [lastMessage]);
             this.setSessionLastSeq(sessionId, incomingSeq);
 

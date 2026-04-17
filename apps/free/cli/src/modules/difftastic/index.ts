@@ -6,11 +6,14 @@ import { spawn } from 'child_process';
 import { platform, arch } from 'os';
 import { join, resolve } from 'path';
 import { projectPath } from '@/projectPath';
+import { MAX_RPC_COMMAND_STDERR_CHARS, MAX_RPC_COMMAND_STDOUT_CHARS, capCapturedOutput } from '@/utils/transportSafety';
 
 export interface DifftasticResult {
   exitCode: number;
   stdout: string;
   stderr: string;
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
 }
 
 export interface DifftasticOptions {
@@ -48,13 +51,19 @@ export function run(args: string[], options?: DifftasticOptions): Promise<Diffta
 
     let stdout = '';
     let stderr = '';
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
 
     child.stdout.on('data', data => {
-      stdout += data.toString();
+      const next = capCapturedOutput(stdout, data.toString(), MAX_RPC_COMMAND_STDOUT_CHARS);
+      stdout = next.value;
+      stdoutTruncated = stdoutTruncated || next.truncated;
     });
 
     child.stderr.on('data', data => {
-      stderr += data.toString();
+      const next = capCapturedOutput(stderr, data.toString(), MAX_RPC_COMMAND_STDERR_CHARS);
+      stderr = next.value;
+      stderrTruncated = stderrTruncated || next.truncated;
     });
 
     child.on('close', code => {
@@ -62,6 +71,8 @@ export function run(args: string[], options?: DifftasticOptions): Promise<Diffta
         exitCode: code || 0,
         stdout,
         stderr,
+        stdoutTruncated,
+        stderrTruncated,
       });
     });
 

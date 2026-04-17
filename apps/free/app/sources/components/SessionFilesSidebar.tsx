@@ -12,7 +12,7 @@ import { useDesktopSessionFilesSidebar } from '@/hooks/useDesktopSessionFilesSid
 import { Modal } from '@/modal';
 import { getGitStatusFiles, type GitFileStatus, type GitStatusFiles } from '@/sync/gitStatusFiles';
 import { sessionAbort, sessionBash, sessionListDirectory, type DirectoryEntry } from '@/sync/ops';
-import { searchFiles, type FileItem } from '@/sync/suggestionFile';
+import { invalidateSessionFileSearchCache, searchFiles, type FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
 import {
   SIDEBAR_COLLAPSED_WIDTH,
@@ -549,6 +549,15 @@ function setResizeCursor(active: boolean) {
 
 function cacheKey(sessionId: string, path: string) {
   return `${sessionId}:${path}`;
+}
+
+function clearSessionDirectoryCache(sessionId: string) {
+  const prefix = `${sessionId}:`;
+  for (const key of Array.from(directoryCache.keys())) {
+    if (key.startsWith(prefix)) {
+      directoryCache.delete(key);
+    }
+  }
 }
 
 function getProjectLabel(rootPath: string): string {
@@ -1120,6 +1129,7 @@ export function SessionFilesSidebar({
   const gitNetworkRunningRef = React.useRef(false);
   const [liveWidth, setLiveWidth] = React.useState(persistedWidth);
   const [liveCollapsed, setLiveCollapsed] = React.useState(persistedCollapsed);
+  const sidebarVisibleRef = React.useRef(!persistedCollapsed);
 
   React.useEffect(() => {
     if (!isDragging) {
@@ -1132,6 +1142,10 @@ export function SessionFilesSidebar({
       setLiveCollapsed(persistedCollapsed);
     }
   }, [isDragging, persistedCollapsed]);
+
+  React.useEffect(() => {
+    sidebarVisibleRef.current = !liveCollapsed;
+  }, [liveCollapsed]);
 
   const commitSidebarLayout = React.useCallback(
     (nextWidth: number, nextCollapsed: boolean) => {
@@ -1149,9 +1163,25 @@ export function SessionFilesSidebar({
   );
 
   const panelWidth = liveCollapsed ? SIDEBAR_COLLAPSED_WIDTH : liveWidth;
+  const isSidebarVisible = !liveCollapsed;
+
+  const showInlineNotice = React.useCallback((message: string, tone: InlineNotice['tone'] = 'info') => {
+    if (inlineNoticeTimerRef.current) {
+      clearTimeout(inlineNoticeTimerRef.current);
+    }
+    setInlineNotice({ tone, message });
+    inlineNoticeTimerRef.current = setTimeout(() => {
+      setInlineNotice(null);
+      inlineNoticeTimerRef.current = null;
+    }, 2000);
+  }, []);
 
   const loadDirectory = React.useCallback(
     async (path: string, targetPath?: string): Promise<FileTreeNode[]> => {
+      if (!sidebarVisibleRef.current) {
+        return [];
+      }
+
       const cached = directoryCache.get(cacheKey(sessionId, path));
       if (cached && Date.now() - cached.loadedAt < 5 * 60 * 1000) {
         if (!targetPath) {
@@ -1179,6 +1209,9 @@ export function SessionFilesSidebar({
 
       try {
         const result = await sessionListDirectory(sessionId, path);
+        if (!sidebarVisibleRef.current) {
+          return [];
+        }
         if (!result.success) {
           throw new Error(result.error || t('files.browseLoadFailed'));
         }
@@ -1211,6 +1244,10 @@ export function SessionFilesSidebar({
 
         return nodes;
       } catch (error) {
+        if (!sidebarVisibleRef.current) {
+          return [];
+        }
+        const errorMessage = toError(error).message || t('files.browseLoadFailed');
         logger.error('load session sidebar directory failed', toError(error), { sessionId, path });
         if (!targetPath) {
           setTree([]);
@@ -1219,6 +1256,7 @@ export function SessionFilesSidebar({
             updateNodeTree(current, targetPath, node => ({ ...node, loading: false, loaded: true }))
           );
         }
+        showInlineNotice(errorMessage, 'error');
         return [];
       } finally {
         if (!targetPath) {
@@ -1226,12 +1264,26 @@ export function SessionFilesSidebar({
         }
       }
     },
-    [sessionId]
+    [sessionId, showInlineNotice]
   );
+
+  const clearSidebarResources = React.useCallback(() => {
+    clearSessionDirectoryCache(sessionId);
+    invalidateSessionFileSearchCache(sessionId);
+    setTree([]);
+    setExpandedPaths(new Set());
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearching(false);
+    setIsLoadingRoot(false);
+    setGitStatusFiles(null);
+    setIsLoadingGit(false);
+    setContextMenu(null);
+  }, [sessionId]);
 
   const revealPath = React.useCallback(
     async (absolutePath: string) => {
-      if (!absolutePath || !absolutePath.startsWith(rootPath)) return;
+      if (!sidebarVisibleRef.current || !absolutePath || !absolutePath.startsWith(rootPath)) return;
 
       const ancestorPaths: string[] = [];
       let current = parentPath(absolutePath);
@@ -1255,24 +1307,31 @@ export function SessionFilesSidebar({
   );
 
   React.useEffect(() => {
+    if (!isSidebarVisible) {
+      return;
+    }
     setExpandedPaths(new Set());
     setSearchQuery('');
     setSearchResults([]);
     void loadDirectory(rootPath);
-  }, [loadDirectory, rootPath, sessionId]);
+  }, [isSidebarVisible, loadDirectory, rootPath, sessionId]);
 
   React.useEffect(() => {
+    if (!isSidebarVisible) {
+      return;
+    }
+
     let cancelled = false;
 
     const loadGitStatus = async () => {
       setIsLoadingGit(true);
       try {
         const result = await getGitStatusFiles(sessionId);
-        if (!cancelled) {
+        if (!cancelled && sidebarVisibleRef.current) {
           setGitStatusFiles(result);
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && sidebarVisibleRef.current) {
           setIsLoadingGit(false);
         }
       }
@@ -1283,17 +1342,23 @@ export function SessionFilesSidebar({
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [isSidebarVisible, sessionId]);
 
   React.useEffect(() => {
+    if (!isSidebarVisible || !activeFilePath) return;
     if (!activeFilePath) return;
     const absolutePath = activeFilePath.startsWith('/')
       ? activeFilePath
       : `${rootPath.replace(/\/+$/, '')}/${activeFilePath}`;
     void revealPath(absolutePath);
-  }, [activeFilePath, revealPath, rootPath]);
+  }, [activeFilePath, isSidebarVisible, revealPath, rootPath]);
 
   React.useEffect(() => {
+    if (!isSidebarVisible) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
     if (!searchQuery.trim()) {
       setSearchResults([]);
       setIsSearching(false);
@@ -1304,7 +1369,7 @@ export function SessionFilesSidebar({
     setIsSearching(true);
     const timer = setTimeout(() => {
       void searchFiles(sessionId, searchQuery, { limit: 100 }).then(results => {
-        if (!cancelled) {
+        if (!cancelled && sidebarVisibleRef.current) {
           setSearchResults(results);
           setIsSearching(false);
         }
@@ -1315,7 +1380,23 @@ export function SessionFilesSidebar({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [searchQuery, sessionId]);
+  }, [isSidebarVisible, searchQuery, sessionId]);
+
+  React.useEffect(() => {
+    if (!liveCollapsed) {
+      return;
+    }
+
+    clearSidebarResources();
+  }, [clearSidebarResources, liveCollapsed]);
+
+  React.useEffect(
+    () => () => {
+      clearSessionDirectoryCache(sessionId);
+      invalidateSessionFileSearchCache(sessionId);
+    },
+    [sessionId]
+  );
 
   const handleToggleDirectory = React.useCallback(
     async (node: FileTreeNode) => {
@@ -1371,17 +1452,6 @@ export function SessionFilesSidebar({
     setContextMenu(null);
   }, []);
 
-  const showInlineNotice = React.useCallback((message: string, tone: InlineNotice['tone'] = 'info') => {
-    if (inlineNoticeTimerRef.current) {
-      clearTimeout(inlineNoticeTimerRef.current);
-    }
-    setInlineNotice({ tone, message });
-    inlineNoticeTimerRef.current = setTimeout(() => {
-      setInlineNotice(null);
-      inlineNoticeTimerRef.current = null;
-    }, 2000);
-  }, []);
-
   React.useEffect(
     () => () => {
       if (inlineNoticeTimerRef.current) {
@@ -1435,6 +1505,11 @@ export function SessionFilesSidebar({
 
   const refreshGitData = React.useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
+    if (!sidebarVisibleRef.current) {
+      setGitStatusFiles(null);
+      setIsLoadingGit(false);
+      return;
+    }
     if (!silent) {
       setIsLoadingGit(true);
     }
@@ -1451,7 +1526,9 @@ export function SessionFilesSidebar({
 
     const refreshPromise = (async () => {
       const result = await getGitStatusFiles(sessionId);
-      setGitStatusFiles(result);
+      if (sidebarVisibleRef.current) {
+        setGitStatusFiles(result);
+      }
     })();
     gitRefreshInFlightRef.current = refreshPromise;
     try {

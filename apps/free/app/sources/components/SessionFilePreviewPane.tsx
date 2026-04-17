@@ -520,7 +520,7 @@ export function SessionFilePreviewPane({
               setIsDiffTruncated(truncatedDiff.truncated);
             }
           } catch (diffError) {
-            logger.debug('Could not fetch git diff', { error: String(diffError) });
+            logger.debug('Could not fetch git diff', { error: toError(diffError).message });
           }
         }
 
@@ -614,7 +614,10 @@ export function SessionFilePreviewPane({
       } catch (loadError) {
         logger.error('Failed to load file', toError(loadError));
         if (!isCancelled) {
-          setError({ kind: 'generic', message: t('files.failedToLoadFile') });
+          setError({
+            kind: 'generic',
+            message: toError(loadError).message || t('files.failedToLoadFile'),
+          });
         }
       } finally {
         if (!isCancelled) {
@@ -657,7 +660,7 @@ export function SessionFilePreviewPane({
       }
       const response = await sessionReadFile(sessionId, filePath);
       if (!response.success || typeof response.content !== 'string') {
-        Modal.alert(t('common.error'), t('files.downloadError'));
+        Modal.alert(t('common.error'), response.error || t('files.downloadError'));
         return;
       }
       const mimeType =
@@ -665,7 +668,7 @@ export function SessionFilePreviewPane({
       await downloadBase64File(fileName, response.content, mimeType);
     } catch (error) {
       logger.error('Failed to download file', toError(error));
-      Modal.alert(t('common.error'), t('files.downloadError'));
+      Modal.alert(t('common.error'), toError(error).message || t('files.downloadError'));
     }
   }, [fileContent?.mimeType, fileName, filePath, fileSizeBytes, sessionId]);
 

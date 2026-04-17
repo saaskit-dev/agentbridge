@@ -10,6 +10,14 @@ import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify } from '@saaskit-dev/agentbridge';
 import type { PermissionMode } from '@/api/types';
+import {
+  MAX_RPC_COMMAND_STDERR_CHARS,
+  MAX_RPC_COMMAND_STDOUT_CHARS,
+  MAX_RPC_DIRECTORY_ENTRIES,
+  MAX_RPC_DIRECTORY_TREE_NODES,
+  MAX_RPC_READ_FILE_BYTES,
+  truncateForRpcTransport,
+} from '@/utils/transportSafety';
 const logger = new Logger('modules/common/registerCommonHandlers');
 
 const execAsync = promisify(exec);
@@ -26,6 +34,10 @@ interface BashResponse {
   stderr?: string;
   exitCode?: number;
   error?: string;
+  details?: Record<string, unknown>;
+  truncated?: boolean;
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
 }
 
 interface ReadFileRequest {
@@ -74,6 +86,8 @@ interface ListDirectoryResponse {
   entries?: DirectoryEntry[];
   error?: string;
   errorCode?: string;
+  truncated?: boolean;
+  totalEntries?: number;
 }
 
 interface GetDirectoryTreeRequest {
@@ -94,6 +108,8 @@ interface GetDirectoryTreeResponse {
   success: boolean;
   tree?: TreeNode;
   error?: string;
+  truncated?: boolean;
+  totalNodes?: number;
 }
 
 interface RipgrepRequest {
@@ -107,6 +123,10 @@ interface RipgrepResponse {
   stdout?: string;
   stderr?: string;
   error?: string;
+  details?: Record<string, unknown>;
+  truncated?: boolean;
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
 }
 
 interface DifftasticRequest {
@@ -120,6 +140,10 @@ interface DifftasticResponse {
   stdout?: string;
   stderr?: string;
   error?: string;
+  details?: Record<string, unknown>;
+  truncated?: boolean;
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
 }
 
 interface DeleteFileRequest {
@@ -177,6 +201,7 @@ export function registerCommonHandlers(
   // Shell command handler - executes commands in the default shell
   rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async data => {
     log.debug('Shell command request', { command: data.command });
+    const timeoutMs = data.timeout || 30000;
 
     // Validate cwd if provided
     // Special case: "/" means "use shell's default cwd" (used by CLI detection)
@@ -194,18 +219,32 @@ export function registerCommonHandlers(
       // If cwd is "/", use undefined to let shell use its default (respects user's PATH)
       const options: ExecOptions = {
         cwd: data.cwd === '/' ? undefined : data.cwd,
-        timeout: data.timeout || 30000, // Default 30 seconds timeout
+        timeout: timeoutMs, // Default 30 seconds timeout
       };
 
       log.debug('Shell command executing', { cwd: options.cwd, timeout: options.timeout });
       const { stdout, stderr } = await execAsync(data.command, options);
       log.debug('Shell command executed, processing result...');
 
+      const limitedStdout = truncateForRpcTransport(
+        stdout ? stdout.toString() : '',
+        MAX_RPC_COMMAND_STDOUT_CHARS,
+        'bash stdout'
+      );
+      const limitedStderr = truncateForRpcTransport(
+        stderr ? stderr.toString() : '',
+        MAX_RPC_COMMAND_STDERR_CHARS,
+        'bash stderr'
+      );
+
       const result = {
         success: true,
-        stdout: stdout ? stdout.toString() : '',
-        stderr: stderr ? stderr.toString() : '',
+        stdout: limitedStdout.value,
+        stderr: limitedStderr.value,
         exitCode: 0,
+        truncated: limitedStdout.truncated || limitedStderr.truncated,
+        stdoutTruncated: limitedStdout.truncated,
+        stderrTruncated: limitedStderr.truncated,
       };
       log.debug('Shell command result', {
         success: true,
@@ -224,12 +263,36 @@ export function registerCommonHandlers(
 
       // Check if the error was due to timeout
       if (execError.code === 'ETIMEDOUT' || execError.killed) {
+        const limitedStdout = truncateForRpcTransport(
+          execError.stdout || '',
+          MAX_RPC_COMMAND_STDOUT_CHARS,
+          'bash stdout'
+        );
+        const limitedStderr = truncateForRpcTransport(
+          execError.stderr || '',
+          MAX_RPC_COMMAND_STDERR_CHARS,
+          'bash stderr'
+        );
         const result = {
           success: false,
-          stdout: execError.stdout || '',
-          stderr: execError.stderr || '',
+          stdout: limitedStdout.value,
+          stderr: limitedStderr.value,
           exitCode: typeof execError.code === 'number' ? execError.code : -1,
-          error: 'Command timed out',
+          error:
+            `Command timed out (timeoutMs=${timeoutMs}, exitCode=${typeof execError.code === 'number' ? execError.code : -1}, ` +
+            `stdoutLength=${execError.stdout?.length ?? 0}, stderrLength=${execError.stderr?.length ?? 0}, ` +
+            `stdoutTruncated=${limitedStdout.truncated}, stderrTruncated=${limitedStderr.truncated})`,
+          details: {
+            timeoutMs,
+            exitCode: typeof execError.code === 'number' ? execError.code : -1,
+            stdoutLength: execError.stdout?.length ?? 0,
+            stderrLength: execError.stderr?.length ?? 0,
+            stdoutTruncated: limitedStdout.truncated,
+            stderrTruncated: limitedStderr.truncated,
+          },
+          truncated: limitedStdout.truncated || limitedStderr.truncated,
+          stdoutTruncated: limitedStdout.truncated,
+          stderrTruncated: limitedStderr.truncated,
         };
         log.debug('Shell command timed out', {
           success: false,
@@ -240,14 +303,37 @@ export function registerCommonHandlers(
       }
 
       // If exec fails, it includes stdout/stderr in the error
+      const limitedStdout = truncateForRpcTransport(
+        execError.stdout ? execError.stdout.toString() : '',
+        MAX_RPC_COMMAND_STDOUT_CHARS,
+        'bash stdout'
+      );
+      const limitedStderr = truncateForRpcTransport(
+        execError.stderr ? execError.stderr.toString() : execError.message || 'Command failed',
+        MAX_RPC_COMMAND_STDERR_CHARS,
+        'bash stderr'
+      );
       const result = {
         success: false,
-        stdout: execError.stdout ? execError.stdout.toString() : '',
-        stderr: execError.stderr
-          ? execError.stderr.toString()
-          : execError.message || 'Command failed',
+        stdout: limitedStdout.value,
+        stderr: limitedStderr.value,
         exitCode: typeof execError.code === 'number' ? execError.code : 1,
-        error: execError.message || 'Command failed',
+        error:
+          `Command failed (message=${execError.message || 'Command failed'}, ` +
+          `exitCode=${typeof execError.code === 'number' ? execError.code : 1}, ` +
+          `stdoutLength=${execError.stdout?.length ?? 0}, stderrLength=${execError.stderr?.length ?? 0}, ` +
+          `stdoutTruncated=${limitedStdout.truncated}, stderrTruncated=${limitedStderr.truncated})`,
+        details: {
+          message: execError.message || 'Command failed',
+          exitCode: typeof execError.code === 'number' ? execError.code : 1,
+          stdoutLength: execError.stdout?.length ?? 0,
+          stderrLength: execError.stderr?.length ?? 0,
+          stdoutTruncated: limitedStdout.truncated,
+          stderrTruncated: limitedStderr.truncated,
+        },
+        truncated: limitedStdout.truncated || limitedStderr.truncated,
+        stdoutTruncated: limitedStdout.truncated,
+        stderrTruncated: limitedStderr.truncated,
       };
       log.debug('Shell command failed', {
         success: false,
@@ -327,7 +413,7 @@ export function registerCommonHandlers(
       const maxBytes =
         typeof data.maxBytes === 'number' && Number.isFinite(data.maxBytes) && data.maxBytes > 0
           ? Math.floor(data.maxBytes)
-          : undefined;
+          : MAX_RPC_READ_FILE_BYTES;
 
       let buffer: Buffer;
       let truncated = false;
@@ -452,9 +538,11 @@ export function registerCommonHandlers(
 
       try {
         const entries = await readdir(validation.resolvedPath, { withFileTypes: true });
+        const totalEntries = entries.length;
+        const entriesToProcess = entries.slice(0, MAX_RPC_DIRECTORY_ENTRIES);
 
         const directoryEntries: DirectoryEntry[] = await Promise.all(
-          entries.map(async entry => {
+          entriesToProcess.map(async entry => {
             const fullPath = join(validation.resolvedPath, entry.name);
             let type: 'file' | 'directory' | 'symlink' | 'other' = 'other';
             let size: number | undefined;
@@ -540,7 +628,12 @@ export function registerCommonHandlers(
           return a.name.localeCompare(b.name);
         });
 
-        return { success: true, entries: directoryEntries };
+        return {
+          success: true,
+          entries: directoryEntries,
+          truncated: totalEntries > entriesToProcess.length,
+          totalEntries,
+        };
       } catch (error) {
         const nodeError = error as NodeJS.ErrnoException;
         log.debug('Failed to list directory', { path: validation.resolvedPath, error: safeStringify(error) });
@@ -566,6 +659,8 @@ export function registerCommonHandlers(
       }
 
       const resolvedRootPath = validation.resolvedPath;
+      let remainingNodes = MAX_RPC_DIRECTORY_TREE_NODES;
+      let treeTruncated = false;
 
       // Helper function to build tree recursively
       async function buildTree(
@@ -574,6 +669,11 @@ export function registerCommonHandlers(
         currentDepth: number
       ): Promise<TreeNode | null> {
         try {
+          if (remainingNodes <= 0) {
+            treeTruncated = true;
+            return null;
+          }
+          remainingNodes--;
           const stats = await stat(path);
 
           // Base node information
@@ -591,21 +691,23 @@ export function registerCommonHandlers(
             const children: TreeNode[] = [];
 
             // Process entries in parallel, filtering out symlinks
-            await Promise.all(
-              entries.map(async entry => {
-                // Skip symbolic links completely
-                if (entry.isSymbolicLink()) {
-                  log.debug('Skipping symlink', { path: join(path, entry.name) });
-                  return;
-                }
+            for (const entry of entries) {
+              if (remainingNodes <= 0) {
+                treeTruncated = true;
+                break;
+              }
+              // Skip symbolic links completely
+              if (entry.isSymbolicLink()) {
+                log.debug('Skipping symlink', { path: join(path, entry.name) });
+                continue;
+              }
 
-                const childPath = join(path, entry.name);
-                const childNode = await buildTree(childPath, entry.name, currentDepth + 1);
-                if (childNode) {
-                  children.push(childNode);
-                }
-              })
-            );
+              const childPath = join(path, entry.name);
+              const childNode = await buildTree(childPath, entry.name, currentDepth + 1);
+              if (childNode) {
+                children.push(childNode);
+              }
+            }
 
             // Sort children: directories first, then files, alphabetically
             children.sort((a, b) => {
@@ -642,7 +744,12 @@ export function registerCommonHandlers(
           return { success: false, error: 'Failed to access the specified path' };
         }
 
-        return { success: true, tree };
+        return {
+          success: true,
+          tree,
+          truncated: treeTruncated,
+          totalNodes: MAX_RPC_DIRECTORY_TREE_NODES - remainingNodes,
+        };
       } catch (error) {
         log.debug('Failed to get directory tree', {
           path: resolvedRootPath,
@@ -670,11 +777,21 @@ export function registerCommonHandlers(
 
     try {
       const result = await runRipgrep(data.args, { cwd: data.cwd });
+      if (result.stdoutTruncated || result.stderrTruncated) {
+        log.debug('Ripgrep output exceeded safe RPC limit', {
+          cwd: data.cwd,
+          stdoutTruncated: result.stdoutTruncated,
+          stderrTruncated: result.stderrTruncated,
+        });
+      }
       return {
         success: true,
         exitCode: result.exitCode,
-        stdout: result.stdout.toString(),
-        stderr: result.stderr.toString(),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        truncated: result.stdoutTruncated || result.stderrTruncated,
+        stdoutTruncated: result.stdoutTruncated,
+        stderrTruncated: result.stderrTruncated,
       };
     } catch (error) {
       log.debug('Failed to run ripgrep', { error: safeStringify(error) });
@@ -754,11 +871,24 @@ export function registerCommonHandlers(
 
       try {
         const result = await runDifftastic(data.args, { cwd: data.cwd });
+        const stdout = truncateForRpcTransport(
+          result.stdout,
+          MAX_RPC_COMMAND_STDOUT_CHARS,
+          'difftastic stdout'
+        );
+        const stderr = truncateForRpcTransport(
+          result.stderr,
+          MAX_RPC_COMMAND_STDERR_CHARS,
+          'difftastic stderr'
+        );
         return {
           success: true,
           exitCode: result.exitCode,
-          stdout: result.stdout.toString(),
-          stderr: result.stderr.toString(),
+          stdout: stdout.value,
+          stderr: stderr.value,
+          truncated: stdout.truncated || stderr.truncated || !!result.stdoutTruncated || !!result.stderrTruncated,
+          stdoutTruncated: stdout.truncated || !!result.stdoutTruncated,
+          stderrTruncated: stderr.truncated || !!result.stderrTruncated,
         };
       } catch (error) {
         log.debug('Failed to run difftastic', { error: safeStringify(error) });

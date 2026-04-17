@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { Encryption } from './encryption/encryption';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { getSessionTrace, sessionLogger } from './appTraceStore';
+import { formatRpcErrorMessage } from './rpcErrorFormatting';
 import { Logger, safeStringify, toError } from '@saaskit-dev/agentbridge/telemetry';
 import { storage } from './storage';
 const logger = new Logger('app/sync/apiSocket');
@@ -290,14 +291,21 @@ class ApiSocket {
     };
 
     const decryptResult = async (result: { ok: true; result: any }): Promise<R> => {
-      const decrypted = (await sessionEncryption.decryptRaw(result.result)) as R | { error?: string };
+      const decrypted = (await sessionEncryption.decryptRaw(result.result)) as
+        | R
+        | { error?: string; details?: Record<string, unknown> | string };
       if (
         decrypted &&
         typeof decrypted === 'object' &&
         'error' in decrypted &&
         typeof decrypted.error === 'string'
       ) {
-        throw new Error(decrypted.error);
+        const message = formatRpcErrorMessage(decrypted.error, decrypted.details);
+        const error = new Error(message) as Error & { details?: Record<string, unknown> | string };
+        if ('details' in decrypted) {
+          error.details = decrypted.details;
+        }
+        throw error;
       }
       return decrypted as R;
     };

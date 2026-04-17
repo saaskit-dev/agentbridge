@@ -24,6 +24,7 @@ import { SessionFilePreviewPane } from '@/components/SessionFilePreviewPane';
 import { SessionFilesSidebar } from '@/components/SessionFilesSidebar';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { Typography } from '@/constants/Typography';
+import { useDesktopSessionFilesSidebar } from '@/hooks/useDesktopSessionFilesSidebar';
 import { useDraft } from '@/hooks/useDraft';
 import { useDesktopSessionTabsState } from '@/hooks/useDesktopSessionTabs';
 import { useSpeechInput } from '@/hooks/useSpeechInput';
@@ -31,12 +32,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import {
-  sessionAbort,
-  sessionSetConfig,
-  sessionSetMode,
-  sessionSetModel,
-} from '@/sync/ops';
+import { sessionAbort, sessionSetConfig, sessionSetMode, sessionSetModel } from '@/sync/ops';
 import {
   storage,
   useAcknowledgedCliVersion,
@@ -61,6 +57,7 @@ import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { isDesktopPlatform, isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
+import { SIDEBAR_COLLAPSED_WIDTH } from '@/utils/sidebarSizing';
 import { isTauriDesktop } from '@/utils/tauri';
 import {
   formatPathRelativeToHome,
@@ -82,7 +79,12 @@ import { runImageSourcePicker } from '@/utils/imageSourcePicker';
 import { subscribePasteImage, type PastedImage } from '@/utils/pasteImageBridge';
 const logger = new Logger('app/session/SessionView');
 
-type ComposerAttachment = { localUri: string; uploading: boolean; error?: string; ref?: AttachmentRef };
+type ComposerAttachment = {
+  localUri: string;
+  uploading: boolean;
+  error?: string;
+  ref?: AttachmentRef;
+};
 
 const QueuedMessagesPanel = React.memo(function QueuedMessagesPanel(props: {
   messages: QueuedMessage[];
@@ -93,7 +95,9 @@ const QueuedMessagesPanel = React.memo(function QueuedMessagesPanel(props: {
   const { theme } = useUnistyles();
 
   return (
-    <View style={{ width: '100%', alignItems: 'center', paddingHorizontal: props.horizontalPadding }}>
+    <View
+      style={{ width: '100%', alignItems: 'center', paddingHorizontal: props.horizontalPadding }}
+    >
       <View
         style={{
           width: '100%',
@@ -107,7 +111,9 @@ const QueuedMessagesPanel = React.memo(function QueuedMessagesPanel(props: {
           gap: 8,
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
             <Ionicons name="time-outline" size={16} color={theme.dark ? '#93C5FD' : '#1D4ED8'} />
             <Text
@@ -173,7 +179,11 @@ const QueuedMessagesPanel = React.memo(function QueuedMessagesPanel(props: {
                 </Text>
               </View>
               <View
-                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
               >
                 <Text
                   style={{
@@ -412,7 +422,16 @@ function SessionViewLoaded(props: {
     };
   }, [session]);
   const [message, setMessage] = React.useState('');
-  const { isListening: isSpeechActive, start: startSpeech, stop: stopSpeech, cancel: cancelSpeech } = useSpeechInput(setMessage);
+  const messageRef = React.useRef(message);
+  React.useEffect(() => {
+    messageRef.current = message;
+  }, [message]);
+  const {
+    isListening: isSpeechActive,
+    start: startSpeech,
+    stop: stopSpeech,
+    cancel: cancelSpeech,
+  } = useSpeechInput(setMessage);
   const handleSpeechInputPress = React.useCallback(() => {
     if (isSpeechActive) stopSpeech();
     else startSpeech(message);
@@ -557,6 +576,10 @@ function SessionViewLoaded(props: {
   const devModeEnabled = useLocalSetting('devModeEnabled') || __DEV__;
   const showDesktopFilesSidebar =
     isTauriDesktop() && isTablet && !!session.metadata?.path && deviceType !== 'phone';
+  const {
+    collapsed: filesSidebarCollapsed,
+    setCollapsed: setFilesSidebarCollapsed,
+  } = useDesktopSessionFilesSidebar();
   const openSessionTab = useDesktopSessionTabsState(state => state.openTab);
   const updateSessionTabTitle = useDesktopSessionTabsState(state => state.updateTabTitle);
   const [contentTabs, setContentTabs] = React.useState<SessionContentTab[]>([
@@ -574,8 +597,7 @@ function SessionViewLoaded(props: {
       const target = event.target as HTMLElement | null;
       const tagName = target?.tagName?.toLowerCase();
       const isTypingTarget =
-        !!target &&
-        (target.isContentEditable || tagName === 'input' || tagName === 'textarea');
+        !!target && (target.isContentEditable || tagName === 'input' || tagName === 'textarea');
 
       if (event.key.toLowerCase() === 'b' && !event.shiftKey) {
         if (isTypingTarget) return;
@@ -744,10 +766,14 @@ function SessionViewLoaded(props: {
   }, [currentAgentMode, pendingCapabilityChange, session.capabilities, sessionId]);
 
   // Use draft hook for auto-saving message drafts
-  const { clearDraft } = useDraft(sessionId, message, setMessage);
+  const { clearDraft } = useDraft(sessionId, message, setMessage, { autoSaveInterval: 5000 });
 
   // --- Image attachment state ---
   const [pendingAttachments, setPendingAttachments] = React.useState<ComposerAttachment[]>([]);
+  const pendingAttachmentsRef = React.useRef(pendingAttachments);
+  React.useEffect(() => {
+    pendingAttachmentsRef.current = pendingAttachments;
+  }, [pendingAttachments]);
   const isUploading = pendingAttachments.some(a => a.uploading);
 
   /** True while `sendMessage` is in flight — locks the composer (see AgentInput). */
@@ -818,7 +844,11 @@ function SessionViewLoaded(props: {
         setPendingAttachments(prev =>
           prev.map(a =>
             a.localUri === asset.uri
-              ? { localUri: uploadResult.localUri, uploading: false, ref: uploadResult.attachmentRef }
+              ? {
+                  localUri: uploadResult.localUri,
+                  uploading: false,
+                  ref: uploadResult.attachmentRef,
+                }
               : a
           )
         );
@@ -827,9 +857,7 @@ function SessionViewLoaded(props: {
         const errorMsg = err instanceof Error ? err.message : String(err);
         setPendingAttachments(prev =>
           prev.map(a =>
-            a.localUri === asset.uri
-              ? { ...a, uploading: false, error: errorMsg }
-              : a
+            a.localUri === asset.uri ? { ...a, uploading: false, error: errorMsg } : a
           )
         );
         Modal.alert(t('common.error'), `Image upload failed: ${errorMsg}`);
@@ -858,9 +886,7 @@ function SessionViewLoaded(props: {
       logger.error('Latest library photo upload failed', toError(err), { sessionId });
       const errorMsg = err instanceof Error ? err.message : String(err);
       setPendingAttachments(prev =>
-        prev.map(a =>
-          a.localUri === asset.uri ? { ...a, uploading: false, error: errorMsg } : a
-        )
+        prev.map(a => (a.localUri === asset.uri ? { ...a, uploading: false, error: errorMsg } : a))
       );
       Modal.alert(t('common.error'), `Image upload failed: ${errorMsg}`);
     }
@@ -874,14 +900,18 @@ function SessionViewLoaded(props: {
     setPendingAttachments(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleRemoveQueuedMessage = React.useCallback((queuedMessageId: string) => {
-    storage.getState().removeSessionQueuedMessage(sessionId, queuedMessageId);
-  }, [sessionId]);
+  const handleRemoveQueuedMessage = React.useCallback(
+    (queuedMessageId: string) => {
+      storage.getState().removeSessionQueuedMessage(sessionId, queuedMessageId);
+    },
+    [sessionId]
+  );
 
   const handleEditQueuedMessage = React.useCallback(
     async (queuedMessage: QueuedMessage) => {
       const hasComposerDraft =
-        message.trim().length > 0 || pendingAttachments.some(att => att.ref || att.localUri);
+        messageRef.current.trim().length > 0 ||
+        pendingAttachmentsRef.current.some(att => att.ref || att.localUri);
 
       if (hasComposerDraft) {
         const confirmed = await Modal.confirm(
@@ -917,7 +947,7 @@ function SessionViewLoaded(props: {
       );
       setFooterNotice('Editing queued message');
     },
-    [clearDraft, message, pendingAttachments, sessionId]
+    [clearDraft, sessionId]
   );
 
   // Clear attachments on session change
@@ -1082,16 +1112,20 @@ function SessionViewLoaded(props: {
       )}
     </>
   );
-  const placeholder =
-    !shouldRenderChatList ? (
-      <>
-        {isLoaded ? (
-          <EmptyMessages session={session} />
-        ) : (
-          <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-        )}
-      </>
-    ) : null;
+  const placeholder = !shouldRenderChatList ? (
+    <>
+      {isLoaded ? (
+        <EmptyMessages session={session} />
+      ) : (
+        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+      )}
+    </>
+  ) : null;
+
+  const handleAutocompleteSuggestions = React.useCallback(
+    (query: string) => getSuggestions(sessionId, query),
+    [sessionId]
+  );
 
   const input = (
     <>
@@ -1233,7 +1267,7 @@ function SessionViewLoaded(props: {
         onFileViewerPress={() => router.push(`/session/${sessionId}/files`)}
         // Autocomplete configuration
         autocompletePrefixes={['@', '/']}
-        autocompleteSuggestions={query => getSuggestions(sessionId, query)}
+        autocompleteSuggestions={handleAutocompleteSuggestions}
         usageData={
           sessionUsage
             ? {
@@ -1338,8 +1372,7 @@ function SessionViewLoaded(props: {
       </View>
     ) : null;
 
-  const activeDesktopFilePath =
-    activeContentTab?.type === 'file' ? activeContentTab.path : null;
+  const activeDesktopFilePath = activeContentTab?.type === 'file' ? activeContentTab.path : null;
 
   return (
     <>
@@ -1393,22 +1426,36 @@ function SessionViewLoaded(props: {
             {desktopContentTabs}
             <View style={{ flex: 1, minHeight: 0 }}>
               {showDesktopFilesSidebar && activeContentTab?.type === 'file' ? (
-                <SessionFilePreviewPane
-                  sessionId={sessionId}
-                  filePath={activeContentTab.path}
-                />
+                <SessionFilePreviewPane sessionId={sessionId} filePath={activeContentTab.path} />
               ) : (
                 <AgentContentView content={content} input={input} placeholder={placeholder} />
               )}
             </View>
           </View>
           {showDesktopFilesSidebar ? (
-            <SessionFilesSidebar
-              sessionId={sessionId}
-              rootPath={session.metadata?.path ?? ''}
-              activeFilePath={activeDesktopFilePath}
-              onOpenFile={openFileTab}
-            />
+            filesSidebarCollapsed ? (
+              <Pressable
+                hitSlop={4}
+                onPress={() => setFilesSidebarCollapsed(false)}
+                style={{
+                  width: SIDEBAR_COLLAPSED_WIDTH,
+                  borderLeftWidth: StyleSheet.hairlineWidth,
+                  borderLeftColor: theme.colors.divider,
+                  backgroundColor: theme.colors.surface,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="chevron-back" size={12} color={theme.colors.textSecondary} />
+              </Pressable>
+            ) : (
+              <SessionFilesSidebar
+                sessionId={sessionId}
+                rootPath={session.metadata?.path ?? ''}
+                activeFilePath={activeDesktopFilePath}
+                onOpenFile={openFileTab}
+              />
+            )
           ) : null}
         </View>
       </View>

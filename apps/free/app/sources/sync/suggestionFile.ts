@@ -154,12 +154,33 @@ class FileSearchCache {
           'FileSearchCache: Failed to fetch files',
           response.error ? new Error(response.error) : undefined
         );
-        log.debug(JSON.stringify(response));
+        log.debug('FileSearchCache: Ripgrep fetch failed', {
+          success: response.success,
+          exitCode: response.exitCode,
+          error: response.error,
+          stdoutLength: response.stdout?.length ?? 0,
+          stderrLength: response.stderr?.length ?? 0,
+        });
         return;
       }
 
+      if (response.truncated || response.stdoutTruncated || response.stderrTruncated) {
+        log.warn('FileSearchCache: Using truncated ripgrep file list', {
+          exitCode: response.exitCode,
+          stdoutLength: response.stdout.length,
+          stderrLength: response.stderr?.length ?? 0,
+          stdoutTruncated: response.stdoutTruncated,
+          stderrTruncated: response.stderrTruncated,
+        });
+      }
+
       // Parse the output into file items
-      const filePaths = response.stdout.split('\n').filter(path => path.trim().length > 0);
+      const lastCompleteLineBreak = response.stdout.lastIndexOf('\n');
+      const safeStdout =
+        response.stdoutTruncated && !response.stdout.endsWith('\n') && lastCompleteLineBreak >= 0
+          ? response.stdout.slice(0, lastCompleteLineBreak)
+          : response.stdout;
+      const filePaths = safeStdout.split('\n').filter(path => path.trim().length > 0);
 
       // Clear existing files
       cache.files = [];

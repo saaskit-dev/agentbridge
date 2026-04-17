@@ -8,6 +8,7 @@ import { RpcHandler, RpcHandlerMap, RpcRequest, RpcHandlerConfig } from './types
 import { encryptToWireString, decryptFromWireString } from '@/api/encryption';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify } from '@saaskit-dev/agentbridge';
+import { MAX_RPC_WIRE_RESPONSE_CHARS, serializeWithinRpcLimit } from '@/utils/transportSafety';
 const defaultLogger = new Logger('api/rpc/RpcHandlerManager');
 
 export class RpcHandlerManager {
@@ -55,7 +56,12 @@ export class RpcHandlerManager {
 
       if (!handler) {
         this.logger('[RPC] [ERROR] Method not found', { method: request.method });
-        const errorResponse = { error: 'Method not found' };
+        const errorResponse = {
+          error: `Method not found: ${request.method}`,
+          details: {
+            method: request.method,
+          },
+        };
         return await encryptToWireString(this.encryptionKey, this.encryptionVariant, errorResponse);
       }
 
@@ -74,12 +80,50 @@ export class RpcHandlerManager {
         hasResult: result !== undefined,
       });
 
+      const serializedResult = serializeWithinRpcLimit(result, MAX_RPC_WIRE_RESPONSE_CHARS);
+      if (!serializedResult.ok) {
+        this.logger('[RPC] Response exceeded safe wire size before encryption', {
+          method: request.method,
+          error: serializedResult.error,
+          maxWireResponseChars: MAX_RPC_WIRE_RESPONSE_CHARS,
+        });
+        return await encryptToWireString(this.encryptionKey, this.encryptionVariant, {
+          error:
+            `RPC response too large to transport safely before encryption ` +
+            `(method=${request.method}, maxChars=${MAX_RPC_WIRE_RESPONSE_CHARS}): ${serializedResult.error}`,
+          details: {
+            method: request.method,
+            maxWireResponseChars: MAX_RPC_WIRE_RESPONSE_CHARS,
+            stage: 'pre-encryption',
+            reason: serializedResult.error,
+          },
+        });
+      }
+
       // Encrypt and return the response
       const wireResponse = await encryptToWireString(
         this.encryptionKey,
         this.encryptionVariant,
         result
       );
+      if (wireResponse.length > MAX_RPC_WIRE_RESPONSE_CHARS) {
+        this.logger('[RPC] Response exceeded safe wire size; returning fallback error', {
+          method: request.method,
+          wireResponseLength: wireResponse.length,
+          maxWireResponseChars: MAX_RPC_WIRE_RESPONSE_CHARS,
+        });
+        return await encryptToWireString(this.encryptionKey, this.encryptionVariant, {
+          error:
+            `RPC response too large to transport safely after encryption ` +
+            `(method=${request.method}, wireChars=${wireResponse.length}, maxChars=${MAX_RPC_WIRE_RESPONSE_CHARS})`,
+          details: {
+            method: request.method,
+            wireResponseLength: wireResponse.length,
+            maxWireResponseChars: MAX_RPC_WIRE_RESPONSE_CHARS,
+            stage: 'post-encryption',
+          },
+        });
+      }
       this.logger('[RPC] Sending encrypted response', {
         method: request.method,
         responseLength: wireResponse.length,

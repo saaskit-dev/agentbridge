@@ -33,7 +33,7 @@ export function useDesktopSessionFilesSidebar(): {
   return {
     width,
     setWidth: setStoredWidth,
-    collapsed: isTauriDesktop() ? storedCollapsed : false,
+    collapsed: isTauriDesktop() ? (storedCollapsed ?? true) : false,
     setCollapsed: setStoredCollapsed,
     defaultWidth,
   };

@@ -6,6 +6,10 @@
 import { apiSocket } from './apiSocket';
 import { getSessionTrace, sessionLogger } from './appTraceStore';
 import { deleteSessionAttachments } from './attachmentUpload';
+import {
+  getErrorMessageWithDetails,
+  withFormattedRpcError,
+} from './rpcErrorFormatting';
 import type { PermissionMode } from './sessionCapabilities';
 import type { MachineMetadata } from './storageTypes';
 import { safeStringify } from '@saaskit-dev/agentbridge/common';
@@ -50,6 +54,10 @@ interface SessionBashResponse {
   stderr: string;
   exitCode: number;
   error?: string;
+  details?: Record<string, unknown> | string;
+  truncated?: boolean;
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
 }
 
 // Read file operation types
@@ -62,6 +70,7 @@ interface SessionReadFileResponse {
   success: boolean;
   content?: string; // base64 encoded
   error?: string;
+  details?: Record<string, unknown> | string;
   errorCode?: string;
   size?: number;
   truncated?: boolean;
@@ -79,6 +88,7 @@ interface SessionWriteFileResponse {
   success: boolean;
   hash?: string;
   error?: string;
+  details?: Record<string, unknown> | string;
 }
 
 // List directory operation types
@@ -100,7 +110,10 @@ interface SessionListDirectoryResponse {
   success: boolean;
   entries?: DirectoryEntry[];
   error?: string;
+  details?: Record<string, unknown> | string;
   errorCode?: string;
+  truncated?: boolean;
+  totalEntries?: number;
 }
 
 // Directory tree operation types
@@ -122,6 +135,9 @@ interface SessionGetDirectoryTreeResponse {
   success: boolean;
   tree?: TreeNode;
   error?: string;
+  details?: Record<string, unknown> | string;
+  truncated?: boolean;
+  totalNodes?: number;
 }
 
 // Delete file operation types
@@ -133,6 +149,7 @@ interface SessionDeleteFileRequest {
 interface SessionDeleteFileResponse {
   success: boolean;
   error?: string;
+  details?: Record<string, unknown> | string;
   errorCode?: string;
 }
 
@@ -148,6 +165,10 @@ interface SessionRipgrepResponse {
   stdout?: string;
   stderr?: string;
   error?: string;
+  details?: Record<string, unknown> | string;
+  truncated?: boolean;
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
 }
 
 // Kill session operation types
@@ -596,14 +617,15 @@ export async function sessionBash(
         error: 'No response from session',
       };
     }
-    return response;
+    return withFormattedRpcError(response);
   } catch (error) {
+    const message = getErrorMessageWithDetails(error);
     return {
       success: false,
       stdout: '',
-      stderr: safeStringify(error),
+      stderr: message,
       exitCode: -1,
-      error: safeStringify(error),
+      error: message,
     };
   }
 }
@@ -626,11 +648,11 @@ export async function sessionReadFile(
     if (!response) {
       return { success: false, error: 'No response from session' };
     }
-    return response;
+    return withFormattedRpcError(response);
   } catch (error) {
     return {
       success: false,
-      error: safeStringify(error),
+      error: getErrorMessageWithDetails(error),
     };
   }
 }
@@ -654,11 +676,11 @@ export async function sessionWriteFile(
     if (!response) {
       return { success: false, error: 'No response from session' };
     }
-    return response;
+    return withFormattedRpcError(response);
   } catch (error) {
     return {
       success: false,
-      error: safeStringify(error),
+      error: getErrorMessageWithDetails(error),
     };
   }
 }
@@ -679,11 +701,11 @@ export async function sessionListDirectory(
     if (!response) {
       return { success: false, error: 'No response from session' };
     }
-    return response;
+    return withFormattedRpcError(response);
   } catch (error) {
     return {
       success: false,
-      error: safeStringify(error),
+      error: getErrorMessageWithDetails(error),
     };
   }
 }
@@ -706,11 +728,11 @@ export async function sessionDeleteFile(
     if (!response) {
       return { success: false, error: 'No response from session' };
     }
-    return response;
+    return withFormattedRpcError(response);
   } catch (error) {
     return {
       success: false,
-      error: safeStringify(error),
+      error: getErrorMessageWithDetails(error),
     };
   }
 }
@@ -732,11 +754,11 @@ export async function sessionGetDirectoryTree(
     if (!response) {
       return { success: false, error: 'No response from session' };
     }
-    return response;
+    return withFormattedRpcError(response);
   } catch (error) {
     return {
       success: false,
-      error: safeStringify(error),
+      error: getErrorMessageWithDetails(error),
     };
   }
 }
@@ -759,11 +781,11 @@ export async function sessionRipgrep(
     if (!response) {
       return { success: false, error: 'No response from session' };
     }
-    return response;
+    return withFormattedRpcError(response);
   } catch (error) {
     return {
       success: false,
-      error: safeStringify(error),
+      error: getErrorMessageWithDetails(error),
     };
   }
 }

@@ -23,6 +23,7 @@ import { spawn, SpawnOptions } from 'child_process';
 import { promisify } from 'util';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 import { safeStringify } from '@saaskit-dev/agentbridge';
+import { MAX_RPC_COMMAND_STDERR_CHARS, MAX_RPC_COMMAND_STDOUT_CHARS, capCapturedOutput } from './transportSafety';
 const logger = new Logger('utils/tmux');
 
 export enum TmuxControlState {
@@ -628,16 +629,29 @@ export class TmuxUtilities {
 
       let stdout = '';
       let stderr = '';
+      let stdoutTruncated = false;
+      let stderrTruncated = false;
 
       child.stdout?.on('data', data => {
-        stdout += data.toString();
+        const next = capCapturedOutput(stdout, data.toString(), MAX_RPC_COMMAND_STDOUT_CHARS);
+        stdout = next.value;
+        stdoutTruncated = stdoutTruncated || next.truncated;
       });
 
       child.stderr?.on('data', data => {
-        stderr += data.toString();
+        const next = capCapturedOutput(stderr, data.toString(), MAX_RPC_COMMAND_STDERR_CHARS);
+        stderr = next.value;
+        stderrTruncated = stderrTruncated || next.truncated;
       });
 
       child.on('close', code => {
+        if (stdoutTruncated || stderrTruncated) {
+          logger.debug('tmux command output truncated for safety', {
+            args,
+            stdoutTruncated,
+            stderrTruncated,
+          });
+        }
         resolve({
           exitCode: code || 0,
           stdout,

@@ -92,7 +92,7 @@ export const localSettingsDefaults: LocalSettings = {
   sidebarWidth: null,
   sidebarCollapsed: false,
   sessionFilesSidebarWidth: null,
-  sessionFilesSidebarCollapsed: false,
+  sessionFilesSidebarCollapsed: true,
   themePreference: 'adaptive',
   acknowledgedCliVersions: {},
   backgroundReconnectPromptHandled: false,
