@@ -9,6 +9,7 @@ ANDROID_BUILD_ARTIFACT="${ANDROID_BUILD_ARTIFACT:-aab}"
 ANDROID_SIGNING_MODE="${ANDROID_SIGNING_MODE:-release}"
 ARTIFACTS_DIR="$APP_DIR/.artifacts/android/$APP_ENV"
 KEYSTORE_PATH="$ARTIFACTS_DIR/upload-keystore.jks"
+GOOGLE_SERVICES_PATH="$ARTIFACTS_DIR/google-services.json"
 AAB_PATH="$APP_DIR/android/app/build/outputs/bundle/release/app-release.aab"
 APK_PATH="$APP_DIR/android/app/build/outputs/apk/release/app-release.apk"
 
@@ -100,14 +101,22 @@ EOF
 fi
 
 if [ -n "${GOOGLE_SERVICES_JSON:-}" ]; then
-  printf '%s\n' "$GOOGLE_SERVICES_JSON" > "$APP_DIR/android/app/google-services.json"
+  printf '%s\n' "$GOOGLE_SERVICES_JSON" > "$GOOGLE_SERVICES_PATH"
 fi
 
 echo "==> Sync Expo config into native Android project"
 (
   cd "$APP_DIR"
-  APP_ENV="$APP_ENV" ANDROID_VERSION_CODE="$BUILD_NUMBER" npx expo prebuild --platform android --non-interactive
+  APP_ENV="$APP_ENV" \
+  ANDROID_VERSION_CODE="$BUILD_NUMBER" \
+  GOOGLE_SERVICES_JSON_PATH="$GOOGLE_SERVICES_PATH" \
+  npx expo prebuild --platform android --non-interactive
 )
+
+if [ -f "$GOOGLE_SERVICES_PATH" ]; then
+  mkdir -p "$APP_DIR/android/app"
+  cp "$GOOGLE_SERVICES_PATH" "$APP_DIR/android/app/google-services.json"
+fi
 
 echo "==> Build signed Android $ANDROID_BUILD_ARTIFACT"
 (

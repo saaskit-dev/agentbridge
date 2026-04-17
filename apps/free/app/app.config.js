@@ -1,4 +1,5 @@
 const { version } = require('./package.json');
+const fs = require('fs');
 const os = require('os');
 
 // 两个变体：
@@ -45,6 +46,14 @@ const { name, bundleId, serverUrl, googleServicesFile } = config;
 const appGroup = `group.${bundleId}`;
 const updatesUrl = process.env.EXPO_UPDATES_URL || `${serverUrl.replace(/\/$/, '')}/updates`;
 const expoProjectId = process.env.EXPO_PROJECT_ID || '79f0465e-eaa6-47f9-91e0-09e5a5661790';
+
+function resolveGoogleServicesJsonPath() {
+  const explicitPath = process.env.GOOGLE_SERVICES_JSON_PATH || process.env.GOOGLE_SERVICES_JSON;
+  if (explicitPath && fs.existsSync(explicitPath)) {
+    return explicitPath;
+  }
+  return './firebase/google-services.json';
+}
 
 export default {
   expo: {
@@ -111,7 +120,7 @@ export default {
       edgeToEdgeEnabled: true,
       package: bundleId,
       versionCode: androidVersionCode,
-      googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './firebase/google-services.json',
+      googleServicesFile: resolveGoogleServicesJsonPath(),
       intentFilters:
         variant !== 'development'
           ? [
