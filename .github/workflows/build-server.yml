@@ -25,7 +25,7 @@ jobs:
     name: Validate Server Changes
     runs-on: ${{ fromJSON(vars.MACOS_RUNNER_LABELS_JSON || vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","local-mac"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
       - uses: ./.github/actions/quality-gate
@@ -36,15 +36,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

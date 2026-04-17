@@ -34,7 +34,7 @@ jobs:
   quality_gate:
     runs-on: ${{ fromJSON(vars.MACOS_RUNNER_LABELS_JSON || vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","local-mac"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/quality-gate
 
   release:
@@ -44,14 +44,14 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
