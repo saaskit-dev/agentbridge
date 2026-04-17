@@ -41,7 +41,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      workflows: write
     outputs:
       version: ${{ steps.prepare.outputs.version }}
       tag_name: ${{ steps.prepare.outputs.tag_name }}
