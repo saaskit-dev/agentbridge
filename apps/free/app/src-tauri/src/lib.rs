@@ -2,7 +2,14 @@ use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_S
 use base64::Engine as _;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
-use std::{fs, io, path::PathBuf, process::Command, sync::Mutex, thread, time::Duration};
+use std::{
+  fs, io,
+  path::{Path, PathBuf},
+  process::Command,
+  sync::Mutex,
+  thread,
+  time::Duration,
+};
 use tauri::Manager;
 
 const SCHEMA_SQL: &str = r#"
@@ -189,15 +196,51 @@ fn run_shell(command: &str) -> CommandResult<std::process::Output> {
 fn command_path(name: &str) -> CommandResult<Option<String>> {
   let output = run_shell(&format!("command -v {}", name))?;
   if !output.status.success() {
-    return Ok(None);
+    return Ok(fallback_command_path(name));
   }
 
   let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
   if stdout.is_empty() {
-    Ok(None)
+    Ok(fallback_command_path(name))
   } else {
     Ok(Some(stdout))
   }
+}
+
+fn is_executable_file(path: &Path) -> bool {
+  if !path.is_file() {
+    return false;
+  }
+
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    return fs::metadata(path)
+      .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+      .unwrap_or(false);
+  }
+
+  #[allow(unreachable_code)]
+  true
+}
+
+fn fallback_command_path(name: &str) -> Option<String> {
+  let home = std::env::var("HOME").ok();
+  let mut candidates = Vec::new();
+
+  if let Some(home) = home {
+    candidates.push(PathBuf::from(&home).join(".local/bin").join(name));
+    candidates.push(PathBuf::from(&home).join("Library/pnpm").join(name));
+    candidates.push(PathBuf::from(&home).join(".n/bin").join(name));
+  }
+
+  candidates.push(PathBuf::from("/opt/homebrew/bin").join(name));
+  candidates.push(PathBuf::from("/usr/local/bin").join(name));
+
+  candidates
+    .into_iter()
+    .find(|candidate| is_executable_file(candidate))
+    .map(|candidate| candidate.display().to_string())
 }
 
 fn parse_cli_version(raw: &str) -> Option<String> {
