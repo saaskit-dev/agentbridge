@@ -12,6 +12,7 @@ KEYSTORE_PATH="$ARTIFACTS_DIR/upload-keystore.jks"
 GOOGLE_SERVICES_PATH="$ARTIFACTS_DIR/google-services.json"
 AAB_PATH="$APP_DIR/android/app/build/outputs/bundle/release/app-release.aab"
 APK_PATH="$APP_DIR/android/app/build/outputs/apk/release/app-release.apk"
+LOCAL_ANDROID_MAVEN_REPO="$APP_DIR/vendor/android-maven"
 
 cleanup() {
   if [ -f "$KEYSTORE_PATH" ]; then
@@ -40,6 +41,44 @@ require_cmd node
 require_cmd pnpm
 require_cmd java
 require_cmd base64
+
+ensure_local_android_maven_repo() {
+  if [ ! -d "$LOCAL_ANDROID_MAVEN_REPO" ]; then
+    return 0
+  fi
+
+  LOCAL_ANDROID_MAVEN_REPO="$LOCAL_ANDROID_MAVEN_REPO" node <<'EOF'
+const fs = require('fs');
+const path = require('path');
+
+const buildGradlePath = path.join(process.cwd(), 'android', 'build.gradle');
+const repoPath = process.env.LOCAL_ANDROID_MAVEN_REPO;
+const repoBlock = `    maven { url uri("../vendor/android-maven") }\n`;
+
+let source = fs.readFileSync(buildGradlePath, 'utf8');
+if (source.includes(repoBlock.trim())) {
+  process.exit(0);
+}
+
+const marker = '  repositories {\n';
+const allprojectsIndex = source.indexOf('allprojects {');
+if (allprojectsIndex === -1) {
+  throw new Error('Unable to locate allprojects block in android/build.gradle');
+}
+const repoIndex = source.indexOf(marker, allprojectsIndex);
+if (repoIndex === -1) {
+  throw new Error('Unable to locate repositories block in android/build.gradle');
+}
+
+source =
+  source.slice(0, repoIndex + marker.length) +
+  repoBlock +
+  source.slice(repoIndex + marker.length);
+
+fs.writeFileSync(buildGradlePath, source);
+console.error(`Injected local Android Maven repo: ${repoPath}`);
+EOF
+}
 
 case "$ANDROID_SIGNING_MODE" in
   release)
@@ -112,6 +151,8 @@ echo "==> Sync Expo config into native Android project"
   GOOGLE_SERVICES_JSON_PATH="$GOOGLE_SERVICES_PATH" \
   npx expo prebuild --platform android --non-interactive
 )
+
+ensure_local_android_maven_repo
 
 if [ -f "$GOOGLE_SERVICES_PATH" ]; then
   mkdir -p "$APP_DIR/android/app"

@@ -9,6 +9,56 @@
 
 ---
 
+## apps/free/app/package.json / pnpm-lock.yaml — Android 构建固定 `react-native-unistyles` 到 `3.0.21`
+
+**问题**：`react-native-unistyles` 使用 caret 范围后，锁文件会解析到 `3.1.1`。在当前依赖组合下，
+它与项目内的 `react-native-nitro-modules@0.33.2` 在 Android release 原生编译阶段不兼容，
+会在生成的 `JHybridNativePlatformSpec.hpp` 里报 `JHybridObject::CxxPart` 不存在等 C++ 错误。
+
+**触发条件**：
+
+- 运行 Android release 构建
+- `react-native-unistyles` 被解析到 `3.1.1`
+- 同时仍使用 `react-native-nitro-modules@0.33.2`
+
+**修复内容**：
+
+- 将 `react-native-unistyles` 从范围依赖改为精确版本 `3.0.21`
+- 锁文件同步固定到 `3.0.21`，避免安装时再次漂移到 `3.1.x`
+
+**上游**：当前是 `react-native-unistyles` 3.1.x 与现有 Nitro 版本组合的兼容性问题，表现为 Android NDK/CMake 编译失败。
+
+**删除条件**：确认 `react-native-unistyles` 新版本与项目选用的 `react-native-nitro-modules` 版本在 Android release 构建下兼容后，可移除该版本锁定。
+
+---
+
+## apps/free/app/vendor/android-maven / scripts/free-app-android-release.sh — vendoring LiveKit 依赖的 `audioswitch` AAR，绕过 JitPack TLS 握手失败
+
+**问题**：`@livekit/react-native` 的 Android 模块依赖
+`com.github.davidliu:audioswitch:89582c47c9a04c62f90aa5e57251af4800a62c9a`，默认从 `https://jitpack.io` 下载。
+当前自托管 macOS runner 在 Gradle 解析这个 AAR 时会报 TLS 握手失败：
+`Remote host terminated the handshake`，从而让 Android release 卡在 `:livekit_react-native:compileReleaseKotlin`。
+
+**触发条件**：
+
+- 运行 Android release workflow
+- Gradle 解析 `@livekit/react-native` 的 Android 依赖
+- runner 与 JitPack 之间发生 TLS 握手失败
+
+**修复内容**：
+
+- 将 `audioswitch` 对应版本的 `.aar` 与 `.pom` 落地到仓库内本地 Maven 仓库：
+  `apps/free/app/vendor/android-maven/...`
+- `scripts/free-app-android-release.sh` 在 `expo prebuild` 后自动把该本地 Maven repo 注入生成的 `android/build.gradle`
+- 优先从本地仓库解析 `audioswitch`，不再依赖 JitPack 在线下载
+
+**上游**：`@livekit/react-native` Android 构建脚本直接声明了 JitPack 上的 `audioswitch` 坐标；当前失败是 runner 到 JitPack 的 TLS/网络兼容问题，而非仓库内业务代码问题。
+
+**删除条件**：若 `@livekit/react-native` 后续移除了对该 JitPack 坐标的依赖、改为 Maven Central 等稳定源，
+或自托管 runner 对 JitPack 的 TLS 访问已长期稳定，可移除本地 Maven vendoring 与脚本注入逻辑。
+
+---
+
 ## apps/free/app/sources/app/(app)/machine/[id]/import-sessions.tsx — iOS 禁用 FlatList `removeClippedSubviews`
 
 **问题**：在 React Native Fabric 的 iOS 真机上，导入 session 列表页开启 `removeClippedSubviews` 后，TestFlight 崩溃日志命中
