@@ -155,6 +155,7 @@ jobs:
   release:
     needs: prepare_release
     runs-on: ${{ fromJSON(vars.MACOS_RUNNER_LABELS_JSON || vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","local-mac"]') }}
+    timeout-minutes: 120
     permissions:
       contents: write
 
@@ -189,6 +190,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build Android release artifacts
+        timeout-minutes: 75
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
           ANDROID_SIGNING_MODE: debug

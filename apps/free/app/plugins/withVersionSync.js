@@ -22,35 +22,28 @@ const withVersionSync = config => {
 
   // 同步 Android 版本 (通过 gradle.properties)
   config = withGradleProperties(config, config => {
-    // 查找或添加 versionName
-    const versionNameIndex = config.modResults.findIndex(
-      item => item.type === 'property' && item.key === 'versionName'
-    );
+    const upsertProperty = (key, value) => {
+      const index = config.modResults.findIndex(item => item.type === 'property' && item.key === key);
+      if (index >= 0) {
+        config.modResults[index].value = value;
+      } else {
+        config.modResults.push({
+          type: 'property',
+          key,
+          value,
+        });
+      }
+    };
 
-    if (versionNameIndex >= 0) {
-      config.modResults[versionNameIndex].value = version;
-    } else {
-      config.modResults.push({
-        type: 'property',
-        key: 'versionName',
-        value: version,
-      });
-    }
+    // 查找或添加 versionName
+    upsertProperty('versionName', version);
 
     // 查找或添加 versionCode
-    const versionCodeIndex = config.modResults.findIndex(
-      item => item.type === 'property' && item.key === 'versionCode'
-    );
-
-    if (versionCodeIndex >= 0) {
-      config.modResults[versionCodeIndex].value = buildNumber;
-    } else {
-      config.modResults.push({
-        type: 'property',
-        key: 'versionCode',
-        value: buildNumber,
-      });
-    }
+    upsertProperty('versionCode', buildNumber);
+    upsertProperty('org.gradle.jvmargs', '-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8');
+    upsertProperty('org.gradle.parallel', 'false');
+    upsertProperty('org.gradle.workers.max', '2');
+    upsertProperty('kotlin.daemon.jvmargs', '-Xmx2048m');
 
     return config;
   });

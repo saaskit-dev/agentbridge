@@ -59,6 +59,36 @@
 
 ---
 
+## apps/free/app/plugins/withVersionSync.js / .github/workflows/release-android.yml — Android release 限制 Gradle 并行度、提升堆内存，并给 release job 加硬超时
+
+**问题**：Android release 在 self-hosted macOS runner 上同时构建 production/development 变体时，
+Gradle 会在后段打包任务里出现 `java.lang.OutOfMemoryError: Java heap space`，
+失败点可落在 `:app:mergeReleaseJavaResource` 等大内存任务。更糟的是，Gradle 子线程 OOM 后顶层 step 不一定立刻退出，
+导致 GitHub Actions job 挂数小时仍显示 `in_progress`。
+
+**触发条件**：
+
+- 运行 `Release Android` workflow
+- 自托管 macOS runner 内存不足以支撑当前 release 任务的默认 Gradle 并行度/堆设置
+- Gradle daemon / worker 在 release 打包阶段 OOM
+
+**修复内容**：
+
+- 通过 `withVersionSync.js` 在 prebuild 生成的 `android/gradle.properties` 中固定：
+  - `org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8`
+  - `org.gradle.parallel=false`
+  - `org.gradle.workers.max=2`
+  - `kotlin.daemon.jvmargs=-Xmx2048m`
+- 在 `.github/workflows/release-android.yml` 中增加：
+  - `release` job 的 `timeout-minutes: 120`
+  - `Build Android release artifacts` step 的 `timeout-minutes: 75`
+
+**上游**：不是业务代码逻辑问题，而是当前 Android release 构建规模与 self-hosted runner 可用内存之间的资源约束问题，加上 Gradle daemon 在 OOM 后退出不干净。
+
+**删除条件**：若后续 runner 规格提高、构建链路优化后默认 Gradle 配置即可稳定通过，且不再出现 OOM 或长时间假死，可恢复更激进的并行配置并移除 workflow 超时 workaround。
+
+---
+
 ## apps/free/app/sources/app/(app)/machine/[id]/import-sessions.tsx — iOS 禁用 FlatList `removeClippedSubviews`
 
 **问题**：在 React Native Fabric 的 iOS 真机上，导入 session 列表页开启 `removeClippedSubviews` 后，TestFlight 崩溃日志命中
