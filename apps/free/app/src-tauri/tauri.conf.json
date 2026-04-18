@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Free",
-  "version": "2026.4.17023356",
+  "version": "2026.4.19020052",
   "identifier": "app.saaskit.freecode",
   "build": {
     "frontendDist": "../dist",
