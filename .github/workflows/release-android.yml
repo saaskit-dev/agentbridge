@@ -60,9 +60,6 @@ jobs:
 
       - uses: pnpm/action-setup@v5
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
       - name: Bump version and create tag
         id: prepare
         env:
@@ -152,10 +149,18 @@ jobs:
           - Include dev APK: \`${{ steps.prepare.outputs.include_dev }}\`
           EOF
 
-  release:
+  build_apk:
     needs: prepare_release
+    name: Build Android APK (${{ matrix.variant }})
     runs-on: ${{ fromJSON(vars.MACOS_RUNNER_LABELS_JSON || vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","local-mac"]') }}
     timeout-minutes: 60
+    if: ${{ matrix.variant == 'production' || needs.prepare_release.outputs.include_dev == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - production
+          - development
     permissions:
       contents: write
 
@@ -196,19 +201,59 @@ jobs:
           ANDROID_SIGNING_MODE: debug
         run: |
           set -euo pipefail
-          VARIANTS="production"
-          if [ "${{ needs.prepare_release.outputs.include_dev }}" = "true" ]; then
-            VARIANTS="$VARIANTS development"
+          ./scripts/free-android-release.sh ${{ matrix.variant }}
+
+      - name: Prepare variant artifacts
+        run: |
+          set -euo pipefail
+          RELEASE_DIR="apps/free/app/dist-android/${{ needs.prepare_release.outputs.version }}"
+          VARIANT_DIR="$RELEASE_DIR/${{ matrix.variant }}"
+          STAGE_DIR="$RUNNER_TEMP/android-release-${{ matrix.variant }}"
+          rm -rf "$STAGE_DIR"
+          mkdir -p "$STAGE_DIR"
+          cp "$VARIANT_DIR"/* "$STAGE_DIR/"
+          if [ "${{ matrix.variant }}" = "production" ]; then
+            cp "$RELEASE_DIR/SHA256SUMS.txt" "$STAGE_DIR/"
           fi
-          ./scripts/free-android-release.sh $VARIANTS
+
+      - name: Upload variant workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-${{ matrix.variant }}
+          path: ${{ runner.temp }}/android-release-${{ matrix.variant }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish_release:
+    needs:
+      - prepare_release
+      - build_apk
+    name: Publish Android Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download production artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-release-production
+          path: artifacts/production
+
+      - name: Download development artifacts
+        if: ${{ needs.prepare_release.outputs.include_dev == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: android-release-development
+          path: artifacts/development
 
       - name: Upload Android assets to GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          RELEASE_DIR="apps/free/app/dist-android/${{ needs.prepare_release.outputs.version }}"
-          find "$RELEASE_DIR" -type f -print0 | while IFS= read -r -d '' asset; do
+          find artifacts -type f -print0 | while IFS= read -r -d '' asset; do
             gh release upload "${{ needs.prepare_release.outputs.tag_name }}" \
               "$asset" \
               --repo "${{ github.repository }}" \
