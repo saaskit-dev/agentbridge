@@ -7,7 +7,9 @@ import type { NormalizedMessage } from '@/daemon/sessions/types';
 export class FakeCliSessionClient {
   static async create(credentials: Credentials, session: Session): Promise<FakeCliSessionClient> {
     const client = new ApiSessionClient(credentials.token, session);
-    return new FakeCliSessionClient(client);
+    const fakeClient = new FakeCliSessionClient(client);
+    await client.waitUntilConnected();
+    return fakeClient;
   }
 
   private readonly client: ApiSessionClient;

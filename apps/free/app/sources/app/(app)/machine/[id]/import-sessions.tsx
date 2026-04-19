@@ -40,6 +40,24 @@ type ScreenCacheEntry = {
 };
 
 const screenCache = new Map<string, ScreenCacheEntry>();
+const SUPPORTED_AGENTS_TIMEOUT_MS = 8_000;
+const AGENT_LOAD_TIMEOUT_MS = 15_000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`${label}_timeout`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 const styles = StyleSheet.create(theme => ({
   page: {
@@ -153,22 +171,24 @@ export default function ImportSessionsScreen() {
         cachedAt?: number;
       }
     ) => {
-      setCachedAt(result.cachedAt ?? Date.now());
-      setExternalSessions(current => [
-        ...current.filter(item => item.agentType !== agentType),
-        ...result.sessions,
-      ]);
-      setLoadErrors(current => [
-        ...current.filter(item => item.agentType !== agentType),
-        ...result.errors,
-      ]);
+      React.startTransition(() => {
+        setCachedAt(result.cachedAt ?? Date.now());
+        setExternalSessions(current => [
+          ...current.filter(item => item.agentType !== agentType),
+          ...result.sessions,
+        ]);
+        setLoadErrors(current => [
+          ...current.filter(item => item.agentType !== agentType),
+          ...result.errors,
+        ]);
 
-      const failed = result.errors.some(item => item.agentType === agentType);
-      const listable = result.listableAgents.includes(agentType);
-      setAgentStates(current => ({
-        ...current,
-        [agentType]: failed ? 'error' : listable ? 'ready' : 'unsupported',
-      }));
+        const failed = result.errors.some(item => item.agentType === agentType);
+        const listable = result.listableAgents.includes(agentType);
+        setAgentStates(current => ({
+          ...current,
+          [agentType]: failed ? 'error' : listable ? 'ready' : 'unsupported',
+        }));
+      });
     },
     []
   );
@@ -179,11 +199,10 @@ export default function ImportSessionsScreen() {
       inFlightAgentsRef.current.add(agentType);
       setAgentStates(current => ({ ...current, [agentType]: 'loading' }));
       try {
-        const result = await machineListExternalAgentSessionsForAgent(
-          machineId,
-          agentType,
-          undefined,
-          forceRefresh
+        const result = await withTimeout(
+          machineListExternalAgentSessionsForAgent(machineId, agentType, undefined, forceRefresh),
+          AGENT_LOAD_TIMEOUT_MS,
+          `${agentType}_load`
         );
         if (requestIdRef.current !== requestId) return;
         applyAgentResult(agentType, result);
@@ -207,7 +226,11 @@ export default function ImportSessionsScreen() {
     inFlightAgentsRef.current.clear();
     setRefreshing(true);
     try {
-      const supported = await machineListSupportedAgents(machineId);
+      const supported = await withTimeout(
+        machineListSupportedAgents(machineId),
+        SUPPORTED_AGENTS_TIMEOUT_MS,
+        'supported_agents'
+      ).catch(() => [] as string[]);
       if (requestIdRef.current !== requestId) return;
 
       const nextCandidateAgents = supported.filter(agent =>
@@ -239,11 +262,9 @@ export default function ImportSessionsScreen() {
       }
       if (requestIdRef.current !== requestId) return;
       setLoading(false);
-
-      for (const agent of remainingAgents) {
-        if (requestIdRef.current !== requestId) return;
-        await loadAgent(agent, requestId, forceRefresh);
-      }
+      await Promise.allSettled(
+        remainingAgents.map(agent => loadAgent(agent, requestId, forceRefresh))
+      );
     } finally {
       if (requestIdRef.current === requestId) {
         setLoading(false);

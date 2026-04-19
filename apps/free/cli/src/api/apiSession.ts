@@ -545,6 +545,34 @@ export class ApiSessionClient extends EventEmitter {
     return this.lastSeq;
   }
 
+  async waitUntilConnected(timeoutMs = 10_000): Promise<void> {
+    if (this.socket.connected) {
+      return;
+    }
+
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        const onConnect = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+        const cleanup = () => {
+          this.socket.off('connect', onConnect);
+          this.socket.off('connect_error', onError);
+        };
+
+        this.socket.on('connect', onConnect);
+        this.socket.on('connect_error', onError);
+      }),
+      timeoutMs,
+      `[apiSession] waitUntilConnected (${this.sessionId})`
+    );
+  }
+
   onLastSeqChanged(listener: (lastSeq: number) => void): () => void {
     this.lastSeqListeners.add(listener);
     return () => {

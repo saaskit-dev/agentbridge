@@ -478,7 +478,8 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
     'should retain persisted session snapshot when recovery fails',
     { timeout: 30_000 },
     async () => {
-      // 1. Manually write a persisted session with invalid data (bad sessionId)
+      // 1. Write a persisted session for a supported agent that cannot restart cleanly.
+      //    The daemon should retain the snapshot so recovery can be retried later.
       const daemonSessionsDir = join(configuration.freeHomeDir, 'daemon-sessions');
       if (!existsSync(daemonSessionsDir)) {
         const { mkdirSync } = require('fs');
@@ -487,8 +488,8 @@ describe('Daemon Integration Tests', { timeout: 20_000 }, () => {
 
       const badData = {
         sessionId: 'bad-session-test',
-        agentType: 'nonexistent-agent-type', // unregistered agent → AgentSessionFactory.create throws
-        cwd: '/tmp',
+        agentType: 'claude',
+        cwd: '/definitely/missing/recovery-path',
         startedBy: 'cli',
         createdAt: Date.now(),
         daemonInstanceId: 'dead-daemon-instance', // different from current daemon

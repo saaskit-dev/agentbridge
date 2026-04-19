@@ -550,9 +550,6 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       this.logger.info(`[${this.agentType}] deferred mode selection until ACP session creation`, {
         modeId,
       });
-      if (this.capabilitiesSnapshot.modes) {
-        this.publishOptimisticCapabilities({ modeId });
-      }
       return;
     }
 

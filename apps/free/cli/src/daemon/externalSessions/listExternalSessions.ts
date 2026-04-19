@@ -40,6 +40,8 @@ type AgentSpec = {
 
 const CODEX_ACP_VERSION = '0.9.5';
 const CACHE_TTL_MS = 30_000;
+const INITIALIZE_TIMEOUT_MS = 15_000;
+const LIST_SESSIONS_TIMEOUT_MS = 8_000;
 
 let cache:
   | {
@@ -151,7 +153,7 @@ async function listSessionsForSpec(spec: AgentSpec): Promise<ExternalAgentSessio
         clientCapabilities: {},
         clientInfo: { name: 'agentbridge-external-sessions', version: '0.0.0' },
       }),
-      120_000,
+      INITIALIZE_TIMEOUT_MS,
       `${spec.agentType} initialize`
     )) as InitializeResponse;
 
@@ -165,7 +167,7 @@ async function listSessionsForSpec(spec: AgentSpec): Promise<ExternalAgentSessio
     do {
       const response = (await withTimeout(
         connection.listSessions({ cursor: cursor ?? undefined }),
-        30_000,
+        LIST_SESSIONS_TIMEOUT_MS,
         `${spec.agentType} listSessions`
       )) as ListSessionsResponse;
 
