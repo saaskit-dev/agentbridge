@@ -75,6 +75,7 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
   const isMountedRef = useRef(true);
 
   const [state, setState] = useState<StreamingTextState>(STREAMING_INITIAL_STATE);
+  const lastLoggedMessageIdRef = useRef<string | null>(null);
 
   // Use refs for callbacks to avoid re-subscribing
   const onTextDeltaRef = useRef(onTextDelta);
@@ -92,10 +93,26 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
     const handleEphemeral = (update: ApiEphemeralUpdate) => {
       if (!isMountedRef.current) return;
 
+      // Streaming text can continue across reducer-level message merges and
+      // chunk coalescing. Subscribing by session keeps the active row updating
+      // even when the underlying chunk ids do not match a single UI message id.
+      if ('sessionId' in update && update.sessionId !== sessionId) {
+        return;
+      }
+
       switch (update.type) {
         case 'text_delta': {
           const delta = update as ApiEphemeralTextDelta;
           setState(prev => applyTextDelta(prev, delta));
+          if (!messageId || delta.messageId === messageId) {
+            logger.debug('[stream] text delta received', {
+              sessionId,
+              messageId: delta.messageId,
+              observerMessageId: messageId ?? null,
+              deltaLength: delta.delta.length,
+            });
+            lastLoggedMessageIdRef.current = delta.messageId;
+          }
           onTextDeltaRef.current?.(delta.messageId, delta.delta);
           break;
         }
@@ -103,6 +120,15 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
         case 'text_complete': {
           const complete = update as ApiEphemeralTextComplete;
           setState(() => applyTextComplete(complete));
+          if (!messageId || complete.messageId === messageId) {
+            logger.debug('[stream] text complete received', {
+              sessionId,
+              messageId: complete.messageId,
+              observerMessageId: messageId ?? null,
+              fullTextLength: complete.fullText.length,
+            });
+            lastLoggedMessageIdRef.current = complete.messageId;
+          }
           if (isMountedRef.current) {
             onTextCompleteRef.current?.(complete.messageId, complete.fullText);
           }
@@ -120,10 +146,16 @@ export function useStreamingText(options: UseStreamingTextOptions): UseStreaming
     // Subscribe to ephemeral updates
     const unsubscribe = sync.onEphemeralUpdate?.(handleEphemeral as (update: unknown) => void, {
       sessionId,
-      messageId: messageId ?? undefined,
     });
 
     return () => {
+      if (lastLoggedMessageIdRef.current) {
+        logger.debug('[stream] observer unmounted', {
+          sessionId,
+          observerMessageId: messageId ?? null,
+          lastObservedMessageId: lastLoggedMessageIdRef.current,
+        });
+      }
       isMountedRef.current = false;
       unsubscribe?.();
     };

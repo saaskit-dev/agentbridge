@@ -18,6 +18,23 @@ import { parseToolUseError } from '@/utils/toolErrorParser';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/tools/ToolView');
 
+function summarizeToolResultForDebug(result: unknown): string {
+  if (result == null) {
+    return 'none';
+  }
+  if (typeof result === 'string') {
+    return `string:${result.length}`;
+  }
+  if (Array.isArray(result)) {
+    return `array:${result.length}`;
+  }
+  if (typeof result === 'object') {
+    const keys = Object.keys(result as Record<string, unknown>).sort();
+    return `object:${keys.slice(0, 5).join(',')}:${keys.length}`;
+  }
+  return typeof result;
+}
+
 interface ToolViewProps {
   metadata: Metadata | null;
   tool: ToolCall;
@@ -33,6 +50,7 @@ export const ToolView = React.memo<ToolViewProps>(props => {
   const router = useRouter();
   const { theme } = useUnistyles();
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const previousRenderStateRef = React.useRef<string | null>(null);
 
   const handleOpenDetails = React.useCallback(() => {
     logger.info('tool_card_open', {
@@ -160,6 +178,32 @@ export const ToolView = React.memo<ToolViewProps>(props => {
     if (!props.collapseSignal) return;
     setIsExpanded(false);
   }, [props.collapseSignal]);
+
+  React.useEffect(() => {
+    const signature = JSON.stringify({
+      state: tool.state,
+      permissionStatus: tool.permission?.status ?? null,
+      resultSummary: summarizeToolResultForDebug(tool.result),
+      childCount: props.messages?.length ?? 0,
+      isExpanded,
+    });
+
+    if (previousRenderStateRef.current === signature) {
+      return;
+    }
+
+    logger.debug('[tool-view] render state changed', {
+      sessionId: sessionId ?? null,
+      messageId: messageId ?? null,
+      toolName: tool.name,
+      toolState: tool.state,
+      permissionStatus: tool.permission?.status ?? null,
+      resultSummary: summarizeToolResultForDebug(tool.result),
+      childCount: props.messages?.length ?? 0,
+      isExpanded,
+    });
+    previousRenderStateRef.current = signature;
+  }, [isExpanded, messageId, props.messages, sessionId, tool]);
 
   const canOpenDetails = !!(onPress || (sessionId && messageId));
   const canToggleInline = minimal;

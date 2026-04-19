@@ -19,6 +19,17 @@ function truncate(value: string, maxLength: number): string {
   return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
+function summarizeTextPreview(value: string, maxLength: number, scanLimit = 4096): string | null {
+  const scanned = value.slice(0, scanLimit);
+  const normalized = scanned.replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+
+  const wasTruncated = value.length > scanLimit || normalized.length > maxLength;
+  const preview = truncate(normalized, maxLength);
+  if (!wasTruncated || preview.endsWith('...')) return preview;
+  return truncate(`${preview}...`, maxLength);
+}
+
 function getResolvedPath(tool: ToolCall, metadata: Metadata | null): string | null {
   if (typeof tool.input?.file_path === 'string') {
     return resolvePath(tool.input.file_path, metadata);
@@ -61,14 +72,16 @@ function getCommandSummary(tool: ToolCall): string | null {
 function getShellResultSummary(tool: ToolCall): string | null {
   if (tool.state === 'running') return null;
 
-  if (typeof tool.result === 'string' && tool.result.trim()) {
-    return truncate(tool.result.trim().replace(/\s+/g, ' '), 120);
+  if (typeof tool.result === 'string') {
+    return summarizeTextPreview(tool.result, 120);
   }
 
-  const stdout = typeof tool.result?.stdout === 'string' ? tool.result.stdout.trim() : '';
-  const stderr = typeof tool.result?.stderr === 'string' ? tool.result.stderr.trim() : '';
-  if (stderr) return truncate(stderr.replace(/\s+/g, ' '), 120);
-  if (stdout) return truncate(stdout.replace(/\s+/g, ' '), 120);
+  const stderr =
+    typeof tool.result?.stderr === 'string' ? summarizeTextPreview(tool.result.stderr, 120) : null;
+  const stdout =
+    typeof tool.result?.stdout === 'string' ? summarizeTextPreview(tool.result.stdout, 120) : null;
+  if (stderr) return stderr;
+  if (stdout) return stdout;
   return null;
 }
 

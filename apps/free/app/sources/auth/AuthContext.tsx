@@ -1,5 +1,13 @@
 import * as Updates from 'expo-updates';
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  ReactNode,
+} from 'react';
 import { Platform } from 'react-native';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { clearPersistence } from '@/sync/persistence';
@@ -16,6 +24,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthStatusContext = createContext<boolean>(false);
 
 export function AuthProvider({
   children,
@@ -27,12 +36,7 @@ export function AuthProvider({
   const [isAuthenticated, setIsAuthenticated] = useState(!!initialCredentials);
   const [credentials, setCredentials] = useState<AuthCredentials | null>(initialCredentials);
 
-  // Update global auth state when local state changes
-  useEffect(() => {
-    setCurrentAuth(credentials ? { isAuthenticated, credentials, login, logout } : null);
-  }, [isAuthenticated, credentials]);
-
-  const login = async (token: string, secret: string) => {
+  const login = useCallback(async (token: string, secret: string) => {
     const newCredentials: AuthCredentials = { token, secret };
     const success = await TokenStorage.setCredentials(newCredentials);
     if (success) {
@@ -44,9 +48,9 @@ export function AuthProvider({
     } else {
       throw new Error('Failed to save credentials');
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     // Disable RemoteSink telemetry on logout
     setAnalyticsEnabled(false);
     await clearPersistence();
@@ -66,19 +70,27 @@ export function AuthProvider({
         logger.debug('Reload failed (expected in dev mode):', error);
       }
     }
-  };
+  }, []);
+
+  const authContextValue = useMemo<AuthContextType>(
+    () => ({
+      isAuthenticated,
+      credentials,
+      login,
+      logout,
+    }),
+    [credentials, isAuthenticated, login, logout]
+  );
+
+  // Update global auth state when local state changes
+  useEffect(() => {
+    setCurrentAuth(credentials ? authContextValue : null);
+  }, [authContextValue, credentials]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        isAuthenticated,
-        credentials,
-        login,
-        logout,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+    <AuthStatusContext.Provider value={isAuthenticated}>
+      <AuthContext.Provider value={authContextValue}>{children}</AuthContext.Provider>
+    </AuthStatusContext.Provider>
   );
 }
 
@@ -88,6 +100,10 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+export function useIsAuthenticated() {
+  return useContext(AuthStatusContext);
 }
 
 // Helper to get current auth state for non-React contexts

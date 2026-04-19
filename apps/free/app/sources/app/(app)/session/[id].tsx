@@ -14,5 +14,5 @@ export default React.memo(() => {
     return null;
   }
 
-  return <SessionView id={sessionId} />;
+  return <SessionView id={sessionId} isFocused={isFocused} />;
 });

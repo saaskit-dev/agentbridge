@@ -522,71 +522,71 @@ export default function PathPickerScreen() {
             </ItemGroup>
 
             {/* Directory browser */}
-            {browsePath !== null && (
-              <ItemGroup title={t('pathPicker.browse')}>
-                {loading ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color={theme.colors.textLink} />
-                  </View>
-                ) : browseError ? (
-                  <Text style={styles.errorText}>{browseError}</Text>
-                ) : (
-                  <>
-                    {/* Go up (..) */}
-                    {browsePath !== '/' && (
-                      <Item
-                        title=".."
-                        leftElement={
-                          <Ionicons
-                            name="return-up-back-outline"
-                            size={18}
-                            color={theme.colors.textSecondary}
-                          />
-                        }
-                        onPress={handleGoUp}
-                        selected={keyboardTargets[highlightedIndex]?.type === 'parent'}
-                        showChevron={false}
-                        pressableStyle={
-                          keyboardTargets[highlightedIndex]?.type === 'parent'
-                            ? { backgroundColor: theme.colors.surfaceSelected }
-                            : undefined
-                        }
-                        showDivider={directoryEntries.length > 0}
-                      />
-                    )}
-                    {directoryEntries.map((entry, index) => (
-                      <Item
-                        key={entry.name}
-                        title={entry.name}
-                        leftElement={
-                          <Ionicons
-                            name="folder-outline"
-                            size={18}
-                            color={theme.colors.textLink}
-                          />
-                        }
-                        onPress={() => handleEntryPress(entry)}
-                        selected={
-                          keyboardTargets[highlightedIndex]?.type === 'directory' &&
-                          keyboardTargets[highlightedIndex]?.entry.name === entry.name
-                        }
-                        pressableStyle={
-                          keyboardTargets[highlightedIndex]?.type === 'directory' &&
-                          keyboardTargets[highlightedIndex]?.entry.name === entry.name
-                            ? { backgroundColor: theme.colors.surfaceSelected }
-                            : undefined
-                        }
-                        showChevron
-                        showDivider={index < directoryEntries.length - 1}
-                      />
-                    ))}
-                    {directoryEntries.length === 0 && browsePath !== '/' && (
-                      <Text style={styles.errorText}>{t('pathPicker.emptyDirectory')}</Text>
-                    )}
-                  </>
-                )}
-              </ItemGroup>
-            )}
+            <ItemGroup title={t('pathPicker.browse')}>
+              {loading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color={theme.colors.textLink} />
+                </View>
+              ) : browseError ? (
+                <Text style={styles.errorText}>{browseError}</Text>
+              ) : browsePath === null ? (
+                <Text style={styles.errorText}>{t('pathPicker.browseError')}</Text>
+              ) : (
+                <>
+                  {/* Go up (..) */}
+                  {browsePath !== '/' && (
+                    <Item
+                      title=".."
+                      leftElement={
+                        <Ionicons
+                          name="return-up-back-outline"
+                          size={18}
+                          color={theme.colors.textSecondary}
+                        />
+                      }
+                      onPress={handleGoUp}
+                      selected={keyboardTargets[highlightedIndex]?.type === 'parent'}
+                      showChevron={false}
+                      pressableStyle={
+                        keyboardTargets[highlightedIndex]?.type === 'parent'
+                          ? { backgroundColor: theme.colors.surfaceSelected }
+                          : undefined
+                      }
+                      showDivider={directoryEntries.length > 0}
+                    />
+                  )}
+                  {directoryEntries.map((entry, index) => (
+                    <Item
+                      key={entry.name}
+                      title={entry.name}
+                      leftElement={
+                        <Ionicons
+                          name="folder-outline"
+                          size={18}
+                          color={theme.colors.textLink}
+                        />
+                      }
+                      onPress={() => handleEntryPress(entry)}
+                      selected={
+                        keyboardTargets[highlightedIndex]?.type === 'directory' &&
+                        keyboardTargets[highlightedIndex]?.entry.name === entry.name
+                      }
+                      pressableStyle={
+                        keyboardTargets[highlightedIndex]?.type === 'directory' &&
+                        keyboardTargets[highlightedIndex]?.entry.name === entry.name
+                          ? { backgroundColor: theme.colors.surfaceSelected }
+                          : undefined
+                      }
+                      showChevron
+                      showDivider={index < directoryEntries.length - 1}
+                    />
+                  ))}
+                  {directoryEntries.length === 0 && browsePath !== '/' && (
+                    <Text style={styles.errorText}>{t('pathPicker.emptyDirectory')}</Text>
+                  )}
+                </>
+              )}
+            </ItemGroup>
           </View>
         </ScrollView>
       </View>

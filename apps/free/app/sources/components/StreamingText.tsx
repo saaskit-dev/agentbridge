@@ -14,6 +14,9 @@ import type { Option } from './markdown/MarkdownView';
 import { buildMarkdownViewProps } from './markdown/markdownViewProps';
 import { recordReactCommit } from '@/dev/performanceMonitor';
 import { useStreamingText } from '@/hooks/useStreamingText';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+
+const logger = new Logger('app/components/StreamingText');
 
 /**
  * StreamingText props
@@ -23,6 +26,8 @@ export interface StreamingTextProps {
   sessionId: string;
   /** Message ID to match streaming events */
   messageId: string | null;
+  /** Candidate message IDs to match streaming events after reducer merges */
+  messageIds?: string[];
   /** Final text (from message) */
   finalText: string;
   /** Called when an option is pressed */
@@ -96,6 +101,7 @@ function BlinkingCursor({
 export function StreamingText({
   sessionId,
   messageId,
+  messageIds,
   finalText,
   onOptionPress,
   useMarkdown = true,
@@ -113,21 +119,109 @@ export function StreamingText({
     },
   });
 
+  const candidateMessageIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    if (messageId) ids.add(messageId);
+    messageIds?.forEach(id => {
+      if (id) ids.add(id);
+    });
+    return Array.from(ids);
+  }, [messageId, messageIds]);
+
   // Determine what text to display
-  const isCurrentMessage = state.messageId === messageId;
+  const isCurrentMessage =
+    !!state.messageId &&
+    (candidateMessageIds.length > 0
+      ? candidateMessageIds.includes(state.messageId)
+      : state.messageId === messageId);
   const isStreaming = state.isStreaming && isCurrentMessage;
-  const displayText = isStreaming
+  const previousDisplaySignatureRef = useRef<string | null>(null);
+  const finalStateLength = state.finalText?.length ?? 0;
+  const canUsePendingFallback =
+    !isStreaming &&
+    state.pendingText.length > finalText.length &&
+    (finalText.length === 0 ||
+      state.pendingText.startsWith(finalText) ||
+      finalText.startsWith(state.pendingText));
+  const canUseCompletedFallback =
+    state.isComplete &&
+    !!state.finalText &&
+    state.finalText.length > finalText.length &&
+    (finalText.length === 0 ||
+      state.finalText.startsWith(finalText) ||
+      finalText.startsWith(state.finalText));
+  const resolvedDisplayText = isStreaming
     ? state.pendingText
     : state.isComplete && isCurrentMessage && state.finalText
       ? state.finalText
-      : finalText;
+      : canUseCompletedFallback
+        ? state.finalText
+        : canUsePendingFallback
+          ? state.pendingText
+          : finalText;
+  const displayText = resolvedDisplayText ?? '';
 
   // Reset when message ID changes
   useEffect(() => {
-    if (messageId && state.messageId && messageId !== state.messageId) {
+    if (
+      state.messageId &&
+      candidateMessageIds.length > 0 &&
+      !candidateMessageIds.includes(state.messageId)
+    ) {
       reset();
     }
-  }, [messageId, state.messageId, reset]);
+  }, [candidateMessageIds, reset, state.messageId]);
+
+  useEffect(() => {
+    const signature = JSON.stringify({
+      sessionId,
+      messageId,
+      messageIds: candidateMessageIds,
+      hookMessageId: state.messageId,
+      isCurrentMessage,
+      isStreaming,
+      isComplete: state.isComplete,
+      pendingLength: state.pendingText.length,
+      finalStateLength,
+      finalPropLength: finalText.length,
+      displayLength: displayText.length,
+      canUsePendingFallback,
+      canUseCompletedFallback,
+    });
+
+    if (previousDisplaySignatureRef.current === signature) {
+      return;
+    }
+
+    logger.debug('[streaming-text] display state changed', {
+      sessionId,
+      messageId,
+      messageIds: candidateMessageIds,
+      hookMessageId: state.messageId,
+      isCurrentMessage,
+      isStreaming,
+      isComplete: state.isComplete,
+      pendingLength: state.pendingText.length,
+      finalStateLength,
+      finalPropLength: finalText.length,
+      displayLength: displayText.length,
+    });
+    previousDisplaySignatureRef.current = signature;
+  }, [
+    displayText.length,
+    finalText.length,
+    candidateMessageIds,
+    isCurrentMessage,
+    isStreaming,
+    messageId,
+    sessionId,
+    finalStateLength,
+    state.isComplete,
+    state.messageId,
+    state.pendingText.length,
+    canUseCompletedFallback,
+    canUsePendingFallback,
+  ]);
 
   // Don't render if no text
   if (!displayText && !isStreaming) {
@@ -169,6 +263,8 @@ export function StreamingAgentText({
   sessionId: string;
   message: {
     id: string;
+    sourceId?: string;
+    sourceIds?: string[];
     text: string;
     isThinking?: boolean;
   };
@@ -177,7 +273,8 @@ export function StreamingAgentText({
   return (
     <StreamingText
       sessionId={sessionId}
-      messageId={message.id}
+      messageId={message.sourceId ?? message.id}
+      messageIds={message.sourceIds}
       finalText={message.text}
       onOptionPress={onOptionPress}
       useMarkdown

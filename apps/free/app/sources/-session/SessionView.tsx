@@ -221,8 +221,9 @@ const QueuedMessagesPanel = React.memo(function QueuedMessagesPanel(props: {
   );
 });
 
-export const SessionView = React.memo((props: { id: string }) => {
+export const SessionView = React.memo((props: { id: string; isFocused?: boolean }) => {
   const sessionId = props.id;
+  const isFocused = props.isFocused ?? true;
   const router = useRouter();
   const session = useSession(sessionId);
   const isDataReady = useIsDataReady();
@@ -384,6 +385,7 @@ export const SessionView = React.memo((props: { id: string }) => {
           <SessionViewLoaded
             sessionId={sessionId}
             session={session}
+            isFocused={isFocused}
             jumpToRecentUserSignal={jumpToRecentUserSignal}
             onJumpToRecentUser={() => setJumpToRecentUserSignal(value => value + 1)}
           />
@@ -396,6 +398,7 @@ export const SessionView = React.memo((props: { id: string }) => {
 function SessionViewLoaded(props: {
   sessionId: string;
   session: Session;
+  isFocused: boolean;
   jumpToRecentUserSignal: number;
   onJumpToRecentUser: () => void;
 }) {
@@ -403,7 +406,7 @@ function SessionViewLoaded(props: {
     | { id: 'chat'; type: 'chat'; title: string }
     | { id: string; type: 'file'; title: string; path: string };
 
-  const { sessionId, session, jumpToRecentUserSignal, onJumpToRecentUser } = props;
+  const { sessionId, session, isFocused, jumpToRecentUserSignal, onJumpToRecentUser } = props;
   const { theme } = useUnistyles();
   const router = useRouter();
   const safeArea = useSafeAreaInsets();
@@ -1092,11 +1095,19 @@ function SessionViewLoaded(props: {
 
   // Trigger session visibility and initialize git status sync
   React.useEffect(() => {
+    logger.debug('[session-visibility] mount', {
+      sessionId,
+      isFocused,
+    });
     let cancelled = false;
     const visibilityFrame = requestAnimationFrame(() => {
       if (cancelled) {
         return;
       }
+      logger.debug('[session-visibility] onSessionVisible', {
+        sessionId,
+        isFocused,
+      });
       void sync.onSessionVisible(sessionId);
     });
     const gitStatusTimer = setTimeout(() => {
@@ -1107,11 +1118,27 @@ function SessionViewLoaded(props: {
     }, 150);
 
     return () => {
+      logger.debug('[session-visibility] unmount', {
+        sessionId,
+        isFocused,
+      });
       cancelled = true;
       cancelAnimationFrame(visibilityFrame);
       clearTimeout(gitStatusTimer);
     };
-  }, [sessionId]);
+  }, [isFocused, sessionId]);
+
+  const previousFocusRef = React.useRef<boolean | null>(null);
+  React.useEffect(() => {
+    if (previousFocusRef.current === isFocused) {
+      return;
+    }
+    logger.debug('[session-visibility] focus changed', {
+      sessionId,
+      isFocused,
+    });
+    previousFocusRef.current = isFocused;
+  }, [isFocused, sessionId]);
 
   const shouldRenderChatList = messageCount > 0 || hasRenderedMessagesRef.current;
   const previousRenderStateRef = React.useRef<{
@@ -1129,6 +1156,7 @@ function SessionViewLoaded(props: {
     ) {
       logger.debug('[chat-render] session content state changed', {
         sessionId,
+        isFocused,
         shouldRenderChatList,
         messageCount,
         isLoaded,
@@ -1140,7 +1168,7 @@ function SessionViewLoaded(props: {
         isLoaded,
       };
     }
-  }, [isLoaded, messageCount, sessionId, shouldRenderChatList]);
+  }, [isFocused, isLoaded, messageCount, sessionId, shouldRenderChatList]);
 
   const content = (
     <>

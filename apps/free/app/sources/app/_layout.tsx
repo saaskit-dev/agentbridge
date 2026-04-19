@@ -47,7 +47,6 @@ import { useWatchConnectivity } from '@/hooks/useWatchConnectivity';
 import { useDisableTauriNativeContextMenu } from '@/hooks/useDisableTauriNativeContextMenu';
 import { useTauriDevtoolsShortcut } from '@/hooks/useTauriDevtoolsShortcut';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
-import { recordReactCommit } from '@/dev/performanceMonitor';
 const logger = new Logger('app/layout');
 
 // Initialize telemetry — guard against double-init on Expo hot reload
@@ -454,16 +453,9 @@ export default function RootLayout() {
                   <RealtimeProvider>
                     <FocusAudioController />
                     <DesktopCLIOnboardingPrompt />
-                    <React.Profiler
-                      id="SidebarNavigator"
-                      onRender={(_, phase, actualDuration) => {
-                        recordReactCommit('SidebarNavigator', actualDuration, phase);
-                      }}
-                    >
-                      <HorizontalSafeAreaWrapper>
-                        <SidebarNavigator />
-                      </HorizontalSafeAreaWrapper>
-                    </React.Profiler>
+                    <HorizontalSafeAreaWrapper>
+                      <SidebarNavigator />
+                    </HorizontalSafeAreaWrapper>
                     <DesktopPerformanceHud />
                   </RealtimeProvider>
                 </CommandPaletteProvider>

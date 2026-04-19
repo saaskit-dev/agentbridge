@@ -15,19 +15,14 @@ import {
 } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { ChatFooter } from './ChatFooter';
-import {
-  buildChatListDataFromMessageIds,
-  type ChatListItem,
-  type ChatUserNavItem,
-} from './chatListItems';
+import { buildChatListData, type ChatListItem, type ChatUserNavItem } from './chatListItems';
 import { layout } from './layout';
 import { MessageView } from './MessageView';
 import { measurePerformance, recordReactCommit } from '@/dev/performanceMonitor';
 import {
   useSessionControlledByUser,
   useSessionLocalHydratedAt,
-  useSessionMessageIds,
-  useSessionMessageListState,
+  useSessionMessages,
   useMessage,
   useSessionThinking,
   storage,
@@ -37,6 +32,51 @@ import { Message } from '@/sync/typesMessage';
 import { sync } from '@/sync/sync';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+
+const logger = new Logger('app/components/ChatList');
+
+function summarizeToolResultForDebug(result: unknown): string {
+  if (result == null) {
+    return 'none';
+  }
+  if (typeof result === 'string') {
+    return `string:${result.length}`;
+  }
+  if (Array.isArray(result)) {
+    return `array:${result.length}`;
+  }
+  if (typeof result === 'object') {
+    const keys = Object.keys(result as Record<string, unknown>).sort();
+    return `object:${keys.slice(0, 5).join(',')}:${keys.length}`;
+  }
+  return typeof result;
+}
+
+function getMessageDebugSummary(message: Message | null | undefined): Record<string, unknown> | null {
+  if (!message) {
+    return null;
+  }
+  if (message.kind === 'tool-call') {
+    return {
+      kind: message.kind,
+      toolName: message.tool.name,
+      toolState: message.tool.state,
+      permissionStatus: message.tool.permission?.status ?? null,
+      resultSummary: summarizeToolResultForDebug(message.tool.result),
+      childCount: message.children.length,
+    };
+  }
+  if (message.kind === 'agent-text' || message.kind === 'user-text') {
+    return {
+      kind: message.kind,
+      textLength: message.text.length,
+    };
+  }
+  return {
+    kind: message.kind,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -73,13 +113,13 @@ const HYDRATE_BOOST_DESKTOP_UPDATE_CELLS_BATCHING_PERIOD = 8;
 const HYDRATE_BOOST_DEFAULT_UPDATE_CELLS_BATCHING_PERIOD = 16;
 const MAX_VISIBLE_MESSAGES_CACHE_ENTRIES = 4;
 
-type VisibleMessageIdsCacheEntry = {
-  source: string[];
-  visible: string[];
+type VisibleMessagesCacheEntry = {
+  source: Message[];
+  visible: Message[];
   latestUserMessageCreatedAt: number | null;
 };
 
-const visibleMessageIdsCache: VisibleMessageIdsCacheEntry[] = [];
+const visibleMessagesCache: VisibleMessagesCacheEntry[] = [];
 
 function shouldHideHistoricalDaemonError(
   message: Message,
@@ -94,26 +134,14 @@ function shouldHideHistoricalDaemonError(
   );
 }
 
-function buildVisibleMessageIds(
-  messageIds: string[],
-  getMessageById: (messageId: string) => Message | undefined
-): string[] {
-  const exactSourceHit = visibleMessageIdsCache.find(entry => entry.source === messageIds);
-  if (exactSourceHit) {
-    return exactSourceHit.visible;
-  }
-
-  const incremental = buildVisibleMessageIdsIncremental(messageIds, getMessageById);
+function buildVisibleMessages(messages: Message[]): Message[] {
+  const incremental = buildVisibleMessagesIncremental(messages);
   if (incremental) {
     return incremental;
   }
 
   let latestUserMessageCreatedAt: number | null = null;
-  for (const messageId of messageIds) {
-    const message = getMessageById(messageId);
-    if (!message) {
-      continue;
-    }
+  for (const message of messages) {
     if (message.kind === 'user-text') {
       latestUserMessageCreatedAt = message.createdAt;
       break;
@@ -121,102 +149,94 @@ function buildVisibleMessageIds(
   }
 
   if (latestUserMessageCreatedAt === null) {
-    storeVisibleMessageIdsCache({
-      source: messageIds,
-      visible: messageIds,
+    storeVisibleMessagesCache({
+      source: messages,
+      visible: messages,
       latestUserMessageCreatedAt: null,
     });
-    return messageIds;
+    return messages;
   }
 
-  let filteredMessageIds: string[] | null = null;
-  for (let index = 0; index < messageIds.length; index += 1) {
-    const messageId = messageIds[index];
-    const message = getMessageById(messageId);
+  let filteredMessages: Message[] | null = null;
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
     if (!message) {
       continue;
     }
 
     if (!shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt)) {
-      if (filteredMessageIds) {
-        filteredMessageIds.push(messageId);
+      if (filteredMessages) {
+        filteredMessages.push(message);
       }
       continue;
     }
 
-    if (!filteredMessageIds) {
-      filteredMessageIds = messageIds.slice(0, index);
+    if (!filteredMessages) {
+      filteredMessages = messages.slice(0, index);
     }
   }
 
-  const visible = filteredMessageIds ?? messageIds;
-  storeVisibleMessageIdsCache({
-    source: messageIds,
+  const visible = filteredMessages ?? messages;
+  storeVisibleMessagesCache({
+    source: messages,
     visible,
     latestUserMessageCreatedAt,
   });
   return visible;
 }
 
-function buildVisibleMessageIdsIncremental(
-  messageIds: string[],
-  getMessageById: (messageId: string) => Message | undefined
-): string[] | null {
-  const previous = findVisibleMessageIdsBase(messageIds);
+function buildVisibleMessagesIncremental(messages: Message[]): Message[] | null {
+  const previous = findVisibleMessagesBase(messages);
   if (!previous) {
     return null;
   }
 
-  const prependedCount = messageIds.length - previous.source.length;
+  const prependedCount = messages.length - previous.source.length;
   if (prependedCount <= 0) {
     return null;
   }
 
-  const prependedMessageIds = messageIds.slice(0, prependedCount);
-  for (const messageId of prependedMessageIds) {
-    const message = getMessageById(messageId);
-    if (message?.kind === 'user-text') {
-      return null;
-    }
+  const prependedMessages = messages.slice(0, prependedCount);
+  if (prependedMessages.some(message => message.kind === 'user-text')) {
+    return null;
   }
 
   const latestUserMessageCreatedAt = previous.latestUserMessageCreatedAt;
   if (latestUserMessageCreatedAt === null) {
-    storeVisibleMessageIdsCache({
-      source: messageIds,
-      visible: messageIds,
+    storeVisibleMessagesCache({
+      source: messages,
+      visible: messages,
       latestUserMessageCreatedAt: null,
     });
-    return messageIds;
+    return messages;
   }
 
-  const nextVisiblePrefix = prependedMessageIds.filter(messageId => {
-    const message = getMessageById(messageId);
-    return message ? !shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt) : false;
-  });
+  const nextVisiblePrefix = prependedMessages.filter(
+    message => !shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt)
+  );
   const visible =
     nextVisiblePrefix.length > 0
       ? [...nextVisiblePrefix, ...previous.visible]
-    : previous.visible;
+      : previous.visible;
 
-  storeVisibleMessageIdsCache({
-    source: messageIds,
+  storeVisibleMessagesCache({
+    source: messages,
     visible,
     latestUserMessageCreatedAt,
   });
   return visible;
 }
 
-function findVisibleMessageIdsBase(messageIds: string[]): VisibleMessageIdsCacheEntry | null {
-  for (const entry of visibleMessageIdsCache) {
-    const prependedCount = messageIds.length - entry.source.length;
+function findVisibleMessagesBase(messages: Message[]): VisibleMessagesCacheEntry | null {
+  for (const entry of visibleMessagesCache) {
+    const prependedCount = messages.length - entry.source.length;
     if (prependedCount <= 0) {
       continue;
     }
 
     let matches = true;
     for (let index = 0; index < entry.source.length; index += 1) {
-      if (messageIds[index + prependedCount] !== entry.source[index]) {
+      if (messages[index + prependedCount] !== entry.source[index]) {
         matches = false;
         break;
       }
@@ -230,14 +250,14 @@ function findVisibleMessageIdsBase(messageIds: string[]): VisibleMessageIdsCache
   return null;
 }
 
-function storeVisibleMessageIdsCache(entry: VisibleMessageIdsCacheEntry) {
-  const existingIndex = visibleMessageIdsCache.findIndex(candidate => candidate.source === entry.source);
+function storeVisibleMessagesCache(entry: VisibleMessagesCacheEntry) {
+  const existingIndex = visibleMessagesCache.findIndex(candidate => candidate.source === entry.source);
   if (existingIndex >= 0) {
-    visibleMessageIdsCache.splice(existingIndex, 1);
+    visibleMessagesCache.splice(existingIndex, 1);
   }
-  visibleMessageIdsCache.unshift(entry);
-  if (visibleMessageIdsCache.length > MAX_VISIBLE_MESSAGES_CACHE_ENTRIES) {
-    visibleMessageIdsCache.length = MAX_VISIBLE_MESSAGES_CACHE_ENTRIES;
+  visibleMessagesCache.unshift(entry);
+  if (visibleMessagesCache.length > MAX_VISIBLE_MESSAGES_CACHE_ENTRIES) {
+    visibleMessagesCache.length = MAX_VISIBLE_MESSAGES_CACHE_ENTRIES;
   }
 }
 
@@ -1083,6 +1103,34 @@ const MessageRow = React.memo(
     collapseToolsSignal?: number;
   }) => {
     const message = useMessage(props.sessionId, props.messageId);
+    const previousDebugRef = useRef<string | null>(null);
+
+    useEffect(() => {
+      if (!message || (message.kind !== 'tool-call' && message.kind !== 'agent-text')) {
+        return;
+      }
+
+      const signature = JSON.stringify({
+        sessionId: props.sessionId,
+        messageId: props.messageId,
+        collapseToolsSignal: props.collapseToolsSignal ?? 0,
+        summary: getMessageDebugSummary(message),
+      });
+
+      if (previousDebugRef.current === signature) {
+        return;
+      }
+
+      logger.debug('[message-row] selector delivered update', {
+        sessionId: props.sessionId,
+        messageId: props.messageId,
+        kind: message.kind,
+        collapseToolsSignal: props.collapseToolsSignal ?? 0,
+        summary: getMessageDebugSummary(message),
+      });
+      previousDebugRef.current = signature;
+    }, [message, props.collapseToolsSignal, props.messageId, props.sessionId]);
+
     if (!message) return null;
     return (
       <MessageView
@@ -1294,21 +1342,91 @@ const ChatListInternal = React.memo(
     footerNotice?: string | null;
     jumpToRecentUserSignal: number;
   }) => {
-    const messageIds = useSessionMessageIds(props.sessionId);
-    const { hasOlderMessages, isLoadingOlder } = useSessionMessageListState(props.sessionId);
+    const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.sessionId);
     const lastLocalHydratedAt = useSessionLocalHydratedAt(props.sessionId);
     const isSessionThinking = useSessionThinking(props.sessionId);
     const getMessageById = useCallback((messageId: string) => {
       return storage.getState().sessionMessages[props.sessionId]?.messagesMap[messageId];
     }, [props.sessionId]);
-    const visibleMessageIds = useMemo(
-      () =>
-        measurePerformance('chat:buildVisibleMessageIds', () =>
-          buildVisibleMessageIds(messageIds, getMessageById)
-        ),
-      [getMessageById, messageIds]
+    const visibleMessages = useMemo(
+      () => measurePerformance('chat:buildVisibleMessages', () => buildVisibleMessages(messages)),
+      [messages]
     );
+    const hiddenMessages = useMemo(() => {
+      if (visibleMessages.length === messages.length) {
+        return [];
+      }
+      const visibleSet = new Set(visibleMessages);
+      return messages.filter(message => !visibleSet.has(message));
+    }, [messages, visibleMessages]);
     const [isHydrationBoostActive, setIsHydrationBoostActive] = useState(false);
+
+    const previousListStateRef = useRef<{
+      messageCount: number;
+      visibleCount: number;
+      hiddenCount: number;
+      firstMessageId: string | null;
+      firstVisibleMessageId: string | null;
+    } | null>(null);
+    const previousMessageIdsRef = useRef<Message[] | null>(null);
+    const previousListBuildRef = useRef<string | null>(null);
+
+    useEffect(() => {
+      const previous = previousMessageIdsRef.current;
+      if (previous && previous === messages) {
+        return;
+      }
+
+      const previousSet = new Set(previous ?? []);
+      const currentSet = new Set(messages);
+      const addedMessages = messages.filter(message => !previousSet.has(message));
+      const removedMessages = (previous ?? []).filter(message => !currentSet.has(message));
+
+      if ((addedMessages.length > 0 || removedMessages.length > 0) && previous) {
+        logger.debug('[message-list] source ids changed', {
+          sessionId: props.sessionId,
+          totalCount: messages.length,
+          addedCount: addedMessages.length,
+          removedCount: removedMessages.length,
+          addedIds: addedMessages.map(message => message.id).slice(0, 5),
+          removedIds: removedMessages.map(message => message.id).slice(0, 5),
+        });
+      }
+
+      previousMessageIdsRef.current = messages;
+    }, [messages, props.sessionId]);
+
+    useEffect(() => {
+      const nextState = {
+        messageCount: messages.length,
+        visibleCount: visibleMessages.length,
+        hiddenCount: hiddenMessages.length,
+        firstMessageId: messages[0]?.id ?? null,
+        firstVisibleMessageId: visibleMessages[0]?.id ?? null,
+      };
+      const previous = previousListStateRef.current;
+      if (
+        previous &&
+        previous.messageCount === nextState.messageCount &&
+        previous.visibleCount === nextState.visibleCount &&
+        previous.hiddenCount === nextState.hiddenCount &&
+        previous.firstMessageId === nextState.firstMessageId &&
+        previous.firstVisibleMessageId === nextState.firstVisibleMessageId
+      ) {
+        return;
+      }
+
+      logger.debug('[visibility] message window updated', {
+        sessionId: props.sessionId,
+        messageCount: nextState.messageCount,
+        visibleCount: nextState.visibleCount,
+        hiddenCount: nextState.hiddenCount,
+        firstMessageId: nextState.firstMessageId,
+        firstVisibleMessageId: nextState.firstVisibleMessageId,
+        hiddenMessageIds: hiddenMessages.map(message => message.id).slice(0, 5),
+      });
+      previousListStateRef.current = nextState;
+    }, [hiddenMessages, messages, props.sessionId, visibleMessages]);
 
     useEffect(() => {
       if (!lastLocalHydratedAt) {
@@ -1498,21 +1616,27 @@ const ChatListInternal = React.memo(
     }, [props.sessionId, isLoadingOlder, triggerLoad]);
 
     // ----- auto-scroll / unread tracking -----
-    const prevMessageIdsRef = useRef(new Set(visibleMessageIds));
+    const prevMessageIdsRef = useRef(new Set(visibleMessages));
     useEffect(() => {
       const prevIds = prevMessageIdsRef.current;
-      const relevantNewMessageIds: string[] = [];
-      for (const messageId of visibleMessageIds) {
-        if (prevIds.has(messageId)) {
+      const relevantNewMessages: Message[] = [];
+      for (const message of visibleMessages) {
+        if (prevIds.has(message)) {
           break;
         }
-        relevantNewMessageIds.push(messageId);
+        relevantNewMessages.push(message);
       }
 
-      if (relevantNewMessageIds.length > 0) {
-        const hasNewUserMessage = relevantNewMessageIds.some(messageId => {
-          const message = getMessageById(messageId);
-          return message?.kind === 'user-text';
+      if (relevantNewMessages.length > 0) {
+        const hasNewUserMessage = relevantNewMessages.some(message => message.kind === 'user-text');
+        logger.debug('[visibility] new visible messages', {
+          sessionId: props.sessionId,
+          newMessageCount: relevantNewMessages.length,
+          newMessageIds: relevantNewMessages.map(message => message.id).slice(0, 5),
+          shouldFollowBottom: shouldFollowBottomRef.current,
+          isAtBottom: isAtBottom.current,
+          hasNewUserMessage,
+          unreadCount: unreadCountRef.current,
         });
         if (hasNewUserMessage) {
           shouldFollowBottomRef.current = true;
@@ -1523,12 +1647,12 @@ const ChatListInternal = React.memo(
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           });
         } else {
-          updateUnreadCount(prev => prev + relevantNewMessageIds.length);
+          updateUnreadCount(prev => prev + relevantNewMessages.length);
         }
       }
 
-      prevMessageIdsRef.current = new Set(visibleMessageIds);
-    }, [getMessageById, updateUnreadCount, visibleMessageIds]);
+      prevMessageIdsRef.current = new Set(visibleMessages);
+    }, [props.sessionId, updateUnreadCount, visibleMessages]);
 
     useEffect(() => {
       if (!hasMountedRef.current) {
@@ -1536,7 +1660,7 @@ const ChatListInternal = React.memo(
         return;
       }
       lockRefreshInteraction();
-    }, [lockRefreshInteraction, visibleMessageIds]);
+    }, [lockRefreshInteraction, visibleMessages]);
 
     useEffect(() => {
       if (!isSessionThinking) return;
@@ -1652,16 +1776,32 @@ const ChatListInternal = React.memo(
     const { listItems, userNavItems } = useMemo(
       () =>
         measurePerformance('chat:buildChatListData', () =>
-          buildChatListDataFromMessageIds(
-            visibleMessageIds,
-            getMessageById,
-            formatDateLabel,
-            formatTime
-          )
+          buildChatListData(visibleMessages, formatDateLabel, formatTime)
         ),
-      [getMessageById, visibleMessageIds]
+      [visibleMessages]
     );
     listItemsRef.current = listItems;
+
+    useEffect(() => {
+      const signature = JSON.stringify({
+        visibleCount: visibleMessages.length,
+        listItemCount: listItems.length,
+        firstListItemKey: listItems[0]?.key ?? null,
+        lastListItemKey: listItems[listItems.length - 1]?.key ?? null,
+      });
+      if (previousListBuildRef.current === signature) {
+        return;
+      }
+
+      logger.debug('[message-list] derived list rebuilt', {
+        sessionId: props.sessionId,
+        visibleCount: visibleMessages.length,
+        listItemCount: listItems.length,
+        firstListItemKey: listItems[0]?.key ?? null,
+        lastListItemKey: listItems[listItems.length - 1]?.key ?? null,
+      });
+      previousListBuildRef.current = signature;
+    }, [listItems, props.sessionId, visibleMessages.length]);
     // ----- user message nav items (chronological: oldest first) -----
     useEffect(() => {
       if (!props.jumpToRecentUserSignal) return;

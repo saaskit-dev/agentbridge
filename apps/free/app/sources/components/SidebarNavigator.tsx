@@ -3,7 +3,7 @@ import { Drawer } from 'expo-router/drawer';
 import * as React from 'react';
 import { Platform, Pressable, View, useWindowDimensions, type ViewStyle } from 'react-native';
 import { SidebarView } from './SidebarView';
-import { useAuth } from '@/auth/AuthContext';
+import { useIsAuthenticated } from '@/auth/AuthContext';
 import { useDesktopSidebarWidth } from '@/hooks/useDesktopSidebarWidth';
 import { useIsTablet } from '@/utils/responsive';
 import {
@@ -24,9 +24,9 @@ function setResizeCursor(active: boolean) {
 }
 
 export const SidebarNavigator = React.memo(() => {
-  const auth = useAuth();
+  const isAuthenticated = useIsAuthenticated();
   const isTablet = useIsTablet();
-  const showPermanentDrawer = auth.isAuthenticated && isTablet;
+  const showPermanentDrawer = isAuthenticated && isTablet;
   const { width: windowWidth } = useWindowDimensions();
   const {
     width: preferredSidebarWidth,

@@ -1,10 +1,10 @@
 import * as React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
-import { toolFullViewStyles } from '../toolFullViewStyles';
+import { View, ScrollView, StyleSheet, Text } from 'react-native';
 import { CommandView } from '@/components/CommandView';
 import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
 import { ToolCall } from '@/sync/typesMessage';
+import { getBashPreviewNotice } from '@/utils/toolResultUtils';
 
 interface BashViewFullProps {
   tool: ToolCall;
@@ -15,9 +15,10 @@ export const BashViewFull = React.memo<BashViewFullProps>(({ tool, metadata }) =
   const { input, result, state } = tool;
 
   // Parse the result
-  let parsedResult: { stdout?: string; stderr?: string } | null = null;
+  let parsedResult: { stdout?: string; stderr?: string; output?: string } | null = null;
   let unparsedOutput: string | null = null;
   let error: string | null = null;
+  const previewNotice = getBashPreviewNotice(result);
 
   if (state === 'completed' && result) {
     if (typeof result === 'string') {
@@ -46,9 +47,10 @@ export const BashViewFull = React.memo<BashViewFullProps>(({ tool, metadata }) =
           contentContainerStyle={styles.scrollContent}
         >
           <View style={styles.commandWrapper}>
+            {previewNotice ? <Text style={styles.previewNotice}>{previewNotice}</Text> : null}
             <CommandView
               command={input.command}
-              stdout={parsedResult?.stdout || unparsedOutput}
+              stdout={parsedResult?.stdout || parsedResult?.output || unparsedOutput}
               stderr={parsedResult?.stderr}
               error={error}
               fullWidth
@@ -77,5 +79,11 @@ const styles = StyleSheet.create({
   commandWrapper: {
     flex: 1,
     minWidth: '100%',
+  },
+  previewNotice: {
+    marginBottom: 12,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#9A6A00',
   },
 });

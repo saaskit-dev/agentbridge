@@ -23,6 +23,88 @@ import { t } from '@/text';
 import { Logger, toError } from '@saaskit-dev/agentbridge/telemetry';
 const logger = new Logger('app/components/MessageView');
 
+function summarizeToolResultForDebug(result: unknown): string {
+  if (result == null) {
+    return 'none';
+  }
+  if (typeof result === 'string') {
+    return `string:${result.length}`;
+  }
+  if (Array.isArray(result)) {
+    return `array:${result.length}`;
+  }
+  if (typeof result === 'object') {
+    const keys = Object.keys(result as Record<string, unknown>).sort();
+    return `object:${keys.slice(0, 5).join(',')}:${keys.length}`;
+  }
+  return typeof result;
+}
+
+function useToolMessageRenderDebug(sessionId: string, message: Message) {
+  const previousSignatureRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (message.kind !== 'tool-call') {
+      return;
+    }
+
+    const signature = JSON.stringify({
+      id: message.id,
+      state: message.tool.state,
+      permissionStatus: message.tool.permission?.status ?? null,
+      resultSummary: summarizeToolResultForDebug(message.tool.result),
+      childCount: message.children.length,
+    });
+
+    if (previousSignatureRef.current === signature) {
+      return;
+    }
+
+    logger.debug('[message-row] tool message rendered', {
+      sessionId,
+      messageId: message.id,
+      toolName: message.tool.name,
+      toolState: message.tool.state,
+      permissionStatus: message.tool.permission?.status ?? null,
+      resultSummary: summarizeToolResultForDebug(message.tool.result),
+      childCount: message.children.length,
+    });
+    previousSignatureRef.current = signature;
+  }, [message, sessionId]);
+}
+
+function useAgentTextRenderDebug(sessionId: string, message: Message) {
+  const previousSignatureRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (message.kind !== 'agent-text') {
+      return;
+    }
+
+    const signature = JSON.stringify({
+      id: message.id,
+      sourceId: message.sourceId ?? null,
+      isThinking: message.isThinking ?? false,
+      textLength: message.text.length,
+      traceId: message.traceId ?? null,
+    });
+
+    if (previousSignatureRef.current === signature) {
+      return;
+    }
+
+    logger.debug('[message-row] agent text rendered', {
+      sessionId,
+      messageId: message.id,
+      sourceId: message.sourceId ?? null,
+      isThinking: message.isThinking ?? false,
+      textLength: message.text.length,
+      traceId: message.traceId ?? null,
+    });
+    previousSignatureRef.current = signature;
+  }, [message, sessionId]);
+}
+
 export const MessageView = React.memo(function MessageView(props: {
   message: Message;
   metadata: Metadata | null;
@@ -95,6 +177,9 @@ function RenderBlock(props: {
   getMessageById?: (id: string) => Message | null;
   collapseToolsSignal?: number;
 }): React.ReactElement {
+  useToolMessageRenderDebug(props.sessionId, props.message);
+  useAgentTextRenderDebug(props.sessionId, props.message);
+
   switch (props.message.kind) {
     case 'user-text':
       return <UserTextBlock message={props.message} sessionId={props.sessionId} />;
@@ -384,7 +469,12 @@ function ThinkingBlock(props: { message: AgentTextMessage; sessionId: string }) 
         <View style={{ padding: 12, opacity: 0.8 }}>
           <StreamingAgentText
             sessionId={props.sessionId}
-            message={{ id: messageId, text: contentText }}
+            message={{
+              id: messageId,
+              sourceId: props.message.sourceId ?? undefined,
+              sourceIds: props.message.sourceIds,
+              text: contentText,
+            }}
           />
         </View>
       )}
@@ -419,6 +509,8 @@ function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string })
         sessionId={props.sessionId}
         message={{
           id: props.message.sourceId ?? props.message.id,
+          sourceId: props.message.sourceId ?? undefined,
+          sourceIds: props.message.sourceIds,
           text: props.message.text,
         }}
         onOptionPress={handleOptionPress}
