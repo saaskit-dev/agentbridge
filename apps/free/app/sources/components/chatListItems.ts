@@ -43,7 +43,19 @@ type ChatListBuildCacheEntry = ChatListBuildResult & {
   userInfoById: Map<string, { text: string; createdAt: number }>;
 };
 
+type ChatListBuildByIdResult = {
+  listItems: ChatListItem[];
+  userNavItems: ChatUserNavItem[];
+};
+
+type ChatListBuildByIdCacheEntry = ChatListBuildByIdResult & {
+  source: string[];
+  groups: ChatGroup[];
+  userInfoById: Map<string, { text: string; createdAt: number }>;
+};
+
 const recentBuildCache: ChatListBuildCacheEntry[] = [];
+const recentBuildByIdCache: ChatListBuildByIdCacheEntry[] = [];
 
 function isSameDay(a: number, b: number): boolean {
   const da = new Date(a);
@@ -63,6 +75,10 @@ function getLocalDayKey(ts: number): string {
   return `${year}-${month}-${day}`;
 }
 
+function getRole(message: Message): 'user' | 'assistant' {
+  return message.kind === 'user-text' ? 'user' : 'assistant';
+}
+
 export function buildChatListItems(
   messages: Message[],
   formatDateLabel: (ts: number) => string,
@@ -75,11 +91,12 @@ export function buildChatListData(
   messages: Message[],
   formatDateLabel: (ts: number) => string,
   formatTime: (ts: number) => string
-): {
-  listItems: ChatListItem[];
-  messagesById: Map<string, Message>;
-  userNavItems: ChatUserNavItem[];
-} {
+): ChatListBuildResult {
+  const exactSourceHit = recentBuildCache.find(entry => entry.source === messages);
+  if (exactSourceHit) {
+    return exactSourceHit;
+  }
+
   const incrementalResult = buildChatListDataIncremental(messages, formatDateLabel, formatTime);
   if (incrementalResult) {
     return incrementalResult;
@@ -90,13 +107,10 @@ export function buildChatListData(
   const messagesById = new Map<string, Message>();
   const userInfoById = new Map<string, { text: string; createdAt: number }>();
 
-  const getRole = (message: Message): 'user' | 'assistant' =>
-    message.kind === 'user-text' ? 'user' : 'assistant';
+  let currentGroup: ChatGroup | null = null;
 
-  let currentGroup: (typeof groups)[number] | null = null;
-
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
     messagesById.set(message.id, message);
     if (message.kind === 'user-text') {
       userInfoById.set(message.id, {
@@ -120,62 +134,9 @@ export function buildChatListData(
     }
   }
 
-  for (let index = 0; index < groups.length; index++) {
-    const group = groups[index];
-    const previousGroup = index > 0 ? groups[index - 1] : null;
-
-    if (!previousGroup || !isSameDay(group.createdAt, previousGroup.createdAt)) {
-      items.push({
-        type: 'date-separator',
-        label: formatDateLabel(group.createdAt),
-        key: `date-${getLocalDayKey(group.createdAt)}-${group.primaryMessageId}`,
-      });
-    }
-
-    if (
-      previousGroup &&
-      isSameDay(group.createdAt, previousGroup.createdAt) &&
-      group.createdAt - previousGroup.createdAt > TIME_GAP_THRESHOLD_MS
-    ) {
-      items.push({
-        type: 'time-separator',
-        label: formatTime(group.createdAt),
-        key: `time-${group.primaryMessageId}`,
-      });
-    }
-
-    items.push({
-      type: 'message-group',
-      key: `group-${group.primaryMessageId}`,
-      messageIds: group.messageIds,
-      primaryMessageId: group.primaryMessageId,
-      createdAt: group.createdAt,
-      role: group.role,
-    });
-  }
-
+  buildChronologicalItemsForGroups(items, groups, null, formatDateLabel, formatTime);
   items.reverse();
-  const userNavItems: ChatUserNavItem[] = [];
-  let seq = 1;
-  for (let index = items.length - 1; index >= 0; index--) {
-    const item = items[index];
-    if (item?.type !== 'message-group' || item.role !== 'user') {
-      continue;
-    }
-    const info = userInfoById.get(item.primaryMessageId);
-    if (!info) {
-      continue;
-    }
-    const preview = info.text.split('\n').slice(0, 2).join(' ').trim() || '…';
-    userNavItems.push({
-      listIndex: index,
-      messageId: item.primaryMessageId,
-      seq: seq++,
-      preview,
-      time: formatTime(info.createdAt),
-      createdAt: info.createdAt,
-    });
-  }
+  const userNavItems = buildUserNavItemsFromListItems(items, userInfoById, formatTime);
 
   const result = {
     listItems: items,
@@ -190,6 +151,77 @@ export function buildChatListData(
     userInfoById,
   });
 
+  return result;
+}
+
+export function buildChatListDataFromMessageIds(
+  messageIds: string[],
+  getMessageById: (messageId: string) => Message | undefined,
+  formatDateLabel: (ts: number) => string,
+  formatTime: (ts: number) => string
+): ChatListBuildByIdResult {
+  const exactSourceHit = recentBuildByIdCache.find(entry => entry.source === messageIds);
+  if (exactSourceHit) {
+    return exactSourceHit;
+  }
+
+  const incrementalResult = buildChatListDataByIdsIncremental(
+    messageIds,
+    getMessageById,
+    formatDateLabel,
+    formatTime
+  );
+  if (incrementalResult) {
+    return incrementalResult;
+  }
+
+  const items: ChatListItem[] = [];
+  const groups: ChatGroup[] = [];
+  const userInfoById = new Map<string, { text: string; createdAt: number }>();
+
+  let currentGroup: ChatGroup | null = null;
+
+  for (let index = messageIds.length - 1; index >= 0; index -= 1) {
+    const messageId = messageIds[index]!;
+    const message = getMessageById(messageId);
+    if (!message) {
+      continue;
+    }
+
+    if (message.kind === 'user-text') {
+      userInfoById.set(message.id, {
+        text: message.displayText || message.text,
+        createdAt: message.createdAt,
+      });
+    }
+
+    const role = getRole(message);
+    if (!currentGroup || currentGroup.role !== role) {
+      currentGroup = {
+        messageIds: [message.id],
+        primaryMessageId: message.id,
+        createdAt: message.createdAt,
+        role,
+      };
+      groups.push(currentGroup);
+    } else {
+      currentGroup.messageIds.push(message.id);
+      currentGroup.primaryMessageId = message.id;
+      currentGroup.createdAt = message.createdAt;
+    }
+  }
+
+  buildChronologicalItemsForGroups(items, groups, null, formatDateLabel, formatTime);
+  items.reverse();
+  const userNavItems = buildUserNavItemsFromListItems(items, userInfoById, formatTime);
+
+  const result = { listItems: items, userNavItems };
+  storeBuildByIdCache({
+    ...result,
+    source: messageIds,
+    groups,
+    userInfoById,
+  });
   return result;
 }
 
@@ -220,7 +252,9 @@ function buildChatListDataIncremental(
 
   const previousLastGroup = previous.groups[previous.groups.length - 1] ?? null;
   const newGroups = groups.slice(previous.groups.length);
-  const nextChronologicalItems = buildChronologicalItemsForGroups(
+  const nextChronologicalItems: ChatListItem[] = [];
+  buildChronologicalItemsForGroups(
+    nextChronologicalItems,
     newGroups,
     previousLastGroup,
     formatDateLabel,
@@ -262,15 +296,77 @@ function buildChatListDataIncremental(
   return result;
 }
 
+function buildChatListDataByIdsIncremental(
+  messageIds: string[],
+  getMessageById: (messageId: string) => Message | undefined,
+  formatDateLabel: (ts: number) => string,
+  formatTime: (ts: number) => string
+): ChatListBuildByIdResult | null {
+  const previous = findIncrementalBaseByIds(messageIds);
+  if (!previous) {
+    return null;
+  }
+
+  const prependedCount = messageIds.length - previous.source.length;
+  if (prependedCount <= 0) {
+    return null;
+  }
+
+  const groups = previous.groups.map(group => ({
+    ...group,
+    messageIds: [...group.messageIds],
+  }));
+  const userInfoById = new Map(previous.userInfoById);
+  const prependedMessageIds = messageIds.slice(0, prependedCount);
+
+  appendMessageIdsToGroups(groups, prependedMessageIds, getMessageById, userInfoById);
+
+  const previousLastGroup = previous.groups[previous.groups.length - 1] ?? null;
+  const newGroups = groups.slice(previous.groups.length);
+  const nextChronologicalItems: ChatListItem[] = [];
+  buildChronologicalItemsForGroups(
+    nextChronologicalItems,
+    newGroups,
+    previousLastGroup,
+    formatDateLabel,
+    formatTime
+  );
+  const prependedItems = [...nextChronologicalItems].reverse();
+  const listItems = [...prependedItems, ...previous.listItems];
+
+  const shiftedUserNavItems =
+    prependedItems.length === 0
+      ? previous.userNavItems
+      : previous.userNavItems.map(item => ({
+          ...item,
+          listIndex: item.listIndex + prependedItems.length,
+        }));
+
+  const nextUserNavItems = buildUserNavItemsFromChronologicalItems(
+    nextChronologicalItems,
+    prependedItems.length,
+    shiftedUserNavItems.length,
+    userInfoById,
+    formatTime
+  );
+  const userNavItems = [...shiftedUserNavItems, ...nextUserNavItems];
+
+  const result = { listItems, userNavItems };
+  storeBuildByIdCache({
+    ...result,
+    source: messageIds,
+    groups,
+    userInfoById,
+  });
+  return result;
+}
+
 function appendMessagesToGroups(
   groups: ChatGroup[],
   prependedMessages: Message[],
   messagesById: Map<string, Message>,
   userInfoById: Map<string, { text: string; createdAt: number }>
 ) {
-  const getRole = (message: Message): 'user' | 'assistant' =>
-    message.kind === 'user-text' ? 'user' : 'assistant';
-
   let currentGroup = groups[groups.length - 1] ?? null;
 
   for (let index = prependedMessages.length - 1; index >= 0; index -= 1) {
@@ -301,13 +397,53 @@ function appendMessagesToGroups(
   }
 }
 
+function appendMessageIdsToGroups(
+  groups: ChatGroup[],
+  prependedMessageIds: string[],
+  getMessageById: (messageId: string) => Message | undefined,
+  userInfoById: Map<string, { text: string; createdAt: number }>
+) {
+  let currentGroup = groups[groups.length - 1] ?? null;
+
+  for (let index = prependedMessageIds.length - 1; index >= 0; index -= 1) {
+    const messageId = prependedMessageIds[index]!;
+    const message = getMessageById(messageId);
+    if (!message) {
+      continue;
+    }
+
+    if (message.kind === 'user-text') {
+      userInfoById.set(message.id, {
+        text: message.displayText || message.text,
+        createdAt: message.createdAt,
+      });
+    }
+
+    const role = getRole(message);
+    if (!currentGroup || currentGroup.role !== role) {
+      currentGroup = {
+        messageIds: [message.id],
+        primaryMessageId: message.id,
+        createdAt: message.createdAt,
+        role,
+      };
+      groups.push(currentGroup);
+      continue;
+    }
+
+    currentGroup.messageIds.push(message.id);
+    currentGroup.primaryMessageId = message.id;
+    currentGroup.createdAt = message.createdAt;
+  }
+}
+
 function buildChronologicalItemsForGroups(
+  items: ChatListItem[],
   groups: ChatGroup[],
   previousGroup: ChatGroup | null,
   formatDateLabel: (ts: number) => string,
   formatTime: (ts: number) => string
-): ChatListItem[] {
-  const items: ChatListItem[] = [];
+) {
   let priorGroup = previousGroup;
 
   for (const group of groups) {
@@ -342,8 +478,6 @@ function buildChronologicalItemsForGroups(
 
     priorGroup = group;
   }
-
-  return items;
 }
 
 function buildUserNavItemsFromChronologicalItems(
@@ -372,6 +506,35 @@ function buildUserNavItemsFromChronologicalItems(
   });
 }
 
+function buildUserNavItemsFromListItems(
+  listItems: ChatListItem[],
+  userInfoById: Map<string, { text: string; createdAt: number }>,
+  formatTime: (ts: number) => string
+): ChatUserNavItem[] {
+  const userNavItems: ChatUserNavItem[] = [];
+  let seq = 1;
+  for (let index = listItems.length - 1; index >= 0; index -= 1) {
+    const item = listItems[index];
+    if (item?.type !== 'message-group' || item.role !== 'user') {
+      continue;
+    }
+    const info = userInfoById.get(item.primaryMessageId);
+    if (!info) {
+      continue;
+    }
+    const preview = info.text.split('\n').slice(0, 2).join(' ').trim() || '…';
+    userNavItems.push({
+      listIndex: index,
+      messageId: item.primaryMessageId,
+      seq: seq++,
+      preview,
+      time: formatTime(info.createdAt),
+      createdAt: info.createdAt,
+    });
+  }
+  return userNavItems;
+}
+
 function findIncrementalBase(messages: Message[]): ChatListBuildCacheEntry | null {
   for (const entry of recentBuildCache) {
     const prependedCount = messages.length - entry.source.length;
@@ -395,6 +558,29 @@ function findIncrementalBase(messages: Message[]): ChatListBuildCacheEntry | nul
   return null;
 }
 
+function findIncrementalBaseByIds(messageIds: string[]): ChatListBuildByIdCacheEntry | null {
+  for (const entry of recentBuildByIdCache) {
+    const prependedCount = messageIds.length - entry.source.length;
+    if (prependedCount <= 0) {
+      continue;
+    }
+
+    let matches = true;
+    for (let index = 0; index < entry.source.length; index += 1) {
+      if (messageIds[index + prependedCount] !== entry.source[index]) {
+        matches = false;
+        break;
+      }
+    }
+
+    if (matches) {
+      return entry;
+    }
+  }
+
+  return null;
+}
+
 function storeBuildCache(entry: ChatListBuildCacheEntry) {
   const existingIndex = recentBuildCache.findIndex(candidate => candidate.source === entry.source);
   if (existingIndex >= 0) {
@@ -403,5 +589,16 @@ function storeBuildCache(entry: ChatListBuildCacheEntry) {
   recentBuildCache.unshift(entry);
   if (recentBuildCache.length > MAX_INCREMENTAL_CACHE_ENTRIES) {
     recentBuildCache.length = MAX_INCREMENTAL_CACHE_ENTRIES;
+  }
+}
+
+function storeBuildByIdCache(entry: ChatListBuildByIdCacheEntry) {
+  const existingIndex = recentBuildByIdCache.findIndex(candidate => candidate.source === entry.source);
+  if (existingIndex >= 0) {
+    recentBuildByIdCache.splice(existingIndex, 1);
+  }
+  recentBuildByIdCache.unshift(entry);
+  if (recentBuildByIdCache.length > MAX_INCREMENTAL_CACHE_ENTRIES) {
+    recentBuildByIdCache.length = MAX_INCREMENTAL_CACHE_ENTRIES;
   }
 }

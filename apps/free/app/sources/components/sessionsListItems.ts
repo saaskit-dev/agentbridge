@@ -6,24 +6,20 @@ export type SessionsListCardPosition = 'single' | 'first' | 'middle' | 'last';
 
 export type SessionsListRenderItem =
   | { type: 'header'; title: string; key: string }
-  | { type: 'active-sessions'; sessions: Session[]; key: string; selectedSessionId?: string }
+  | { type: 'active-sessions'; sessions: Session[]; key: string }
   | { type: 'project-group'; displayPath: string; machine: Machine; key: string }
   | {
       type: 'session';
       session: Session;
       variant?: 'default' | 'no-path';
       key: string;
-      selected: boolean;
       cardPosition: SessionsListCardPosition;
       sessionName: string;
       sessionSubtitle: string;
       avatarId: string;
     };
 
-export function buildSessionsListItems(
-  items: SessionListViewItem[],
-  selectedSessionId?: string
-): SessionsListRenderItem[] {
+export function buildSessionsListItems(items: SessionListViewItem[]): SessionsListRenderItem[] {
   return items.map((item, index) => {
     switch (item.type) {
       case 'header':
@@ -35,7 +31,6 @@ export function buildSessionsListItems(
         return {
           ...item,
           key: 'active-sessions',
-          selectedSessionId,
         };
       case 'project-group':
         return {
@@ -59,7 +54,6 @@ export function buildSessionsListItems(
         return {
           ...item,
           key: `session-${item.session.id}`,
-          selected: item.session.id === selectedSessionId,
           cardPosition,
           sessionName: getSessionName(item.session),
           sessionSubtitle: getSessionSubtitle(item.session),

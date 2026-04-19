@@ -62,7 +62,7 @@ function createSession(id: string, path: string): Session {
 }
 
 describe('sessionsListItems', () => {
-  it('precomputes selected state and card positions without changing grouping semantics', () => {
+  it('precomputes stable card positions without changing grouping semantics', () => {
     const machine = createMachine('machine-1');
     const items: SessionListViewItem[] = [
       { type: 'header', title: 'Recent' },
@@ -75,7 +75,7 @@ describe('sessionsListItems', () => {
       { type: 'active-sessions', sessions: [createSession('session-5', '/Users/tester/project-live')] },
     ];
 
-    const result = buildSessionsListItems(items, 'session-3');
+    const result = buildSessionsListItems(items);
 
     expect(result.map(item => item.key)).toEqual([
       'header-Recent-0',
@@ -87,18 +87,17 @@ describe('sessionsListItems', () => {
       'session-session-4',
       'active-sessions',
     ]);
-    expect(result[1]).toMatchObject({ type: 'session', cardPosition: 'first', selected: false });
+    expect(result[1]).toMatchObject({ type: 'session', cardPosition: 'first' });
     expect(result[1]).toMatchObject({
       sessionName: 'project-a',
       sessionSubtitle: '~/project-a',
       avatarId: 'machine-1:/Users/tester/project-a',
     });
-    expect(result[2]).toMatchObject({ type: 'session', cardPosition: 'last', selected: false });
-    expect(result[4]).toMatchObject({ type: 'session', cardPosition: 'first', selected: true });
-    expect(result[6]).toMatchObject({ type: 'session', cardPosition: 'last', selected: false });
+    expect(result[2]).toMatchObject({ type: 'session', cardPosition: 'last' });
+    expect(result[4]).toMatchObject({ type: 'session', cardPosition: 'first' });
+    expect(result[6]).toMatchObject({ type: 'session', cardPosition: 'last' });
     expect(result[7]).toMatchObject({
       type: 'active-sessions',
-      selectedSessionId: 'session-3',
     });
   });
 });
