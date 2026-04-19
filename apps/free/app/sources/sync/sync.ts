@@ -597,19 +597,23 @@ class Sync {
     const log = sessionLogger(logger, sessionId);
     log.debug('[sync] onSessionVisible');
     this.pruneInactiveSessionMessageCache(sessionId);
+    const existingSessionMessages = storage.getState().sessionMessages[sessionId];
+    const loadedSeq = this.getHighestLoadedMessageSeq(sessionId);
 
-    // Load cached messages from local SQLite first.
-    // If the session has a populated local cache, hydrate the full cached history
-    // before switching the UI into the loaded state so the first render reflects
-    // the complete local session, not just a recent tail.
-    if (!storage.getState().sessionMessages[sessionId]) {
+    // Always recover the session watermark when it's missing. This keeps
+    // active sessions on incremental fetches even if the store entry already
+    // exists but the in-memory seq map was lost (for example after lifecycle
+    // churn or Fast Refresh).
+    const recoveredSeq = await this.resolveFetchStartAfterSeq(sessionId, log);
+
+    // Load cached messages from local SQLite first when the visible session
+    // doesn't currently have any loaded seq-bearing messages in memory. This
+    // covers both cold entry (no store entry yet) and existing placeholder
+    // entries that were created before cache hydration ran.
+    if (loadedSeq === 0 && (!existingSessionMessages || existingSessionMessages.lastLocalHydratedAt === 0)) {
       try {
-        const cachedSeq = this.sessionLastSeq.get(sessionId) ?? (await messageDB.getLastSeq(sessionId));
-        if (cachedSeq > 0) {
-          if (!this.sessionLastSeq.has(sessionId)) {
-            this.setSessionLastSeq(sessionId, cachedSeq);
-          }
-          const cachedHydration = await this.loadCachedSessionMessages(sessionId, cachedSeq);
+        if (recoveredSeq > 0) {
+          const cachedHydration = await this.loadCachedSessionMessages(sessionId, recoveredSeq);
           if (cachedHydration.messages.length > 0) {
             const hydratedAt = Date.now();
             this.applyMessages(sessionId, cachedHydration.messages);
@@ -622,13 +626,13 @@ class Sync {
             log.debug('[sync] hydrated SQLite cache', {
               count: cachedHydration.messages.length,
               batchCount: cachedHydration.batchCount,
-              lastSeq: cachedSeq,
+              lastSeq: recoveredSeq,
               oldestSeq: cachedHydration.oldestSeq,
               hasOlderMessages: cachedHydration.hasOlderMessages,
             });
           } else {
             log.warn('[sync] SQLite cache inconsistent, resetting local watermark', {
-              cachedSeq,
+              cachedSeq: recoveredSeq,
             });
             this.deleteSessionLastSeq(sessionId);
             await messageDB.deleteSession(sessionId).catch(error => {
@@ -850,6 +854,57 @@ class Sync {
   private clearSessionLastSeqs() {
     this.sessionLastSeq.clear();
     apiSocket.refreshReconnectAuth();
+  }
+
+  private getHighestLoadedMessageSeq(sessionId: string): number {
+    const sessionMessages = storage.getState().sessionMessages[sessionId];
+    if (!sessionMessages || sessionMessages.messages.length === 0) {
+      return 0;
+    }
+
+    let maxSeq = 0;
+    for (const message of sessionMessages.messages) {
+      if (typeof message.seq === 'number' && message.seq > maxSeq) {
+        maxSeq = message.seq;
+      }
+    }
+    return maxSeq;
+  }
+
+  private async resolveFetchStartAfterSeq(
+    sessionId: string,
+    log: ReturnType<typeof sessionLogger>
+  ): Promise<number> {
+    const trackedSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+    if (trackedSeq > 0) {
+      return trackedSeq;
+    }
+
+    const loadedSeq = this.getHighestLoadedMessageSeq(sessionId);
+    if (loadedSeq > 0) {
+      log.info('[sync] fetchMessages: recovered lastSeq from in-memory messages', {
+        recoveredLastSeq: loadedSeq,
+      });
+      this.setSessionLastSeq(sessionId, loadedSeq);
+      return loadedSeq;
+    }
+
+    try {
+      const cachedSeq = await messageDB.getLastSeq(sessionId);
+      if (cachedSeq > 0) {
+        log.info('[sync] fetchMessages: recovered lastSeq from SQLite cache', {
+          recoveredLastSeq: cachedSeq,
+        });
+        this.setSessionLastSeq(sessionId, cachedSeq);
+        return cachedSeq;
+      }
+    } catch (error) {
+      log.debug('[sync] fetchMessages: failed to recover lastSeq from SQLite cache', {
+        error: safeStringify(error),
+      });
+    }
+
+    return 0;
   }
 
   private enqueueMessages(sessionId: string, messages: NormalizedMessage[]) {
@@ -2643,7 +2698,7 @@ class Sync {
       throw new Error(`Session encryption not ready for ${sessionId}`);
     }
 
-    const startAfterSeq = this.sessionLastSeq.get(sessionId) ?? 0;
+    const startAfterSeq = await this.resolveFetchStartAfterSeq(sessionId, log);
     let afterSeq = startAfterSeq;
     let hasMore = true;
     let totalNormalized = 0;
@@ -3527,7 +3582,13 @@ class Sync {
           }
 
           // Fast-path only on consecutive seq values, otherwise fetch from server.
-          const currentLastSeq = this.sessionLastSeq.get(sessionId);
+          let currentLastSeq = this.sessionLastSeq.get(sessionId);
+          if (currentLastSeq === undefined) {
+            const recoveredLastSeq = await this.resolveFetchStartAfterSeq(sessionId, log);
+            if (recoveredLastSeq > 0) {
+              currentLastSeq = recoveredLastSeq;
+            }
+          }
           const incomingSeq = updateData.body.message.seq;
           if (lastMessage && currentLastSeq !== undefined && incomingSeq === currentLastSeq + 1) {
             log.debug('🔄 Sync: Applying message (fast path)', {
@@ -3581,6 +3642,14 @@ class Sync {
               gitStatusSync.invalidate(sessionId);
             }
           } else {
+            if (lastMessage) {
+              log.info('[sync] new-message falling back to fetch', {
+                incomingSeq,
+                currentLastSeq: currentLastSeq ?? null,
+                recoveredFromMemorySeq:
+                  currentLastSeq === undefined ? this.getHighestLoadedMessageSeq(sessionId) : null,
+              });
+            }
             this.getMessagesSync(sessionId).invalidate();
           }
         }
@@ -4095,6 +4164,20 @@ class Sync {
         };
 
         this.applySessionEphemeralUpdates([{ id: session.id, latestUsage }]);
+      }
+    }
+
+    if (updateData.type === 'session-stall') {
+      const session = storage.getState().sessions[updateData.sessionId];
+      if (session) {
+        this.applySessionEphemeralUpdates([
+          {
+            id: session.id,
+            thinking: updateData.thinking,
+            thinkingAt: updateData.stalledSince,
+            activeAt: Math.max(session.activeAt ?? 0, updateData.stalledSince),
+          },
+        ]);
       }
     }
 

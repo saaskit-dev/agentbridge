@@ -278,9 +278,45 @@ describe('reducer', () => {
       expect(second.messages).toHaveLength(1);
       expect(second.messages[0].kind).toBe('agent-text');
       if (second.messages[0].kind === 'agent-text') {
-        expect(second.messages[0].sourceId).toBe('agent-chunk-1');
+        expect(second.messages[0].sourceId).toBe('agent-chunk-2');
+        expect(second.messages[0].sourceIds).toEqual(
+          expect.arrayContaining(['agent-chunk-1', 'agent-chunk-2'])
+        );
         expect(second.messages[0].text).toBe('Hello');
       }
+    });
+
+    it('should keep all merged chunk ids as aliases for a stable text block', () => {
+      const state = createReducer();
+
+      reducer(state, [
+        {
+          id: 'agent-chunk-a',
+          createdAt: 1000,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-1',
+          content: [{ type: 'text', text: 'Hel', uuid: 'chunk-a', parentUUID: null }],
+        },
+      ]);
+
+      reducer(state, [
+        {
+          id: 'agent-chunk-b',
+          createdAt: 1100,
+          role: 'agent',
+          isSidechain: false,
+          traceId: 'trace-1',
+          content: [{ type: 'text', text: 'lo', uuid: 'chunk-b', parentUUID: null }],
+        },
+      ]);
+
+      const internalId = state.messageIds.get('agent-chunk-a');
+      expect(internalId).toBeTruthy();
+      expect(state.messageIds.get('agent-chunk-b')).toBe(internalId);
+
+      const message = internalId ? state.messages.get(internalId) : null;
+      expect(message?.realIDs).toEqual(expect.arrayContaining(['agent-chunk-a', 'agent-chunk-b']));
     });
 
     it('should merge consecutive single-block thinking chunks into one message', () => {

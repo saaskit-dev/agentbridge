@@ -48,6 +48,7 @@ export type AgentTextMessage = {
   id: string;
   seq?: number;
   sourceId?: string | null;
+  sourceIds?: string[];
   createdAt: number;
   text: string;
   isThinking?: boolean;

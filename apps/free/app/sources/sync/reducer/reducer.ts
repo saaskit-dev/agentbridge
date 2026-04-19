@@ -117,13 +117,32 @@ import { AgentEvent, NormalizedMessage, UsageData } from '../typesRaw';
 import { parseMessageAsEvent } from './messageToEvent';
 import { createTracer, traceMessages, TracerState } from './reducerTracer';
 import { measurePerformance } from '@/dev/performanceMonitor';
+import { normalizeBashResultForLiveRendering } from '@/utils/toolResultUtils';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/reducer');
 
+function summarizeToolResultForDebug(result: unknown): string {
+  if (result == null) {
+    return 'none';
+  }
+  if (typeof result === 'string') {
+    return `string:${result.length}`;
+  }
+  if (Array.isArray(result)) {
+    return `array:${result.length}`;
+  }
+  if (typeof result === 'object') {
+    const keys = Object.keys(result as Record<string, unknown>).sort();
+    return `object:${keys.slice(0, 5).join(',')}:${keys.length}`;
+  }
+  return typeof result;
+}
+
 type ReducerMessage = {
   id: string;
   realID: string | null;
+  realIDs?: string[];
   seq?: number; // Server-assigned monotonic sequence number for stable sort
   createdAt: number;
   role: 'user' | 'agent';
@@ -198,6 +217,17 @@ export function createReducer(): ReducerState {
 const ENABLE_LOGGING = false;
 const STREAM_CHUNK_WINDOW_MS = 60_000;
 
+function appendRealIDs(
+  existing: string[] | undefined,
+  ...ids: Array<string | null | undefined>
+): string[] | undefined {
+  const next = new Set(existing ?? []);
+  ids.forEach(id => {
+    if (id) next.add(id);
+  });
+  return next.size > 0 ? Array.from(next) : undefined;
+}
+
 export type ReducerResult = {
   messages: Message[];
   todos?: Array<{
@@ -254,6 +284,19 @@ function normalizePermissionResult(
     return 'Approved';
   }
   return content;
+}
+
+function normalizeToolResultForLiveRendering(
+  toolName: string | undefined,
+  hasPermission: boolean,
+  content: unknown,
+  isError: boolean
+): unknown {
+  const normalizedPermissionResult = normalizePermissionResult(hasPermission, content, isError);
+  if (toolName === 'Bash') {
+    return normalizeBashResultForLiveRendering(normalizedPermissionResult);
+  }
+  return normalizedPermissionResult;
 }
 
 function resolvePendingPermissionCreatedAt(
@@ -456,6 +499,7 @@ function reducerInternal(
     addRootMessage({
       id: mid,
       realID: message.id,
+      realIDs: [message.id],
       role: 'agent',
       createdAt: message.createdAt,
       event: event,
@@ -786,6 +830,7 @@ function reducerInternal(
       addRootMessage({
         id: mid,
         realID: msg.id,
+        realIDs: [msg.id],
         seq: msg.seq,
         role: 'user',
         createdAt: msg.createdAt,
@@ -807,9 +852,6 @@ function reducerInternal(
       if (state.messageIds.has(msg.id)) {
         continue;
       }
-
-      // Mark this message as seen
-      state.messageIds.set(msg.id, msg.id);
 
       // Process usage data if present
       if (msg.usage) {
@@ -834,7 +876,14 @@ function reducerInternal(
           const chunkText = isThinking ? c.thinking : c.text;
 
           if (msg.content.length === 1 && !toolCallSeenSinceLastText) {
-            const mergedIntoId = mergeIntoPreviousRootAgentText(state, msg.createdAt, chunkText, isThinking, msg.traceId);
+            const mergedIntoId = mergeIntoPreviousRootAgentText(
+              state,
+              msg.id,
+              msg.createdAt,
+              chunkText,
+              isThinking,
+              msg.traceId
+            );
             if (mergedIntoId) {
               // Diagnostic: log merges near tool boundaries
               if (messages.length > 50 && msg.seq !== undefined && msg.seq >= 100 && msg.seq <= 200) {
@@ -855,6 +904,7 @@ function reducerInternal(
           addRootMessage({
             id: mid,
             realID: msg.id,
+            realIDs: [msg.id],
             seq: msg.seq,
             role: 'agent',
             createdAt: msg.createdAt,
@@ -893,7 +943,12 @@ function reducerInternal(
             // Update existing message with tool execution details
             const message = state.messages.get(existingMessageId);
             if (message?.tool) {
+              message.realIDs = appendRealIDs(message.realIDs, message.realID, msg.id);
               message.realID = msg.id;
+              message.realIDs?.forEach(realId => {
+                state.messageIds.set(realId, existingMessageId);
+              });
+              state.messageIds.set(msg.id, existingMessageId);
               if (message.seq === undefined && msg.seq !== undefined) {
                 message.seq = msg.seq;
               }
@@ -983,6 +1038,7 @@ function reducerInternal(
             addRootMessage({
               id: mid,
               realID: msg.id,
+              realIDs: [msg.id],
               seq: msg.seq,
               role: 'agent',
               createdAt: msg.createdAt,
@@ -1074,15 +1130,28 @@ function reducerInternal(
               message.tool.result == null &&
               c.content != null
             ) {
-              message.tool.result = c.content;
+              message.tool.result = normalizeToolResultForLiveRendering(
+                message.tool.name,
+                !!message.tool.permission,
+                c.content,
+                c.is_error
+              );
               changed.add(messageId!);
+              logger.debug('[reducer/tool-result] accepted late result', {
+                toolUseId: c.tool_use_id,
+                messageId,
+                toolName: message.tool.name,
+                toolState: message.tool.state,
+                resultSummary: summarizeToolResultForDebug(message.tool.result),
+              });
             }
             continue;
           }
 
           // Update tool state and result
           updateToolRunningState(message.tool, c.is_error ? 'error' : 'completed');
-          message.tool.result = normalizePermissionResult(
+          message.tool.result = normalizeToolResultForLiveRendering(
+            message.tool.name,
             !!message.tool.permission,
             c.content,
             c.is_error
@@ -1117,6 +1186,14 @@ function reducerInternal(
           }
 
           changed.add(messageId);
+          logger.debug('[reducer/tool-result] updated root tool message', {
+            toolUseId: c.tool_use_id,
+            messageId,
+            toolName: message.tool.name,
+            nextState: message.tool.state,
+            permissionStatus: message.tool.permission?.status ?? null,
+            resultSummary: summarizeToolResultForDebug(message.tool.result),
+          });
         }
       }
     }
@@ -1146,6 +1223,7 @@ function reducerInternal(
       const userMsg: ReducerMessage = {
         id: mid,
         realID: msg.id,
+        realIDs: [msg.id],
         role: 'user',
         createdAt: msg.createdAt,
         text: msg.content[0].prompt,
@@ -1164,6 +1242,7 @@ function reducerInternal(
           const textMsg: ReducerMessage = {
             id: mid,
             realID: msg.id,
+            realIDs: [msg.id],
             role: 'agent',
             createdAt: msg.createdAt,
             text: isThinking ? `*Thinking...*\n\n*${c.thinking}*` : c.text,
@@ -1211,6 +1290,7 @@ function reducerInternal(
           const toolMsg: ReducerMessage = {
             id: mid,
             realID: msg.id,
+            realIDs: [msg.id],
             role: 'agent',
             createdAt: msg.createdAt,
             text: null,
@@ -1236,7 +1316,8 @@ function reducerInternal(
               sidechainMessage.tool.state === 'running'
             ) {
               updateToolRunningState(sidechainMessage.tool, c.is_error ? 'error' : 'completed');
-              sidechainMessage.tool.result = normalizePermissionResult(
+              sidechainMessage.tool.result = normalizeToolResultForLiveRendering(
+                sidechainMessage.tool.name,
                 !!sidechainMessage.tool.permission,
                 c.content,
                 c.is_error
@@ -1268,6 +1349,16 @@ function reducerInternal(
                   };
                 }
               }
+
+              changed.add(sidechainMessageId);
+              logger.debug('[reducer/tool-result] updated sidechain tool message', {
+                toolUseId: c.tool_use_id,
+                messageId: sidechainMessageId,
+                toolName: sidechainMessage.tool.name,
+                nextState: sidechainMessage.tool.state,
+                permissionStatus: sidechainMessage.tool.permission?.status ?? null,
+                resultSummary: summarizeToolResultForDebug(sidechainMessage.tool.result),
+              });
             }
           }
 
@@ -1281,7 +1372,8 @@ function reducerInternal(
               permissionMessage.tool.state === 'running'
             ) {
               updateToolRunningState(permissionMessage.tool, c.is_error ? 'error' : 'completed');
-              permissionMessage.tool.result = normalizePermissionResult(
+              permissionMessage.tool.result = normalizeToolResultForLiveRendering(
+                permissionMessage.tool.name,
                 !!permissionMessage.tool.permission,
                 c.content,
                 c.is_error
@@ -1315,6 +1407,14 @@ function reducerInternal(
               }
 
               changed.add(permissionMessageId);
+              logger.debug('[reducer/tool-result] updated linked permission tool message', {
+                toolUseId: c.tool_use_id,
+                messageId: permissionMessageId,
+                toolName: permissionMessage.tool.name,
+                nextState: permissionMessage.tool.state,
+                permissionStatus: permissionMessage.tool.permission?.status ?? null,
+                resultSummary: summarizeToolResultForDebug(permissionMessage.tool.result),
+              });
             }
           }
         }
@@ -1460,6 +1560,12 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
 function storeRootMessage(state: ReducerState, message: ReducerMessage) {
   state.messages.set(message.id, message);
   state.rootMessageIds.push(message.id);
+  if (message.realID) {
+    state.messageIds.set(message.realID, message.id);
+  }
+  message.realIDs?.forEach(realId => {
+    state.messageIds.set(realId, message.id);
+  });
 }
 
 function getLastRootMessage(state: ReducerState): ReducerMessage | null {
@@ -1528,6 +1634,21 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
     ) {
       // Merge next into current
       current.text += next.text;
+      current.realIDs = appendRealIDs(
+        current.realIDs,
+        current.realID,
+        ...(next.realIDs ?? []),
+        next.realID
+      );
+      if (next.realID) {
+        current.realID = next.realID;
+      }
+      current.realIDs?.forEach(realId => {
+        state.messageIds.set(realId, currentId);
+      });
+      if (current.realID) {
+        state.messageIds.set(current.realID, currentId);
+      }
       changed.add(currentId);
       state.rootMessageIds.splice(j, 1);
       state.messages.delete(nextId);
@@ -1550,6 +1671,7 @@ function mergeConsecutiveAgentTexts(state: ReducerState, changed: Set<string>): 
  */
 function mergeIntoPreviousRootAgentText(
   state: ReducerState,
+  sourceMessageId: string,
   createdAt: number,
   chunkText: string,
   isThinking: boolean,
@@ -1583,6 +1705,12 @@ function mergeIntoPreviousRootAgentText(
     if (candidate.traceId && traceId && candidate.traceId !== traceId) return null;
 
     candidate.text += chunkText;
+    candidate.realIDs = appendRealIDs(candidate.realIDs, candidate.realID, sourceMessageId);
+    candidate.realID = sourceMessageId;
+    candidate.realIDs?.forEach(realId => {
+      state.messageIds.set(realId, rootId);
+    });
+    state.messageIds.set(sourceMessageId, rootId);
     return rootId;
   }
   return null;
@@ -1609,6 +1737,7 @@ function convertReducerMessageToMessage(
       id: reducerMsg.id,
       ...(reducerMsg.seq !== undefined && { seq: reducerMsg.seq }),
       ...(reducerMsg.realID ? { sourceId: reducerMsg.realID } : {}),
+      ...(reducerMsg.realIDs?.length ? { sourceIds: reducerMsg.realIDs } : {}),
       createdAt: reducerMsg.createdAt,
       kind: 'agent-text',
       text: reducerMsg.isThinking ? `*Thinking...*\n\n*${reducerMsg.text}*` : reducerMsg.text,

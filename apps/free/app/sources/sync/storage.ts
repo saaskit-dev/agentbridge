@@ -46,6 +46,54 @@ import type { PermissionMode, SessionCapabilities } from './sessionCapabilities'
 
 const logger = new Logger('app/sync/storage');
 
+function summarizeMessageForDebug(message: Message): Record<string, unknown> {
+  if (message.kind === 'tool-call') {
+    const result = message.tool.result;
+    let resultSummary = 'none';
+    if (typeof result === 'string') {
+      resultSummary = `string:${result.length}`;
+    } else if (Array.isArray(result)) {
+      resultSummary = `array:${result.length}`;
+    } else if (result && typeof result === 'object') {
+      const keys = Object.keys(result as Record<string, unknown>).sort();
+      resultSummary = `object:${keys.slice(0, 5).join(',')}:${keys.length}`;
+    } else if (result != null) {
+      resultSummary = typeof result;
+    }
+
+    return {
+      kind: message.kind,
+      toolName: message.tool.name,
+      toolState: message.tool.state,
+      permissionStatus: message.tool.permission?.status ?? null,
+      resultSummary,
+      childCount: message.children.length,
+    };
+  }
+
+  if (message.kind === 'agent-text' || message.kind === 'user-text') {
+    return {
+      kind: message.kind,
+      textLength: message.text.length,
+    };
+  }
+
+  return {
+    kind: message.kind,
+  };
+}
+
+function summarizeMessageReferenceChange(previous: Message | undefined, next: Message): Record<string, unknown> {
+  return {
+    messageId: next.id,
+    sameReference: previous === next,
+    previousKind: previous?.kind ?? null,
+    nextKind: next.kind,
+    previousSummary: previous ? summarizeMessageForDebug(previous) : null,
+    nextSummary: summarizeMessageForDebug(next),
+  };
+}
+
 /**
  * Whether a tool name is treated as mutable for permission/session logic.
  * Lazy-loads the known-tools registry (see AGENTS.md: lazy require for cross-cutting UI).
@@ -907,6 +955,10 @@ export const storage = create<StorageState>()((set, get) => {
       const changed = new Set<string>();
       let hasReadyEvent = false;
       let latestStatus: 'working' | 'idle' | undefined;
+      let insertedIds: string[] = [];
+      let updatedIds: string[] = [];
+      let changedMessageSummaries: Array<Record<string, unknown>> = [];
+      let updatedReferenceSummaries: Array<Record<string, unknown>> = [];
       set(state => {
         // Resolve session messages state
         const existingSession = state.sessionMessages[sessionId] || {
@@ -935,6 +987,22 @@ export const storage = create<StorageState>()((set, get) => {
         for (const message of processedMessages) {
           changed.add(message.id);
         }
+        insertedIds = processedMessages
+          .filter(message => existingSession.messagesMap[message.id] == null)
+          .map(message => message.id);
+        updatedIds = processedMessages
+          .filter(message => existingSession.messagesMap[message.id] != null)
+          .map(message => message.id);
+        changedMessageSummaries = processedMessages.slice(0, 8).map(message => ({
+          messageId: message.id,
+          ...summarizeMessageForDebug(message),
+        }));
+        updatedReferenceSummaries = processedMessages
+          .filter(message => existingSession.messagesMap[message.id] != null)
+          .slice(0, 8)
+          .map(message =>
+            summarizeMessageReferenceChange(existingSession.messagesMap[message.id], message)
+          );
         if (reducerResult.hasReadyEvent) {
           hasReadyEvent = true;
         }
@@ -1006,6 +1074,13 @@ export const storage = create<StorageState>()((set, get) => {
 
       log.debug('applyMessages done', {
         changedCount: changed.size,
+        changedIds: Array.from(changed).slice(0, 10),
+        insertedCount: insertedIds.length,
+        insertedIds: insertedIds.slice(0, 5),
+        updatedCount: updatedIds.length,
+        updatedIds: updatedIds.slice(0, 5),
+        changedMessages: changedMessageSummaries,
+        updatedReferenceSummaries,
         hasReadyEvent,
         latestStatus,
       });

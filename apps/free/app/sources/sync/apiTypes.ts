@@ -271,6 +271,13 @@ export const ApiEphemeralThinkingDeltaSchema = z.object({
   timestamp: z.number(),
 });
 
+export const ApiEphemeralSessionStallSchema = z.object({
+  type: z.literal('session-stall'),
+  sessionId: z.string(),
+  thinking: z.boolean(),
+  stalledSince: z.number(),
+});
+
 // Batched activity updates (server aggregates multiple session-alive heartbeats into one emission)
 export const ApiEphemeralBatchActivityUpdateSchema = z.object({
   type: z.literal('batch-activity'),
@@ -291,6 +298,7 @@ export const ApiEphemeralUpdateSchema = z.union([
   ApiEphemeralTextDeltaSchema,
   ApiEphemeralTextCompleteSchema,
   ApiEphemeralThinkingDeltaSchema,
+  ApiEphemeralSessionStallSchema,
   ApiEphemeralBatchActivityUpdateSchema,
 ]);
 
@@ -299,6 +307,7 @@ export type ApiEphemeralBatchActivityUpdate = z.infer<typeof ApiEphemeralBatchAc
 export type ApiEphemeralTextDelta = z.infer<typeof ApiEphemeralTextDeltaSchema>;
 export type ApiEphemeralTextComplete = z.infer<typeof ApiEphemeralTextCompleteSchema>;
 export type ApiEphemeralThinkingDelta = z.infer<typeof ApiEphemeralThinkingDeltaSchema>;
+export type ApiEphemeralSessionStall = z.infer<typeof ApiEphemeralSessionStallSchema>;
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;
 
 // Machine metadata updates use Partial<MachineMetadata> from storageTypes
