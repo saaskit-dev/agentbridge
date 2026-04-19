@@ -17,7 +17,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-cross-env APP_ENV=development expo start --web --port "$PORT" --host localhost &
+cross-env APP_ENV=development EXPO_PUBLIC_DESKTOP_REACT_DEVTOOLS=1 expo start --web --port "$PORT" --host localhost &
 EXPO_PID=$!
 
 for _ in {1..120}; do

@@ -21,6 +21,8 @@ import {
 import { config } from '@/config';
 import { getServerUrl } from '@/sync/serverConfig';
 import { sync } from '@/sync/sync';
+import { DesktopFileSink } from '@/telemetry/desktopFileSink';
+import { isTauriDesktop } from '@/utils/tauri';
 
 // Lazily-resolved auth token for RemoteSink — set after login, cleared on logout
 let _telemetryAuthToken: string | undefined;
@@ -57,19 +59,26 @@ export function initAppTelemetry(): void {
     // deviceId is lazily resolved from sync.anonId (user-level anonymous identifier)
     // Falls back to platform-app if sync not initialized yet
     const getDeviceId = () => sync.anonId || Platform.OS + '-app';
+    const sinks = [];
+
+    if (isTauriDesktop()) {
+      sinks.push(new DesktopFileSink());
+    }
+
+    sinks.push(
+      new RemoteSink({
+        backend: new ServerRelayBackend({
+          serverUrl,
+          authToken: () => _telemetryAuthToken,
+        }),
+        minLevel: 'debug',
+        metadata: { deviceId: getDeviceId(), appVersion, layer: 'app' },
+      })
+    );
 
     initTelemetry({
       layer: 'app',
-      sinks: [
-        new RemoteSink({
-          backend: new ServerRelayBackend({
-            serverUrl,
-            authToken: () => _telemetryAuthToken,
-          }),
-          minLevel: 'debug',
-          metadata: { deviceId: getDeviceId(), appVersion, layer: 'app' },
-        }),
-      ],
+      sinks,
       minLevel: 'debug',
       sanitize: !config.isDev,
     });

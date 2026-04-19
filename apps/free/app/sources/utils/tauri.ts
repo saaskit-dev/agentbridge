@@ -25,6 +25,13 @@ export interface DesktopCLIStatus {
   canAutoRepair: boolean;
 }
 
+export interface DesktopLogPaths {
+  appTelemetryLogDir: string;
+  appTelemetryLogPath: string;
+  tauriLogDir: string;
+  tauriLogPath: string;
+}
+
 let invokePromise: Promise<TauriInvoke> | null = null;
 
 export function isTauriDesktop(): boolean {
@@ -92,6 +99,24 @@ export async function bootstrapDesktopCLIAuth(input: {
 
   const invoke = await getTauriInvoke();
   return await invoke<DesktopCLIStatus>('desktop_bootstrap_cli_auth', { payload: input });
+}
+
+export async function appendDesktopAppLogs(lines: string[]): Promise<void> {
+  if (!isTauriDesktop() || lines.length === 0) {
+    return;
+  }
+
+  const invoke = await getTauriInvoke();
+  await invoke('desktop_append_app_logs', { payload: { lines } });
+}
+
+export async function getDesktopLogPaths(): Promise<DesktopLogPaths> {
+  if (!isTauriDesktop()) {
+    throw new Error('Desktop log paths are only available in Tauri desktop');
+  }
+
+  const invoke = await getTauriInvoke();
+  return await invoke<DesktopLogPaths>('desktop_get_log_paths');
 }
 
 export function getTauriErrorMessage(

@@ -3,7 +3,9 @@ use base64::Engine as _;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use std::{
-  fs, io,
+  ffi::OsStr,
+  fs,
+  io::{self, Write},
   path::{Path, PathBuf},
   process::Command,
   sync::Mutex,
@@ -11,6 +13,7 @@ use std::{
   time::Duration,
 };
 use tauri::Manager;
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS messages (
@@ -176,8 +179,72 @@ struct KvDeletePayload {
   key: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopAppLogsPayload {
+  lines: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopLogPaths {
+  app_telemetry_log_dir: String,
+  app_telemetry_log_path: String,
+  tauri_log_dir: String,
+  tauri_log_path: String,
+}
+
 fn map_rusqlite_error(error: rusqlite::Error) -> String {
   error.to_string()
+}
+
+fn desktop_app_log_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> CommandResult<PathBuf> {
+  let dir = app.path().app_log_dir().map_err(|error| error.to_string())?;
+  fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+  Ok(dir)
+}
+
+fn desktop_app_log_file_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> CommandResult<PathBuf> {
+  let dir = desktop_app_log_dir(app)?;
+  let now = current_hour_bucket();
+  Ok(dir.join(format!("app-telemetry-{}.jsonl", now)))
+}
+
+fn current_hour_bucket() -> String {
+  let hours_since_epoch = std::time::SystemTime::now()
+    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+    .map(|duration| duration.as_secs() / 3600)
+    .unwrap_or(0);
+  hours_since_epoch.to_string()
+}
+
+fn cleanup_prefixed_jsonl_files(dir: &Path, prefix: &str, max_files: usize) {
+  let mut files = match fs::read_dir(dir) {
+    Ok(entries) => entries
+      .filter_map(|entry| entry.ok())
+      .filter_map(|entry| {
+        let path = entry.path();
+        let file_name = path.file_name()?.to_str()?;
+        if !file_name.starts_with(prefix) || path.extension() != Some(OsStr::new("jsonl")) {
+          return None;
+        }
+
+        let modified = entry
+          .metadata()
+          .ok()
+          .and_then(|metadata| metadata.modified().ok())
+          .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        Some((path, modified))
+      })
+      .collect::<Vec<_>>(),
+    Err(_) => return,
+  };
+
+  files.sort_by(|left, right| right.1.cmp(&left.1));
+
+  for (path, _) in files.into_iter().skip(max_files) {
+    let _ = fs::remove_file(path);
+  }
 }
 
 fn free_home_dir() -> CommandResult<PathBuf> {
@@ -417,6 +484,51 @@ fn read_cli_status() -> CommandResult<DesktopCliStatus> {
     brew_path,
     can_auto_repair: install_issues.iter().all(|issue| issue.can_auto_fix),
     install_issues,
+  })
+}
+
+#[tauri::command]
+fn desktop_append_app_logs(
+  app: tauri::AppHandle,
+  payload: DesktopAppLogsPayload,
+) -> CommandResult<()> {
+  if payload.lines.is_empty() {
+    return Ok(());
+  }
+
+  let path = desktop_app_log_file_path(&app)?;
+  let mut file = fs::OpenOptions::new()
+    .create(true)
+    .append(true)
+    .open(&path)
+    .map_err(|error| error.to_string())?;
+
+  for line in payload.lines {
+    file.write_all(line.as_bytes()).map_err(|error| error.to_string())?;
+    file.write_all(b"\n").map_err(|error| error.to_string())?;
+  }
+
+  cleanup_prefixed_jsonl_files(
+    path.parent().unwrap_or_else(|| Path::new(".")),
+    "app-telemetry-",
+    10,
+  );
+
+  Ok(())
+}
+
+#[tauri::command]
+fn desktop_get_log_paths(app: tauri::AppHandle) -> CommandResult<DesktopLogPaths> {
+  let app_telemetry_log_dir = desktop_app_log_dir(&app)?;
+  let app_telemetry_log_path = desktop_app_log_file_path(&app)?;
+  let tauri_log_dir = app.path().app_log_dir().map_err(|error| error.to_string())?;
+  let tauri_log_path = tauri_log_dir.join("desktop.log");
+
+  Ok(DesktopLogPaths {
+    app_telemetry_log_dir: app_telemetry_log_dir.display().to_string(),
+    app_telemetry_log_path: app_telemetry_log_path.display().to_string(),
+    tauri_log_dir: tauri_log_dir.display().to_string(),
+    tauri_log_path: tauri_log_path.display().to_string(),
   })
 }
 
@@ -1036,7 +1148,15 @@ pub fn run() {
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
+            .level(log::LevelFilter::Debug)
+            .rotation_strategy(RotationStrategy::KeepSome(10))
+            .timezone_strategy(TimezoneStrategy::UseLocal)
+            .targets([
+              Target::new(TargetKind::Stdout),
+              Target::new(TargetKind::LogDir {
+                file_name: Some(String::from("desktop")),
+              }),
+            ])
             .build(),
         )?;
       }
@@ -1057,6 +1177,8 @@ pub fn run() {
       desktop_message_db_kv_set,
       desktop_message_db_kv_delete,
       desktop_message_db_kv_delete_all,
+      desktop_append_app_logs,
+      desktop_get_log_paths,
       desktop_open_devtools,
       desktop_is_updater_enabled,
       desktop_get_cli_status,

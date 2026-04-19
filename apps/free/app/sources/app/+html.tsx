@@ -1,6 +1,10 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
 import '../unistyles';
 
+const injectReactDevTools =
+  process.env.APP_ENV === 'development' &&
+  process.env.EXPO_PUBLIC_DESKTOP_REACT_DEVTOOLS === '1';
+
 // This file is web-only and used to configure the root HTML for every
 // web page during static rendering.
 // The contents of this function only run in Node.js environments and
@@ -21,6 +25,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
 
         {/* Using raw CSS styles as an escape-hatch to ensure the background color never flickers in dark-mode. */}
         <style dangerouslySetInnerHTML={{ __html: responsiveBackground }} />
+        {injectReactDevTools ? <script src="http://localhost:8097" /> : null}
         {/* Add any additional <head> elements that you want globally available on web... */}
       </head>
       <body>{children}</body>
