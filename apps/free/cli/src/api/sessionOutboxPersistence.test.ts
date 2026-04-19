@@ -120,6 +120,49 @@ describe('sessionOutboxPersistence', () => {
     }
   });
 
+  it('persists a sentinel when no queue entries fit within safety limits', async () => {
+    const originalStringify = JSON.stringify;
+    const hugeSerialized = `"${'x'.repeat(2_100_000)}"`;
+    const stringifySpy = vi.spyOn(JSON, 'stringify').mockImplementation(value => {
+      if (
+        value &&
+        typeof value === 'object' &&
+        'id' in value &&
+        (value as { id?: string }).id === 'only'
+      ) {
+        return hugeSerialized;
+      }
+      if (
+        value &&
+        typeof value === 'object' &&
+        'type' in value &&
+        (value as { type?: string }).type === 'persisted-outbox-placeholder'
+      ) {
+        return hugeSerialized;
+      }
+      return originalStringify(value);
+    });
+
+    try {
+      await persistPendingSessionOutbox('session-sentinel', [{ id: 'only', content: 'payload' }]);
+
+      expect(mockWriteFile).toHaveBeenCalledTimes(1);
+      const [firstWriteCall] = mockWriteFile.mock.calls as Array<unknown[]>;
+      const persistedPayload = String(firstWriteCall?.[1]);
+      expect(JSON.parse(persistedPayload)).toEqual({
+        type: 'persisted-outbox-sentinel',
+        reason: 'queue_omitted',
+        originalCount: 1,
+        omittedCount: 1,
+        largestMessageId: 'only',
+        largestContentLength: 'payload'.length,
+        createdAt: expect.any(Number),
+      });
+    } finally {
+      stringifySpy.mockRestore();
+    }
+  });
+
   it('loads legacy json array payloads', async () => {
     mockReadFile.mockResolvedValue(
       JSON.stringify([
@@ -147,6 +190,15 @@ describe('sessionOutboxPersistence', () => {
           originalContentLength: 123,
           createdAt: 1,
         }),
+        JSON.stringify({
+          type: 'persisted-outbox-sentinel',
+          reason: 'queue_omitted',
+          originalCount: 2,
+          omittedCount: 2,
+          largestMessageId: 'too-large-1',
+          largestContentLength: 999,
+          createdAt: 2,
+        }),
         JSON.stringify({ id: 'line-2', content: 'second' }),
       ].join('\n')
     );
@@ -159,6 +211,15 @@ describe('sessionOutboxPersistence', () => {
         reason: 'message_too_large',
         originalContentLength: 123,
         createdAt: 1,
+      },
+      {
+        type: 'persisted-outbox-sentinel',
+        reason: 'queue_omitted',
+        originalCount: 2,
+        omittedCount: 2,
+        largestMessageId: 'too-large-1',
+        largestContentLength: 999,
+        createdAt: 2,
       },
       { id: 'line-2', content: 'second' },
     ]);

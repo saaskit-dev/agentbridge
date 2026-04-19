@@ -24,7 +24,18 @@ export interface PendingOutboxPlaceholder {
   error?: string;
 }
 
-export type PendingOutboxEntry = PendingOutboxMessage | PendingOutboxPlaceholder;
+export interface PendingOutboxSentinel {
+  type: 'persisted-outbox-sentinel';
+  reason: 'queue_omitted';
+  originalCount: number;
+  omittedCount: number;
+  largestMessageId: string | null;
+  largestContentLength: number;
+  createdAt: number;
+}
+
+export type PendingOutboxRestoreWarning = PendingOutboxPlaceholder | PendingOutboxSentinel;
+export type PendingOutboxEntry = PendingOutboxMessage | PendingOutboxRestoreWarning;
 
 type SerializedOutbox = {
   serialized: string;
@@ -65,6 +76,21 @@ function isPendingOutboxPlaceholder(value: unknown): value is PendingOutboxPlace
   );
 }
 
+function isPendingOutboxSentinel(value: unknown): value is PendingOutboxSentinel {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    (value as PendingOutboxSentinel).type === 'persisted-outbox-sentinel' &&
+    (value as PendingOutboxSentinel).reason === 'queue_omitted' &&
+    typeof (value as PendingOutboxSentinel).originalCount === 'number' &&
+    typeof (value as PendingOutboxSentinel).omittedCount === 'number' &&
+    (typeof (value as PendingOutboxSentinel).largestMessageId === 'string' ||
+      (value as PendingOutboxSentinel).largestMessageId === null) &&
+    typeof (value as PendingOutboxSentinel).largestContentLength === 'number' &&
+    typeof (value as PendingOutboxSentinel).createdAt === 'number'
+  );
+}
+
 function parseLegacyJsonArray(raw: string, sessionId: string): PendingOutboxEntry[] | null {
   try {
     const parsed = JSON.parse(raw);
@@ -101,6 +127,8 @@ function parseNdjson(raw: string, sessionId: string): PendingOutboxEntry[] {
         messages.push(parsed);
       } else if (isPendingOutboxPlaceholder(parsed)) {
         messages.push(parsed);
+      } else if (isPendingOutboxSentinel(parsed)) {
+        messages.push(parsed);
       } else {
         invalidCount += 1;
       }
@@ -135,12 +163,46 @@ function createPlaceholder(
   };
 }
 
+function getLargestMessageSummary(messages: PendingOutboxMessage[]): {
+  largestMessageId: string | null;
+  largestContentLength: number;
+} {
+  let largestMessageId: string | null = null;
+  let largestContentLength = 0;
+
+  for (const message of messages) {
+    if (message.content.length > largestContentLength) {
+      largestMessageId = message.id;
+      largestContentLength = message.content.length;
+    }
+  }
+
+  return {
+    largestMessageId,
+    largestContentLength,
+  };
+}
+
+function createSentinel(messages: PendingOutboxMessage[]): PendingOutboxSentinel {
+  const { largestMessageId, largestContentLength } = getLargestMessageSummary(messages);
+  return {
+    type: 'persisted-outbox-sentinel',
+    reason: 'queue_omitted',
+    originalCount: messages.length,
+    omittedCount: messages.length,
+    largestMessageId,
+    largestContentLength,
+    createdAt: Date.now(),
+  };
+}
+
 function serializeForPersistence(messages: PendingOutboxMessage[], sessionId: string): SerializedOutbox | null {
   const candidate = messages.slice(-MAX_PERSISTED_OUTBOX_MESSAGES);
   const serializedLines: string[] = [];
   let serializedCharCount = 0;
   let placeholderCount = 0;
   let droppedCount = 0;
+  const { largestMessageId, largestContentLength } = getLargestMessageSummary(messages);
 
   for (const message of candidate.slice().reverse()) {
     let serializedMessage: string | null = null;
@@ -184,11 +246,28 @@ function serializeForPersistence(messages: PendingOutboxMessage[], sessionId: st
   }
 
   if (serializedLines.length === 0) {
-    logger.error('[outbox] skipped persistence because no queue entries fit within safety limits', undefined, {
+    const sentinel = createSentinel(messages);
+    const sentinelSerialized = JSON.stringify(sentinel);
+    if (sentinelSerialized.length > MAX_PERSISTED_OUTBOX_CHARS) {
+      logger.error('[outbox] skipped persistence because no queue entries fit within safety limits', undefined, {
+        sessionId,
+        originalCount: messages.length,
+        largestMessageId,
+        largestContentLength,
+      });
+      return null;
+    }
+
+    logger.error('[outbox] persisted sentinel because no queue entries fit within safety limits', undefined, {
       sessionId,
       originalCount: messages.length,
+      largestMessageId,
+      largestContentLength,
     });
-    return null;
+    return {
+      serialized: sentinelSerialized,
+      omittedCount: messages.length,
+    };
   }
 
   const omittedCount = messages.length - serializedLines.length;
@@ -201,6 +280,8 @@ function serializeForPersistence(messages: PendingOutboxMessage[], sessionId: st
       placeholderCount,
       droppedCount,
       serializedLength: serializedCharCount,
+      largestMessageId,
+      largestContentLength,
     });
   }
 

@@ -448,6 +448,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
   socket.on('send-messages', async (data: any, callback: (response: any) => void) => {
     await sendMessagesLock.inLock(async () => {
       const requestStart = Date.now();
+      const requestId = randomKeyNaked(8);
       try {
         if (rejectWhileDraining(callback, { ok: false, error: 'Server draining' })) {
           return;
@@ -480,8 +481,16 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         log.debug('[send-messages] received', {
           sid,
           userId,
+          requestId,
           messageCount: messages.length,
           ids: messages.map((m: any) => m.id),
+          traceIds: messages
+            .map((m: any) => (m && typeof m._trace?.tid === 'string' ? m._trace.tid : null))
+            .filter(Boolean),
+          totalChars: messages.reduce(
+            (sum: number, message: any) => sum + (typeof message.content === 'string' ? message.content.length : 0),
+            0
+          ),
         });
 
         // Resolve session
@@ -513,6 +522,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             .map(m => [m.id, m._trace as WireTrace])
         );
 
+        const txStart = Date.now();
         const txResult = await db.$transaction(async tx => {
           const ids = uniqueMessages.map(m => m.id);
           const existing = await tx.sessionMessage.findMany({
@@ -563,12 +573,16 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         log.debug('[send-messages] stored', {
           sid,
           userId,
+          requestId,
           newCount: txResult.createdMessages.length,
+          existingCount: txResult.responseMessages.length - txResult.createdMessages.length,
           seqs: txResult.createdMessages.map(m => m.seq),
-          elapsed: Date.now() - requestStart,
+          txElapsedMs: Date.now() - txStart,
+          elapsedMs: Date.now() - requestStart,
         });
 
         // Broadcast new messages to other connected clients (skip sender to prevent self-echo)
+        const broadcastStart = Date.now();
         for (const message of txResult.createdMessages) {
           const content = contentById.get(message.id);
           if (!content) continue;
@@ -588,7 +602,24 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             skipSenderConnection: connection,
           });
         }
+        log.debug('[send-messages] broadcast complete', {
+          sid,
+          userId,
+          requestId,
+          createdCount: txResult.createdMessages.length,
+          createdIds: txResult.createdMessages.map(message => message.id),
+          broadcastElapsedMs: Date.now() - broadcastStart,
+          elapsedMs: Date.now() - requestStart,
+        });
 
+        log.debug('[send-messages] ack start', {
+          sid,
+          userId,
+          requestId,
+          createdCount: txResult.createdMessages.length,
+          responseCount: txResult.responseMessages.length,
+          elapsedMs: Date.now() - requestStart,
+        });
         callback({
           ok: true,
           messages: txResult.responseMessages.map(m => ({
@@ -599,13 +630,22 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             updatedAt: m.updatedAt.getTime(),
           })),
         });
+        log.debug('[send-messages] ack complete', {
+          sid,
+          userId,
+          requestId,
+          createdCount: txResult.createdMessages.length,
+          responseCount: txResult.responseMessages.length,
+          elapsedMs: Date.now() - requestStart,
+        });
 
         log.info('[send-messages] complete', {
           sid,
           userId,
+          requestId,
           requestedCount: messages.length,
           createdCount: txResult.createdMessages.length,
-          elapsed: Date.now() - requestStart,
+          elapsedMs: Date.now() - requestStart,
         });
 
         activityBroadcaster.recordContent(sid);
@@ -613,6 +653,8 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
         log.error('Error in send-messages', undefined, {
           userId,
           sessionId: data?.sessionId,
+          requestId,
+          elapsedMs: Date.now() - requestStart,
           error: safeStringify(error),
         });
         if (callback) callback({ ok: false, error: 'Internal error' });

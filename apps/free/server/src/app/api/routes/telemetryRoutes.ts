@@ -16,6 +16,27 @@ import { telemetryRelay } from '@/utils/telemetryRelay';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('server/telemetryRoutes');
+const MAX_LOG_MESSAGE_LENGTH = 8192;
+const MAX_ERROR_MESSAGE_LENGTH = 8192;
+const MAX_ERROR_STACK_LENGTH = 16384;
+
+function clampString(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(0, maxLength - 14))}...[truncated]`;
+}
+
+function clampStringSchema(maxLength: number) {
+  return z.string().transform(value => clampString(value, maxLength));
+}
+
+function shouldMirrorClientLogs(): boolean {
+  if (process.env.TELEMETRY_MIRROR_CLIENT_LOGS) {
+    return process.env.TELEMETRY_MIRROR_CLIENT_LOGS === 'true';
+  }
+  return process.env.APP_ENV === 'development' || process.env.NODE_ENV === 'development';
+}
 
 // ---------------------------------------------------------------------------
 // Statistics tracking (for future rate limit calibration)
@@ -113,15 +134,15 @@ const logEntrySchema = z.object({
   level: z.enum(['debug', 'info', 'warn', 'error']),
   layer: z.string().max(64),
   component: z.string().max(128),
-  message: z.string().max(8192),
+  message: clampStringSchema(MAX_LOG_MESSAGE_LENGTH),
   traceId: z.string().max(64).optional(),
   sessionId: z.string().max(128).optional(),
   machineId: z.string().max(128).optional(),
   data: z.record(z.unknown()).optional(),
   error: z
     .object({
-      message: z.string().max(8192),
-      stack: z.string().max(16384).optional(),
+      message: clampStringSchema(MAX_ERROR_MESSAGE_LENGTH),
+      stack: clampStringSchema(MAX_ERROR_STACK_LENGTH).optional(),
       code: z.string().max(64).optional(),
     })
     .optional(),
@@ -199,20 +220,27 @@ export function telemetryRoutes(app: Fastify) {
         telemetryRelay.ingest(entries, metadata);
       }
 
-      // Mirror client logs to server Logger so they appear in local JSONL files (dev debugging)
-      for (const entry of entries) {
-        const level = entry.level === 'warn' ? 'info' : entry.level;
-        if (level === 'error') {
-          logger.error(`[client:${metadata.layer}] ${entry.message}`, entry.error ? new Error(entry.error.message) : undefined, {
-            clientComponent: entry.component,
-            ...entry.data,
-          });
-        } else if (level === 'info' || level === 'debug') {
-          logger.info(`[client:${metadata.layer}] ${entry.message}`, {
-            clientComponent: entry.component,
-            clientLevel: entry.level,
-            ...entry.data,
-          });
+      // Client log mirroring is for local debugging only. In production it can
+      // explode JSONL volume and amplify noisy debug traffic into server I/O.
+      if (shouldMirrorClientLogs()) {
+        for (const entry of entries) {
+          const level = entry.level === 'warn' ? 'info' : entry.level;
+          if (level === 'error') {
+            logger.error(
+              `[client:${metadata.layer}] ${entry.message}`,
+              entry.error ? new Error(entry.error.message) : undefined,
+              {
+                clientComponent: entry.component,
+                ...entry.data,
+              }
+            );
+          } else if (level === 'info' || level === 'debug') {
+            logger.info(`[client:${metadata.layer}] ${entry.message}`, {
+              clientComponent: entry.component,
+              clientLevel: entry.level,
+              ...entry.data,
+            });
+          }
         }
       }
 

@@ -26,6 +26,9 @@ const DEFAULT_SENSITIVE_KEYS = new Set([
 ]);
 
 const MAX_STRING_LENGTH = 500;
+const MAX_LOG_MESSAGE_LENGTH = 8192;
+const MAX_ERROR_MESSAGE_LENGTH = 8192;
+const MAX_ERROR_STACK_LENGTH = 16384;
 const MAX_DEPTH = 5;
 const MAX_ARRAY_ELEMENTS = 20;
 const REDACTED = '[REDACTED]';
@@ -46,6 +49,7 @@ export class Sanitizer {
 
   process(entry: LogEntry): LogEntry {
     const result = { ...entry };
+    result.message = this.truncateToMaxLength(result.message, MAX_LOG_MESSAGE_LENGTH);
 
     if (result.data) {
       result.data = this.redactObject(result.data, 0);
@@ -54,7 +58,10 @@ export class Sanitizer {
     if (result.error) {
       result.error = {
         ...result.error,
-        message: this.redactString(result.error.message),
+        message: this.truncateToMaxLength(this.redactString(result.error.message), MAX_ERROR_MESSAGE_LENGTH),
+        stack: result.error.stack
+          ? this.truncateToMaxLength(result.error.stack, MAX_ERROR_STACK_LENGTH)
+          : undefined,
       };
     }
 
@@ -115,6 +122,10 @@ export class Sanitizer {
   private truncateString(str: string): string {
     if (str.length <= this.maxStringLength) return str;
     return str.slice(0, this.maxStringLength) + '...[truncated]';
+  }
+  private truncateToMaxLength(str: string, maxLength: number): string {
+    if (str.length <= maxLength) return str;
+    return str.slice(0, Math.max(0, maxLength - 14)) + '...[truncated]';
   }
   private redactString(str: string): string {
     // RFC §6.2: Redact key=value / key: value patterns in error messages where

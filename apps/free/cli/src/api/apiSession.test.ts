@@ -366,6 +366,50 @@ describe('ApiSessionClient v3 messages API migration', () => {
     expect((client as any).pendingOutboxRestoreWarnings).toHaveLength(0);
   });
 
+  it('publishes a visible warning when a persisted outbox sentinel is restored', async () => {
+    mockLoadPendingSessionOutbox.mockResolvedValueOnce([
+      {
+        type: 'persisted-outbox-sentinel',
+        reason: 'queue_omitted',
+        originalCount: 3,
+        omittedCount: 3,
+        largestMessageId: 'too-large-1',
+        largestContentLength: 3_000_000,
+        createdAt: 1,
+      },
+    ]);
+    const client = new ApiSessionClient('fake-token', session);
+    mockSocket.emitWithAck.mockResolvedValue({
+      ok: true,
+      messages: [{ id: 'warning-2', seq: 1, createdAt: 1, updatedAt: 1 }],
+    });
+
+    emitSocketEvent('connect');
+
+    await waitForCheck(() => {
+      expect(mockSocket.emitWithAck).toHaveBeenCalled();
+    });
+
+    const sendMessagesCall = mockSocket.emitWithAck.mock.calls.find(
+      (call: any[]) => call[0] === 'send-messages'
+    );
+    expect(sendMessagesCall).toBeTruthy();
+    const [warningMessage] = sendMessagesCall?.[1].messages ?? [];
+    const decrypted = await decryptFromWireString(
+      session.encryptionKey,
+      session.encryptionVariant,
+      warningMessage.content
+    );
+    expect(decrypted).toMatchObject({
+      role: 'event',
+      content: {
+        type: 'message',
+        message: expect.stringContaining('exceeded persisted outbox safety limits'),
+      },
+    });
+    expect((client as any).pendingOutboxRestoreWarnings).toHaveLength(0);
+  });
+
   it('holds queued messages during planned server restart and flushes after reconnect', async () => {
     const client = new ApiSessionClient('fake-token', session);
     mockSocket.emitWithAck.mockResolvedValueOnce({

@@ -35,6 +35,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const dataDir = process.env.DATA_DIR || './data';
 const pgliteDir = process.env.PGLITE_DIR || path.join(dataDir, 'pglite');
+const pgliteDatabase = process.env.PGLITE_DATABASE || 'template1';
 const lockFile = path.join(dataDir, '.server.lock');
 
 /**
@@ -108,6 +109,7 @@ function releaseLock(): void {
 
 async function migrate() {
   console.log(`Migrating database in ${pgliteDir}...`);
+  console.log(`Using PGlite database ${pgliteDatabase}...`);
   fs.mkdirSync(pgliteDir, { recursive: true });
 
   const pg = createPGlite(pgliteDir);
@@ -558,6 +560,7 @@ Usage:
 Environment variables:
   DATA_DIR             Base data directory (default: ./data)
   PGLITE_DIR           PGlite database directory (default: DATA_DIR/pglite)
+  PGLITE_DATABASE      PGlite database name (default: template1)
   DATABASE_URL         PostgreSQL URL (if set, uses external Postgres instead of PGlite)
   PORT                 Server port (default: 3000)
   FREE_MASTER_SECRET   Master secret for auth/encryption (auto-generated if not set)

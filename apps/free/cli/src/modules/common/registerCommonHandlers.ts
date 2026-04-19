@@ -1,7 +1,7 @@
 import { exec, ExecOptions } from 'child_process';
 import { createHash } from 'crypto';
 import { readFile, writeFile, readdir, stat, lstat, realpath, readlink, open, rm, unlink } from 'fs/promises';
-import { join } from 'path';
+import { join, resolve as resolvePath } from 'path';
 import { promisify } from 'util';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
@@ -197,6 +197,11 @@ export function registerCommonHandlers(
     debug: (msg: string, data?: Record<string, unknown>) =>
       logger.debug(msg, machineId ? { machineId, ...data } : data),
   };
+
+  const resolveRpcPath = (targetPath: string) =>
+    machineId
+      ? { valid: true, resolvedPath: resolvePath(workingDirectory, targetPath) }
+      : validatePath(targetPath, workingDirectory);
 
   // Shell command handler - executes commands in the default shell
   rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async data => {
@@ -530,8 +535,10 @@ export function registerCommonHandlers(
     async data => {
       log.debug('List directory request', { path: data.path });
 
-      // Validate path is within working directory
-      const validation = validatePath(data.path, workingDirectory);
+      // Machine-scoped directory browsing is used by the new-session path picker
+      // and must not be limited to the current process cwd. Session-scoped
+      // browsing still stays sandboxed to the session working directory.
+      const validation = resolveRpcPath(data.path);
       if (!validation.valid) {
         return { success: false, error: validation.error };
       }
@@ -652,8 +659,7 @@ export function registerCommonHandlers(
     async data => {
       log.debug('Get directory tree request', { path: data.path, maxDepth: data.maxDepth });
 
-      // Validate path is within working directory
-      const validation = validatePath(data.path, workingDirectory);
+      const validation = resolveRpcPath(data.path);
       if (!validation.valid) {
         return { success: false, error: validation.error };
       }

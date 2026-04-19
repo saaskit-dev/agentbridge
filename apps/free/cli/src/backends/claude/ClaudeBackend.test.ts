@@ -15,6 +15,8 @@ const {
   mockSetSessionModel,
   mockSetSessionMode,
   mockSetSessionConfigOption,
+  mockLoadSession,
+  mockSupportsLoadSession,
   mockCreateClaudeBackend,
 } = vi.hoisted(() => {
   const mockOnMessage = vi.fn();
@@ -28,11 +30,15 @@ const {
   const mockSetSessionModel = vi.fn().mockResolvedValue(undefined);
   const mockSetSessionMode = vi.fn().mockResolvedValue(undefined);
   const mockSetSessionConfigOption = vi.fn().mockResolvedValue(undefined);
+  const mockLoadSession = vi.fn().mockResolvedValue({ sessionId: 'resumed-acp-session-1' });
+  const mockSupportsLoadSession = vi.fn().mockReturnValue(true);
   const mockCreateClaudeBackend = vi.fn().mockImplementation(() => ({
     onMessage: mockOnMessage,
     onSessionStarted: mockOnSessionStarted,
     onSessionUpdate: mockOnSessionUpdate,
     startSession: mockStartSession,
+    loadSession: mockLoadSession,
+    supportsLoadSession: mockSupportsLoadSession,
     sendPrompt: mockSendPrompt,
     waitForResponseComplete: mockWaitForResponseComplete,
     cancel: mockCancel,
@@ -54,6 +60,8 @@ const {
     mockSetSessionModel,
     mockSetSessionMode,
     mockSetSessionConfigOption,
+    mockLoadSession,
+    mockSupportsLoadSession,
     mockCreateClaudeBackend,
   };
 });
@@ -143,6 +151,22 @@ describe('ClaudeBackend', () => {
 
     expect(capabilityEvents[0]?.models?.current).toBe('claude-sonnet');
     expect(capabilityEvents[1]?.commands?.[0]?.id).toBe('/compact');
+  });
+
+  it('warms resumed ACP sessions during start instead of waiting for first prompt', async () => {
+    const backend = new ClaudeBackend();
+
+    await backend.start({
+      cwd: '/tmp',
+      env: {},
+      mcpServerUrl: '',
+      freeMcpToolNames: [],
+      session: makeSession(),
+      resumeSessionId: 'resume-123',
+    });
+
+    expect(mockStartSession).toHaveBeenCalled();
+    expect(mockLoadSession).toHaveBeenCalledWith('resume-123', '/tmp', undefined);
   });
 
   // ─── Model selection ────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { PrismaPGlite } from 'pglite-prisma-adapter';
 
 let pgliteInstance: PGlite | null = null;
 let prismaClient: PrismaClient | null = null;
+const DEFAULT_PGLITE_DATABASE = process.env.PGLITE_DATABASE || 'template1';
 
 type WebAssemblyModuleCtor = new (bytes: Buffer) => WebAssembly.Module;
 
@@ -40,9 +41,13 @@ function createClient(): PrismaClient {
   if (pgliteDir) {
     const wasmOpts = findPGliteWasm();
     if (wasmOpts) {
-      pgliteInstance = new PGlite({ dataDir: pgliteDir, ...wasmOpts });
+      pgliteInstance = new PGlite({
+        dataDir: pgliteDir,
+        database: DEFAULT_PGLITE_DATABASE,
+        ...wasmOpts,
+      });
     } else {
-      pgliteInstance = new PGlite(pgliteDir);
+      pgliteInstance = new PGlite({ dataDir: pgliteDir, database: DEFAULT_PGLITE_DATABASE });
     }
     const adapter = new PrismaPGlite(pgliteInstance);
     prismaClient = new PrismaClient({ adapter } as any);

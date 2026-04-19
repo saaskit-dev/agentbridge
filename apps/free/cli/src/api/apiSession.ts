@@ -32,6 +32,8 @@ import {
   loadPendingSessionOutbox,
   persistPendingSessionOutbox,
   type PendingOutboxPlaceholder,
+  type PendingOutboxRestoreWarning,
+  type PendingOutboxSentinel,
 } from './sessionOutboxPersistence';
 
 const logger = new Logger('api/apiSession');
@@ -97,6 +99,26 @@ function decodeUserId(token: string): string | undefined {
   }
 }
 
+function summarizeOutboxBatch(batch: PendingOutboxMessage[]) {
+  let totalChars = 0;
+  const messageTypes: string[] = [];
+
+  for (const message of batch) {
+    totalChars += message.content.length;
+    try {
+      const parsed = JSON.parse(message.content) as { t?: string };
+      messageTypes.push(typeof parsed.t === 'string' ? parsed.t : 'unknown');
+    } catch {
+      messageTypes.push('unparsed');
+    }
+  }
+
+  return {
+    totalChars,
+    messageTypes,
+  };
+}
+
 export class ApiSessionClient extends EventEmitter {
   private readonly token: string;
   private readonly userId: string | undefined;
@@ -133,7 +155,7 @@ export class ApiSessionClient extends EventEmitter {
    *  'reconnect' — subsequent connect: decrypt and route messages normally */
   private nextReplayMode: 'recovery' | 'reconnect' = 'recovery';
   private pendingOutbox: PendingOutboxMessage[] = [];
-  private pendingOutboxRestoreWarnings: PendingOutboxPlaceholder[] = [];
+  private pendingOutboxRestoreWarnings: PendingOutboxRestoreWarning[] = [];
   private readonly sendSync: InvalidateSync;
   private readonly receiveSync: InvalidateSync;
   private readonly outboxPersistenceLock = new AsyncLock();
@@ -808,35 +830,71 @@ export class ApiSessionClient extends EventEmitter {
     // Drain in batches via WebSocket emitWithAck (RFC-010).
     while (this.pendingOutbox.length > 0) {
       const batch = this.pendingOutbox.slice(0, ApiSessionClient.FLUSH_BATCH_SIZE);
+      const flushId = randomUUID();
+      const flushStart = Date.now();
+      const batchSummary = summarizeOutboxBatch(batch);
       logger.debug('[apiSession] flushing outbox', {
         userId: this.userId,
         sessionId: this.sessionId,
+        flushId,
         count: batch.length,
         total: this.pendingOutbox.length,
         ids: batch.map(m => m.id),
         traceIds: batch.map(m => m._trace?.tid).filter(Boolean),
+        totalChars: batchSummary.totalChars,
+        messageTypes: batchSummary.messageTypes,
+        socketConnected: this.socket.connected,
+        socketId: this.socket.id ?? null,
+        transport: this.socket.io.engine.transport.name,
       });
 
       let ack: { ok: boolean; messages?: Array<{ id: string; seq: number }>; error?: string };
       try {
+        logger.debug('[apiSession] outbox emit start', {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          flushId,
+          count: batch.length,
+          ids: batch.map(m => m.id),
+        });
         ack = await this.socket.timeout(60000).emitWithAck('send-messages', {
           sessionId: this.sessionId,
           messages: batch,
+        });
+        logger.debug('[apiSession] outbox ack received', {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          flushId,
+          ok: ack.ok,
+          ackMessageCount: Array.isArray(ack.messages) ? ack.messages.length : 0,
+          ackIds: Array.isArray(ack.messages) ? ack.messages.map(message => message.id) : [],
+          elapsedMs: Date.now() - flushStart,
         });
       } catch (err: unknown) {
         const errorMessage = safeStringify(err);
         logger.error('[apiSession] outbox flush failed', undefined, {
           userId: this.userId,
           sessionId: this.sessionId,
+          flushId,
           traceId: getProcessTraceContext()?.traceId,
           count: batch.length,
           ids: batch.map(m => m.id),
+          elapsedMs: Date.now() - flushStart,
           error: errorMessage,
         });
         throw err;
       }
 
       if (!ack.ok) {
+        logger.error('[apiSession] outbox ack rejected', undefined, {
+          userId: this.userId,
+          sessionId: this.sessionId,
+          flushId,
+          count: batch.length,
+          ids: batch.map(m => m.id),
+          elapsedMs: Date.now() - flushStart,
+          error: ack.error ?? 'unknown',
+        });
         if (ack.error === 'Session not found') {
           this.sendSync.stop();
           return;
@@ -856,10 +914,13 @@ export class ApiSessionClient extends EventEmitter {
       logger.debug('[apiSession] outbox batch flushed', {
         userId: this.userId,
         sessionId: this.sessionId,
+        flushId,
         count: batch.length,
         remaining: this.pendingOutbox.length,
         ids: batch.map(m => m.id),
         traceIds: batch.map(m => m._trace?.tid).filter(Boolean),
+        totalChars: batchSummary.totalChars,
+        elapsedMs: Date.now() - flushStart,
       });
     }
   }
@@ -1306,12 +1367,20 @@ export class ApiSessionClient extends EventEmitter {
     this.socket.close();
   }
 
-  private buildRestoreWarningMessage(placeholders: PendingOutboxPlaceholder[]): string {
-    const total = placeholders.length;
+  private buildRestoreWarningMessage(warnings: PendingOutboxRestoreWarning[]): string {
+    const placeholders = warnings.filter(
+      warning => warning.type === 'persisted-outbox-placeholder'
+    ) as PendingOutboxPlaceholder[];
+    const sentinels = warnings.filter(
+      warning => warning.type === 'persisted-outbox-sentinel'
+    ) as PendingOutboxSentinel[];
     const oversizedCount = placeholders.filter(
       placeholder => placeholder.reason === 'message_too_large'
     ).length;
-    const serializationFailureCount = total - oversizedCount;
+    const serializationFailureCount = placeholders.filter(
+      placeholder => placeholder.reason === 'serialization_failed'
+    ).length;
+    const omittedQueueCount = sentinels.reduce((sum, sentinel) => sum + sentinel.omittedCount, 0);
 
     const parts: string[] = [];
     if (oversizedCount > 0) {
@@ -1324,6 +1393,11 @@ export class ApiSessionClient extends EventEmitter {
         `${serializationFailureCount} offline queued message${serializationFailureCount === 1 ? '' : 's'} could not be serialized`
       );
     }
+    if (omittedQueueCount > 0) {
+      parts.push(
+        `${omittedQueueCount} offline queued message${omittedQueueCount === 1 ? '' : 's'} exceeded persisted outbox safety limits`
+      );
+    }
 
     const summary = parts.join('; ');
     return `${summary}. Those messages were not restored after daemon recovery. Please resend them.`;
@@ -1334,8 +1408,8 @@ export class ApiSessionClient extends EventEmitter {
       return;
     }
 
-    const placeholders = this.pendingOutboxRestoreWarnings.slice();
-    const warningMessage = this.buildRestoreWarningMessage(placeholders);
+    const warnings = this.pendingOutboxRestoreWarnings.slice();
+    const warningMessage = this.buildRestoreWarningMessage(warnings);
     await this.sendSessionEvent({
       type: 'message',
       message: warningMessage,
@@ -1343,9 +1417,15 @@ export class ApiSessionClient extends EventEmitter {
     this.pendingOutboxRestoreWarnings = [];
     logger.warn('[apiSession] published outbox restore warning', {
       sessionId: this.sessionId,
-      placeholderCount: placeholders.length,
-      placeholderReasons: placeholders.map(placeholder => placeholder.reason),
-      originalMessageIds: placeholders.map(placeholder => placeholder.originalMessageId),
+      warningCount: warnings.length,
+      placeholderReasons: warnings.map(warning => warning.reason),
+      originalMessageIds: warnings.flatMap(warning =>
+        warning.type === 'persisted-outbox-placeholder'
+          ? [warning.originalMessageId]
+          : warning.largestMessageId
+            ? [warning.largestMessageId]
+            : []
+      ),
     });
   }
 
@@ -1356,23 +1436,32 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     const pendingMessages: PendingOutboxMessage[] = [];
-    const placeholders: PendingOutboxPlaceholder[] = [];
+    const warnings: PendingOutboxRestoreWarning[] = [];
     for (const entry of restored) {
-      if ('type' in entry && entry.type === 'persisted-outbox-placeholder') {
-        placeholders.push(entry);
+      if (
+        'type' in entry &&
+        (entry.type === 'persisted-outbox-placeholder' || entry.type === 'persisted-outbox-sentinel')
+      ) {
+        warnings.push(entry);
       } else {
         pendingMessages.push(entry as PendingOutboxMessage);
       }
     }
 
     this.pendingOutbox.push(...pendingMessages);
-    this.pendingOutboxRestoreWarnings.push(...placeholders);
+    this.pendingOutboxRestoreWarnings.push(...warnings);
     logger.info('[apiSession] restored persisted outbox', {
       sessionId: this.sessionId,
       restoredCount: pendingMessages.length,
-      placeholderCount: placeholders.length,
+      placeholderCount: warnings.length,
       ids: pendingMessages.map(message => message.id),
-      placeholderIds: placeholders.map(placeholder => placeholder.originalMessageId),
+      placeholderIds: warnings.flatMap(warning =>
+        warning.type === 'persisted-outbox-placeholder'
+          ? [warning.originalMessageId]
+          : warning.largestMessageId
+            ? [warning.largestMessageId]
+            : []
+      ),
     });
   }
 

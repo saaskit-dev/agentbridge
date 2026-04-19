@@ -68,6 +68,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
   private startCwd: string = '';
   private startMcpServerUrl: string = '';
   private onSessionIdResolved: ((id: string) => void) | null = null;
+  private sessionReadyTask: Promise<void> | null = null;
 
   /** Last native mode applied due to permission mode change (avoid redundant setSessionMode calls) */
   private lastAppliedPermissionNativeMode: string | null = null;
@@ -177,6 +178,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     this.startCwd = opts.cwd;
     this.startMcpServerUrl = opts.mcpServerUrl;
     this.onSessionIdResolved = opts.onSessionIdResolved ?? null;
+    this.sessionReadyTask = null;
 
     backend.onMessage((msg: AgentMessage) => {
       // Suppress messages while loadSession() is in progress. ACP backends replay
@@ -271,6 +273,18 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       permissionMode: this.requestedPermissionMode,
       permissionHandlerAttached: this.permissionHandler != null,
     });
+
+    // After daemon/server recovery, don't wait for the next user message to pay the
+    // ACP initialize + loadSession cost. Warm the session in the background now so
+    // the first post-restart prompt can reuse an already resumed ACP session.
+    if (this.resumeSessionId) {
+      void this.ensureAcpSessionReady().catch(err => {
+        this.logger.warn(`[${this.agentType}] eager ACP session warmup failed`, {
+          resumeSessionId: this.resumeSessionId,
+          error: safeStringify(err),
+        });
+      });
+    }
   }
 
   async sendMessage(
@@ -324,19 +338,7 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       turnTraceId: this.currentTurnTraceId,
     });
 
-    if (!this.acpSessionId) {
-      const { sessionId, resumed } = await this.resolveAcpSession();
-      this.acpSessionId = sessionId;
-      setAcpSessionId(sessionId);
-      this.logger.info(`[${this.agentType}] session ${resumed ? 'resumed' : 'created'}`, {
-        resumed,
-        requestedInitialModel: this.initialModel,
-        requestedInitialMode: this.initialMode,
-      });
-      await this.applyInitialModeIfNeeded(sessionId);
-      await this.applyInitialModelIfNeeded(sessionId);
-      await this.applyInitialConfigSelectionsIfNeeded(sessionId);
-    }
+    await this.ensureAcpSessionReady();
 
     this.logger.debug(`[${this.agentType}] sending prompt`, {
       preview: text.slice(0, 100),
@@ -347,11 +349,15 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
       // Inject W3C traceparent into ACP _meta for cross-tool trace interop.
       // Format: 00-{traceId32hex}-{parentId16hex}-{flags}
       // parent-id must be a freshly generated random 8-byte (16 hex char) value per W3C spec.
+      const acpSessionId = this.acpSessionId;
+      if (!acpSessionId) {
+        throw new Error('ACP session was not initialized before sendPrompt');
+      }
       const traceIdHex = this.currentTurnTraceId.replace(/-/g, '');
       const parentIdHex = randomUUID().replace(/-/g, '').substring(0, 16);
       const traceparent = `00-${traceIdHex}-${parentIdHex}-01`;
 
-      await this.acpBackend.sendPrompt(this.acpSessionId, prompt, {
+      await this.acpBackend.sendPrompt(acpSessionId, prompt, {
         _meta: { traceparent },
       });
       await this.acpBackend.waitForResponseComplete?.();
@@ -436,6 +442,37 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
     // Fall through: use the fresh session from startSession()
     this.onSessionIdResolved?.(freshSessionId);
     return { sessionId: freshSessionId, resumed: false };
+  }
+
+  private async ensureAcpSessionReady(): Promise<void> {
+    if (this.acpSessionId) {
+      return;
+    }
+    if (this.sessionReadyTask) {
+      return this.sessionReadyTask;
+    }
+
+    this.sessionReadyTask = (async () => {
+      const { sessionId, resumed } = await this.resolveAcpSession();
+      this.acpSessionId = sessionId;
+      setAcpSessionId(sessionId);
+      this.logger.info(`[${this.agentType}] session ${resumed ? 'resumed' : 'created'}`, {
+        resumed,
+        requestedInitialModel: this.initialModel,
+        requestedInitialMode: this.initialMode,
+      });
+      await this.applyInitialModeIfNeeded(sessionId);
+      await this.applyInitialModelIfNeeded(sessionId);
+      await this.applyInitialConfigSelectionsIfNeeded(sessionId);
+    })();
+
+    try {
+      await this.sessionReadyTask;
+    } finally {
+      if (!this.acpSessionId) {
+        this.sessionReadyTask = null;
+      }
+    }
   }
 
   /** Convert the MCP server URL into the array format expected by loadSession. */

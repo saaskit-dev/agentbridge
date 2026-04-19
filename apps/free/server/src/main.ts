@@ -93,7 +93,11 @@ if (nrLicenseKey) {
 initTelemetry({
   layer: 'server',
   sinks,
-  minLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'debug',
+  minLevel:
+    (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') ||
+    (process.env.APP_ENV === 'development' || process.env.NODE_ENV === 'development'
+      ? 'debug'
+      : 'info'),
   sanitize: process.env.APP_ENV !== 'development',
   // RFC §17.10: throttle high-frequency streaming events (text_delta fires 10-50x/sec)
   // text_complete and thinking_delta are infrequent so they remain at the global level.
