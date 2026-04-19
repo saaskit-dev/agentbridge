@@ -19,6 +19,7 @@ import { clampSidebarWidth } from '@/utils/sidebarSizing';
 import { useSocketConnectionStatus } from '@/utils/socketConnectionStatus';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { MainView } from './MainView';
+import { recordReactCommit } from '@/dev/performanceMonitor';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
   container: {
@@ -245,6 +246,12 @@ export const SidebarView = React.memo(() => {
   );
 
   return (
+    <React.Profiler
+      id="SidebarView"
+      onRender={(_, phase, actualDuration) => {
+        recordReactCommit('SidebarView', actualDuration, phase);
+      }}
+    >
     <>
       <View style={[styles.container, { paddingTop: safeArea.top }]}>
         <View style={[styles.header, { height: headerHeight }]}>
@@ -294,5 +301,6 @@ export const SidebarView = React.memo(() => {
         }}
       />
     </>
+    </React.Profiler>
   );
 });

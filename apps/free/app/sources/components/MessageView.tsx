@@ -8,6 +8,7 @@ import { MarkdownView } from './markdown/MarkdownView';
 import { Option } from './markdown/MarkdownView';
 import { buildMarkdownViewProps } from './markdown/markdownViewProps';
 import { StreamingAgentText } from './StreamingText';
+import { recordReactCommit } from '@/dev/performanceMonitor';
 import { ToolView } from './tools/ToolView';
 import { Typography } from '@/constants/Typography';
 import { useLocalSetting, useSetting, useSessionThinking } from '@/sync/storage';
@@ -37,6 +38,12 @@ export const MessageView = React.memo(function MessageView(props: {
         ? 'flex-start'
         : null;
   return (
+    <React.Profiler
+      id={`MessageView:${props.message.kind}`}
+      onRender={(_, phase, actualDuration) => {
+        recordReactCommit(`MessageView:${props.message.kind}`, actualDuration, phase);
+      }}
+    >
     <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
       <View style={styles.messageContent}>
         <RenderBlock
@@ -54,6 +61,7 @@ export const MessageView = React.memo(function MessageView(props: {
         ) : null}
       </View>
     </View>
+    </React.Profiler>
   );
 });
 

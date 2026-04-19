@@ -12,6 +12,7 @@ import { Text, View, StyleSheet } from 'react-native';
 import { MarkdownView } from './markdown/MarkdownView';
 import type { Option } from './markdown/MarkdownView';
 import { buildMarkdownViewProps } from './markdown/markdownViewProps';
+import { recordReactCommit } from '@/dev/performanceMonitor';
 import { useStreamingText } from '@/hooks/useStreamingText';
 
 /**
@@ -134,6 +135,12 @@ export function StreamingText({
   }
 
   return (
+    <React.Profiler
+      id="StreamingText"
+      onRender={(_, phase, actualDuration) => {
+        recordReactCommit('StreamingText', actualDuration, phase);
+      }}
+    >
     <View style={[styles.container, containerStyle]}>
       {useMarkdown ? (
         <MarkdownView {...buildMarkdownViewProps(displayText, sessionId, onOptionPress)} />
@@ -144,6 +151,7 @@ export function StreamingText({
         <BlinkingCursor char={cursorChar} interval={cursorBlinkInterval} style={styles.cursor} />
       )}
     </View>
+    </React.Profiler>
   );
 }
 

@@ -1,26 +1,30 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
-import { View, ActivityIndicator, Text, Pressable } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { FABWide } from './FABWide';
 import { hapticsLight } from './haptics';
 import { Header } from './navigation/Header';
 import { HeaderLogo } from './HeaderLogo';
-import { SessionsList } from './SessionsList';
 import { SessionsListWrapper } from './SessionsListWrapper';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
 import { StatusDot } from './StatusDot';
 import { TabBar, TabType } from './TabBar';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+import { recordReactCommit } from '@/dev/performanceMonitor';
 import { Typography } from '@/constants/Typography';
-import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { useMachineStatus } from '@/hooks/useMachineStatus';
-import { useLocalSetting, useSocketStatus, useRealtimeStatus, useRealtimeMode } from '@/sync/storage';
+import {
+  useLocalSetting,
+  useLocalSettingMutable,
+  useSocketStatus,
+  useRealtimeStatus,
+  useRealtimeMode,
+} from '@/sync/storage';
 import { t } from '@/text';
 import { useIsTablet } from '@/utils/responsive';
 import { useSocketConnectionStatus } from '@/utils/socketConnectionStatus';
@@ -249,14 +253,13 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
 
 export const MainView = React.memo(({ variant }: MainViewProps) => {
   const { theme } = useUnistyles();
-  const sessionListViewData = useVisibleSessionListViewData();
   const isTablet = useIsTablet();
   const router = useRouter();
   const realtimeStatus = useRealtimeStatus();
 
   // Tab state management
   // NOTE: Zen tab removed - the feature never got to a useful state
-  const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
+  const [activeTab, setActiveTab] = useLocalSettingMutable('homeActiveTab');
 
   const handleNewSession = React.useCallback(() => {
     router.push('/new');
@@ -279,33 +282,17 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
 
   // Sidebar variant
   if (variant === 'sidebar') {
-    // Loading state
-    if (sessionListViewData === null) {
-      return (
-        <View style={styles.sidebarContentContainer}>
-          <View style={styles.tabletLoadingContainer}>
-            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-          </View>
-        </View>
-      );
-    }
-
-    // Empty state
-    if (sessionListViewData.length === 0) {
-      return (
-        <View style={styles.sidebarContentContainer}>
-          <View style={styles.emptyStateContainer}>
-            <EmptySessionsTablet />
-          </View>
-        </View>
-      );
-    }
-
-    // Sessions list
     return (
-      <View style={styles.sidebarContentContainer}>
-        <SessionsList />
-      </View>
+      <React.Profiler
+        id="MainView:sidebar"
+        onRender={(_, phase, actualDuration) => {
+          recordReactCommit('MainView:sidebar', actualDuration, phase);
+        }}
+      >
+        <View style={styles.sidebarContentContainer}>
+          <SessionsListWrapper />
+        </View>
+      </React.Profiler>
     );
   }
 

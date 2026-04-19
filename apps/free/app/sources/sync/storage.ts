@@ -1,6 +1,7 @@
 import React from 'react';
 import { create } from 'zustand';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
+import { measurePerformance } from '@/dev/performanceMonitor';
 import { sessionLogger } from './appTraceStore';
 import { useShallow } from 'zustand/react/shallow';
 import { DecryptedArtifact } from './artifactTypes';
@@ -927,7 +928,9 @@ export const storage = create<StorageState>()((set, get) => {
         const normalizedMessages = messages;
 
         // Run reducer with agentState
-        const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
+        const reducerResult = measurePerformance('sync:storage.applyMessages.reducer', () =>
+          reducer(existingSession.reducerState, normalizedMessages, agentState)
+        );
         const processedMessages = reducerResult.messages;
         for (const message of processedMessages) {
           changed.add(message.id);
@@ -945,11 +948,13 @@ export const storage = create<StorageState>()((set, get) => {
           messagesMap: mergedMessagesMap,
           messageIndexMap: mergedMessageIndexMap,
         } = hasProcessedMessages
-          ? mergeSortedMessages(
-              existingSession.messages,
-              existingSession.messagesMap,
-              existingSession.messageIndexMap,
-              processedMessages
+          ? measurePerformance('sync:storage.applyMessages.mergeSortedMessages', () =>
+              mergeSortedMessages(
+                existingSession.messages,
+                existingSession.messagesMap,
+                existingSession.messageIndexMap,
+                processedMessages
+              )
             )
           : {
               messages: existingSession.messages,
@@ -1991,6 +1996,23 @@ export function useSessionMessageStats(sessionId: string): { count: number; isLo
       return {
         count: session?.messages.length ?? 0,
         isLoaded: session?.isLoaded ?? false,
+      };
+    })
+  );
+}
+
+export function useSessionMessageListState(sessionId: string): {
+  isLoaded: boolean;
+  hasOlderMessages: boolean;
+  isLoadingOlder: boolean;
+} {
+  return storage(
+    useShallow(state => {
+      const session = state.sessionMessages[sessionId];
+      return {
+        isLoaded: session?.isLoaded ?? false,
+        hasOlderMessages: session?.hasOlderMessages ?? false,
+        isLoadingOlder: session?.isLoadingOlder ?? false,
       };
     })
   );

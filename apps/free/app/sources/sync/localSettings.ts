@@ -24,6 +24,9 @@ export const LocalSettingsSchema = z.object({
   debugIdsInitializedForDevMode: z
     .boolean()
     .describe('Tracks whether Show Debug IDs has been auto-initialized for developer mode'),
+  performanceProfilingEnabled: z
+    .boolean()
+    .describe('Enable desktop performance HUD and internal profiling instrumentation'),
   // Note: analyticsEnabled moved to sync'd Settings for cross-device sync with CLI
   commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
   sidebarWidth: z
@@ -69,6 +72,13 @@ export const LocalSettingsSchema = z.object({
   focusAudioMixWithOthers: z
     .boolean()
     .describe('Whether focus audio should mix with other app audio'),
+  homeActiveTab: z
+    .enum(['sessions', 'settings'])
+    .describe('Persisted active tab for the phone home screen'),
+  sessionsListSelectedMachineId: z
+    .string()
+    .nullable()
+    .describe('Persisted machine filter for the sessions list'),
 });
 
 //
@@ -88,6 +98,7 @@ export const localSettingsDefaults: LocalSettings = {
   devModeEnabled: __DEV__,
   showDebugIds: false,
   debugIdsInitializedForDevMode: false,
+  performanceProfilingEnabled: false,
   commandPaletteEnabled: false,
   sidebarWidth: null,
   sidebarCollapsed: false,
@@ -101,6 +112,8 @@ export const localSettingsDefaults: LocalSettings = {
   focusAudioVolume: 0.35,
   focusAudioLastAudibleVolume: 0.35,
   focusAudioMixWithOthers: true,
+  homeActiveTab: 'sessions',
+  sessionsListSelectedMachineId: null,
 };
 Object.freeze(localSettingsDefaults);
 

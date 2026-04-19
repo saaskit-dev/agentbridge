@@ -23,13 +23,15 @@ import { useFreeAction } from '@/hooks/useFreeAction';
 import { FreeError } from '@/utils/errors';
 import { Modal } from '@/modal';
 import { sessionDelete } from '@/sync/ops';
-import { useAllMachines, useSetting } from '@/sync/storage';
+import { useAllMachines, useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { requestReview } from '@/utils/requestReview';
 import { useIsTablet } from '@/utils/responsive';
 import { buildSessionsListItems, SessionsListRenderItem } from './sessionsListItems';
 import { useSessionStatus } from '@/utils/sessionUtils';
 import { MachineFilterOption, SessionMachineScopeBar } from './SessionMachineScopeBar';
+import { SessionListViewItem } from '@/sync/storage';
+import { recordReactCommit } from '@/dev/performanceMonitor';
 
 const stylesheet = StyleSheet.create(theme => ({
   container: {
@@ -213,11 +215,58 @@ export function SessionsList() {
   const isTablet = useIsTablet();
   const navigateToSession = useNavigateToSession();
   const compactSessionView = useSetting('compactSessionView');
+  const [selectedMachineId, setSelectedMachineId] = useLocalSettingMutable(
+    'sessionsListSelectedMachineId'
+  );
   const machines = useAllMachines();
-  const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(null);
   const unfilteredData = useVisibleSessionListViewData();
-  const data = useVisibleSessionListViewData(selectedMachineId);
   const selectable = isTablet;
+  const data = React.useMemo<SessionListViewItem[] | null>(() => {
+    if (!unfilteredData) {
+      return unfilteredData;
+    }
+    if (!selectedMachineId) {
+      return unfilteredData;
+    }
+
+    const machineFiltered: SessionListViewItem[] = [];
+    let pendingProjectGroup: SessionListViewItem | null = null;
+
+    for (const item of unfilteredData) {
+      if (item.type === 'project-group') {
+        pendingProjectGroup = item;
+        continue;
+      }
+
+      if (item.type === 'session') {
+        if (item.session.metadata?.machineId === selectedMachineId) {
+          if (pendingProjectGroup) {
+            machineFiltered.push(pendingProjectGroup);
+            pendingProjectGroup = null;
+          }
+          machineFiltered.push(item);
+        }
+        continue;
+      }
+
+      pendingProjectGroup = null;
+
+      if (item.type === 'active-sessions') {
+        const sessions = item.sessions.filter(
+          session => session.metadata?.machineId === selectedMachineId
+        );
+        if (sessions.length > 0) {
+          machineFiltered.push({ ...item, sessions });
+        }
+        continue;
+      }
+
+      machineFiltered.push(item);
+    }
+
+    return machineFiltered;
+  }, [selectedMachineId, unfilteredData]);
+
   const selectedSessionId = React.useMemo(() => {
     if (!selectable || !pathname.startsWith('/session/')) {
       return undefined;
@@ -251,9 +300,10 @@ export function SessionsList() {
       }
     }
 
+    const machineMap = new Map(machines.map(machine => [machine.id, machine]));
     const machineOptions = Array.from(counts.entries())
       .map(([machineId, count]) => {
-        const machine = machines.find(item => item.id === machineId);
+        const machine = machineMap.get(machineId);
         const label = machine?.metadata?.displayName || machine?.metadata?.host || machineId;
         return {
           id: machineId,
@@ -292,8 +342,8 @@ export function SessionsList() {
     }
   }, [filterOptions, selectedMachineId]);
   const listItems = React.useMemo(
-    () => (data ? buildSessionsListItems(data, selectedSessionId) : null),
-    [data, selectedSessionId]
+    () => (data ? buildSessionsListItems(data) : null),
+    [data]
   );
   const showMachineFilters = filterOptions.length > 2;
 
@@ -330,7 +380,7 @@ export function SessionsList() {
           const ActiveComponent = compactSessionView
             ? ActiveSessionsGroupCompact
             : ActiveSessionsGroup;
-          return <ActiveComponent sessions={item.sessions} selectedSessionId={item.selectedSessionId} />;
+          return <ActiveComponent sessions={item.sessions} selectedSessionId={selectedSessionId} />;
 
         case 'project-group':
           return (
@@ -351,7 +401,7 @@ export function SessionsList() {
               sessionName={item.sessionName}
               sessionSubtitle={item.sessionSubtitle}
               avatarId={item.avatarId}
-              selected={item.selected}
+              selected={item.session.id === selectedSessionId}
               isFirst={item.cardPosition === 'first'}
               isLast={item.cardPosition === 'last'}
               isSingle={item.cardPosition === 'single'}
@@ -362,7 +412,7 @@ export function SessionsList() {
           );
       }
     },
-    [compactSessionView, isTablet, navigateToSession]
+    [compactSessionView, isTablet, navigateToSession, selectedSessionId]
   );
 
   // Remove this section as we'll use FlatList for all items now
@@ -385,11 +435,18 @@ export function SessionsList() {
   // Footer removed - all sessions now shown inline
 
   return (
+    <React.Profiler
+      id="SessionsList"
+      onRender={(_, phase, actualDuration) => {
+        recordReactCommit('SessionsList', actualDuration, phase);
+      }}
+    >
     <View style={styles.container}>
       <View style={styles.contentContainer}>
         <FlatList
           data={listItems}
           renderItem={renderItem}
+          extraData={selectedSessionId}
           keyExtractor={keyExtractor}
           contentContainerStyle={{
             paddingBottom: safeArea.bottom + 128,
@@ -409,6 +466,7 @@ export function SessionsList() {
         />
       </View>
     </View>
+    </React.Profiler>
   );
 }
 

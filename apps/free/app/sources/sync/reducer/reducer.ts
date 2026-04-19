@@ -116,6 +116,7 @@ import { MessageMeta } from '../typesMessageMeta';
 import { AgentEvent, NormalizedMessage, UsageData } from '../typesRaw';
 import { parseMessageAsEvent } from './messageToEvent';
 import { createTracer, traceMessages, TracerState } from './reducerTracer';
+import { measurePerformance } from '@/dev/performanceMonitor';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
 const logger = new Logger('app/sync/reducer');
@@ -283,6 +284,16 @@ export function reducer(
   messages: NormalizedMessage[],
   agentState?: AgentState | null
 ): ReducerResult {
+  return measurePerformance('sync:reducer.total', () =>
+    reducerInternal(state, messages, agentState)
+  );
+}
+
+function reducerInternal(
+  state: ReducerState,
+  messages: NormalizedMessage[],
+  agentState?: AgentState | null
+): ReducerResult {
   if (ENABLE_LOGGING) {
     logger.debug(
       `[REDUCER] Called with ${messages.length} messages, agentState: ${agentState ? 'YES' : 'NO'}`
@@ -327,7 +338,9 @@ export function reducer(
   };
 
   // First, trace all messages to identify sidechains
-  const tracedMessages = traceMessages(state.tracerState, messages);
+  const tracedMessages = measurePerformance('sync:reducer.traceMessages', () =>
+    traceMessages(state.tracerState, messages)
+  );
 
   // Separate sidechain and non-sidechain messages
   let nonSidechainMessages = tracedMessages.filter(msg => !msg.sidechainId);

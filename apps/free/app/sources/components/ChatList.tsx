@@ -15,15 +15,22 @@ import {
 } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { ChatFooter } from './ChatFooter';
-import { buildChatListData, type ChatListItem, type ChatUserNavItem } from './chatListItems';
+import {
+  buildChatListDataFromMessageIds,
+  type ChatListItem,
+  type ChatUserNavItem,
+} from './chatListItems';
 import { layout } from './layout';
 import { MessageView } from './MessageView';
+import { measurePerformance, recordReactCommit } from '@/dev/performanceMonitor';
 import {
   useSessionControlledByUser,
   useSessionLocalHydratedAt,
-  useSessionMessages,
+  useSessionMessageIds,
+  useSessionMessageListState,
   useMessage,
   useSessionThinking,
+  storage,
 } from '@/sync/storage';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { Message } from '@/sync/typesMessage';
@@ -66,13 +73,13 @@ const HYDRATE_BOOST_DESKTOP_UPDATE_CELLS_BATCHING_PERIOD = 8;
 const HYDRATE_BOOST_DEFAULT_UPDATE_CELLS_BATCHING_PERIOD = 16;
 const MAX_VISIBLE_MESSAGES_CACHE_ENTRIES = 4;
 
-type VisibleMessagesCacheEntry = {
-  source: Message[];
-  visible: Message[];
+type VisibleMessageIdsCacheEntry = {
+  source: string[];
+  visible: string[];
   latestUserMessageCreatedAt: number | null;
 };
 
-const visibleMessagesCache: VisibleMessagesCacheEntry[] = [];
+const visibleMessageIdsCache: VisibleMessageIdsCacheEntry[] = [];
 
 function shouldHideHistoricalDaemonError(
   message: Message,
@@ -87,14 +94,26 @@ function shouldHideHistoricalDaemonError(
   );
 }
 
-function buildVisibleMessages(messages: Message[]): Message[] {
-  const incremental = buildVisibleMessagesIncremental(messages);
+function buildVisibleMessageIds(
+  messageIds: string[],
+  getMessageById: (messageId: string) => Message | undefined
+): string[] {
+  const exactSourceHit = visibleMessageIdsCache.find(entry => entry.source === messageIds);
+  if (exactSourceHit) {
+    return exactSourceHit.visible;
+  }
+
+  const incremental = buildVisibleMessageIdsIncremental(messageIds, getMessageById);
   if (incremental) {
     return incremental;
   }
 
   let latestUserMessageCreatedAt: number | null = null;
-  for (const message of messages) {
+  for (const messageId of messageIds) {
+    const message = getMessageById(messageId);
+    if (!message) {
+      continue;
+    }
     if (message.kind === 'user-text') {
       latestUserMessageCreatedAt = message.createdAt;
       break;
@@ -102,93 +121,102 @@ function buildVisibleMessages(messages: Message[]): Message[] {
   }
 
   if (latestUserMessageCreatedAt === null) {
-    storeVisibleMessagesCache({
-      source: messages,
-      visible: messages,
+    storeVisibleMessageIdsCache({
+      source: messageIds,
+      visible: messageIds,
       latestUserMessageCreatedAt: null,
     });
-    return messages;
+    return messageIds;
   }
 
-  let filteredMessages: Message[] | null = null;
-  for (let index = 0; index < messages.length; index += 1) {
-    const message = messages[index];
+  let filteredMessageIds: string[] | null = null;
+  for (let index = 0; index < messageIds.length; index += 1) {
+    const messageId = messageIds[index];
+    const message = getMessageById(messageId);
     if (!message) {
       continue;
     }
 
     if (!shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt)) {
-      if (filteredMessages) {
-        filteredMessages.push(message);
+      if (filteredMessageIds) {
+        filteredMessageIds.push(messageId);
       }
       continue;
     }
 
-    if (!filteredMessages) {
-      filteredMessages = messages.slice(0, index);
+    if (!filteredMessageIds) {
+      filteredMessageIds = messageIds.slice(0, index);
     }
   }
 
-  const visible = filteredMessages ?? messages;
-  storeVisibleMessagesCache({
-    source: messages,
+  const visible = filteredMessageIds ?? messageIds;
+  storeVisibleMessageIdsCache({
+    source: messageIds,
     visible,
     latestUserMessageCreatedAt,
   });
   return visible;
 }
 
-function buildVisibleMessagesIncremental(messages: Message[]): Message[] | null {
-  const previous = findVisibleMessagesBase(messages);
+function buildVisibleMessageIdsIncremental(
+  messageIds: string[],
+  getMessageById: (messageId: string) => Message | undefined
+): string[] | null {
+  const previous = findVisibleMessageIdsBase(messageIds);
   if (!previous) {
     return null;
   }
 
-  const prependedCount = messages.length - previous.source.length;
+  const prependedCount = messageIds.length - previous.source.length;
   if (prependedCount <= 0) {
     return null;
   }
 
-  const prependedMessages = messages.slice(0, prependedCount);
-  if (prependedMessages.some(message => message.kind === 'user-text')) {
-    return null;
+  const prependedMessageIds = messageIds.slice(0, prependedCount);
+  for (const messageId of prependedMessageIds) {
+    const message = getMessageById(messageId);
+    if (message?.kind === 'user-text') {
+      return null;
+    }
   }
 
   const latestUserMessageCreatedAt = previous.latestUserMessageCreatedAt;
   if (latestUserMessageCreatedAt === null) {
-    storeVisibleMessagesCache({
-      source: messages,
-      visible: messages,
+    storeVisibleMessageIdsCache({
+      source: messageIds,
+      visible: messageIds,
       latestUserMessageCreatedAt: null,
     });
-    return messages;
+    return messageIds;
   }
 
-  const nextVisiblePrefix = prependedMessages.filter(
-    message => !shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt)
-  );
-  const visible = nextVisiblePrefix.length > 0
-    ? [...nextVisiblePrefix, ...previous.visible]
+  const nextVisiblePrefix = prependedMessageIds.filter(messageId => {
+    const message = getMessageById(messageId);
+    return message ? !shouldHideHistoricalDaemonError(message, latestUserMessageCreatedAt) : false;
+  });
+  const visible =
+    nextVisiblePrefix.length > 0
+      ? [...nextVisiblePrefix, ...previous.visible]
     : previous.visible;
 
-  storeVisibleMessagesCache({
-    source: messages,
+  storeVisibleMessageIdsCache({
+    source: messageIds,
     visible,
     latestUserMessageCreatedAt,
   });
   return visible;
 }
 
-function findVisibleMessagesBase(messages: Message[]): VisibleMessagesCacheEntry | null {
-  for (const entry of visibleMessagesCache) {
-    const prependedCount = messages.length - entry.source.length;
+function findVisibleMessageIdsBase(messageIds: string[]): VisibleMessageIdsCacheEntry | null {
+  for (const entry of visibleMessageIdsCache) {
+    const prependedCount = messageIds.length - entry.source.length;
     if (prependedCount <= 0) {
       continue;
     }
 
     let matches = true;
     for (let index = 0; index < entry.source.length; index += 1) {
-      if (messages[index + prependedCount] !== entry.source[index]) {
+      if (messageIds[index + prependedCount] !== entry.source[index]) {
         matches = false;
         break;
       }
@@ -202,14 +230,14 @@ function findVisibleMessagesBase(messages: Message[]): VisibleMessagesCacheEntry
   return null;
 }
 
-function storeVisibleMessagesCache(entry: VisibleMessagesCacheEntry) {
-  const existingIndex = visibleMessagesCache.findIndex(candidate => candidate.source === entry.source);
+function storeVisibleMessageIdsCache(entry: VisibleMessageIdsCacheEntry) {
+  const existingIndex = visibleMessageIdsCache.findIndex(candidate => candidate.source === entry.source);
   if (existingIndex >= 0) {
-    visibleMessagesCache.splice(existingIndex, 1);
+    visibleMessageIdsCache.splice(existingIndex, 1);
   }
-  visibleMessagesCache.unshift(entry);
-  if (visibleMessagesCache.length > MAX_VISIBLE_MESSAGES_CACHE_ENTRIES) {
-    visibleMessagesCache.length = MAX_VISIBLE_MESSAGES_CACHE_ENTRIES;
+  visibleMessageIdsCache.unshift(entry);
+  if (visibleMessageIdsCache.length > MAX_VISIBLE_MESSAGES_CACHE_ENTRIES) {
+    visibleMessageIdsCache.length = MAX_VISIBLE_MESSAGES_CACHE_ENTRIES;
   }
 }
 
@@ -1266,10 +1294,20 @@ const ChatListInternal = React.memo(
     footerNotice?: string | null;
     jumpToRecentUserSignal: number;
   }) => {
-    const { messages, hasOlderMessages, isLoadingOlder } = useSessionMessages(props.sessionId);
+    const messageIds = useSessionMessageIds(props.sessionId);
+    const { hasOlderMessages, isLoadingOlder } = useSessionMessageListState(props.sessionId);
     const lastLocalHydratedAt = useSessionLocalHydratedAt(props.sessionId);
     const isSessionThinking = useSessionThinking(props.sessionId);
-    const visibleMessages = useMemo(() => buildVisibleMessages(messages), [messages]);
+    const getMessageById = useCallback((messageId: string) => {
+      return storage.getState().sessionMessages[props.sessionId]?.messagesMap[messageId];
+    }, [props.sessionId]);
+    const visibleMessageIds = useMemo(
+      () =>
+        measurePerformance('chat:buildVisibleMessageIds', () =>
+          buildVisibleMessageIds(messageIds, getMessageById)
+        ),
+      [getMessageById, messageIds]
+    );
     const [isHydrationBoostActive, setIsHydrationBoostActive] = useState(false);
 
     useEffect(() => {
@@ -1460,19 +1498,22 @@ const ChatListInternal = React.memo(
     }, [props.sessionId, isLoadingOlder, triggerLoad]);
 
     // ----- auto-scroll / unread tracking -----
-    const prevMessageIdsRef = useRef(new Set(visibleMessages.map(message => message.id)));
+    const prevMessageIdsRef = useRef(new Set(visibleMessageIds));
     useEffect(() => {
       const prevIds = prevMessageIdsRef.current;
-      const relevantNewMessages: Message[] = [];
-      for (const message of visibleMessages) {
-        if (prevIds.has(message.id)) {
+      const relevantNewMessageIds: string[] = [];
+      for (const messageId of visibleMessageIds) {
+        if (prevIds.has(messageId)) {
           break;
         }
-        relevantNewMessages.push(message);
+        relevantNewMessageIds.push(messageId);
       }
 
-      if (relevantNewMessages.length > 0) {
-        const hasNewUserMessage = relevantNewMessages.some(message => message.kind === 'user-text');
+      if (relevantNewMessageIds.length > 0) {
+        const hasNewUserMessage = relevantNewMessageIds.some(messageId => {
+          const message = getMessageById(messageId);
+          return message?.kind === 'user-text';
+        });
         if (hasNewUserMessage) {
           shouldFollowBottomRef.current = true;
           recentUserJumpIndexRef.current = -1;
@@ -1482,12 +1523,12 @@ const ChatListInternal = React.memo(
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           });
         } else {
-          updateUnreadCount(prev => prev + relevantNewMessages.length);
+          updateUnreadCount(prev => prev + relevantNewMessageIds.length);
         }
       }
 
-      prevMessageIdsRef.current = new Set(visibleMessages.map(message => message.id));
-    }, [updateUnreadCount, visibleMessages]);
+      prevMessageIdsRef.current = new Set(visibleMessageIds);
+    }, [getMessageById, updateUnreadCount, visibleMessageIds]);
 
     useEffect(() => {
       if (!hasMountedRef.current) {
@@ -1495,7 +1536,7 @@ const ChatListInternal = React.memo(
         return;
       }
       lockRefreshInteraction();
-    }, [lockRefreshInteraction, visibleMessages]);
+    }, [lockRefreshInteraction, visibleMessageIds]);
 
     useEffect(() => {
       if (!isSessionThinking) return;
@@ -1608,16 +1649,19 @@ const ChatListInternal = React.memo(
     );
 
     // ----- build list items with separators -----
-    const { listItems, messagesById, userNavItems } = useMemo(
-      () => buildChatListData(visibleMessages, formatDateLabel, formatTime),
-      [visibleMessages]
+    const { listItems, userNavItems } = useMemo(
+      () =>
+        measurePerformance('chat:buildChatListData', () =>
+          buildChatListDataFromMessageIds(
+            visibleMessageIds,
+            getMessageById,
+            formatDateLabel,
+            formatTime
+          )
+        ),
+      [getMessageById, visibleMessageIds]
     );
     listItemsRef.current = listItems;
-    const messagesByIdRef = useRef(messagesById);
-    messagesByIdRef.current = messagesById;
-    const getMessageById = useCallback((messageId: string) => {
-      return messagesByIdRef.current.get(messageId);
-    }, []);
     // ----- user message nav items (chronological: oldest first) -----
     useEffect(() => {
       if (!props.jumpToRecentUserSignal) return;
@@ -1739,6 +1783,12 @@ const ChatListInternal = React.memo(
         : DEFAULT_UPDATE_CELLS_BATCHING_PERIOD;
 
     return (
+      <React.Profiler
+        id="ChatListInternal"
+        onRender={(_, phase, actualDuration) => {
+          recordReactCommit('ChatListInternal', actualDuration, phase);
+        }}
+      >
       <View style={{ flex: 1, position: 'relative', width: '100%', alignSelf: 'stretch' }}>
         <FlatList
           ref={flatListRef}
@@ -1817,6 +1867,7 @@ const ChatListInternal = React.memo(
           loadingText={t('chatList.loadingEarlier')}
         />
       </View>
+      </React.Profiler>
     );
   }
 );
