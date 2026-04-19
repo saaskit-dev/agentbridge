@@ -245,7 +245,7 @@ export class ApiSessionClient extends EventEmitter {
         restartDowntimeMs: plannedReconnect ? Date.now() - plannedReconnect.startedAt : null,
       });
       // Set replay mode BEFORE clearing flag — replay handler fires after connect
-      this.nextReplayMode = this.isFirstConnect ? 'recovery' : 'reconnect';
+      this.nextReplayMode = (this.isFirstConnect && this.lastSeq > 0) ? 'recovery' : 'reconnect';
       this.isFirstConnect = false;
       // lastSeq is now read dynamically via function-based auth — no manual update needed
       this.rpcHandlerManager.onSocketConnect(this.socket);
