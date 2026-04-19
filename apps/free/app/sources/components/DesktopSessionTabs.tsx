@@ -5,6 +5,7 @@ import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useDesktopSessionTabsState } from '@/hooks/useDesktopSessionTabs';
 import { t } from '@/text';
 import { WebPortal } from './web/WebPortal';
@@ -240,6 +241,7 @@ export function DesktopSessionTabs({
   activeSessionId: string;
 }) {
   const router = useRouter();
+  const navigateToSession = useNavigateToSession();
   const tabs = useDesktopSessionTabsState(state => state.tabs);
   const closeTab = useDesktopSessionTabsState(state => state.closeTab);
   const closeOtherTabs = useDesktopSessionTabsState(state => state.closeOtherTabs);
@@ -248,9 +250,9 @@ export function DesktopSessionTabs({
 
   const handleActivateTab = React.useCallback(
     (tabId: string) => {
-      router.navigate(`/session/${tabId}`);
+      navigateToSession(tabId);
     },
-    [router]
+    [navigateToSession]
   );
 
   const handleOpenContextMenu = React.useCallback((tabId: string, event: any) => {
@@ -266,7 +268,7 @@ export function DesktopSessionTabs({
     (tabId: string, options: { active: boolean; fallbackTabId: string | null }) => {
       if (options.active) {
         if (options.fallbackTabId) {
-          router.navigate(`/session/${options.fallbackTabId}`);
+          navigateToSession(options.fallbackTabId);
         } else {
           router.navigate('/');
         }
@@ -276,7 +278,7 @@ export function DesktopSessionTabs({
 
       closeTab(tabId);
     },
-    [closeTab, router]
+    [closeTab, navigateToSession, router]
   );
 
   if (tabs.length <= 1) {

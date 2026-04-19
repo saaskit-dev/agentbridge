@@ -674,7 +674,7 @@ export const AgentInput = React.memo(
     // Handle suggestion selection
     const handleSuggestionSelect = React.useCallback(
       (index: number) => {
-        if (!suggestions[index] || !inputRef.current) return;
+        if (isComposing || !suggestions[index] || !inputRef.current) return;
 
         const suggestion = suggestions[index];
 
@@ -698,7 +698,7 @@ export const AgentInput = React.memo(
         // Small haptic feedback
         hapticsLight();
       },
-      [props.autocompletePrefixes, props.value, selection, suggestions]
+      [isComposing, props.autocompletePrefixes, props.value, selection, suggestions]
     );
 
     /**
@@ -706,14 +706,14 @@ export const AgentInput = React.memo(
      * Inserts a space at the cursor so the `/` or `@` token is no longer "active" per `findActiveWord`.
      */
     const handleDismissAutocompleteBackdrop = React.useCallback(() => {
-      if (composerChromeLocked || suggestions.length === 0 || !inputRef.current) {
+      if (isComposing || composerChromeLocked || suggestions.length === 0 || !inputRef.current) {
         return;
       }
       const pos = selection.start;
       const newText = props.value.slice(0, pos) + ' ' + props.value.slice(pos);
       inputRef.current.setTextAndSelection(newText, { start: pos + 1, end: pos + 1 });
       hapticsLight();
-    }, [composerChromeLocked, props.value, selection, suggestions.length]);
+    }, [isComposing, composerChromeLocked, props.value, selection, suggestions.length]);
 
     // Settings modal state
     const [showSettings, setShowSettings] = React.useState(false);
@@ -814,6 +814,9 @@ export const AgentInput = React.memo(
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback(
       (event: KeyPressEvent): boolean => {
+        if (isComposing) {
+          return false;
+        }
         if (isAborting) {
           return false;
         }
@@ -914,6 +917,7 @@ export const AgentInput = React.memo(
         props.showAbortButton,
         props.onAbort,
         isAborting,
+        isComposing,
         handleAbortPress,
         agentInputEnterToSend,
         props.value,

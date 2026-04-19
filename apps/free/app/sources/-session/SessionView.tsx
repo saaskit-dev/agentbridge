@@ -382,7 +382,6 @@ export const SessionView = React.memo((props: { id: string }) => {
         ) : (
           // Normal session view
           <SessionViewLoaded
-            key={sessionId}
             sessionId={sessionId}
             session={session}
             jumpToRecentUserSignal={jumpToRecentUserSignal}
@@ -586,6 +585,34 @@ function SessionViewLoaded(props: {
     { id: 'chat', type: 'chat', title: t('tabs.sessions') },
   ]);
   const [activeContentTabId, setActiveContentTabId] = React.useState<string>('chat');
+  const [isDesktopSidebarReady, setIsDesktopSidebarReady] = React.useState(
+    !showDesktopFilesSidebar
+  );
+  React.useEffect(() => {
+    setMessage('');
+    setIsSettingsBusy(false);
+    setPendingCapabilityChange(null);
+    setFooterNotice(null);
+    setPendingAttachments([]);
+    setIsSendingMessage(false);
+    setContentTabs([{ id: 'chat', type: 'chat', title: t('tabs.sessions') }]);
+    setActiveContentTabId('chat');
+    lastModelCorrectionRef.current = null;
+    hasRenderedMessagesRef.current = false;
+  }, [sessionId]);
+
+  React.useEffect(() => {
+    if (!showDesktopFilesSidebar) {
+      setIsDesktopSidebarReady(false);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      setIsDesktopSidebarReady(true);
+    }, 120);
+
+    return () => clearTimeout(timeout);
+  }, [sessionId, showDesktopFilesSidebar]);
 
   React.useEffect(() => {
     if (!isDesktopPlatform() || Platform.OS !== 'web') return;
@@ -1064,12 +1091,26 @@ function SessionViewLoaded(props: {
   );
 
   // Trigger session visibility and initialize git status sync
-  React.useLayoutEffect(() => {
-    // Trigger session sync
-    sync.onSessionVisible(sessionId);
+  React.useEffect(() => {
+    let cancelled = false;
+    const visibilityFrame = requestAnimationFrame(() => {
+      if (cancelled) {
+        return;
+      }
+      void sync.onSessionVisible(sessionId);
+    });
+    const gitStatusTimer = setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+      gitStatusSync.getSync(sessionId);
+    }, 150);
 
-    // Initialize git status sync for this session
-    gitStatusSync.getSync(sessionId);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(visibilityFrame);
+      clearTimeout(gitStatusTimer);
+    };
   }, [sessionId]);
 
   const shouldRenderChatList = messageCount > 0 || hasRenderedMessagesRef.current;
@@ -1449,12 +1490,23 @@ function SessionViewLoaded(props: {
                 <Ionicons name="chevron-back" size={12} color={theme.colors.textSecondary} />
               </Pressable>
             ) : (
-              <SessionFilesSidebar
-                sessionId={sessionId}
-                rootPath={session.metadata?.path ?? ''}
-                activeFilePath={activeDesktopFilePath}
-                onOpenFile={openFileTab}
-              />
+              (isDesktopSidebarReady ? (
+                <SessionFilesSidebar
+                  sessionId={sessionId}
+                  rootPath={session.metadata?.path ?? ''}
+                  activeFilePath={activeDesktopFilePath}
+                  onOpenFile={openFileTab}
+                />
+              ) : (
+                <View
+                  style={{
+                    width: 320,
+                    borderLeftWidth: StyleSheet.hairlineWidth,
+                    borderLeftColor: theme.colors.divider,
+                    backgroundColor: theme.colors.surface,
+                  }}
+                />
+              ))
             )
           ) : null}
         </View>

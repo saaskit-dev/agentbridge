@@ -185,16 +185,25 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
       ref,
       () => ({
         setTextAndSelection: (text: string, selection: TextInputSelection) => {
-          if (textareaRef.current && !isComposingRef.current) {
-            // Directly set value and selection on DOM element
-            textareaRef.current.value = text;
-            textareaRef.current.setSelectionRange(selection.start, selection.end);
-
-            // Trigger React's onChange by dispatching an input event
-            const event = new Event('input', { bubbles: true });
-            textareaRef.current.dispatchEvent(event);
-            emitSelectionChange(selection);
+          if (!textareaRef.current || isComposingRef.current) {
+            return;
           }
+
+          // Keep this path controlled by React state updates. Imperatively mutating the
+          // textarea value and dispatching synthetic input events can conflict with IME
+          // composition state on macOS WebKit.
+          onChangeText(text);
+          emitSelectionChange(selection);
+
+          requestAnimationFrame(() => {
+            const el = textareaRef.current;
+            if (!el) return;
+            try {
+              el.setSelectionRange(selection.start, selection.end);
+            } catch {
+              // Ignore detached/unfocusable textarea edge cases.
+            }
+          });
         },
         focus: () => {
           textareaRef.current?.focus();
@@ -203,7 +212,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
           textareaRef.current?.blur();
         },
       }),
-      [emitSelectionChange]
+      [emitSelectionChange, onChangeText]
     );
 
     return (
