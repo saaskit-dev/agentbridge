@@ -247,8 +247,15 @@ class Sync {
   private lastResumeAttemptAt = 0;
   revenueCatInitialized = false;
 
-  // Ephemeral update subscribers for streaming text support
-  private ephemeralUpdateCallbacks: Set<(update: unknown) => void> = new Set();
+  // Ephemeral update subscribers for streaming text support.
+  // Index subscriptions by session/message to avoid broadcasting every token to every message row.
+  private ephemeralGlobalCallbacks: Set<(update: unknown) => void> = new Set();
+  private ephemeralSessionCallbacks = new Map<string, Set<(update: unknown) => void>>();
+  private ephemeralMessageCallbacks = new Map<string, Set<(update: unknown) => void>>();
+  private ephemeralSessionMessageCallbacks = new Map<
+    string,
+    Map<string, Set<(update: unknown) => void>>
+  >();
 
   // Generic locking mechanism
 
@@ -619,6 +626,16 @@ class Sync {
               oldestSeq: cachedHydration.oldestSeq,
               hasOlderMessages: cachedHydration.hasOlderMessages,
             });
+          } else {
+            log.warn('[sync] SQLite cache inconsistent, resetting local watermark', {
+              cachedSeq,
+            });
+            this.deleteSessionLastSeq(sessionId);
+            await messageDB.deleteSession(sessionId).catch(error => {
+              log.debug('[sync] failed to clear inconsistent SQLite cache', {
+                error: safeStringify(error),
+              });
+            });
           }
         }
       } catch (error) {
@@ -643,12 +660,12 @@ class Sync {
 
   private getLocalCacheHydrateBatchSize() {
     if (isTauriDesktop()) {
-      return 4000;
+      return 1000;
     }
     if (Platform.OS === 'web') {
-      return 2000;
+      return 500;
     }
-    return 1000;
+    return 250;
   }
 
   private normalizeCachedMessages(rows: Array<{
@@ -817,6 +834,8 @@ class Sync {
   }
 
   private readonly BATCH_WINDOW_MS = 50;
+  private readonly MESSAGE_APPLY_CHUNK_SIZE = 200;
+  private static readonly FETCH_MESSAGES_PAGE_SIZE = 250;
 
   private setSessionLastSeq(sessionId: string, seq: number) {
     this.sessionLastSeq.set(sessionId, seq);
@@ -866,8 +885,11 @@ class Sync {
     );
   }
 
-  private processMessageQueue(sessionId: string) {
+  private processMessageQueue(sessionId: string, flush = false) {
     const log = sessionLogger(logger, sessionId);
+    if (this.sessionQueueProcessing.has(sessionId)) {
+      return;
+    }
     this.sessionQueueProcessing.add(sessionId);
     try {
       while (true) {
@@ -875,9 +897,21 @@ class Sync {
         if (!pending || pending.length === 0) {
           break;
         }
-        const batch = pending.splice(0, pending.length);
+        const batchSize = flush ? pending.length : Math.min(pending.length, this.MESSAGE_APPLY_CHUNK_SIZE);
+        const batch = pending.splice(0, batchSize);
         log.debug('enqueueMessages: processing batch', { batchSize: batch.length });
         this.applyMessages(sessionId, batch);
+
+        if (!flush && pending.length > 0) {
+          this.sessionBatchTimers.set(
+            sessionId,
+            setTimeout(() => {
+              this.sessionBatchTimers.delete(sessionId);
+              this.processMessageQueue(sessionId);
+            }, 0)
+          );
+          return;
+        }
       }
     } finally {
       this.sessionQueueProcessing.delete(sessionId);
@@ -897,7 +931,7 @@ class Sync {
     }
     const pending = this.sessionMessageQueue.get(sessionId);
     if (pending && pending.length > 0) {
-      this.processMessageQueue(sessionId);
+      this.processMessageQueue(sessionId, true);
     }
   }
 
@@ -1407,34 +1441,65 @@ class Sync {
     callback: (update: unknown) => void,
     options?: { sessionId?: string; messageId?: string }
   ): () => void {
-    const wrappedCallback = (update: unknown) => {
-      if (!options) {
-        callback(update);
-        return;
+    const sessionId = options?.sessionId;
+    const messageId = options?.messageId;
+
+    if (!sessionId && !messageId) {
+      this.ephemeralGlobalCallbacks.add(callback);
+      return () => {
+        this.ephemeralGlobalCallbacks.delete(callback);
+      };
+    }
+
+    if (sessionId && messageId) {
+      let sessionMap = this.ephemeralSessionMessageCallbacks.get(sessionId);
+      if (!sessionMap) {
+        sessionMap = new Map();
+        this.ephemeralSessionMessageCallbacks.set(sessionId, sessionMap);
       }
-
-      if (!update || typeof update !== 'object') {
-        return;
+      let callbacks = sessionMap.get(messageId);
+      if (!callbacks) {
+        callbacks = new Set();
+        sessionMap.set(messageId, callbacks);
       }
+      callbacks.add(callback);
+      return () => {
+        callbacks.delete(callback);
+        if (callbacks.size === 0) {
+          sessionMap.delete(messageId);
+        }
+        if (sessionMap.size === 0) {
+          this.ephemeralSessionMessageCallbacks.delete(sessionId);
+        }
+      };
+    }
 
-      const updateSessionId =
-        'sessionId' in update && typeof update.sessionId === 'string' ? update.sessionId : null;
-      if (options.sessionId && updateSessionId !== options.sessionId) {
-        return;
+    if (sessionId) {
+      let callbacks = this.ephemeralSessionCallbacks.get(sessionId);
+      if (!callbacks) {
+        callbacks = new Set();
+        this.ephemeralSessionCallbacks.set(sessionId, callbacks);
       }
+      callbacks.add(callback);
+      return () => {
+        callbacks.delete(callback);
+        if (callbacks.size === 0) {
+          this.ephemeralSessionCallbacks.delete(sessionId);
+        }
+      };
+    }
 
-      const updateMessageId =
-        'messageId' in update && typeof update.messageId === 'string' ? update.messageId : null;
-      if (options.messageId && updateMessageId !== options.messageId) {
-        return;
-      }
-
-      callback(update);
-    };
-
-    this.ephemeralUpdateCallbacks.add(wrappedCallback);
+    let callbacks = this.ephemeralMessageCallbacks.get(messageId!);
+    if (!callbacks) {
+      callbacks = new Set();
+      this.ephemeralMessageCallbacks.set(messageId!, callbacks);
+    }
+    callbacks.add(callback);
     return () => {
-      this.ephemeralUpdateCallbacks.delete(wrappedCallback);
+      callbacks.delete(callback);
+      if (callbacks.size === 0) {
+        this.ephemeralMessageCallbacks.delete(messageId!);
+      }
     };
   }
 
@@ -2562,7 +2627,7 @@ class Sync {
   };
 
   /** Maximum pages to fetch in a single paginated run (safety cap). */
-  private static readonly MAX_FETCH_PAGES = 20;
+  private static readonly MAX_FETCH_PAGES = 40;
 
   private fetchMessages = async (sessionId: string) => {
     const log = sessionLogger(logger, sessionId);
@@ -2595,7 +2660,7 @@ class Sync {
       }>('fetch-messages', {
         sessionId,
         after_seq: afterSeq,
-        limit: 1000,
+        limit: Sync.FETCH_MESSAGES_PAGE_SIZE,
       });
 
       if (!ack.ok) {
@@ -4035,15 +4100,47 @@ class Sync {
 
     // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity
 
-    // Notify all subscribers (for streaming text, etc.)
-    this.ephemeralUpdateCallbacks.forEach(callback => {
+    // Notify only matching subscribers (for streaming text, etc.) instead of broadcasting to every message.
+    this.notifyEphemeralSubscribers(updateData);
+  };
+
+  private notifyEphemeralSubscribers(updateData: unknown) {
+    const callbacks = new Set<(update: unknown) => void>();
+    this.ephemeralGlobalCallbacks.forEach(callback => callbacks.add(callback));
+
+    if (updateData && typeof updateData === 'object') {
+      const updateSessionId =
+        'sessionId' in updateData && typeof updateData.sessionId === 'string'
+          ? updateData.sessionId
+          : null;
+      const updateMessageId =
+        'messageId' in updateData && typeof updateData.messageId === 'string'
+          ? updateData.messageId
+          : null;
+
+      if (updateSessionId) {
+        this.ephemeralSessionCallbacks.get(updateSessionId)?.forEach(callback => callbacks.add(callback));
+        if (updateMessageId) {
+          this.ephemeralSessionMessageCallbacks
+            .get(updateSessionId)
+            ?.get(updateMessageId)
+            ?.forEach(callback => callbacks.add(callback));
+        }
+      }
+
+      if (updateMessageId) {
+        this.ephemeralMessageCallbacks.get(updateMessageId)?.forEach(callback => callbacks.add(callback));
+      }
+    }
+
+    callbacks.forEach(callback => {
       try {
         callback(updateData);
       } catch (error) {
         logger.error('Error in ephemeral update callback:', toError(error));
       }
     });
-  };
+  }
 
   //
   // Apply store
