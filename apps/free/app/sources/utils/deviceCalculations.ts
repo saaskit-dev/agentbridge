@@ -36,9 +36,25 @@ export function determineDeviceType(params: {
   diagonalInches: number;
   platform: string;
   isPad?: boolean;
+  widthPoints?: number;
   tabletThresholdInches?: number; // Default is 9 inches
+  webTabletMinWidth?: number; // Default is 768 CSS px
 }): 'phone' | 'tablet' {
-  const { diagonalInches, platform, isPad, tabletThresholdInches = 9 } = params;
+  const {
+    diagonalInches,
+    platform,
+    isPad,
+    widthPoints,
+    tabletThresholdInches = 9,
+    webTabletMinWidth = 768,
+  } = params;
+
+  if (platform === 'web') {
+    if (typeof widthPoints === 'number') {
+      return widthPoints >= webTabletMinWidth ? 'tablet' : 'phone';
+    }
+    return diagonalInches >= tabletThresholdInches ? 'tablet' : 'phone';
+  }
 
   // iOS-specific check: iPads with diagonal > 9" are tablets
   // This treats iPad Mini (7.9-8.3") as a phone

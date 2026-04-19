@@ -16,6 +16,7 @@ import { Modal } from '@/modal';
 import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
 import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { getDesktopLogPaths, isTauriDesktop, type DesktopLogPaths } from '@/utils/tauri';
 import { t } from '@/text';
 import { Logger } from '@saaskit-dev/agentbridge/telemetry';
 
@@ -25,6 +26,9 @@ export default function DevScreen() {
   const router = useRouter();
   const appVersion = useAppVersion();
   const [showDebugIds, setShowDebugIds] = useLocalSettingMutable('showDebugIds');
+  const [performanceProfilingEnabled, setPerformanceProfilingEnabled] = useLocalSettingMutable(
+    'performanceProfilingEnabled'
+  );
   const buildTime = Updates.createdAt;
   const runtimeVersion = Updates.runtimeVersion;
   const shortRuntime = runtimeVersion
@@ -47,6 +51,29 @@ export default function DevScreen() {
   const socketStatus = useSocketStatus();
   const anonymousId = sync.encryption?.anonId ?? 'N/A';
   const { theme } = useUnistyles();
+  const isDesktopApp = isTauriDesktop();
+  const [desktopLogPaths, setDesktopLogPaths] = React.useState<DesktopLogPaths | null>(null);
+
+  React.useEffect(() => {
+    if (!isDesktopApp) {
+      return;
+    }
+
+    let cancelled = false;
+    void getDesktopLogPaths()
+      .then(paths => {
+        if (!cancelled) {
+          setDesktopLogPaths(paths);
+        }
+      })
+      .catch(error => {
+        logger.warn('Failed to load desktop log paths', { error: String(error) });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDesktopApp]);
 
   const handleEditServerUrl = async () => {
     const currentUrl = getServerUrl();
@@ -165,6 +192,42 @@ export default function DevScreen() {
           rightElement={<Switch value={showDebugIds} onValueChange={setShowDebugIds} />}
           showChevron={false}
         />
+        {isDesktopApp && (
+          <Item
+            title="Desktop Performance Profiling"
+            subtitle="Show the desktop perf HUD and collect reducer/render/chat timing samples"
+            rightElement={
+              <Switch
+                value={performanceProfilingEnabled}
+                onValueChange={setPerformanceProfilingEnabled}
+              />
+            }
+            showChevron={false}
+          />
+        )}
+        {isDesktopApp && (
+          <Item
+            title="React DevTools"
+            subtitle="Launch with: cd apps/free/app && pnpm run desktop:react-devtools"
+            showChevron={false}
+          />
+        )}
+        {isDesktopApp && desktopLogPaths && (
+          <Item
+            title="Desktop App Telemetry Log"
+            subtitle={desktopLogPaths.appTelemetryLogPath}
+            showChevron={false}
+            copy={desktopLogPaths.appTelemetryLogPath}
+          />
+        )}
+        {isDesktopApp && desktopLogPaths && (
+          <Item
+            title="Desktop Native Log"
+            subtitle={desktopLogPaths.tauriLogPath}
+            showChevron={false}
+            copy={desktopLogPaths.tauriLogPath}
+          />
+        )}
       </ItemGroup>
 
       {/* Component Demos */}

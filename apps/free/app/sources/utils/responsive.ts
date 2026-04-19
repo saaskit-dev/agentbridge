@@ -35,6 +35,7 @@ export function getDeviceType(): 'phone' | 'tablet' {
 
   return determineDeviceType({
     diagonalInches: dimensions.diagonalInches,
+    widthPoints: width,
     platform: Platform.OS,
     // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
     isPad: Platform.OS === 'ios' ? Platform.isPad : false,
@@ -54,6 +55,7 @@ export function useDeviceType(): 'phone' | 'tablet' {
 
     return determineDeviceType({
       diagonalInches: dimensions.diagonalInches,
+      widthPoints: width,
       platform: Platform.OS,
       // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
       isPad: Platform.OS === 'ios' ? Platform.isPad : false,

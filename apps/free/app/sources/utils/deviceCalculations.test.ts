@@ -166,6 +166,26 @@ describe('responsive utilities', () => {
 
       expect(result).toBe('tablet'); // Large screens are considered tablets
     });
+
+    it('should identify desktop-sized web windows as tablet by width', () => {
+      const result = determineDeviceType({
+        diagonalInches: 7.8,
+        widthPoints: 991,
+        platform: 'web',
+      });
+
+      expect(result).toBe('tablet');
+    });
+
+    it('should keep narrow web windows as phone', () => {
+      const result = determineDeviceType({
+        diagonalInches: 12,
+        widthPoints: 430,
+        platform: 'web',
+      });
+
+      expect(result).toBe('phone');
+    });
   });
 
   describe('integration scenarios', () => {
