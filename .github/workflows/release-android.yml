@@ -48,6 +48,7 @@ jobs:
       release_id: ${{ steps.prepare.outputs.release_id }}
       release_url: ${{ steps.prepare.outputs.release_url }}
       include_dev: ${{ steps.prepare.outputs.include_dev }}
+      release_matrix: ${{ steps.prepare.outputs.release_matrix }}
 
     steps:
       - uses: actions/checkout@v6
@@ -131,12 +132,19 @@ jobs:
           RELEASE_ID="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json databaseId --jq '.databaseId')"
           RELEASE_URL="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json url --jq '.url')"
 
+          if [ "$INPUT_INCLUDE_DEV" = "true" ]; then
+            RELEASE_MATRIX='{"variant":["production","development"]}'
+          else
+            RELEASE_MATRIX='{"variant":["production"]}'
+          fi
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
           echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
           echo "release_url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
           echo "include_dev=$INPUT_INCLUDE_DEV" >> "$GITHUB_OUTPUT"
+          echo "release_matrix=$RELEASE_MATRIX" >> "$GITHUB_OUTPUT"
 
       - name: Summarize prepared release
         run: |
@@ -154,13 +162,9 @@ jobs:
     name: Build Android APK (${{ matrix.variant }})
     runs-on: ${{ fromJSON(vars.MACOS_RUNNER_LABELS_JSON || vars.IOS_RUNNER_LABELS_JSON || '["self-hosted","macOS","ARM64","local-mac"]') }}
     timeout-minutes: 60
-    if: ${{ matrix.variant == 'production' || needs.prepare_release.outputs.include_dev == 'true' }}
     strategy:
       fail-fast: false
-      matrix:
-        variant:
-          - production
-          - development
+      matrix: ${{ fromJSON(needs.prepare_release.outputs.release_matrix) }}
     permissions:
       contents: write
 
