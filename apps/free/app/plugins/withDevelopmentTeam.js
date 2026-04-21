@@ -1,4 +1,6 @@
-const { withXcodeProject } = require('expo/config-plugins');
+const { withXcodeProject, withDangerousMod } = require('expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * 在 prebuild 后自动写入 DEVELOPMENT_TEAM + CODE_SIGN_STYLE = Automatic，
@@ -7,7 +9,7 @@ const { withXcodeProject } = require('expo/config-plugins');
  * Team ID 通过 APPLE_TEAM_ID 环境变量注入，fallback 到 hardcode 默认值。
  */
 const withDevelopmentTeam = config => {
-  return withXcodeProject(config, config => {
+  config = withXcodeProject(config, config => {
     const teamId = process.env.APPLE_TEAM_ID || 'SD58V5WA54';
     const project = config.modResults;
     const buildConfigSection = project.pbxXCBuildConfigurationSection();
@@ -61,6 +63,36 @@ const withDevelopmentTeam = config => {
 
     return config;
   });
+
+  config = withDangerousMod(config, [
+    'ios',
+    cfg => {
+      const projectName = cfg.modRequest.projectName;
+      const pbxprojPath = path.join(
+        cfg.modRequest.platformProjectRoot,
+        `${projectName}.xcodeproj`,
+        'project.pbxproj'
+      );
+
+      if (!fs.existsSync(pbxprojPath)) {
+        return cfg;
+      }
+
+      const content = fs.readFileSync(pbxprojPath, 'utf8');
+      const updated = content.replace(
+        /"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "iPhone Developer";/g,
+        '"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";'
+      );
+
+      if (updated !== content) {
+        fs.writeFileSync(pbxprojPath, updated, 'utf8');
+      }
+
+      return cfg;
+    },
+  ]);
+
+  return config;
 };
 
 module.exports = withDevelopmentTeam;
