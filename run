@@ -91,10 +91,30 @@ do_prebuild() {
 ensure_prebuild() {
     local platform="${1:-}"
     local dir="${platform:-ios}"
+    local missing_generated_target=0
+
+    if [ "$dir" = "ios" ] && [ -d "$APP_DIR/targets" ]; then
+        while IFS= read -r config_path; do
+            local target_dir expected_file
+            target_dir="$(dirname "$config_path")"
+            expected_file="$target_dir/generated.entitlements"
+            if [ ! -f "$expected_file" ]; then
+                info "检测到缺失的 target 生成产物: ${expected_file#$APP_DIR/}"
+                missing_generated_target=1
+                break
+            fi
+        done < <(find "$APP_DIR/targets" -name 'expo-target.config.js' -type f 2>/dev/null)
+    fi
 
     # native 目录不存在 → expo run 会自动 prebuild，但缺少 pod install
     if [ ! -d "$APP_DIR/$dir" ]; then
         info "$dir/ 不存在，运行 prebuild..."
+        do_prebuild "$platform"
+        return
+    fi
+
+    if [ "$missing_generated_target" -eq 1 ]; then
+        info "重新生成 Apple targets..."
         do_prebuild "$platform"
         return
     fi
