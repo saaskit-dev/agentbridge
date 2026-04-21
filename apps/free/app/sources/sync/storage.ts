@@ -749,11 +749,16 @@ export const storage = create<StorageState>()((set, get) => {
 
           // Check if sessionMessages exists AND agentStateVersion is newer
           const existingSessionMessages = updatedSessionMessages[session.id];
-          if (
+          const requestCount = newSession.agentState?.requests
+            ? Object.keys(newSession.agentState.requests).length
+            : 0;
+
+          const shouldRunReducer =
             existingSessionMessages &&
             newSession.agentState &&
-            (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))
-          ) {
+            (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0) || requestCount > 0);
+
+          if (shouldRunReducer) {
             // Check for NEW permission requests before processing
             const realtimeInfo = _getRealtimeSessionInfo?.() ?? {
               sessionId: null,
@@ -796,6 +801,17 @@ export const storage = create<StorageState>()((set, get) => {
             );
             const processedMessages = reducerResult.messages;
 
+            // Debug: log reducer output when agentState had permissions
+            if (requestCount > 0) {
+              const permLog = sessionLogger(logger, session.id);
+              permLog.info('[applySessions] reducer output', {
+                processedCount: processedMessages.length,
+                existingMessageCount: existingSessionMessages.messages.length,
+                processedIds: processedMessages.map(m => m.id),
+                processedKinds: processedMessages.map(m => m.kind),
+              });
+            }
+
             // Always update the session messages, even if no new messages were created
             // This ensures the reducer state is updated with the new AgentState
             const {
@@ -827,6 +843,13 @@ export const storage = create<StorageState>()((set, get) => {
                 latestUsage: { ...existingSessionMessages.reducerState.latestUsage },
               };
             }
+          } else if (requestCount > 0 && !existingSessionMessages) {
+            // Debug: agentState has permissions but sessionMessages not loaded yet
+            const permLog = sessionLogger(logger, session.id);
+            permLog.warn('[applySessions] SKIPPED: agentState has permissions but sessionMessages not loaded', {
+              requestCount,
+              agentStateVersion: newSession.agentStateVersion,
+            });
           }
         });
 
@@ -978,6 +1001,16 @@ export const storage = create<StorageState>()((set, get) => {
 
         // Messages are already normalized, no need to process them again
         const normalizedMessages = messages;
+
+        const pendingRequestCount = agentState?.requests
+          ? Object.keys(agentState.requests).length
+          : 0;
+        if (pendingRequestCount > 0) {
+          log.info('[applyMessages] agentState has pending permissions during message processing', {
+            requestCount: pendingRequestCount,
+            messageCount: normalizedMessages.length,
+          });
+        }
 
         // Run reducer with agentState
         const reducerResult = measurePerformance('sync:storage.applyMessages.reducer', () =>

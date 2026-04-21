@@ -545,7 +545,12 @@ function reducerInternal(
         // Check if we already have a message for this permission ID
         const existingMessageId = state.toolIdToMessageId.get(permId);
         if (existingMessageId) {
-          // Update existing tool message with permission info
+          // Always log when Phase 0 finds existing mapping for a permission
+          logger.info(`[REDUCER] Phase 0: permission already mapped`, {
+            permId,
+            tool: request.tool,
+            existingMessageId,
+          });
           const message = state.messages.get(existingMessageId);
           if (message?.tool && !message.tool.permission) {
             if (ENABLE_LOGGING) {
@@ -584,9 +589,12 @@ function reducerInternal(
             }
             state.toolIdToMessageId.set(permId, dedupedMsgId);
           } else {
-            if (ENABLE_LOGGING) {
-              logger.debug(`[REDUCER] Creating new message for permission ${permId}`);
-            }
+            // Always log permission message creation (not gated by ENABLE_LOGGING)
+            logger.info(`[REDUCER] Phase 0: creating permission message`, {
+              permId,
+              tool: request.tool,
+              existingMappings: state.toolIdToMessageId.size,
+            });
 
             // Create a new tool message for the permission request
             const mid = allocateId();
