@@ -24,7 +24,15 @@ export function getCapabilityPresetFlavor(
 }
 
 export function usesAcpPermissionDecisions(flavor: SessionFlavor | null | undefined): boolean {
-  return Boolean(flavor);
+  if (!flavor) {
+    return false;
+  }
+  // Claude uses its own permission protocol (mode/allowedTools), not the ACP-style
+  // decision enum (approved/approved_for_session/abort).
+  if (flavor === 'claude') {
+    return false;
+  }
+  return true;
 }
 
 export function coerceAgentType(flavor: unknown): AppAgentFlavor {
