@@ -145,6 +145,38 @@ export abstract class BasePermissionHandler {
   }
 
   /**
+   * Record an auto-approved tool call directly in completedRequests.
+   * Called when a tool-result arrives without a preceding request_permission RPC,
+   * meaning the agent SDK auto-approved the tool (e.g. acceptEdits mode auto-approves edits).
+   */
+  recordAutoApproved(toolCallId: string, toolName: string): void {
+    // Don't overwrite if a user-approved request already exists
+    if (this.pendingRequests.has(toolCallId)) return;
+
+    this.session.updateAgentState(currentState => {
+      if (currentState.completedRequests?.[toolCallId]) return currentState;
+
+      const now = Date.now();
+      return {
+        ...currentState,
+        completedRequests: {
+          ...currentState.completedRequests,
+          [toolCallId]: {
+            tool: toolName,
+            arguments: {},
+            createdAt: now,
+            completedAt: now,
+            status: 'approved',
+            decision: 'auto_approved',
+          },
+        },
+      } satisfies AgentState;
+    });
+
+    logger.debug(`${this.getLogPrefix()} Auto-approved tool recorded`, { toolCallId, toolName });
+  }
+
+  /**
    * Reset state for new sessions.
    * This method is idempotent - safe to call multiple times.
    */

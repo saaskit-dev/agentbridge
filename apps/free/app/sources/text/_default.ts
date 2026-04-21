@@ -56,6 +56,7 @@ export const en = {
     logout: 'Logout',
     yes: 'Yes',
     no: 'No',
+    autoApproved: 'Auto-approved',
     discard: 'Discard',
     version: 'Version',
     copied: 'Copied',

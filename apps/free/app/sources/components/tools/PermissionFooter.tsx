@@ -47,7 +47,7 @@ interface PermissionFooterProps {
     reason?: string;
     mode?: string;
     allowedTools?: string[];
-    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+    decision?: 'approved' | 'approved_for_session' | 'auto_approved' | 'denied' | 'abort';
   };
   sessionId: string;
   toolName: string;
@@ -312,6 +312,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     isApproved && isToolAllowed(toolName, toolInput, permission.allowedTools);
 
   // ACP-style (Codex/OpenCode) status detection with fallback
+  const isAcpAutoApproved = useAcpPermissions && isApproved && permission.decision === 'auto_approved';
   const isAcpApproved =
     useAcpPermissions && isApproved && (permission.decision === 'approved' || !permission.decision);
   const isAcpApprovedForSession =
@@ -512,6 +513,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
 
   if (!isPending) {
     if (useAcpPermissions) {
+      if (isAcpAutoApproved) {
+        return renderResolvedSummary(t('common.autoApproved'), 'success');
+      }
       if (isAcpApprovedForSession) {
         return renderResolvedSummary(t('codex.permissions.yesForSession'), 'success');
       }

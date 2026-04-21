@@ -510,7 +510,7 @@ export type AgentState = {
       status: 'canceled' | 'denied' | 'approved';
       reason?: string;
       mode?: PermissionMode;
-      decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+      decision?: 'approved' | 'approved_for_session' | 'auto_approved' | 'denied' | 'abort';
       allowTools?: string[];
     };
   };

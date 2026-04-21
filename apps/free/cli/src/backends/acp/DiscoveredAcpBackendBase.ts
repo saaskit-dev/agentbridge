@@ -190,6 +190,13 @@ export abstract class DiscoveredAcpBackendBase implements AgentBackend {
         this.hadModelOutputThisTurn = true;
       }
 
+      // Track auto-approved tool calls: when a tool-result arrives without a
+      // preceding request_permission RPC, the agent SDK auto-approved the tool.
+      // Record it in completedRequests so the App can display it.
+      if (msg.type === 'tool-result' && this.permissionHandler) {
+        this.permissionHandler.recordAutoApproved(String(msg.callId), msg.toolName);
+      }
+
       if (process.env.APP_ENV === 'development') {
         this.logger.debug(`[${this.agentType}] raw message`, { raw: msg });
       }
