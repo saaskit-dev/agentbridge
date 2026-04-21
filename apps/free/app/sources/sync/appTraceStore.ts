@@ -9,6 +9,15 @@ import { Logger, type TraceContext } from '@saaskit-dev/agentbridge/telemetry';
 
 export type AppWireTrace = { tid: string; ses?: string; mid?: string };
 
+/**
+ * Only content-bearing message updates are allowed to advance the App's
+ * per-session trace pointer. Session status/metadata updates can be emitted
+ * from keepalive-driven paths and must not overwrite the active turn trace.
+ */
+export function shouldAdoptIncomingSessionTrace(updateType: string): boolean {
+  return updateType === 'new-message';
+}
+
 const _sessionTraces = new Map<string, AppWireTrace>();
 
 /** Called by sync.ts when sending a message or receiving an update for a session. */

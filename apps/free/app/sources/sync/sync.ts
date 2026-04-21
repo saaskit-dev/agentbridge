@@ -66,10 +66,15 @@ import { Session, Machine, QueuedAttachment, QueuedMessage } from './storageType
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { apiSocket } from '@/sync/apiSocket';
-import { setSessionTrace, clearSessionTrace, sessionLogger } from '@/sync/appTraceStore';
+import {
+  setSessionTrace,
+  clearSessionTrace,
+  sessionLogger,
+  shouldAdoptIncomingSessionTrace,
+} from '@/sync/appTraceStore';
 import { Encryption } from '@/sync/encryption/encryption';
 import { InvalidateSync } from '@/utils/sync';
-import { isTauriDesktop } from '@/utils/tauri';
+import { isTauriDesktop, showDesktopNotification } from '@/utils/tauri';
 import type { PermissionMode } from './sessionCapabilities';
 import { messageDB } from './messageDB';
 import { serializeCachedContent } from './cacheContent';
@@ -3433,16 +3438,11 @@ class Sync {
     const rawWireTrace =
       update && typeof update === 'object' ? (update as Record<string, unknown>)._trace : undefined;
     let traceCtx: TraceContext | undefined;
+    let incomingWireTrace: WireTrace | undefined;
     if (rawWireTrace && typeof (rawWireTrace as any).tid === 'string') {
       const wt = rawWireTrace as WireTrace;
+      incomingWireTrace = wt;
       traceCtx = continueTrace({ traceId: wt.tid, sessionId: wt.ses, machineId: wt.mid });
-      // RFC §7.1: keep session trace fresh so subsequent RPC calls carry the correct trace
-      if (wt.ses)
-        setSessionTrace(wt.ses, {
-          tid: traceCtx.traceId,
-          ses: traceCtx.sessionId,
-          mid: traceCtx.machineId,
-        });
     }
     const log = traceCtx ? logger.withContext(traceCtx) : logger;
 
@@ -3452,6 +3452,15 @@ class Sync {
       return;
     }
     const updateData = validatedUpdate.data;
+
+    if (incomingWireTrace?.ses && shouldAdoptIncomingSessionTrace(updateData.body.t)) {
+      setSessionTrace(incomingWireTrace.ses, {
+        tid: traceCtx?.traceId ?? incomingWireTrace.tid,
+        ses: traceCtx?.sessionId ?? incomingWireTrace.ses,
+        mid: traceCtx?.machineId ?? incomingWireTrace.mid,
+      });
+    }
+
     log.debug('Update received', { type: updateData.body.t });
 
     if (updateData.body.t === 'new-message') {
@@ -3575,6 +3584,12 @@ class Sync {
             ]);
             if (isTaskComplete) {
               this.getSendSync(sessionId).invalidate();
+
+              // Desktop background notification: show when window is hidden
+              if (isTauriDesktop() && !this.desktopWindowVisible) {
+                const name = session.metadata?.summary?.text || session.metadata?.path || 'Free';
+                showDesktopNotification('Free', `${name}: task complete`).catch(() => {});
+              }
             }
           } else {
             // Local session list missing this id; wait for list + keys before continuing.
