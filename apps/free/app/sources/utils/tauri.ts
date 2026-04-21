@@ -119,6 +119,16 @@ export async function getDesktopLogPaths(): Promise<DesktopLogPaths> {
   return await invoke<DesktopLogPaths>('desktop_get_log_paths');
 }
 
+export async function showDesktopNotification(title: string, body: string): Promise<void> {
+  if (!isTauriDesktop()) return;
+  try {
+    const invoke = await getTauriInvoke();
+    await invoke('desktop_show_notification', { title, body });
+  } catch {
+    // Silently ignore notification failures
+  }
+}
+
 export function getTauriErrorMessage(
   error: unknown,
   fallback = 'Unknown update error'

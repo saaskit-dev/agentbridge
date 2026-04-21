@@ -13,7 +13,41 @@ use std::{
   time::Duration,
 };
 use tauri::Manager;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
+
+/// Prevent macOS idle sleep so the WebSocket stays alive in the background.
+/// Uses the built-in `caffeinate` command — zero FFI, no crash risk.
+#[cfg(target_os = "macos")]
+mod power {
+  use std::process::{Child, Command, Stdio};
+
+  /// RAII guard that kills the `caffeinate` child on drop.
+  /// The `-w PID` flag also ensures self-cleanup if the parent crashes.
+  pub struct SleepGuard(Child);
+
+  impl SleepGuard {
+    /// Prevent idle system sleep. Display may still turn off (network stays active).
+    pub fn prevent_idle_sleep() -> Result<Self, String> {
+      let pid = std::process::id().to_string();
+      let child = Command::new("caffeinate")
+        .args(["-i", "-w", &pid])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("caffeinate failed: {e}"))?;
+      Ok(Self(child))
+    }
+  }
+
+  impl Drop for SleepGuard {
+    fn drop(&mut self) {
+      let _ = self.0.kill();
+      let _ = self.0.wait();
+    }
+  }
+}
 
 const SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS messages (
@@ -1129,6 +1163,53 @@ fn desktop_bootstrap_cli_auth(
   ))
 }
 
+/// Show a native desktop notification (zero new dependencies — uses osascript on macOS).
+#[tauri::command]
+fn desktop_show_notification(title: String, body: String) -> Result<(), String> {
+  #[cfg(target_os = "macos")]
+  {
+    // Sanitize for AppleScript string literals: escape backslash and double-quote
+    let sanitize = |s: &str| s.replace('\\', "\\\\").replace('"', r#"\""#);
+    let title = sanitize(&title);
+    let body = sanitize(&body);
+    let script = format!("display notification \"{}\" with title \"{}\"", body, title);
+    // Use stdin to avoid any shell interpretation of the script content
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut child = Command::new("osascript")
+      .arg("-")
+      .stdin(Stdio::piped())
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .spawn()
+      .map_err(|e| e.to_string())?;
+    if let Some(ref mut stdin) = child.stdin {
+      stdin.write_all(script.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    drop(child.stdin.take());
+    // Fire and forget — don't block waiting for result
+  }
+  #[cfg(target_os = "windows")]
+  {
+    use std::os::windows::process::CommandExt;
+    // PowerShell toast notification
+    let ps = format!(
+      "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; \
+       $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); \
+       $text = $template.GetElementsByTagName('text'); $text.Item(0).AppendChild($template.CreateTextNode('{}')) | Out-Null; $text.Item(1).AppendChild($template.CreateTextNode('{}')) | Out-Null; \
+       [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Free').Show([Windows.UI.Notifications.ToastNotification]::new($template))",
+      title.replace('\'', "''"),
+      body.replace('\'', "''"),
+    );
+    Command::new("powershell")
+      .args(["-NoProfile", "-Command", &ps])
+      .creation_flags(0x08000000) // CREATE_NO_WINDOW
+      .spawn()
+      .map_err(|e| e.to_string())?;
+  }
+  Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let mut builder = tauri::Builder::default()
@@ -1139,11 +1220,65 @@ pub fn run() {
     builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
   }
 
-  builder
+  let app = builder
     .setup(|app| {
       let database =
         init_database(&app.handle()).map_err(|error| io::Error::other(error.to_string()))?;
       app.manage(database);
+
+      // Prevent macOS idle sleep to keep WebSocket alive in background.
+      // Intentionally leaked — caffeinate -w PID auto-exits when our process dies.
+      #[cfg(target_os = "macos")]
+      match power::SleepGuard::prevent_idle_sleep() {
+        Ok(guard) => {
+          log::info!("power: caffeinate started (idle sleep prevention)");
+          std::mem::forget(guard);
+        }
+        Err(e) => log::error!("power: {e}"),
+      }
+
+      // System tray: hide-to-tray on close, double-click to restore
+      let show_item = MenuItemBuilder::with_id("show", "Show Window").build(app)?;
+      let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+      let menu = MenuBuilder::new(app)
+        .item(&show_item)
+        .separator()
+        .item(&quit_item)
+        .build()?;
+
+      TrayIconBuilder::new()
+        .icon(
+          app.default_window_icon()
+            .cloned()
+            .unwrap_or_else(|| tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png")).expect("tray icon")),
+        )
+        .menu(&menu)
+        .tooltip("Free")
+        .on_menu_event(|app, event| match event.id.as_ref() {
+          "show" => {
+            if let Some(w) = app.get_webview_window("main") {
+              let _ = w.show();
+              let _ = w.set_focus();
+            }
+          }
+          "quit" => app.exit(0),
+          _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+          use TrayIconEvent::*;
+          let show = match event {
+            Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } => true,
+            DoubleClick { button: MouseButton::Left, .. } => true,
+            _ => false,
+          };
+          if show {
+            if let Some(w) = tray.app_handle().get_webview_window("main") {
+              let _ = w.show();
+              let _ = w.set_focus();
+            }
+          }
+        })
+        .build(app)?;
 
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -1161,6 +1296,12 @@ pub fn run() {
         )?;
       }
       Ok(())
+    })
+    .on_window_event(|window, event| {
+      if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        api.prevent_close();
+        let _ = window.hide();
+      }
     })
     .invoke_handler(tauri::generate_handler![
       desktop_message_db_init,
@@ -1184,8 +1325,20 @@ pub fn run() {
       desktop_get_cli_status,
       desktop_repair_cli_environment,
       desktop_install_cli,
-      desktop_bootstrap_cli_auth
+      desktop_bootstrap_cli_auth,
+      desktop_show_notification
     ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application");
+
+  app.run(|handle, event| {
+    // macOS: clicking the Dock icon while window is hidden should restore it
+    #[cfg(target_os = "macos")]
+    if let tauri::RunEvent::Reopen { .. } = event {
+      if let Some(w) = handle.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+      }
+    }
+  });
 }
